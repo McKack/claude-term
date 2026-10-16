@@ -17,6 +17,13 @@ import claude_term as ct  # noqa: E402
 import ui  # noqa: E402
 from claude_agent_sdk import AssistantMessage, TextBlock, ToolResultBlock, ToolUseBlock, UserMessage  # noqa: E402
 
+def plain(row):  # a task row draws a rich Table: render that to text
+    from rich.console import Console
+    c = Console(width=60, record=True, file=open(os.devnull, "w", encoding="utf-8"))
+    c.print(ui.TaskPanel.line(row.app.tasks[row.data], time.time()))
+    return c.export_text().strip()
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SAVE_UI, ct.ClaudeTerm.save_ui = ct.ClaudeTerm.save_ui, lambda self: None  # each app starts clean; tested at the end
 ct.ClaudeTerm.patcher = lambda self, tb, crashed, src: print("UNEXPECTED BUG CAUGHT:\n" + tb)  # never a real patch
@@ -184,6 +191,37 @@ async def main():
         sent = drain(app.code)[0]
         assert app.tasks["p:0"]["status"] == "in_progress" and "Ship v1" in sent and "Tag it v1.0.0." in sent, sent
         assert store.load_project(HERE)["tasks"][0]["status"] == "in_progress", "plan state saved"
+
+        # Claude marks plan tasks live (loose title match, unknown ones added); rescans keep what's running
+        app.set_plan_tasks([{"title": "Write the docs", "source": "HANDOVER.md", "done": False},
+                            {"title": "Fix the paste bug", "source": "HANDOVER.md", "done": False}])
+        app.ui_server()  # builds app.ui_tools, as the Code session does
+        await app.ui_tools["task"].handler({"title": "fix the paste bug", "status": "in_progress"})
+        assert app.tasks["p:1"]["status"] == "in_progress" and app.tasks["p:1"]["started"]
+        await pilot.pause()
+        row = app.query_one(".task.-in_progress", ui.Chip)
+        assert plain(row).startswith("►"), "current task: ►"
+        assert row.styles.color == app.query_one("#tasks-title").styles.color, "current task in the TASKS color"
+        assert any(plain(c).startswith("□") for c in app.query(".task.-pending"))
+        started = app.tasks["p:1"]["started"]
+        app.set_plan_tasks([{"title": "Write the docs", "source": "HANDOVER.md", "done": False},
+                            {"title": "Fix the paste bug", "source": "HANDOVER.md", "done": False}])
+        assert app.tasks["p:1"]["status"] == "in_progress" and app.tasks["p:1"]["started"] == started
+        app.set_plan_tasks([{"title": "Fix the paste bug", "source": "HANDOVER.md", "done": True}])
+        assert app.tasks["p:0"]["status"] == "completed" and app.tasks["p:0"]["ended"], "ticked in the file: done"
+        await pilot.pause()
+        assert plain(app.query_one(".task.-completed", ui.Chip)).startswith("■")
+        await app.ui_tools["task"].handler({"title": "Something new entirely", "status": "in_progress"})
+        assert any(t["title"] == "Something new entirely" and t["status"] == "in_progress" for t in app.tasks.values())
+
+        # pasting text into the prompt inserts it once
+        prompt = app.query_one("#prompt")
+        prompt.text = ""
+        prompt.focus()
+        app.post_message(ui.events.Paste("hello paste"))  # as the terminal delivers it: to the app, then forwarded
+        await pilot.pause()
+        assert prompt.text == "hello paste", repr(prompt.text)
+        prompt.text = ""
 
         # add account: setup-token runs in a (fake) pseudo-console and the token fills itself in
         class FakePty:

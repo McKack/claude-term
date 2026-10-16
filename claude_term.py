@@ -65,7 +65,9 @@ SYSTEM_APPEND = ("You are running inside claude-term, a custom terminal UI. Its 
                  "show markdown in a side panel (plans, summaries, tables), pop notifications, and change "
                  "the theme. Use the panel for content worth keeping on screen. For a real "
                  "decision, or when you see a better/leaner way than what was asked, use mcp__ui__ask_user: a dialog "
-                 "with radio/checkbox/select/text/switch fields and clickable links, your recommendation pre-selected.")
+                 "with radio/checkbox/select/text/switch fields and clickable links, your recommendation pre-selected. "
+                 "Working on a task from the project's plan or handover? Call mcp__ui__task when you start it and "
+                 "when it's done, so the Tasks panel shows it live.")
 ASK_APPEND = ("This is the 'Ask Claude' side chat in claude-term: quick questions, explanations, brainstorming. "
               "You can read and search the project and the web, but never change anything. Keep answers short.")
 SCOUT_PROMPT = ("Find this project's planning/handover docs (HANDOVER.md, PLAN.md, TODO.md, ROADMAP.md, TASKS.md, "
@@ -279,7 +281,7 @@ class ClaudeTerm(App):
     .task-head { color: $secondary; text-style: bold; margin-top: 1; }
     .task { height: auto; }
     .task:hover { background: $panel; }
-    .task.-in_progress { color: $accent; text-style: bold; }
+    .task.-in_progress { color: $primary; text-style: bold; }  /* same as the TASKS title */
     .task.-completed { color: $secondary; text-style: strike; }
     .task-empty { color: $secondary; margin-top: 1; }
     #panel { height: 1fr; border: round $panel; border-title-color: $accent; background: $surface; }
@@ -376,6 +378,7 @@ class ClaudeTerm(App):
     def __init__(self, cwd, resume=None):
         super().__init__()
         self.resume_at, self.restart_cmd, self.started_at = resume, None, time.time()
+        self.plan_edited = False  # a plan file changed this turn: rescan the tasks when it ends
         self.healed, self.patching = set(), False  # self-heal: bugs already sent to the patcher; one at a time
         self.cfg = store.load()
         self.cwd, self.session_id, self.claude = cwd, None, None
@@ -639,7 +642,15 @@ class ClaudeTerm(App):
             answers = await self.modal(Form(a))
             return ok(json.dumps(answers) if answers is not None else "The user closed the dialog without answering.")
 
-        self.ui_tools = {t.name: t for t in (show_panel, notify, set_theme, clear_and_continue, ask_user)}
+        @tool("task", "Update claude-term's Tasks panel (the project's plan/handover tasks): call with status "
+              "in_progress the moment you start a task, completed when it's done (pending to put it back). A title "
+              "that matches no listed task adds it.", {"title": str, "status": Annotated[str, "in_progress | completed | pending"]})
+        async def task(a):
+            if a.get("status") not in ("in_progress", "completed", "pending"):
+                return ok("status must be in_progress, completed or pending")
+            return ok(self.mark_plan_task(a.get("title", ""), a["status"]))
+
+        self.ui_tools = {t.name: t for t in (show_panel, notify, set_theme, clear_and_continue, ask_user, task)}
         return create_sdk_mcp_server("ui", tools=list(self.ui_tools.values()))
 
     # ---- rendering agent output ----------------------------------------------
@@ -673,6 +684,9 @@ class ClaudeTerm(App):
             if msg.is_error:
                 self.armed = False  # failed turn: leave it to the user
                 self.say("err", "; ".join(msg.errors or []) or msg.subtype)
+            if self.plan_edited:  # Claude ticked things off in HANDOVER.md & co: refresh the Tasks list
+                self.plan_edited = False
+                self.scout()
 
     async def show_ask(self, msg):
         if isinstance(msg, StreamEvent):
@@ -715,6 +729,9 @@ class ClaudeTerm(App):
         a = b.input or {}
         if not parent:
             self.track_todos(b.name, a)
+            if live and b.name in ("Edit", "Write", "MultiEdit") and store.PLAN_NAME.match(
+                    os.path.basename(a.get("file_path", ""))):
+                self.plan_edited = True
         diff = diff_of(b.name, a, self.current_theme, live)
         first = str(next(iter(a.values()), "")).splitlines() if a else []
         title = f"⚙ {b.name}  {first[0][:70] if first else ''}"
@@ -780,12 +797,36 @@ class ClaudeTerm(App):
         self.render_tasks()
 
     def set_plan_tasks(self, found):
+        # a rescan doesn't know what's being worked on: keep that (and its timer) unless the file now says done
+        running = {t["title"].lower(): t for k, t in self.tasks.items() if k.startswith("p:") and t["status"] == "in_progress"}
         self.tasks = {k: t for k, t in self.tasks.items() if not k.startswith("p:")}
         for i, f in enumerate(found):
             key = f"p:{i}"
             status = f.get("status") or ("completed" if f.get("done") else "pending")
-            self.tasks[key] = {**f, "key": key, "status": status}
+            t = self.tasks[key] = {**f, "key": key, "status": status}
+            if was := running.get(f["title"].lower()):
+                t.update(started=was.get("started"), ended=None, status="in_progress")
+                if status == "completed":
+                    self.set_status(t, "completed")  # stamps the end time, so it shows how long it took
         self.render_tasks()
+
+    def mark_plan_task(self, title, status):
+        """Claude says it started or finished a plan task: find it by title (loosely), else add it. Returns a note."""
+        plan = {k: t for k, t in self.tasks.items() if k.startswith("p:")}
+        want = title.strip().lower()
+        key = next((k for k, t in plan.items() if want and (want in t["title"].lower() or t["title"].lower() in want)),
+                   None)
+        if not key and plan:
+            ratio = {k: difflib.SequenceMatcher(None, want, t["title"].lower()).ratio() for k, t in plan.items()}
+            key = max(ratio, key=ratio.get) if max(ratio.values()) >= 0.6 else None
+        if not key:
+            key = f"p:{max([int(k[2:]) for k in plan] + [-1]) + 1}"
+            self.tasks[key] = {"key": key, "title": title.strip()[:80], "source": "claude", "status": "pending"}
+        t = self.tasks[key]
+        self.set_status(t, status)
+        self.save_plan_tasks()
+        self.render_tasks()
+        return f"Tasks panel: “{t['title']}” is now {status.replace('_', ' ')}."
 
     def save_plan_tasks(self):
         plan = [{k: v for k, v in t.items() if k != "key"} for k, t in self.tasks.items() if k.startswith("p:")]

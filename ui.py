@@ -180,12 +180,11 @@ class Prompt(TextArea):
         else:
             await super()._on_key(event)
 
-    async def _on_paste(self, event: events.Paste):
+    def _on_paste(self, event: events.Paste):
+        # Textual runs TextArea's own paste handler after this one: calling super() too pasted everything twice
         if self.app.handle_paste(event.text):  # an image or file paths: attach instead of typing
             event.prevent_default()
             event.stop()
-        else:
-            await super()._on_paste(event)
 
 
 def stamp(when, now=None):
@@ -281,7 +280,7 @@ class TaskPanel(Vertical):
     @staticmethod
     def line(t, now):
         status = t["status"]
-        mark = {"in_progress": "▶", "completed": "✔"}.get(status, "◇" if t.get("source") else "○")
+        mark = {"in_progress": "►", "completed": "■"}.get(status, "□")
         label = t.get("active") if status == "in_progress" and t.get("active") else t["title"]
         right = ""
         if t.get("started"):
