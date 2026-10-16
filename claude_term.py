@@ -32,7 +32,7 @@ from claude_agent_sdk import (
 
 import attach
 import store
-from ui import (THEMES, TIPS, AccountManager, Ask, AskText, Chip, Choose, Confirm, Form, InstallCard,
+from ui import (THEMES, TIPS, AccountManager, Ask, AskText, Bubble, Chip, Choose, Confirm, Form, InstallCard,
                 PopupMenu, Prompt, ResumePanel, TaskPanel, ThemePicker, Welcome)
 
 MODELS = {"": "Default", "claude-opus-5-5": "Opus 5.5", "claude-sonnet-5-5": "Sonnet 5.5",
@@ -286,8 +286,18 @@ class ClaudeTerm(App):
     #tip-text { text-align: center; }
     .ask-intro { margin: 2 4; padding: 1 2; background: $panel; color: $secondary; text-align: center; }
 
-    .user { margin: 1 0 0 0; padding: 0 1; border-left: outer $primary; background: $surface; }
-    .claude { margin: 1 0 0 0; padding: 0; background: $background; }
+    .bubble { height: auto; margin: 1 0 0 0; }
+    .bubble.-user { align-horizontal: right; }
+    .avatar { width: 5; height: 3; border: round $primary; content-align: center middle; text-style: bold;
+              color: $primary; }
+    .-user .avatar { border: round $accent; color: $accent; }
+    .tail { width: 1; height: 1; margin-top: 1; color: $panel; }
+    .bubble-col { width: auto; max-width: 80%; height: auto; }
+    .-claude .bubble-col { width: 1fr; max-width: 100%; margin-right: 8; }
+    .bubble-body { width: auto; height: auto; padding: 1 2; background: $panel; }
+    .-claude .bubble-body { width: 100%; padding: 1 1 0 1; }  /* markdown brings its own bottom margin */
+    .stamp { width: 100%; color: $secondary; text-style: dim; padding: 0 1; }
+    .-user .stamp { text-align: right; }
     .note { color: $secondary; text-style: italic; background: $background; }
     .err { color: $error; background: $background; }
     Collapsible { border: none; padding: 0; margin: 0; background: $surface; color: $secondary; }
@@ -330,6 +340,7 @@ class ClaudeTerm(App):
         self.resume_at, self.restart_cmd, self.started_at = resume, None, time.time()
         self.cfg = store.load()
         self.cwd, self.session_id, self.claude = cwd, None, None
+        self.replay_at = None  # while replaying a session: when the message being drawn was sent
         self.code, self.ask = Lane("#chat"), Lane("#ask")
         self.tab, self.tools, self.tasks, self.attachments = "code", {}, {}, []
         self.side_closed = False  # the person collapsed the side panel: it no longer opens by itself
@@ -605,7 +616,7 @@ class ClaudeTerm(App):
                 if isinstance(b, TextBlock):
                     self.last_reply = b.text
                     if not await self.end_stream(self.code):  # streamed already, else draw it whole
-                        self.add(Markdown(b.text, classes="claude"))
+                        self.bubble(Markdown(b.text), "claude", when=self.replay_at)
                 elif isinstance(b, ThinkingBlock) and b.thinking:
                     self.add(Collapsible(Static(Text(b.thinking)), title="∴ thinking", collapsed=True))
                 elif isinstance(b, ToolUseBlock):
@@ -628,7 +639,7 @@ class ClaudeTerm(App):
         elif isinstance(msg, AssistantMessage):
             for b in msg.content:
                 if isinstance(b, TextBlock) and not await self.end_stream(self.ask):
-                    self.add(Markdown(b.text, classes="claude"), self.ask)
+                    self.bubble(Markdown(b.text), "claude", self.ask)
                 elif isinstance(b, ToolUseBlock):
                     arg = str(next(iter((b.input or {}).values()), ""))[:70]
                     self.say("note", f"⚙ {b.name} {arg}", self.ask)
@@ -643,8 +654,8 @@ class ClaudeTerm(App):
         ev = msg.event
         if ev.get("type") == "content_block_start" and ev.get("content_block", {}).get("type") == "text":
             await self.end_stream(lane)
-            md = Markdown(classes="claude")
-            self.add(md, lane)
+            md = Markdown()
+            self.bubble(md, "claude", lane)
             lane.stream = Markdown.get_stream(md)
         elif ev.get("type") == "content_block_delta" and ev.get("delta", {}).get("type") == "text_delta" and lane.stream:
             await lane.stream.write(ev["delta"]["text"])
@@ -855,8 +866,11 @@ class ClaudeTerm(App):
         except Exception as e:
             msgs = []
             self.say("err", f"could not read that session: {e}")
+        times = await asyncio.to_thread(store.session_times, sid)
         for m in msgs[-300:]:  # ponytail: replay the last 300 messages only
+            self.replay_at = times.get(m.uuid)  # bubbles show when it was said, not now
             await self.replay(m)
+        self.replay_at = None
         self.say("note", "── resumed ──")
         self.reconnect()
 
@@ -869,7 +883,7 @@ class ClaudeTerm(App):
         texts = [b["text"] for b in content if b.get("type") == "text" and not b["text"].startswith("<")]
         if m.type == "user":
             if texts:
-                self.add(Static(Text("\n".join(texts)), classes="user"))
+                self.bubble(Static(Text("\n".join(texts))), "user", when=self.replay_at)
             results = [ToolResultBlock(b["tool_use_id"], b.get("content"), b.get("is_error"))
                        for b in content if b.get("type") == "tool_result"]
             results and await self.show(UserMessage(content=results), live=False)
@@ -1142,6 +1156,10 @@ class ClaudeTerm(App):
         view.mount(widget)
         view.scroll_end(animate=False)
 
+    def bubble(self, body, who, lane=None, when=None):
+        avatar = (store.first_name()[:1] or "?").upper() if who == "user" else "✻"
+        self.add(Bubble(body, who, avatar, when or time.time()), lane)
+
     def say(self, cls, text, lane=None):
         self.add(Static(Text(text), classes=cls), lane)
 
@@ -1197,7 +1215,7 @@ class ClaudeTerm(App):
     def send(self, text):
         lane, files = self.lane, self.attachments
         shown = text + "".join(f"\n▣ {os.path.basename(p)}" for p in files)
-        self.add(Static(Text(shown), classes="user"), lane)
+        self.bubble(Static(Text(shown)), "user", lane)
         if lane.busy:
             self.say("note", "queued until the current reply finishes.", lane)
         lane.inbox.put_nowait(attach.content_blocks(text, files) if files else text)

@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 
 import keyring
@@ -192,6 +193,19 @@ def first_name():
         acct = {}
     name = acct.get("displayName") or (acct.get("emailAddress") or "").split("@")[0].split(".")[0]
     return (name or os.environ.get("USERNAME", "")).split(" ")[0].title()
+
+
+def session_times(session_id):
+    """{message uuid: epoch seconds} from the session's transcript (the SDK's messages carry no time)."""
+    times = {}
+    for f in (Path.home() / ".claude" / "projects").glob(f"*/{session_id}.jsonl"):
+        for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                m = json.loads(line)
+                times[m["uuid"]] = datetime.fromisoformat(m["timestamp"]).timestamp()
+            except (ValueError, KeyError, TypeError):
+                pass
+    return times
 
 
 def git_facts(cwd):

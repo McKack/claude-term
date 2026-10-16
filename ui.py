@@ -1,5 +1,6 @@
 """Widgets, menus and dialogs for claude-term."""
 import random
+import time
 
 from rich.markup import escape
 from rich.table import Table
@@ -185,6 +186,28 @@ class Prompt(TextArea):
             event.stop()
         else:
             await super()._on_paste(event)
+
+
+def stamp(when, now=None):
+    """'00:22' today, '16 Oct 23:47' before that."""
+    t, today = time.localtime(when), time.localtime(now or time.time())
+    return time.strftime("%H:%M" if t[:3] == today[:3] else "%d %b %H:%M", t)
+
+
+class Bubble(Horizontal):
+    """A chat bubble: you on the right, Claude on the left, each with a round avatar and a timestamp below.
+    The body is any widget (Static for you, a streaming Markdown for Claude)."""
+
+    def __init__(self, body, who, avatar, when):
+        super().__init__(classes=f"bubble -{who}")
+        self.body, self.who, self.avatar, self.when = body, who, avatar, when
+
+    def compose(self) -> ComposeResult:
+        mine = self.who == "user"
+        self.body.add_class("bubble-body")
+        parts = [Static(self.avatar, classes="avatar"), Static("▶" if mine else "◀", classes="tail"),
+                 Vertical(self.body, Static(stamp(self.when), classes="stamp"), classes="bubble-col")]
+        yield from reversed(parts) if mine else parts
 
 
 class Welcome(Vertical):

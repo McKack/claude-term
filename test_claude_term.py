@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import store
@@ -138,6 +139,9 @@ async def main():
         await app.show(UserMessage(content=[ToolResultBlock("t1", "a.txt"), ToolResultBlock("t2", "ok")]))
         await pilot.pause()
         assert not app.tools, "tool result not matched to its call"
+        assert app.query(".bubble.-claude") and app.query(".bubble.-user"), "chat bubbles on both sides"
+        assert len(ui.stamp(time.time())) == 5, "today: time only"
+        assert " " in ui.stamp(time.time() - 3 * 86400), "older: date and time"
 
         # failed tool call: an Explain chip sends the error to the Ask Claude lane
         await app.show(AssistantMessage(content=[ToolUseBlock("t5", "Bash", {"command": "frob"})], model="x"))
