@@ -9,8 +9,11 @@ $exe = "dist\claude-term.exe"
 Remove-Item dist\claude-term.old*.exe -ErrorAction SilentlyContinue   # ponytail: fails silently while an old one still runs
 if (Test-Path $exe) { Move-Item $exe "dist\claude-term.old-$(Get-Date -Format yyyyMMddHHmmss).exe" }
 
+# pywinpty (Add account runs `claude setup-token` in a pseudo-console) needs its helper exes next to its dlls
+$wp = python -c "import winpty, os; print(os.path.dirname(winpty.__file__))"
 python -m PyInstaller --onefile --name claude-term --noconfirm `
     --collect-submodules textual --collect-data textual --collect-submodules rich `
+    --collect-binaries winpty --add-binary "$wp\OpenConsole.exe;winpty" --add-binary "$wp\winpty-agent.exe;winpty" `
     --exclude-module tkinter --exclude-module PIL claude_term.py
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 

@@ -747,7 +747,7 @@ class ClaudeTerm(App):
     async def scout(self):
         """A cheap read-only Haiku run that pulls open tasks out of HANDOVER.md, PLAN.md, CLAUDE.md and friends."""
         status, spin = self.query_one("#tasks-status", Static), self.query_one("#tasks-refresh", Chip)
-        frames = iter(itertools.cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"))
+        frames = itertools.cycle(SPINNER)
 
         def tick():
             f = next(frames)
@@ -819,16 +819,22 @@ class ClaudeTerm(App):
         if self.code.busy or any(x["status"] == "in_progress" for x in self.tasks.values()):
             self.notify("A task is already running. Let it finish, or press Esc to stop Claude.")
             return
-        body = "\n\n".join(x for x in (t["title"], t.get("detail", ""), f"from {t['source']}" if plan else "") if x)
-        if not await self.modal(Confirm("START TASK", "Want to start this task?", body)):
+        body = "\n\n".join(x for x in (f"**{t['title']}**", t.get("detail", ""), f"from `{t['source']}`" if plan else "")
+                           if x)
+        answers = await self.modal(Form({"title": "START TASK", "question": body, "ok": "Start", "note": False,
+                                         "fields": [{"id": "notes", "type": "textarea", "rows": 8,
+                                                     "label": "Additional notes for this task (optional)"}]}))
+        if answers is None:
             return
+        notes = answers["notes"].strip()
+        extra = f"\n\nAdditional notes for this task (they change or add to it):\n{notes}" if notes else ""
         if plan:
             self.set_status(t, "in_progress")
             self.save_plan_tasks()
             self.render_tasks()
-            prompt = f"Let's work on this task from {t['source']}:\n{t['title']}\n\n{t.get('detail', '')}".strip()
+            prompt = f"Let's work on this task from {t['source']}:\n{t['title']}\n\n{t.get('detail', '')}".strip() + extra
         else:
-            prompt = f"Start on this task now: {t['title']}"
+            prompt = f"Start on this task now: {t['title']}{extra}"
         self.switch_tab("code")
         self.send(prompt)
 

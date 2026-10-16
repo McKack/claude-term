@@ -170,10 +170,57 @@ async def main():
         await app.show(todo("completed", "completed"))
         task = asyncio.create_task(app.task_clicked("p:0"))
         await pilot.pause()
-        await pilot.press("y")
+        assert isinstance(app.screen, ui.Form) and app.screen.query_one("#f0").styles.min_height.value == 8
+        app.screen.query_one("#f0").text = "Skip the changelog.\nTag it v1.0.0."
+        await pilot.press("ctrl+s")
         await task
-        assert app.tasks["p:0"]["status"] == "in_progress" and "Ship v1" in drain(app.code)[0]
+        sent = drain(app.code)[0]
+        assert app.tasks["p:0"]["status"] == "in_progress" and "Ship v1" in sent and "Tag it v1.0.0." in sent, sent
         assert store.load_project(HERE)["tasks"][0]["status"] == "in_progress", "plan state saved"
+
+        # add account: setup-token runs in a (fake) pseudo-console and the token fills itself in
+        class FakePty:
+            def __init__(self):
+                self.chunks, self.written = ["https://claude.com/cai/oauth/authorize?x=1\r\n"], []
+
+            def read(self, n):
+                if self.chunks:
+                    return self.chunks.pop(0)
+                if self.written:
+                    return "token: \x1b[33msk-ant-oat01-" + "a" * 40 + "\x1b[39m"
+                import time
+                time.sleep(0.05)
+                return ""
+
+            def write(self, s):
+                self.written.append(s)
+
+            def isalive(self):
+                return True
+
+            def terminate(self, force=False):
+                pass
+        fake = FakePty()
+        real_pty, store.setup_token_pty = store.setup_token_pty, lambda cli: fake
+        add = ui.AddAccount()
+        app.push_screen(add)
+        await pilot.pause()
+        await pilot.click("#signin")
+        await pilot.pause(0.3)
+        assert add.query_one("#st-code").display and "Open the sign-in page" in str(add.query_one("#st-status").render())
+        add.query_one("#st-code").value = "CODE123"
+        add.query_one("#st-code").focus()
+        await pilot.press("enter")
+        await pilot.pause(0.3)
+        assert fake.written == ["CODE123\r"] and add.query_one("#acct-token").value == "sk-ant-oat01-" + "a" * 40
+        add.query_one("#acct-token").value = ""
+        add.query_one("#acct-token").focus()
+        add.query_one("#acct-token").post_message(ui.events.Paste("sk-ant-oat01-abc\ndef\n"))
+        await pilot.pause()
+        assert add.query_one("#acct-token").value == "sk-ant-oat01-abcdef", repr(add.query_one("#acct-token").value)
+        store.setup_token_pty = real_pty
+        add.dismiss(None)
+        await pilot.pause()
 
         # account manager: rename, reorder, threshold, defaults; Save writes config
         app.cfg["accounts"].append({"id": "Work", "nick": "Work"})  # a token account (no real token needed here)

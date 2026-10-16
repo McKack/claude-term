@@ -123,6 +123,32 @@ def open_setup_token_window():
     subprocess.Popen('start "claude setup-token" cmd /k claude setup-token', shell=True)
 
 
+# setup-token draws with Ink, which prints nothing through plain pipes: it needs a pseudo-console (ConPTY).
+# Both patterns need a character after the match, so a read that stops mid-token doesn't return half of it.
+SIGNIN_URL = re.compile(r"https://\S+?/oauth/authorize\?[^\s\x1b\x07]+(?=[\s\x1b\x07])")
+OAUTH_TOKEN = re.compile(r"sk-ant-oat\d+-[\w-]{20,}(?=[^\w-])")
+
+
+def setup_token_pty(cli="claude"):
+    from winpty import PtyProcess  # ponytail: Windows only, like the rest of claude-term
+    return PtyProcess.spawn(f'"{cli}" setup-token', dimensions=(50, 1000))  # wide: no wrapped token or URL
+
+
+def read_setup_token(proc, on_url):
+    """Blocking: reads the setup-token screen, calls on_url(url) once it shows, returns the token (None if it quit)."""
+    out, url = "", None
+    while True:
+        try:
+            out += proc.read(4096)
+        except EOFError:
+            return None
+        if not url and (m := SIGNIN_URL.search(out)):
+            url = m[0]
+            on_url(url)
+        if m := OAUTH_TOKEN.search(out):
+            return m[0]
+
+
 # ---- per-project cache (plan tasks found by the scout) ------------------------------
 
 def _project_file(cwd, kind=""):  # kind: "" = plan tasks, "ui" = drafts, panels, last session
@@ -207,6 +233,22 @@ if __name__ == "__main__":
     assert ago(time.time() * 1000 - 7200_000) == "2h ago" and ago(time.time() * 1000) == "just now"
     assert account_env(MAIN) == {}
     assert PLAN_NAME.match("HANDOVER.md") and PLAN_NAME.match("todo-2026.md") and not PLAN_NAME.match("README.md")
+
+    class FakePty:  # the screen arrives in pieces; the token is split across reads
+        def __init__(self, chunks):
+            self.chunks = chunks
+
+        def read(self, n):
+            if not self.chunks:
+                raise EOFError
+            return self.chunks.pop(0)
+    tok, urls = "sk-ant-oat01-" + "Ab_9-" * 18, []
+    screen = ["\x1b[2mBrowser didn't open?\x1b[22m\r\n\x1b]8;;https://claude.com/cai/oauth/authorize?code=true&x=1",
+              "\x07https://claude.com/cai/oauth/authorize?code=true&x=1\x1b]8;;\x07\r\n", "token:\x1b[33m" + tok[:30],
+              tok[30:] + "\x1b[39mStore this token securely."]
+    assert read_setup_token(FakePty(screen), urls.append) == tok
+    assert urls == ["https://claude.com/cai/oauth/authorize?code=true&x=1"]
+    assert read_setup_token(FakePty(["no luck"]), urls.append) is None
 
     import tempfile
     CONFIG = Path(tempfile.mkdtemp()) / "config.json"

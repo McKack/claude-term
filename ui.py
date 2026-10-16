@@ -419,38 +419,107 @@ class ThemePicker(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class TokenInput(Input):
+    """A console wraps the long token, so a copied one arrives in pieces: join them instead of keeping line one."""
+
+    def _on_paste(self, event: events.Paste):
+        event.prevent_default()  # else Input's own handler pastes line one as well
+        event.stop()
+        self.insert_text_at_cursor("".join(event.text.split()))
+
+
 class AddAccount(ModalScreen[tuple[str, str] | None]):
+    """Runs `claude setup-token` in a pseudo-console and picks the token up by itself; pasting still works."""
     DEFAULT_CLASSES = "dialog"
     BINDINGS = [("escape", "dismiss(None)")]
+
+    def __init__(self, cli="claude"):
+        super().__init__()
+        self.cli, self.proc = cli, None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dlg") as d:
             d.border_title = "ADD ACCOUNT"
-            yield Static("1. Open the sign-in window. It runs [b]claude setup-token[/]; sign in with the "
-                         "other account in your browser.\n2. Copy the token it prints and paste it below.\n"
+            yield Static("1. In your browser, sign in to the [b]other[/] account first (the browser's current "
+                         "account is the one that gets authorized).\n2. Press Get token. claude-term runs "
+                         "[b]claude setup-token[/] and picks the token up when the browser is done.\n"
                          "The token is stored in Windows Credential Manager, never in a file.")
-            yield Button("Open sign-in window", id="signin")
+            yield Button("Get token", id="signin")
+            yield Static(id="st-status", classes="hint")
+            yield Input(placeholder="paste the code here if the page shows one", id="st-code")
             yield Input(placeholder="nickname, e.g. Work", id="acct-name")
-            yield Input(placeholder="paste token (sk-ant-oat…)", password=True, id="acct-token")
+            yield TokenInput(placeholder="token (filled in for you, or paste sk-ant-oat…)", password=True,
+                             id="acct-token")
             with Horizontal(id="dlg-btns"):
                 yield Button("Cancel", id="cancel")
                 yield Button("Save", variant="success", id="save")
 
+    def on_mount(self):
+        self.query_one("#st-code").display = False
+
+    def on_unmount(self):
+        if self.proc and self.proc.isalive():
+            self.proc.terminate(force=True)
+
+    def status(self, text):
+        self.query_one("#st-status", Static).update(text)
+
     def on_button_pressed(self, e: Button.Pressed):
         if e.button.id == "signin":
-            from store import open_setup_token_window
-            open_setup_token_window()
+            self.get_token()
         elif e.button.id == "cancel":
             self.dismiss(None)
         else:
             self.save()
 
+    def get_token(self):
+        from store import read_setup_token, setup_token_pty
+        if self.proc and self.proc.isalive():
+            return
+        try:
+            self.proc = setup_token_pty(self.cli)
+        except Exception as e:  # no pywinpty, or claude missing: the old way, a console window to copy from
+            from store import open_setup_token_window
+            open_setup_token_window()
+            self.status(f"Couldn't run it here ({e}); copy the token from the window that opened.")
+            return
+        self.status("Starting claude setup-token…")
+
+        def show_url(url):
+            self.app.call_from_thread(self.status, f"Waiting for the browser…  Didn't open? [@click=screen.open_url"
+                                      f"('{escape(url)}')]Open the sign-in page[/] (try a private window for "
+                                      f"another account)")
+            self.app.call_from_thread(lambda: setattr(self.query_one("#st-code"), "display", True))
+
+        def run():
+            token = read_setup_token(self.proc, show_url)
+            self.app.call_from_thread(self.got_token, token)
+        self.run_worker(run, thread=True, exit_on_error=False)
+
+    def action_open_url(self, url):
+        self.app.open_url(url)
+
+    def got_token(self, token):
+        if not token:
+            self.status("setup-token ended without a token. Try again, or paste one.")
+            return
+        self.query_one("#acct-token", Input).value = token
+        self.query_one("#st-code").display = False
+        self.status("✓ Token received. Give the account a nickname and Save.")
+        self.query_one("#acct-name", Input).focus()
+
     def on_input_submitted(self, e: Input.Submitted):
-        self.save()
+        if e.input.id == "st-code":  # the page's code goes to setup-token, as if typed there
+            if self.proc and self.proc.isalive() and e.value.strip():
+                self.proc.write(e.value.strip() + "\r")
+                e.input.value = ""
+                self.status("Code sent, waiting for the token…")
+        else:
+            self.save()
 
     def save(self):
         name = self.query_one("#acct-name", Input).value.strip()
-        token = self.query_one("#acct-token", Input).value.strip()
+        token = "".join(self.query_one("#acct-token", Input).value.split())
         if name and token:
             self.dismiss((name, token))
         else:
@@ -532,7 +601,7 @@ class AccountManager(ModalScreen[dict | None]):
 
     def on_button_pressed(self, e: Button.Pressed):
         if e.button.id == "acct-add":
-            self.app.push_screen(AddAccount(), self.added_account)
+            self.app.push_screen(AddAccount(getattr(self.app, "claude", None) or "claude"), self.added_account)
         elif e.button.id == "cancel":
             self.action_cancel()
         elif e.button.id == "save":
@@ -633,17 +702,21 @@ class Form(ModalScreen[dict | None]):
                 elif kind == "switch":
                     yield Checkbox(Text(f.get("label", "")), bool(f.get("default", f.get("recommended"))), id=f"f{i}")
                 elif kind == "textarea":
-                    yield TextArea(str(f.get("default") or f.get("recommended") or ""), id=f"f{i}", classes="form-text",
-                                   soft_wrap=True, show_line_numbers=False)
+                    area = TextArea(str(f.get("default") or f.get("recommended") or ""), id=f"f{i}", classes="form-text",
+                                    soft_wrap=True, show_line_numbers=False)
+                    if f.get("rows"):  # room up front for a longer note
+                        area.styles.min_height = f["rows"]
+                    yield area
                 else:  # text
                     yield Input(str(f.get("default") or f.get("recommended") or ""), placeholder=f.get("placeholder", ""),
                                 id=f"f{i}")
                 if f.get("help"):
                     yield Static(Text(f["help"]), classes="hint")
-            yield Input(placeholder="anything else to tell Claude? (optional)", id="form-note")
+            if self.spec.get("note", True):
+                yield Input(placeholder="anything else to tell Claude? (optional)", id="form-note")
             with Horizontal(id="dlg-btns"):
                 yield Button("Cancel", id="cancel")
-                yield Button("Confirm  ctrl+s", variant="success", id="ok")
+                yield Button(f"{self.spec.get('ok') or 'Confirm'}  ctrl+s", variant="success", id="ok")
 
     def values(self):
         out = {}
@@ -660,7 +733,7 @@ class Form(ModalScreen[dict | None]):
             else:
                 w = self.query_one(f"#f{i}")
                 out[key] = w.text if isinstance(w, TextArea) else w.value
-        out["note"] = self.query_one("#form-note", Input).value.strip()
+        out["note"] = next((w.value.strip() for w in self.query("#form-note").results(Input)), "")
         return out
 
     def action_confirm(self):
