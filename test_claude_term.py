@@ -19,6 +19,7 @@ from claude_agent_sdk import AssistantMessage, TextBlock, ToolResultBlock, ToolU
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SAVE_UI, ct.ClaudeTerm.save_ui = ct.ClaudeTerm.save_ui, lambda self: None  # each app starts clean; tested at the end
+ct.ClaudeTerm.patcher = lambda self, tb, crashed, src: print("UNEXPECTED BUG CAUGHT:\n" + tb)  # never a real patch
 
 
 def drain(lane):
@@ -148,6 +149,8 @@ async def main():
         await app.show(UserMessage(content=[ToolResultBlock("t5", "frob: command not found", True)]))
         await pilot.pause()
         chip = app.query_one(".explain", ui.Chip)
+        chip.scroll_visible(animate=False)
+        await pilot.pause()
         await pilot.click(chip)
         sent = drain(app.ask)
         assert app.tab == "ask" and len(sent) == 1 and "frob: command not found" in sent[0], sent
@@ -595,6 +598,33 @@ async def main():
         assert app.query_one("#prompt").text == "half-typed thought" and resumed == ["abc123"]
         assert app.attachments == [os.path.join(HERE, "store.py")]
         assert app.query_one("#resume").has_class("-on") and not app.query_one("#side").has_class("-on")
+
+    # self-heal: a worker error in our own code goes to the patcher once; a leftover crash file too
+    tb = 'Traceback:\n  File "x\\site.py", line 1, in f\n  File "D:\\a\\ui.py", line 42, in g\nKeyError: 1\n'
+    assert ct.own_bug(tb) == "ui.py:42 KeyError" and ct.own_bug('File "x/textual/a.py", line 3\nOops') is None
+    patches = []
+    ct.CRASH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ct.CRASH_FILE.write_text(tb, encoding="utf-8")
+    app = ct.ClaudeTerm(HERE)
+    app.agent_loop = app.scout = lambda: None
+    app.patcher = lambda tb, crashed, src: patches.append((tb, crashed))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause(0.2)
+        assert patches == [(tb, True)] and not ct.CRASH_FILE.exists(), "crash file goes to the patcher"
+        app.healed.clear()
+
+        async def boom():
+            ct.own_bug(None)  # AttributeError inside claude_term.py
+        for _ in range(2):
+            app.run_worker(boom(), exit_on_error=False)
+            await pilot.pause(0.2)
+        assert len(patches) == 2 and "claude_term.py" in patches[1][0] and not patches[1][1], "once per bug"
+        app.patched({"fixed": True, "summary": "guarded the None"})
+        await pilot.pause()
+        toast = [n for n in app._notifications if n.title == "Fix ready"]
+        assert toast and "app.do('restart')" in toast[0].message and "restored" in toast[0].message
+        from textual.content import Content
+        assert "Restart now" in Content.from_markup(toast[0].message).plain
     print(f"ok (replayed {len(sessions) and 1} session)")
 
 

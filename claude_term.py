@@ -8,10 +8,12 @@ import itertools
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
 import time
+import traceback
 from typing import Annotated
 
 from rich.markup import escape
@@ -22,6 +24,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Collapsible, Markdown, OptionList, Static
 from textual.widgets.option_list import Option
+from textual.worker import WorkerState
 
 from claude_agent_sdk import (
     AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, PermissionResultAllow,
@@ -141,6 +144,41 @@ COMMIT_PROMPT = (
 COMMIT_SCHEMA = {"type": "object", "required": ["message"], "properties": {"message": {"type": "string"}}}
 ADVISOR_MODES = {"off": "Off", "suggest": "Suggest: ask me first", "act": "Act: send recommended ones to Claude"}
 NO_HISTORY = {"no-session-persistence": None}  # helper chats stay out of the resume list
+OWN_FILES = ("claude_term.py", "ui.py", "store.py", "attach.py")  # a traceback through these is our bug
+CRASH_FILE = store.CONFIG.parent / "crash.txt"  # the last crash's traceback, picked up on the next start
+PATCH_SCHEMA = {"type": "object", "required": ["fixed", "summary"], "properties": {
+    "fixed": {"type": "boolean", "description": "true only if tests pass and the exe was rebuilt"},
+    "summary": {"type": "string", "description": "one short line: what was wrong and what changed"}}}
+PATCH_PROMPT = """claude-term (the app in this folder) just hit this error{how}:
+
+{tb}
+
+Find the root cause and fix it with the smallest change that works. Rules:
+- Read CLAUDE.md first. Touch only what the fix needs: the person may be editing these files in another
+  session right now, so never revert, reformat or rewrite anything else, and don't commit.
+- Run `python test_claude_term.py`; it must print ok. Add a check to it if the bug can be reproduced there.
+- Then rebuild: `powershell -File build.ps1`.
+- No safe fix, or tests fail? Undo your edits, set fixed=false and say why."""
+PATCH_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(python test_claude_term.py*)", "Bash(python store.py*)",
+               "Bash(python attach.py*)", "Bash(powershell -File build.ps1*)", "Bash(git diff*)", "Bash(git status*)"]
+
+
+def source_dir():
+    """claude-term's own source folder: next to this file, or (in the exe) where build.ps1 built it from."""
+    if not getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(__file__))
+    try:
+        return open(os.path.join(sys._MEIPASS, "srcdir.txt"), encoding="utf-8-sig").read().strip()
+    except OSError:
+        return ""
+
+
+def own_bug(tb):
+    """'ui.py:123 KeyError' for a traceback through our files (the deepest such frame), else None."""
+    frames = re.findall(r'File "([^"]+)", line (\d+)', tb)
+    ours = [(os.path.basename(f), n) for f, n in frames if os.path.basename(f) in OWN_FILES]
+    exc = tb.strip().splitlines()[-1].split(":")[0] if tb.strip() else ""
+    return f"{ours[-1][0]}:{ours[-1][1]} {exc}" if ours else None
 RECONNECT = object()
 
 
@@ -338,6 +376,7 @@ class ClaudeTerm(App):
     def __init__(self, cwd, resume=None):
         super().__init__()
         self.resume_at, self.restart_cmd, self.started_at = resume, None, time.time()
+        self.healed, self.patching = set(), False  # self-heal: bugs already sent to the patcher; one at a time
         self.cfg = store.load()
         self.cwd, self.session_id, self.claude = cwd, None, None
         self.replay_at = None  # while replaying a session: when the message being drawn was sent
@@ -412,6 +451,10 @@ class ClaudeTerm(App):
             self.load_plan_tasks(auto=True)
         else:  # first run: offer to install the CLI
             self.query_one("#chat").mount(InstallCard(id="welcome"))
+        if self.claude and CRASH_FILE.exists():  # the last run crashed: fix it while this one carries on
+            tb = CRASH_FILE.read_text(encoding="utf-8", errors="replace")
+            CRASH_FILE.unlink()
+            self.self_heal(tb, crashed=True)
         self.restore_ui(ui)
         self.sync_rails(sessions=True)
         self.set_interval(2, self.save_ui)
@@ -1506,6 +1549,65 @@ class ClaudeTerm(App):
         self.restart_cmd = self.launcher() + [self.cwd] + (["--resume", self.session_id] if self.session_id else [])
         self.exit()
 
+    # ---- self-heal: our own bugs go to a background patcher, a toast offers the fixed build ----
+
+    def _handle_exception(self, error):
+        # ponytail: private Textual hook, the one place an app-killing error passes through; keep it for the patcher
+        try:
+            CRASH_FILE.parent.mkdir(parents=True, exist_ok=True)
+            CRASH_FILE.write_text("".join(traceback.format_exception(error)), encoding="utf-8")
+            self.save_ui()
+        except Exception:
+            pass
+        super()._handle_exception(error)
+
+    def on_worker_state_changed(self, e):
+        if e.state == WorkerState.ERROR and e.worker.error and e.worker.group != "patcher":
+            self.self_heal("".join(traceback.format_exception(e.worker.error)))
+
+    def self_heal(self, tb, crashed=False):
+        bug, src = own_bug(tb), source_dir()
+        if not bug or bug in self.healed or self.patching or not self.claude or not os.path.isfile(
+                os.path.join(src, "build.ps1")):
+            return  # ponytail: one patch at a time; a bug that shows up during one is caught when it recurs
+        self.healed.add(bug)
+        self.notify(f"claude-term hit a bug ({bug}){' and crashed' if crashed else ''}. "
+                    "A patcher is fixing it in the background; carry on.", title="Self-heal", timeout=8)
+        self.patcher(tb, crashed, src)
+
+    @work(group="patcher", exit_on_error=False)
+    async def patcher(self, tb, crashed, src):
+        self.patching = True
+        opts = ClaudeAgentOptions(
+            cwd=src, cli_path=self.claude, env=store.account_env(self.session["account"]),
+            tools=["Read", "Edit", "Write", "Glob", "Grep", "Bash"], allowed_tools=PATCH_TOOLS,
+            permission_mode="dontAsk", setting_sources=["project"], strict_mcp_config=True, max_turns=60,
+            extra_args=NO_HISTORY, output_format={"type": "json_schema", "schema": PATCH_SCHEMA})
+        prompt = PATCH_PROMPT.format(how=" and crashed" if crashed else "", tb=tb[-6000:])
+        result = None
+        try:
+            async for m in query(prompt=prompt, options=opts):
+                if isinstance(m, ResultMessage):
+                    result = m
+                elif isinstance(m, RateLimitEvent):
+                    self.note_usage(m, self.session["account"])
+        except Exception as e:
+            result = None
+            self.say("err", f"self-heal patcher failed: {e}")
+        finally:
+            self.patching = False
+        self.patched((result and result.structured_output) or {"fixed": False, "summary": "no answer"})
+
+    def patched(self, out):
+        summary = escape(out.get("summary") or "")
+        if out.get("fixed") and (self.new_build() or not getattr(sys, "frozen", False)):
+            self.say("note", f"self-heal: {out.get('summary')}")
+            self.notify(f"{summary}\n\n[b][@click=app.do('restart')]↻ Restart now[/][/]  "
+                        "(your current prompt/session will be restored)", title="Fix ready", timeout=600)
+        else:
+            self.say("note", f"self-heal couldn't fix it: {out.get('summary')}")
+            self.notify(f"Couldn't fix it automatically: {summary}", title="Self-heal", severity="warning")
+
     def new_session(self):
         self.session_id, self.code.cost, self.worked = None, 0.0, False
         self.session = self.fresh_session(self.session["account"])
@@ -1725,6 +1827,9 @@ def main(argv):
         del args[i:i + 2]
     app = ClaudeTerm(os.path.abspath(args[0] if args else os.getcwd()), resume)
     app.run()
+    if CRASH_FILE.exists() and time.time() - app.started_at > 30:  # crashed: straight back in, the patcher starts
+        print("claude-term crashed; restarting so it can fix itself…")  # under 30s it's a startup crash: no loop
+        app.restart_cmd = app.launcher() + [app.cwd] + (["--resume", app.session_id] if app.session_id else [])
     if app.restart_cmd:
         # ponytail: Windows has no real exec, so this process waits for the new one (a few MB per restart)
         sys.exit(subprocess.call(app.restart_cmd))

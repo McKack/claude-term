@@ -11,9 +11,11 @@ if (Test-Path $exe) { Move-Item $exe "dist\claude-term.old-$(Get-Date -Format yy
 
 # pywinpty (Add account runs `claude setup-token` in a pseudo-console) needs its helper exes next to its dlls
 $wp = python -c "import winpty, os; print(os.path.dirname(winpty.__file__))"
+# the exe's self-heal patcher fixes the source it was built from
+[IO.File]::WriteAllText("$PSScriptRoot\srcdir.txt", $PSScriptRoot)
 python -m PyInstaller --onefile --name claude-term --noconfirm `
     --collect-submodules textual --collect-data textual --collect-submodules rich `
-    --collect-binaries winpty --add-binary "$wp\OpenConsole.exe;winpty" --add-binary "$wp\winpty-agent.exe;winpty" `
+    --collect-binaries winpty --add-binary "$wp\OpenConsole.exe;winpty" --add-binary "$wp\winpty-agent.exe;winpty" --add-data "srcdir.txt;." `
     --exclude-module tkinter --exclude-module PIL claude_term.py
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 

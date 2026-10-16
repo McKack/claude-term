@@ -3,3 +3,4 @@ build/
 dist/
 screenshot-*.svg
 *.spec
+srcdir.txt
