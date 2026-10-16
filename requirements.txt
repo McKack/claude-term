@@ -1,0 +1,3 @@
+textual>=8.2
+claude-agent-sdk>=0.2.166
+keyring>=25
