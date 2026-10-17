@@ -75,7 +75,8 @@ SYSTEM_APPEND = ("You are running inside claude-term, a custom terminal UI. Its 
                  "Working on a task from the project's plan or handover? Call mcp__ui__task when you start it and "
                  "when it's done, so the Tasks panel shows it live. When you end a reply with a question that has a "
                  "few likely answers (\"Should I do X or Y?\"), call mcp__ui__reply_options with them as your last "
-                 "action: they show as buttons under your message (plus \"Something else…\").")
+                 "action: they show as buttons under your message (plus \"Something else…\"). Write nothing after "
+                 "it, not even a note about the buttons.")
 ASK_SYSTEM = ("This is the 'Ask Claude' side chat in claude-term: quick questions, explanations, brainstorming. "
               "You can read and search the project and the web, but never change anything. Keep answers short.")
 SCOUT_PROMPT = ("Below are this project's planning/handover docs (for CLAUDE.md, only its plan/todo sections count). "
@@ -259,6 +260,7 @@ class Lane:
         self.busy, self.stream, self.cost, self.started = False, None, 0.0, False
         self.account = None  # the account this lane's claude process actually runs on
         self.working, self.doing, self.since = None, "", 0.0  # the "Thinking… 0:12" row under the last output
+        self.answered = False  # answer buttons are up: the rest of this turn isn't drawn, they stay the last thing
 
 
 class ClaudeTerm(App):
@@ -602,7 +604,7 @@ class ClaudeTerm(App):
                         self.session["model"] and await client.set_model(self.session["model"])
                         await client.set_permission_mode(self.cfg["mode"])
                     while (item := await lane.inbox.get()) is not RECONNECT:
-                        lane.busy, lane.doing, lane.since = True, "Thinking", time.time()
+                        lane.busy, lane.doing, lane.since, lane.answered = True, "Thinking", time.time(), False
                         advice = None
                         if isinstance(item, tuple):  # an approved advisor suggestion: remember what it changed
                             _, advice, item = item
@@ -746,7 +748,8 @@ class ClaudeTerm(App):
             if not options or not (mine := self.claude_bubbles("#chat")):
                 return ok("Nothing shown: give options, after a message.")
             mine[-1].choices(options)
-            return ok("Buttons shown. End the turn and wait for the answer.")
+            self.code.answered = True
+            return ok("Buttons shown. End your turn now: write nothing more, anything after this is not shown.")
 
         self.ui_tools = {t.name: t for t in (show_panel, notify, set_theme, clear_and_continue, ask_user, task,
                                              reply_options)}
@@ -766,6 +769,10 @@ class ClaudeTerm(App):
             self.set_commands(msg.data.get("slash_commands") or [])
         elif isinstance(msg, AssistantMessage):
             for b in msg.content:
+                if self.code.answered and live:  # ponytail: replay still draws it; buttons aren't replayed either
+                    continue
+                if isinstance(b, ToolUseBlock) and b.name.endswith("__reply_options"):
+                    continue  # the buttons are the visible result
                 if isinstance(b, TextBlock):
                     self.last_reply = b.text
                     if not await self.end_stream(self.code):  # streamed already, else draw it whole
@@ -807,7 +814,7 @@ class ClaudeTerm(App):
                 self.say("err", "; ".join(msg.errors or []) or msg.subtype, self.ask)
 
     async def on_stream(self, msg, lane):
-        if msg.parent_tool_use_id:  # subagent chatter: skip
+        if msg.parent_tool_use_id or lane.answered:  # subagent chatter, or past the answer buttons: skip
             return
         ev = msg.event
         block = ev.get("content_block") or {}

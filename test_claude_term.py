@@ -15,7 +15,7 @@ from textual.widgets import Markdown  # noqa: E402
 
 import claude_term as ct  # noqa: E402
 import ui  # noqa: E402
-from claude_agent_sdk import AssistantMessage, TextBlock, ToolResultBlock, ToolUseBlock, UserMessage  # noqa: E402
+from claude_agent_sdk import AssistantMessage, StreamEvent, TextBlock, ToolResultBlock, ToolUseBlock, UserMessage  # noqa: E402
 
 def plain(row):  # a task row draws a rich Table: render that to text
     from rich.console import Console
@@ -291,6 +291,15 @@ async def main():
         await app.ui_tools["reply_options"].handler({"options": ["Do X", "Do Y"]})
         await pilot.pause()
         assert [str(c.render()).strip() for c in first.query(".choice")] == ["Do X", "Do Y", "Something else…"]
+        # nothing after the buttons: the tool call itself and any later text in that turn aren't drawn
+        count = len(app.query("#chat > *"))
+        await app.show(AssistantMessage([ToolUseBlock("r1", "mcp__ui__reply_options", {"options": ["Do X"]}),
+                                         TextBlock("The choices are in my last message.")], "m"))
+        await app.on_stream(StreamEvent("u", "s", {"type": "content_block_start", "content_block": {"type": "text"}}),
+                            app.code)
+        await pilot.pause()
+        assert len(app.query("#chat > *")) == count and app.claude_bubbles("#chat")[-1] is first
+        app.code.answered = False
         users = len(app.query(".bubble.-user"))
         app.on_chip_pressed(ui.Chip.Pressed(first.query(".choice").first()))
         await pilot.pause()
