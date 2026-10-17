@@ -211,8 +211,152 @@ async def main():
         assert app.tasks["p:0"]["status"] == "completed" and app.tasks["p:0"]["ended"], "ticked in the file: done"
         await pilot.pause()
         assert plain(app.query_one(".task.-completed", ui.Chip)).startswith("■")
+        # a Code turn with no task in progress shows as one; finished ones stop at 5, newest first
+        for i in range(7):
+            app.turn_task(f"turn {i}\n  with  detail")
+            assert [t["title"] for t in app.tasks.values() if t["status"] == "in_progress"] == [f"turn {i} with detail"]
+            app.end_turn_task()
+        await pilot.pause()
+        done = [plain(c) for c in app.query(".task.-completed")]
+        assert len(done) == 5 and done[0].startswith("■ turn 6"), done
+        # a long prompt shows "Loading task summary…" at once, then Haiku's short name for it
+        class Named:
+            result = ' "Add task delete button." '
+        gate, real_query, real_result = asyncio.Event(), ct.query, ct.ResultMessage
+
+        async def name_query(prompt, options):
+            assert options.model == ct.SCOUT_MODEL and "delete" in prompt
+            await gate.wait()
+            yield Named()
+        ct.query, ct.ResultMessage = name_query, Named
+        app.turn_task("Please add support for choosing to Delete a task when clicking one in the list, thanks")
+        await pilot.pause()
+        running = next(t for t in app.tasks.values() if t["status"] == "in_progress")
+        assert running["title"] == "Loading task summary…"
+        gate.set()
+        await pilot.pause(0.2)
+        assert running["title"] == "Add task delete button", running["title"]
+        # the task scout: one tool-less call with the plan files in the prompt, its tokens logged as "scout"
+        class Scanned:
+            structured_output = {"tasks": [{"title": "Scanned task", "source": "HANDOVER.md", "done": False}]}
+            usage = {"input_tokens": 1200, "output_tokens": 80}
+        seen = []
+
+        async def scan_query(prompt, options):
+            seen.append((prompt, options))
+            yield Scanned()
+        ct.query, ct.ResultMessage = scan_query, Scanned
+        status = ui.Static()
+        await app.scan_plans(status)
+        prompt, options = seen[0]
+        assert options.tools == [] and options.max_turns == 2 and "=== HANDOVER.md ===\n# Handover" in prompt
+        assert any(t["title"] == "Scanned task" for t in app.tasks.values())
+        assert store.recent_usage()[-1]["src"] == "scout"
+        ct.query, ct.ResultMessage = real_query, real_result
+        app.end_turn_task()
+        app.turn_task("vague prompt")
+        await app.ui_tools["task"].handler({"title": "Fix the paste bug", "status": "in_progress"})
+        assert not any(k.startswith("t:") and t["status"] == "in_progress" for k, t in app.tasks.items()), \
+            "Claude named the real task: the stand-in goes"
+        app.turn_task("another")  # something's already in progress: no stand-in
+        assert sum(t["status"] == "in_progress" for t in app.tasks.values()) == 1
+        app.set_plan_tasks([{"title": "Fix the paste bug", "source": "HANDOVER.md", "done": True}])
         await app.ui_tools["task"].handler({"title": "Something new entirely", "status": "in_progress"})
         assert any(t["title"] == "Something new entirely" and t["status"] == "in_progress" for t in app.tasks.values())
+
+        # Delete from the start dialog: gone, and a rescan of the plan files doesn't bring it back
+        app.set_plan_tasks([{"title": "Old idea", "source": "PLAN.md", "done": False},
+                            {"title": "Keep me", "source": "PLAN.md", "done": False}])
+        task = asyncio.create_task(app.task_clicked("p:0"))
+        await pilot.pause()
+        app.screen.query_one("#alt").press()
+        await task
+        assert [t["title"] for k, t in app.tasks.items() if k[0] == "p"] == ["Keep me"] and "old idea" in app.deleted
+        assert store.load_project(HERE)["deleted"] == ["old idea"]
+        app.set_plan_tasks([{"title": "Old idea", "source": "PLAN.md", "done": False},
+                            {"title": "Keep me", "source": "PLAN.md", "done": True}])
+        assert [t["title"] for k, t in app.tasks.items() if k[0] == "p"] == ["Keep me"]
+        task = asyncio.create_task(app.task_clicked("p:0"))  # a finished one: confirm deletes it
+        await pilot.pause()
+        await pilot.press("y")
+        await task
+        assert not any(k[0] == "p" for k in app.tasks)
+        app.deleted.clear()
+
+        # Claude's question gets answer buttons; a click pins the answer and sends it quoting the message
+        drain(app.code)
+        app.bubble(Markdown("Done with A.\n\nShould I do **X** or Y?"), "claude")
+        await pilot.pause()
+        first = app.claude_bubbles("#chat")[-1]
+        await app.ui_tools["reply_options"].handler({"options": ["Do X", "Do Y"]})
+        await pilot.pause()
+        assert [str(c.render()).strip() for c in first.query(".choice")] == ["Do X", "Do Y", "Something else…"]
+        users = len(app.query(".bubble.-user"))
+        app.on_chip_pressed(ui.Chip.Pressed(first.query(".choice").first()))
+        await pilot.pause()
+        sent = drain(app.code)[-1]
+        assert "> Should I do **X** or Y?" in sent and sent.endswith("\n\nDo X"), sent
+        assert not first.query(".choices") and "Do X" in str(first.query_one(".pinned").render())
+        assert len(app.query(".bubble.-user")) == users, "latest message: the pin is the answer, no extra bubble"
+        # ↩ on an older message: the prompt gets its @ref; sending pins it there and shows a reply bubble
+        app.bubble(Markdown("Something later."), "claude")
+        await pilot.pause()
+        app.on_chip_pressed(ui.Chip.Pressed(first.query_one(".reply")))
+        assert app.query_one("#prompt").text == f"@{first.ref} "
+        app.on_prompt_submitted(ui.Prompt.Submitted(f"@{first.ref} actually, Z"))
+        await pilot.pause()
+        assert drain(app.code)[-1].endswith("\n\nactually, Z") and len(first.query(".pinned")) == 2
+        assert len(app.query(".bubble.-user")) == users + 1
+        await app.ui_tools["reply_options"].handler({"options": ["Ship it", "Wait for review"]})
+        await pilot.pause()
+        app.save_screenshot("screenshot-reply.svg")
+
+        # /usage-graph: tokens per minute plus limit and context % over the last hour, from the usage log
+        now, acct = time.time(), app.session["account"]
+        log = [{"t": now - 50 * 60, "tokens": 9000, "inp": 1000, "cache": 7000, "out": 1000, "src": "scout"},
+               {"t": now - 50 * 60, "account": acct, "five_hour": 20.0, "seven_day": 5.0},
+               {"t": now - 10 * 60, "tokens": 30000, "inp": 2000, "cache": 26000, "out": 2000, "src": "code"},
+               {"t": now - 10 * 60, "account": acct, "five_hour": 48.0, "seven_day": 9.0},
+               {"t": now - 60, "context": 41.0}]
+        graph = ui.usage_graph(log, acct, {"totalTokens": 82000, "maxTokens": 200000, "percentage": 41.0}, "green",
+                               now).plain
+        assert "39k this hour (in 3k · cache read 33k · out 3k)" in graph, graph
+        assert "by source: code 30k · scout 9k" in graph, graph
+        assert "5-HOUR LIMIT  now 48%" in graph and "WEEKLY LIMIT  now 9%" in graph
+        assert "CONTEXT WINDOW  82k of 200k tokens  now 41%" in graph and graph.count("█") > 5
+        assert ui.bar_rows([0, 4, 8, None], 1, 8) == [" ▄█ "] and ui.bar_rows([16], 2, 16) == ["█", "█"]
+        for p in log:
+            store.log_usage(**{k: v for k, v in p.items() if k != "t"})
+        app.local_command("/usage-graph")
+        await pilot.pause()
+        assert "TOKENS PER MINUTE" in str(app.query(".graph").last().render())
+        app.save_screenshot("screenshot-usage.svg")
+        # the once-a-minute sample: limits from the last rate-limit event (a reset window reads 0) and context
+        app.cfg["usage"][acct] = {"five_hour": {"utilization": 0.3, "resetsAt": now + 3600},
+                                  "seven_day": {"utilization": 0.6, "resetsAt": now - 1}}
+        app.context = {"percentage": 12.5}
+        app.sample_usage()
+        p = store.recent_usage()[-1]
+        assert (p["account"], p["five_hour"], p["seven_day"], p["context"]) == (acct, 30.0, 0, 12.5), p
+
+        # context past 50%: queued messages wait, Claude writes the handover, clears, resumes, then they go
+        drain(app.code)
+        app.context, app.ctx_first = {"totalTokens": 110000, "maxTokens": 200000, "percentage": 55.0}, True
+        assert not app.context_full(), "a session's first turn never hands over"
+        app.ctx_first = False
+        assert app.context_full()
+        app.code.inbox.put_nowait("my next question")
+        app.hand_over_context()
+        assert app.held == ["my next question"] and "HANDOVER.md" in drain(app.code)[0]
+        assert "Armed" in (await app.ui_tools["clear_and_continue"].handler({}))["content"][0]["text"]
+        app.clear_continue()
+        await pilot.pause()
+        assert drain(app.code)[-2:] == [ct.CONTEXT_CONTINUE, "my next question"] and not app.ctx_handover
+        assert app.context is None and not app.held
+        app.cfg["context_clear"] = False
+        app.context = {"percentage": 90.0}
+        assert not app.context_full(), "setting off: no handover"
+        app.cfg["context_clear"], app.context = True, None
 
         # pasting text into the prompt inserts it once
         prompt = app.query_one("#prompt")
@@ -313,6 +457,36 @@ async def main():
         await pilot.pause()
         assert app.query_one("#panel", Markdown).display and app.query_one("#side").has_class("-on")
         await pilot.pause(0.3)
+        # while a lane works, a "Thinking… 0:00" row sits under its last output; it goes when the turn ends
+        app.code.busy, app.code.doing, app.code.since = True, "Running Bash", time.time()
+        await pilot.pause(0.3)
+        row = app.code.working
+        assert row and row.parent is app.query_one("#chat") and "Running Bash…" in str(row.content)
+        app.say("note", "more output")
+        await pilot.pause()
+        assert app.query_one("#chat").children[-1] is row, "the working row stays last"
+        app.save_screenshot("screenshot-working.svg")
+        assert app.query_one("#chat").is_anchored
+        app.code.busy = False
+        await pilot.pause(0.3)
+        assert not row.parent and not app.code.working
+        # the API cost estimate is hidden unless View → Show API cost estimate is on
+        info = lambda: str(app.query_one("#menu-info").content)
+        assert "$" not in info(), info()
+        app.do("cost")
+        assert "API est." in info() and store.load()["show_cost"]
+        app.do("cost")
+        assert "$" not in info()
+        # your bubble wraps a long line, folds a long message, and a click unfolds it
+        app.bubble(msg := ui.UserText("word " * 200), "user")
+        await pilot.pause()
+        assert msg.size.width <= msg.parent.size.width and msg.size.height > 1, "wraps, not clipped"
+        assert "show all" in str(msg.content) and len(str(msg.content)) < 700
+        await pilot.click(msg)
+        await pilot.pause()
+        assert str(msg.content).count("word") == 200 and "show less" in str(msg.content)
+        short = ui.UserText("hi")
+        assert not short.has_class("fold")
         app.save_screenshot("screenshot-chat.svg")
 
         # clear-continue: toggle on kicks off, the tool arms, the turn's end clears and continues
@@ -326,7 +500,8 @@ async def main():
         assert "Armed" in (await loop_tool({}))["content"][0]["text"] and app.armed
         app.session_id = "old"
         app.clear_continue()
-        assert not app.armed and app.session_id is None and drain(app.code) == [ct.RECONNECT, ct.LOOP_RULES] and scouted
+        assert not app.armed and app.session_id is None and drain(app.code) == [ct.RECONNECT, ct.LOOP_RULES]
+        assert not scouted, "no second scan: the handover edit's turn already rescanned"
         app.cfg["usage"]["Main"]["five_hour"]["utilization"] = 0.85  # at the limit: refuse and switch off
         assert "NOT cleared" in (await loop_tool({}))["content"][0]["text"] and not app.looping and not app.armed
         app.cfg["usage"]["Main"] = saved_usage
@@ -353,16 +528,17 @@ async def main():
                           "note": ""}, answer
 
         # advisor: its suggestions become a checkbox form; confirmed ones go to the Code session
-        found = [{"title": "Reuse Chip", "why": "x", "kind": "reuse", "prompt": "use Chip", "recommended": True},
-                 {"title": "Drop lib", "why": "y", "kind": "library", "prompt": "drop it", "recommended": False,
-                  "links": ["https://example.com"]}]
+        found = [{"id": "a", "title": "Reuse Chip", "why": "x", "kind": "reuse", "prompt": "use Chip",
+                  "recommended": True},
+                 {"id": "b", "title": "Drop lib", "why": "y", "kind": "library", "prompt": "drop it",
+                  "recommended": False, "links": ["https://example.com"]}]
         app.push_screen(ui.Form(app.advice_form(found)), lambda a: app.hand_to_claude(
             [found[int(i)] for i in a["pick"]], a["note"]))
         await pilot.pause(0.3)
         await pilot.press("ctrl+s")
         await pilot.pause()
-        sent = drain(app.code)[0]
-        assert "use Chip" in sent and "drop it" not in sent, sent
+        sent = drain(app.code)
+        assert len(sent) == 1 and sent[0][:2] == ("advisor", "a") and "use Chip" in sent[0][2], sent
         app.cfg["advisor"]["every"], ran = 2, []
         app.advise = lambda manual=False: ran.append(1)
         app.count_turn(), app.count_turn()
@@ -382,10 +558,11 @@ async def main():
         class FakeResult:
             structured_output = {"suggestions": [{"title": "Cache scout results", "why": "x", "kind": "performance",
                                                   "prompt": "cache it", "recommended": True}]}
-        prompts, real_query, real_result = [], ct.query, ct.ResultMessage
+        prompts, models, real_query, real_result = [], [], ct.query, ct.ResultMessage
 
         async def fake_query(prompt, options):
             prompts.append(prompt)
+            models.append((options.model, options.effort))
             yield FakeResult()
         ct.query, ct.ResultMessage, app.cfg["advisor"]["mode"] = fake_query, FakeResult, "act"
         del app.advise  # the real worker again
@@ -397,8 +574,54 @@ async def main():
         await pilot.pause(0.3)
         drain(app.code)
         assert "Already suggested, don't repeat: ['Cache scout results']" in prompts[1], prompts[1][-300:]
+        assert models[0] == ("claude-sonnet-5-5", "medium"), models  # the automatic check: Sonnet, medium
+        app.session.update(model="claude-opus-5-5", effort="high")
+        app.advise(manual=True)  # /advisor: your session's model and effort
+        await pilot.pause(0.3)
+        drain(app.code)
+        assert models[-1] == ("claude-opus-5-5", "high"), models
+        await pilot.press("escape")  # a manual run asks first; leave it "waiting for you"
+        await pilot.pause()
+        app.session.update(model="", effort="")
         ct.query, ct.ResultMessage, app.cfg["advisor"]["mode"] = real_query, real_result, "off"
         store.save(app.cfg)
+
+        # Advisor tab: the log renders newest first; a note is kept; an applied suggestion undoes by itself
+        log = store.load_project(app.cwd, "advisor")["log"]
+        assert [e["type"] for e in log] == ["run", "suggestion"] * 3, log
+        assert [e["status"] for e in log if e["type"] == "suggestion"] == ["applying", "applying", "suggested"]
+        app.switch_tab("advisor")
+        await pilot.pause()
+        assert app.query_one("#advisor").display and not app.query_one("#chat").display
+        assert len(app.query(".adv-card")) == 3 and app.lane is app.code
+        app.save_screenshot("screenshot-advisor.svg")
+        eid = log[-1]["id"]
+        app.run_worker(app.advisor_button("note", eid))
+        await pilot.pause(0.3)
+        app.screen.query_one(ui.TextArea).text = "too slow"
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        assert app.advisor_entry(eid)["notes"][0]["text"] == "too slow"
+        real_cwd2, app.cwd = app.cwd, tempfile.mkdtemp()
+        g = lambda *a: subprocess.run(["git", "-C", app.cwd, *a], capture_output=True, check=True)
+        g("init", "-q"), g("config", "user.email", "t@t"), g("config", "user.name", "t")
+        Path(app.cwd, "a.txt").write_text("one\n")
+        g("add", "-A"), g("commit", "-qm", "init")
+        before = await app.snapshot()
+        Path(app.cwd, "a.txt").write_text("two\n")
+        Path(app.cwd, "new.txt").write_text("new\n")
+        after = await app.snapshot()
+        assert before and after and before != after
+        app.advice_applied(eid, before, after)
+        Path(app.cwd, "b.txt").write_text("later\n")  # a later change survives the undo
+        app.run_worker(app.undo_advice(app.advisor_entry(eid)))
+        await pilot.pause(0.3)
+        await pilot.press("y")
+        await pilot.pause(0.5)
+        assert Path(app.cwd, "a.txt").read_text() == "one\n" and not Path(app.cwd, "new.txt").exists()
+        assert Path(app.cwd, "b.txt").exists() and app.advisor_entry(eid)["status"] == "undone"
+        app.cwd = real_cwd2
+        app.switch_tab("code")
 
         # New twice in a row: the second welcome must wait for the first to go (DuplicateIds crash)
         app.do("new"), app.do("new")
@@ -575,7 +798,7 @@ async def main():
         assert "S\nE\nS" in str(rail_resume.render()), "sessions rail spells its title down the column"
         assert app.rail_text("»", "S", 12, "just") == "»\n\nS\n\n1\n2\n\nn\no\nw", "facts run down the 3-cell rail"
 
-        # ↻ scan: a spinner runs in the header and the empty list until the scout returns
+        # ≡ scan: a spinner runs in the header and the empty list until the scout returns
         gate = asyncio.Event()
 
         async def slow_scan(status):
@@ -589,7 +812,7 @@ async def main():
         assert spin in "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏" and app.query(".scanning"), "spinner while scanning"
         gate.set()
         await pilot.pause(0.2)
-        assert str(app.query_one("#tasks-refresh").render()) == "↻" and not app.query(".scanning")
+        assert str(app.query_one("#tasks-refresh").render()) == "≡" and not app.query(".scanning")
         app.tasks = saved_tasks
         app.render_tasks()
         await pilot.pause(0.1)
@@ -666,4 +889,26 @@ async def main():
     print(f"ok (replayed {len(sessions) and 1} session)")
 
 
+# Every non-ASCII glyph the UI can draw, all present in Cascadia Mono (Windows Terminal's default font), so none
+# falls back to an emoji font. To add one, check the font has it first (fontTools is a dev-only extra):
+#   python -c "from fontTools.ttLib import TTFont; print(ord('X') in TTFont(r'C:\Windows\Fonts\CascadiaMono.ttf').getBestCmap())"
+ALLOWED_GLYPHS = set("«±·»×“”…←↑→↓↔−∞≡─│└▁▂▃▄▅▆▇█▌▐▘▛▜▝■□▣▴▸►▼▾◄◇◉○●✓⠇⠋⠏⠙⠦⠧⠴⠸⠹⠼")
+
+
+def check_glyphs():
+    """Non-ASCII outside comments (strings, docstrings, code) must be in ALLOWED_GLYPHS."""
+    import tokenize
+    bad = []
+    for name in ("claude_term.py", "ui.py", "store.py", "attach.py"):
+        with open(os.path.join(HERE, name), "rb") as f:
+            for tok in tokenize.tokenize(f.readline):
+                if tok.type in (tokenize.COMMENT, tokenize.ENCODING):
+                    continue
+                for i, line in enumerate(tok.string.split("\n")):
+                    bad += [f"{name}:{tok.start[0] + i} {ch!r} U+{ord(ch):04X}" for ch in line
+                            if ord(ch) > 127 and ch not in ALLOWED_GLYPHS]
+    assert not bad, "glyphs not in ALLOWED_GLYPHS (check them against the font):\n" + "\n".join(bad)
+
+
+check_glyphs()
 asyncio.run(main())

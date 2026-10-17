@@ -20,6 +20,8 @@ DEFAULTS = {
     "defaults": {"model": "", "effort": "", "web": True},  # new sessions start here; the chat menu overrides
     "usage": {},  # account id -> last seen rate-limit windows
     "loop_dirs": [],  # project folders with the clear-continue loop on
+    "context_clear": True,  # a Code session past CONTEXT_LIMIT % of its context writes a handover and starts fresh
+    "show_cost": False,  # menu bar: the API-price estimate of this session (not billed on a subscription)
     "advisor": {"mode": "off", "every": 5},  # off | suggest | act; looks over the session every N Code turns
 }
 
@@ -152,6 +154,34 @@ def read_setup_token(proc, on_url):
 
 # ---- per-project cache (plan tasks found by the scout) ------------------------------
 
+def log_usage(**point):
+    """A point for /usage-graph: {"tokens"} of a turn, {"five_hour", "seven_day"} limit % or {"context"} %."""
+    f = CONFIG.parent / "usage.jsonl"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    with f.open("a", encoding="utf-8") as out:
+        out.write(json.dumps({"t": time.time(), **point}) + "\n")
+    global _appends
+    _appends += 1
+    if _appends % 60 == 0 or f.stat().st_size > 100_000:  # stays bounded even if /usage-graph is never opened
+        recent_usage()
+
+
+_appends = 0
+
+
+def recent_usage(minutes=60, now=None):
+    """The last hour of usage points, oldest first. Drops older ones from the file as it reads."""
+    f, since = CONFIG.parent / "usage.jsonl", (now or time.time()) - minutes * 60
+    try:
+        points = [json.loads(line) for line in f.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except (OSError, ValueError):
+        return []
+    recent = [p for p in points if p["t"] >= since]
+    if len(recent) < len(points):  # ponytail: rewritten on read; fine at a few points per turn
+        f.write_text("".join(json.dumps(p) + "\n" for p in recent), encoding="utf-8")
+    return recent
+
+
 def _project_file(cwd, kind=""):  # kind: "" = plan tasks, "ui" = drafts, panels, last session
     name = hashlib.sha1(cwd.lower().encode()).hexdigest()[:16] + (f".{kind}" if kind else "")
     return CONFIG.parent / "projects" / (name + ".json")
@@ -173,15 +203,20 @@ def save_project(cwd, data, kind=""):
 PLAN_NAME = re.compile(r"^(handover|plan|todo|roadmap|tasks|next|backlog|claude)[\w.-]*\.md$", re.I)
 
 
-def has_plan_files(cwd):
-    """Cheap pre-check before spending a model call: any plan-like markdown at the top, docs/ or .claude/?"""
+def plan_files(cwd):
+    """Plan-like markdown at the top, docs/ and .claude/ (relative paths). The task scout reads exactly these."""
+    found = []
     for sub in ("", "docs", ".claude", os.path.join(".claude", "plans")):
         try:
-            if any(PLAN_NAME.match(n) for n in os.listdir(os.path.join(cwd, sub))):
-                return True
+            found += [os.path.join(sub, n) for n in sorted(os.listdir(os.path.join(cwd, sub))) if PLAN_NAME.match(n)]
         except OSError:
             pass
-    return False
+    return found
+
+
+def has_plan_files(cwd):
+    """Cheap pre-check before spending a model call."""
+    return bool(plan_files(cwd))
 
 
 # ---- facts for the welcome screen ---------------------------------------------
@@ -244,7 +279,7 @@ def ago(ms):
 
 
 if __name__ == "__main__":
-    assert ago(time.time() * 1000 - 7200_000) == "2h ago" and ago(time.time() * 1000) == "just now"
+    assert ago(time.time() * 1000 - 7200_500) == "2h ago" and ago(time.time() * 1000) == "just now"
     assert account_env(MAIN) == {}
     assert PLAN_NAME.match("HANDOVER.md") and PLAN_NAME.match("todo-2026.md") and not PLAN_NAME.match("README.md")
 
@@ -283,6 +318,16 @@ if __name__ == "__main__":
     assert pick_account(cfg) == "Work" and pick_account(cfg, after="Work") is None  # Main is over the limit
     record_usage(cfg, "Work", {"status": "rejected", "rateLimitType": "five_hour", "resetsAt": soon})
     assert usage_pct(cfg, "Work") == 100 and pick_account(cfg) is None
+    log_usage(tokens=500)
+    log_usage(context=42.5)
+    assert [p.get("tokens") for p in recent_usage()] == [500, None]
+    assert recent_usage(now=time.time() + 3601) == [] and recent_usage() == [], "older than an hour: dropped"
+    usage_file = CONFIG.parent / "usage.jsonl"
+    usage_file.write_text("".join(json.dumps({"t": time.time() - 7200, "tokens": i}) + "\n" for i in range(5)),
+                          encoding="utf-8")
+    _appends = 59  # the next append is the 60th: it trims
+    log_usage(tokens=1)
+    assert [json.loads(line)["tokens"] for line in usage_file.read_text(encoding="utf-8").splitlines()] == [1]
     repo = tempfile.mkdtemp()
     assert git_since(repo, 0) == "", "not a repo"
     g = lambda *a: subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *a], cwd=repo,

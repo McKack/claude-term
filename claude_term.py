@@ -3,6 +3,7 @@
 Usage: python claude_term.py [project-dir]
 """
 import asyncio
+import contextlib
 import difflib
 import itertools
 import json
@@ -12,8 +13,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
+from pathlib import Path
 from typing import Annotated
 
 from rich.markup import escape
@@ -35,8 +38,8 @@ from claude_agent_sdk import (
 
 import attach
 import store
-from ui import (THEMES, TIPS, AccountManager, Ask, AskText, Bubble, Chip, Choose, Confirm, Form, InstallCard,
-                PopupMenu, Prompt, ResumePanel, TaskPanel, ThemePicker, Welcome)
+from ui import (THEMES, TIPS, AccountManager, Ask, AskText, Bubble, Chip, clock, stamp, Choose, Confirm, Form, InstallCard,
+                PopupMenu, Prompt, ResumePanel, TaskPanel, ThemePicker, UserText, Welcome, usage_graph)
 
 MODELS = {"": "Default", "claude-opus-5-5": "Opus 5.5", "claude-sonnet-5-5": "Sonnet 5.5",
           "claude-haiku-5-5": "Haiku 5.5", "claude-fable-5-1": "Fable 5.1"}
@@ -45,14 +48,17 @@ MODES = {"default": "Ask first", "acceptEdits": "Accept edits", "auto": "Auto", 
          "bypassPermissions": "Bypass permissions"}
 MODE_CYCLE = ["default", "acceptEdits", "auto", "plan"]  # shift+tab; bypass only via the menu
 SCOUT_MODEL = "claude-haiku-5-5"
+SHORT_TITLE = 50  # a prompt up to this long is the task title as is; longer ones get a Haiku summary
+SUMMARY_PROMPT = ("Name what this request to a coding assistant asks for, as a task-list title: 2-6 words, imperative, "
+                  "no ending period (e.g. \"Add task delete button\"). The request:")
 MENUBAR = ("claude", "view", "help")  # menus() also holds submenus, which have no title on the bar
 LOCAL_COMMANDS = {"help": "this list", "theme": "/theme [classic|matrix|amber]", "new": "fresh session",
                   "clear": "fresh session (like the CLI)", "resume": "recent sessions",
                   "account": "/account [name]", "tasks": "rescan plan files", "ask": "Ask Claude tab",
                   "code": "Code tab", "clear-continue": "toggle the hands-off loop",
-                  "advisor": "advisor review now"}
+                  "advisor": "advisor review now", "usage-graph": "tokens, limits and context, last hour"}
 SUGGESTIONS = [
-    ("↺  Resume last session", "resume_last"),
+    ("←  Resume last session", "resume_last"),
     ("Summarize this project", "Give me a short overview of this project: what it is, how it's laid out, how to run it."),
     ("Review uncommitted changes", "Review my uncommitted changes and point out bugs or risky bits."),
     ("What's left to do here?", "Look through this project for TODOs, open threads and obvious next steps."),
@@ -67,13 +73,14 @@ SYSTEM_APPEND = ("You are running inside claude-term, a custom terminal UI. Its 
                  "decision, or when you see a better/leaner way than what was asked, use mcp__ui__ask_user: a dialog "
                  "with radio/checkbox/select/text/switch fields and clickable links, your recommendation pre-selected. "
                  "Working on a task from the project's plan or handover? Call mcp__ui__task when you start it and "
-                 "when it's done, so the Tasks panel shows it live.")
-ASK_APPEND = ("This is the 'Ask Claude' side chat in claude-term: quick questions, explanations, brainstorming. "
+                 "when it's done, so the Tasks panel shows it live. When you end a reply with a question that has a "
+                 "few likely answers (\"Should I do X or Y?\"), call mcp__ui__reply_options with them as your last "
+                 "action: they show as buttons under your message (plus \"Something else…\").")
+ASK_SYSTEM = ("This is the 'Ask Claude' side chat in claude-term: quick questions, explanations, brainstorming. "
               "You can read and search the project and the web, but never change anything. Keep answers short.")
-SCOUT_PROMPT = ("Find this project's planning/handover docs (HANDOVER.md, PLAN.md, TODO.md, ROADMAP.md, TASKS.md, "
-                "NEXT*.md, plan/todo sections in CLAUDE.md, docs/ or .claude/ plan files). Use Glob, then Read. "
-                "Extract up to 25 concrete, actionable tasks, most important first. done=true for checked or "
-                "finished items. title <= 80 chars; detail = 1-2 sentences of context; source = relative file "
+SCOUT_PROMPT = ("Below are this project's planning/handover docs (for CLAUDE.md, only its plan/todo sections count). "
+                "Extract the open tasks (up to 25, concrete and actionable, most important first) and at most the 5 "
+                "most recently finished ones (done=true for checked or finished items). title <= 80 chars; detail = 1-2 sentences of context; source = relative file "
                 "path. Nothing found: empty list.")
 SCOUT_SCHEMA = {"type": "object", "required": ["tasks"], "properties": {"tasks": {"type": "array", "items": {
     "type": "object", "required": ["title", "source", "done"], "properties": {
@@ -101,6 +108,16 @@ The user is away. Work ONE task per session, keep a handover a fresh session can
    per task, also for a task that stopped short. No fluff, no prose paragraphs:
    ## <Task title> - <YYYY-MM-DD>
    - <one plain line per change, feature or fix; what was verified and what was NOT; anything the user must do>"""
+# % of the context window; past it (setting on) a Code session hands over and starts fresh. The env var is for live checks
+CONTEXT_LIMIT = int(os.environ.get("CLAUDE_TERM_CONTEXT_LIMIT") or 50)
+CONTEXT_HANDOVER = """The context window is at {pct}% (claude-term clears it at {limit}%). Pause here; don't start anything new.
+1. Update HANDOVER.md at the project root (create it if missing; in a git repo where it isn't tracked, add it to
+   .git/info/exclude) so a fresh session can pick up exactly where you are: the goal, what you were doing and how far it
+   got, what is verified and what isn't, the next steps in order, gotchas learned this session.
+   Finished tasks go to CHANGES.md (newest first, one line each), not the handover; keep HANDOVER.md under ~50 lines.
+2. Then call mcp__ui__clear_and_continue as the LAST action of this turn."""
+CONTEXT_CONTINUE = ("continue\n\nclaude-term cleared the context because it was getting full. Read HANDOVER.md at the "
+                    "project root and resume exactly where the previous session paused.")
 ASK_USER_SCHEMA = {"type": "object", "required": ["title", "question", "fields"], "properties": {
     "title": {"type": "string", "description": "a few words, shown as the dialog title"},
     "question": {"type": "string", "description": "markdown: the decision, trade-offs, your reasoning. Put example "
@@ -126,8 +143,10 @@ ADVISOR_PROMPT = (
     "files the recent conversation touched. Return at most 4 suggestions, most valuable first. title <= 70 chars; "
     "why = 1-3 sentences with the evidence; kind = scope|reuse|performance|library|tests|skill|other; prompt = the "
     "exact instruction to give the coding session if the user approves; recommended = true when you'd do it now; "
-    "links = docs/repos backing it up.")
-ADVISOR_SCHEMA = {"type": "object", "required": ["suggestions"], "properties": {"suggestions": {"type": "array", "items": {
+    "links = docs/repos backing it up. summary = 1-2 sentences for the user's advisor log: what you looked at and "
+    "your overall read, even when you suggest nothing.")
+ADVISOR_SCHEMA = {"type": "object", "required": ["summary", "suggestions"], "properties": {
+    "summary": {"type": "string"}, "suggestions": {"type": "array", "items": {
     "type": "object", "required": ["title", "why", "kind", "prompt", "recommended"], "properties": {
         "title": {"type": "string"}, "why": {"type": "string"}, "kind": {"type": "string"},
         "prompt": {"type": "string"}, "recommended": {"type": "boolean"},
@@ -144,6 +163,10 @@ COMMIT_PROMPT = (
     "most 72 chars in the imperative mood, then a blank line and a short body only if the why isn't obvious. "
     "No fluff, no markdown headings.")
 COMMIT_SCHEMA = {"type": "object", "required": ["message"], "properties": {"message": {"type": "string"}}}
+ADVISOR_STATUS = {"suggested": "waiting for you", "applying": "sent to Claude", "applied": "done",
+                  "declined": "skipped", "noted": "noted", "undone": "undone"}
+MAX_FINISHED = 5  # Tasks panel: finished tasks shown, newest first
+ADVISOR_DEFAULTS = {"model": "claude-sonnet-5-5", "effort": "medium"}  # the automatic check; /advisor uses yours
 ADVISOR_MODES = {"off": "Off", "suggest": "Suggest: ask me first", "act": "Act: send recommended ones to Claude"}
 NO_HISTORY = {"no-session-persistence": None}  # helper chats stay out of the resume list
 OWN_FILES = ("claude_term.py", "ui.py", "store.py", "attach.py")  # a traceback through these is our bug
@@ -182,6 +205,14 @@ def own_bug(tb):
     exc = tb.strip().splitlines()[-1].split(":")[0] if tb.strip() else ""
     return f"{ours[-1][0]}:{ours[-1][1]} {exc}" if ours else None
 RECONNECT = object()
+
+
+def log_tokens(msg, src):
+    """A finished turn's tokens, for /usage-graph; src says who spent them (code, ask, scout, advisor…)."""
+    u = getattr(msg, "usage", None) or {}
+    inp = u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
+    cache, out = u.get("cache_read_input_tokens", 0), u.get("output_tokens", 0)
+    store.log_usage(tokens=inp + cache + out, inp=inp, cache=cache, out=out, src=src)
 
 
 def clip(s, n=2000):
@@ -227,6 +258,7 @@ class Lane:
         self.view, self.inbox, self.client = view, asyncio.Queue(), None
         self.busy, self.stream, self.cost, self.started = False, None, 0.0, False
         self.account = None  # the account this lane's claude process actually runs on
+        self.working, self.doing, self.since = None, "", 0.0  # the "Thinking… 0:12" row under the last output
 
 
 class ClaudeTerm(App):
@@ -266,9 +298,9 @@ class ClaudeTerm(App):
     #resume-filter { border: round $panel; background: $surface; }
     #resume-list { height: 1fr; background: $surface; border: none; }
     #center { width: 1fr; }
-    #chat, #ask { width: 100%; height: 1fr; margin: 0 2; padding: 0 1; border: round $panel;
+    #chat, #ask, #advisor { width: 100%; height: 1fr; margin: 0 2; padding: 0 1; border: round $panel;
                  scrollbar-color: $panel; scrollbar-background: $background; }
-    #ask { display: none; }
+    #ask, #advisor { display: none; }
     #side { width: 44; display: none; margin: 0 1 1 0; }
     #side.-on { display: block; }
     TaskPanel { height: 1fr; border: round $panel; padding: 0 1; background: $surface; }
@@ -292,7 +324,7 @@ class ClaudeTerm(App):
     .tab { width: auto; padding: 0 2; color: $secondary; }
     .tab:hover { color: $primary; }
     .tab.-active { background: $surface; color: $primary; text-style: bold; }
-    #composer { height: auto; margin: 0 2 1 2; border: round $panel; background: $surface; padding: 0 1; }
+    #composer { height: auto; margin: 0 2; border: round $panel; background: $surface; padding: 0 1; }
     #composer:focus-within { border: round $primary; }
     #attachments { height: auto; display: none; }
     #attachments.-on { display: block; }
@@ -324,6 +356,16 @@ class ClaudeTerm(App):
     #tip-next:hover { color: $primary; }
     #tip-title { text-style: bold; text-align: center; color: $accent; padding-top: 1; }
     #tip-text { text-align: center; }
+    .adv-run { color: $secondary; margin: 1 0 0 0; }
+    .adv-card { height: auto; margin: 1 0 0 0; padding: 0 1; background: $panel; border-left: thick $accent; }
+    .adv-card.-declined, .adv-card.-undone { border-left: thick $secondary; }
+    .adv-card.-applied { border-left: thick $success; }
+    .adv-meta, .adv-note { color: $secondary; }
+    .adv-why { margin: 0; padding: 0; background: $panel; }
+    .adv-btns { height: auto; }
+    .adv-btn { margin-right: 2; color: $accent; }
+    .adv-btn:hover { color: $primary; }
+    .working { width: 100%; text-align: center; color: $secondary; margin: 1 0; }
     .ask-intro { margin: 2 4; padding: 1 2; background: $panel; color: $secondary; text-align: center; }
 
     .bubble { height: auto; margin: 1 0 0 0; }
@@ -335,9 +377,20 @@ class ClaudeTerm(App):
     .bubble-col { width: auto; max-width: 80%; height: auto; }
     .-claude .bubble-col { width: 1fr; max-width: 100%; margin-right: 8; }
     .bubble-body { width: auto; height: auto; padding: 1 2; background: $panel; }
+    .-user .bubble-body { max-width: 100%; }  /* wrap instead of running off the edge */
+    .fold:hover { background: $boost; }
     .-claude .bubble-body { width: 100%; padding: 1 1 0 1; }  /* markdown brings its own bottom margin */
     .stamp { width: 100%; color: $secondary; text-style: dim; padding: 0 1; }
     .-user .stamp { text-align: right; }
+    .graph { width: auto; margin: 1 0 0 2; padding: 1 2; background: $panel; }
+    .bubble-foot { height: 1; }
+    .bubble-foot .stamp { width: 1fr; }
+    .reply { width: auto; color: $secondary; padding: 0 1; }
+    .reply:hover, .choice:hover { color: $primary; background: $boost; }
+    .choices { height: auto; padding: 1 0 0 1; }
+    .choice { width: auto; margin-right: 1; background: $panel; color: $accent; text-style: bold; }
+    .choice.-other { color: $secondary; text-style: italic; }
+    .pinned { width: 100%; padding: 0 1; margin-top: 1; color: $accent; background: $panel; }
     .note { color: $secondary; text-style: italic; background: $background; }
     .err { color: $error; background: $background; }
     Collapsible { border: none; padding: 0; margin: 0; background: $surface; color: $secondary; }
@@ -385,10 +438,16 @@ class ClaudeTerm(App):
         self.replay_at = None  # while replaying a session: when the message being drawn was sent
         self.code, self.ask = Lane("#chat"), Lane("#ask")
         self.tab, self.tools, self.tasks, self.attachments = "code", {}, {}, []
+        self.deleted = set()  # plan task titles you deleted (lowercase): a rescan of the plan files skips them
+        self.refs = itertools.count(1)  # Claude bubble ids (c1, c2…) for replies
         self.side_closed = False  # the person collapsed the side panel: it no longer opens by itself
         self.live_model, self.last_reply, self.term_only, self.slash, self.frame = "", "", set(), [], 0
         self.armed = False  # clear-continue: Claude finished a task; clear + continue when this turn ends
+        self.context = None  # the Code session's last get_context_usage(): totalTokens, maxTokens, percentage
+        self.ctx_first = True  # that reading is the session's first turn: clearing then would gain nothing
+        self.ctx_handover, self.held = False, []  # context-full handover running; your messages waiting for it
         self.turns = 0  # advisor: Code turns since start
+        self.advisor_titles, self.advisor_log = [], []
         self.worked = False  # a Code turn finished since the last handover / new session
         self.session = self.fresh_session(store.pick_account(self.cfg) or self.cfg["accounts"][0]["id"])
 
@@ -412,10 +471,12 @@ class ClaudeTerm(App):
                 with Vertical(id="center"):
                     yield VerticalScroll(id="chat")
                     yield VerticalScroll(id="ask")
+                    yield VerticalScroll(id="advisor")
                     yield OptionList(id="slash")
                     with Horizontal(id="tabs"):
                         yield Chip("Code", id="tab-code", classes="tab -active")
                         yield Chip("Ask Claude", id="tab-ask", classes="tab")
+                        yield Chip("Advisor", id="tab-advisor", classes="tab")
                     with Vertical(id="composer"):
                         yield Horizontal(id="attachments")
                         yield Prompt(id="prompt", soft_wrap=True, show_line_numbers=False, compact=True,
@@ -436,11 +497,15 @@ class ClaudeTerm(App):
             self.register_theme(t)
         self.apply_theme(self.cfg["theme"], save=False)
         self.query_one("#panel").display = False
+        for view in ("#chat", "#ask"):  # stick to the bottom as output grows; scrolling up releases it
+            self.query_one(view).anchor()
         self.query_one("#prompt").focus()
         self.set_commands([])
         self.set_interval(0.1, self.spin)
         self.set_interval(1, self.tick_tasks)
+        self.set_interval(60, self.sample_usage)
         self.render_tasks()
+        self.load_advisor()
         self.claude = find_claude()
         ui = store.load_project(self.cwd, "ui") or {}  # where the last run left off (closed or crashed)
         self.resume_at = self.resume_at or ui.get("session")
@@ -515,7 +580,7 @@ class ClaudeTerm(App):
         tools = ["Read", "Glob", "Grep"] + (["WebSearch", "WebFetch"] if s["web"] else [])
         return ClaudeAgentOptions(
             cwd=self.cwd, cli_path=self.claude, env=store.account_env(s["account"]),
-            system_prompt={"type": "preset", "preset": "claude_code", "append": ASK_APPEND},
+            system_prompt=ASK_SYSTEM,  # not the full Claude Code prompt: a read-only side chat doesn't need it
             model=c["ask_model"] or None, tools=tools, allowed_tools=tools, permission_mode="dontAsk",
             strict_mcp_config=True, include_partial_messages=True, extra_args=NO_HISTORY)
 
@@ -537,21 +602,38 @@ class ClaudeTerm(App):
                         self.session["model"] and await client.set_model(self.session["model"])
                         await client.set_permission_mode(self.cfg["mode"])
                     while (item := await lane.inbox.get()) is not RECONNECT:
-                        lane.busy = True
+                        lane.busy, lane.doing, lane.since = True, "Thinking", time.time()
+                        advice = None
+                        if isinstance(item, tuple):  # an approved advisor suggestion: remember what it changed
+                            _, advice, item = item
+                            before = await self.snapshot()
+                        lane is self.code and self.turn_task(item)
                         await client.query(item if isinstance(item, str) else one_message(item))
                         async for msg in client.receive_response():
                             await on_msg(msg)
                         await self.end_stream(lane)
+                        lane is self.code and self.end_turn_task()
+                        if advice:
+                            self.advice_applied(advice, before, await self.snapshot())
                         lane.busy = False
                         self.refresh_bars()
+                        if lane is self.code:
+                            await self.check_context(client)
                         if lane is self.code and self.armed:
                             self.clear_continue()
+                        elif lane is self.code and self.ctx_handover:  # asked for a handover; Claude didn't clear
+                            self.ctx_handover = False
+                            self.release_held()
+                            self.say("note", "context: no handover came back, so no clear. Carrying on.")
+                        elif lane is self.code and self.context_full():
+                            self.hand_over_context()
                         elif lane is self.code:
                             self.worked = True  # something to hand over
                             self.sync_rails(sessions=True)
                             self.count_turn()
             except Exception as e:  # keep the UI alive and reconnect
                 lane.busy, lane.client = False, None
+                lane is self.code and self.end_turn_task()
                 self.say("err", f"claude error: {e!r} (retrying in 5s)", lane)
                 self.refresh_bars()
                 await asyncio.sleep(5)
@@ -620,11 +702,15 @@ class ClaudeTerm(App):
             return ok()
 
         @tool("clear_and_continue",
-              "Only while clear-continue is on: call as the LAST action of a turn, once the task is done and the "
-              "handover is updated. When the turn ends claude-term starts a fresh session and sends \"continue\". "
+              "Only while clear-continue is on, or when claude-term asked for a context handover: call as the LAST "
+              "action of a turn, once the task is done (or paused) and the handover is updated. When the turn ends "
+              "claude-term starts a fresh session and sends \"continue\". "
               f"Refused when the loop is off, or at {LOOP_LIMIT}% of the 5-hour or weekly limit: then stop and ask "
               "the user.", {})
         async def clear_and_continue(a):
+            if self.ctx_handover:  # the context-full handover: allowed with the loop off too
+                self.armed = True
+                return ok("Armed. When this turn ends: fresh session, then it resumes from the handover. End the turn now.")
             if not self.looping:
                 return ok("clear-continue is OFF: nothing will be cleared. Just end the turn.")
             if (pct := self.loop_limit_hit()) is not None:
@@ -650,7 +736,20 @@ class ClaudeTerm(App):
                 return ok("status must be in_progress, completed or pending")
             return ok(self.mark_plan_task(a.get("title", ""), a["status"]))
 
-        self.ui_tools = {t.name: t for t in (show_panel, notify, set_theme, clear_and_continue, ask_user, task)}
+        @tool("reply_options", "Show answer buttons under your latest message, for the question it ends with (2-4 "
+              "short answers, in your words, best first). The user clicks one or writes something else; it arrives "
+              "as a reply quoting your message. Call it last, then end the turn.",
+              {"type": "object", "required": ["options"],
+               "properties": {"options": {"type": "array", "items": {"type": "string"}}}})
+        async def reply_options(a):
+            options = [str(o).strip() for o in a.get("options") or [] if str(o).strip()][:6]
+            if not options or not (mine := self.claude_bubbles("#chat")):
+                return ok("Nothing shown: give options, after a message.")
+            mine[-1].choices(options)
+            return ok("Buttons shown. End the turn and wait for the answer.")
+
+        self.ui_tools = {t.name: t for t in (show_panel, notify, set_theme, clear_and_continue, ask_user, task,
+                                             reply_options)}
         return create_sdk_mcp_server("ui", tools=list(self.ui_tools.values()))
 
     # ---- rendering agent output ----------------------------------------------
@@ -672,7 +771,7 @@ class ClaudeTerm(App):
                     if not await self.end_stream(self.code):  # streamed already, else draw it whole
                         self.bubble(Markdown(b.text), "claude", when=self.replay_at)
                 elif isinstance(b, ThinkingBlock) and b.thinking:
-                    self.add(Collapsible(Static(Text(b.thinking)), title="∴ thinking", collapsed=True))
+                    self.add(Collapsible(Static(Text(b.thinking)), title="… thinking", collapsed=True))
                 elif isinstance(b, ToolUseBlock):
                     self.show_tool(b, msg.parent_tool_use_id, live)
         elif isinstance(msg, UserMessage) and isinstance(msg.content, list):
@@ -681,6 +780,7 @@ class ClaudeTerm(App):
                     self.show_result(b, hit, msg.tool_use_result)
         elif isinstance(msg, ResultMessage):
             self.session_id, self.code.cost = msg.session_id, self.code.cost + (msg.total_cost_usd or 0)
+            log_tokens(msg, "code")
             if msg.is_error:
                 self.armed = False  # failed turn: leave it to the user
                 self.say("err", "; ".join(msg.errors or []) or msg.subtype)
@@ -699,9 +799,10 @@ class ClaudeTerm(App):
                     self.bubble(Markdown(b.text), "claude", self.ask)
                 elif isinstance(b, ToolUseBlock):
                     arg = str(next(iter((b.input or {}).values()), ""))[:70]
-                    self.say("note", f"⚙ {b.name} {arg}", self.ask)
+                    self.say("note", f"● {b.name} {arg}", self.ask)
         elif isinstance(msg, ResultMessage):
             self.ask.cost += msg.total_cost_usd or 0
+            log_tokens(msg, "ask")
             if msg.is_error:
                 self.say("err", "; ".join(msg.errors or []) or msg.subtype, self.ask)
 
@@ -709,14 +810,19 @@ class ClaudeTerm(App):
         if msg.parent_tool_use_id:  # subagent chatter: skip
             return
         ev = msg.event
-        if ev.get("type") == "content_block_start" and ev.get("content_block", {}).get("type") == "text":
+        block = ev.get("content_block") or {}
+        if ev.get("type") == "message_start":
+            lane.doing = "Thinking"
+        elif ev.get("type") == "content_block_start" and block.get("type") == "tool_use":
+            lane.doing = f"Running {block.get('name', 'a tool').split('__')[-1]}"  # until the next message starts
+        if ev.get("type") == "content_block_start" and block.get("type") == "text":
+            lane.doing = "Writing"
             await self.end_stream(lane)
             md = Markdown()
             self.bubble(md, "claude", lane)
             lane.stream = Markdown.get_stream(md)
         elif ev.get("type") == "content_block_delta" and ev.get("delta", {}).get("type") == "text_delta" and lane.stream:
             await lane.stream.write(ev["delta"]["text"])
-            self.query_one(lane.view).scroll_end(animate=False)
 
     async def end_stream(self, lane):
         if not lane.stream:
@@ -734,14 +840,14 @@ class ClaudeTerm(App):
                 self.plan_edited = True
         diff = diff_of(b.name, a, self.current_theme, live)
         first = str(next(iter(a.values()), "")).splitlines() if a else []
-        title = f"⚙ {b.name}  {first[0][:70] if first else ''}"
+        title = f"● {b.name}  {first[0][:70] if first else ''}"
         if diff:
-            title = f"✎ {b.name}  {os.path.basename(a.get('file_path', ''))}  +{diff[1]} −{diff[2]}"
+            title = f"± {b.name}  {os.path.basename(a.get('file_path', ''))}  +{diff[1]} −{diff[2]}"
         elif b.name in ("TodoWrite", "TaskCreate", "TaskUpdate"):
-            title = f"☑ {b.name}  {a.get('subject') or 'tasks updated'}"
+            title = f"≡ {b.name}  {a.get('subject') or 'tasks updated'}"
         body = Static(diff[0] if diff else Text(clip(a)))
         body.source = diff[0] if diff else Text(clip(a))
-        c = Collapsible(body, collapsed=not (diff and live), title=escape(("  ↳ " if parent else "") + title))
+        c = Collapsible(body, collapsed=not (diff and live), title=escape(("  └ " if parent else "") + title))
         self.tools[b.id] = c, body, b.name, a, parent
         self.add(c)
 
@@ -754,7 +860,7 @@ class ClaudeTerm(App):
         if name not in ("Edit", "Write") or b.is_error:  # diffs speak for themselves
             view.update(Text.assemble(view.source, f"\n── result ──\n{clip(out or '(empty)')}"))
         if b.is_error:
-            c.title += "  ✗"
+            c.title += "  × failed"
             ask = (f"In my Code session, the {name} tool call failed. Explain briefly why and how to fix it.\n\n"
                    f"Input:\n{clip(a, 1500)}\n\nError:\n{clip(out or '(empty)', 1500)}")
             self.query_one(self.code.view).mount(Chip("? Explain this error", data=ask, classes="explain"), after=c)
@@ -800,7 +906,7 @@ class ClaudeTerm(App):
         # a rescan doesn't know what's being worked on: keep that (and its timer) unless the file now says done
         running = {t["title"].lower(): t for k, t in self.tasks.items() if k.startswith("p:") and t["status"] == "in_progress"}
         self.tasks = {k: t for k, t in self.tasks.items() if not k.startswith("p:")}
-        for i, f in enumerate(found):
+        for i, f in enumerate(f for f in found if f["title"].lower() not in self.deleted):
             key = f"p:{i}"
             status = f.get("status") or ("completed" if f.get("done") else "pending")
             t = self.tasks[key] = {**f, "key": key, "status": status}
@@ -830,10 +936,11 @@ class ClaudeTerm(App):
 
     def save_plan_tasks(self):
         plan = [{k: v for k, v in t.items() if k != "key"} for k, t in self.tasks.items() if k.startswith("p:")]
-        store.save_project(self.cwd, {"tasks": plan, "at": time.time()})
+        store.save_project(self.cwd, {"tasks": plan, "deleted": sorted(self.deleted), "at": time.time()})
 
     def load_plan_tasks(self, auto=False):
         if data := store.load_project(self.cwd):
+            self.deleted = set(data.get("deleted", []))
             self.set_plan_tasks(data.get("tasks", []))
         elif auto and store.has_plan_files(self.cwd):
             self.scout()
@@ -863,22 +970,31 @@ class ClaudeTerm(App):
             await self.scan_plans(status)
         finally:
             timer.stop()
-            spin.update("↻")
+            spin.update("≡")
             if not self.tasks:
                 self.render_tasks()
 
     async def scan_plans(self, status):
+        # one call: the files go in the prompt (no tools, no agent loop re-sending the growing context)
+        files = store.plan_files(self.cwd)
+        if not files:
+            self.set_plan_tasks([])
+            self.save_plan_tasks()
+            status.update("no plan files found")
+            return
+        docs = "\n\n".join(f"=== {f} ===\n{clip(Path(self.cwd, f).read_text(encoding='utf-8', errors='replace'), 30000)}"
+                           for f in files)
         opts = ClaudeAgentOptions(
             cwd=self.cwd, cli_path=self.claude, env=store.account_env(self.session["account"]), model=SCOUT_MODEL,
-            tools=["Read", "Glob", "Grep"], allowed_tools=["Read", "Glob", "Grep"], permission_mode="dontAsk",
-            setting_sources=[], strict_mcp_config=True, max_turns=15, extra_args=NO_HISTORY,
+            tools=[], setting_sources=[], strict_mcp_config=True, max_turns=2, extra_args=NO_HISTORY, effort="low",
             output_format={"type": "json_schema", "schema": SCOUT_SCHEMA},
             system_prompt="You extract task lists from project documents. Be precise and terse.")
         result = None
         try:
-            async for m in query(prompt=SCOUT_PROMPT, options=opts):
+            async for m in query(prompt=f"{SCOUT_PROMPT}\n\n{docs}", options=opts):
                 if isinstance(m, ResultMessage):
                     result = m
+                    log_tokens(m, "scout")
                 elif isinstance(m, RateLimitEvent):
                     self.note_usage(m, self.session["account"])
         except Exception as e:
@@ -890,8 +1006,53 @@ class ClaudeTerm(App):
         self.save_plan_tasks()
         status.update(f"{len(found)} from plan files" if found else "no plan files found")
 
+    def turn_task(self, item):
+        """What's happening always shows: a Code turn with no task in progress gets one, named after the prompt."""
+        if any(t["status"] == "in_progress" for t in self.tasks.values()):
+            return
+        text = item if isinstance(item, str) else next(
+            (b["text"] for b in reversed(item) if b.get("type") == "text" and not b["text"].startswith("<file")), "")
+        key, text = f"t:{time.time()}", " ".join(text.split())
+        short = len(text) <= SHORT_TITLE  # already a title: no Haiku call for it
+        self.tasks[key] = {"key": key, "title": (text or "Working…") if short else "Loading task summary…",
+                           "status": "pending"}
+        self.set_status(self.tasks[key], "in_progress")
+        self.render_tasks()
+        if not short:
+            self.summarize_task(key, text)
+
+    @work(group="summary", exit_on_error=False)
+    async def summarize_task(self, key, text):
+        """Haiku names a long prompt in a few words for the Tasks panel; the prompt itself if that fails."""
+        opts = ClaudeAgentOptions(
+            cwd=self.cwd, cli_path=self.claude, env=store.account_env(self.session["account"]), model=SCOUT_MODEL,
+            tools=[], setting_sources=[], strict_mcp_config=True, max_turns=1, extra_args=NO_HISTORY, effort="low",
+            system_prompt="You name tasks for a task list. Reply with the name only.")
+        title = ""
+        try:
+            async for m in query(prompt=f"{SUMMARY_PROMPT}\n\n{clip(text, 4000)}", options=opts):
+                if isinstance(m, ResultMessage):
+                    log_tokens(m, "summary")
+                    title = " ".join((m.result or "").split()).strip(" .\"'")
+        except Exception:
+            pass
+        if t := self.tasks.get(key):
+            t["title"] = title[:SHORT_TITLE] or text[:80]
+            self.render_tasks()
+
+    def end_turn_task(self):
+        for t in [t for k, t in self.tasks.items() if k.startswith("t:") and t["status"] == "in_progress"]:
+            self.set_status(t, "completed")
+        done = [k for k, t in self.tasks.items() if k.startswith("t:")]
+        for k in done[:-MAX_FINISHED]:  # ponytail: turn tasks live in memory only; the panel shows 5 anyway
+            del self.tasks[k]
+        self.render_tasks()
+
     def render_tasks(self):
-        self.query_one(TaskPanel).show(list(self.tasks.values()), time.time())
+        if any(t["status"] == "in_progress" for k, t in self.tasks.items() if not k.startswith("t:")):
+            # Claude named the real task: the stand-in for this turn goes
+            self.tasks = {k: t for k, t in self.tasks.items() if not (k.startswith("t:") and t["status"] == "in_progress")}
+        self.query_one(TaskPanel).show(list(self.tasks.values()), time.time(), MAX_FINISHED)
         self.refresh_side()
 
     def tick_tasks(self):
@@ -900,9 +1061,13 @@ class ClaudeTerm(App):
 
     async def task_clicked(self, key):
         t = self.tasks.get(key)
-        if not t or t["status"] == "completed":
+        if not t:
             return
         plan = key.startswith("p:")
+        if t["status"] == "completed":
+            if await self.modal(Confirm("TASK", "Delete this finished task?", t["title"], yes="Delete")):
+                self.delete_task(key)
+            return
         if t["status"] == "in_progress":
             if plan and await self.modal(Confirm("TASK", "Mark this task as finished?", t["title"], yes="Finished")):
                 self.set_status(t, "completed")
@@ -916,10 +1081,14 @@ class ClaudeTerm(App):
             return
         body = "\n\n".join(x for x in (f"**{t['title']}**", t.get("detail", ""), f"from `{t['source']}`" if plan else "")
                            if x)
-        answers = await self.modal(Form({"title": "START TASK", "question": body, "ok": "Start", "note": False,
+        answers = await self.modal(Form({"title": "START TASK", "question": body, "ok": "Start", "alt": "Delete",
+                                         "note": False,
                                          "fields": [{"id": "notes", "type": "textarea", "rows": 8,
                                                      "label": "Additional notes for this task (optional)"}]}))
         if answers is None:
+            return
+        if answers.get("button") == "alt":
+            self.delete_task(key)
             return
         notes = answers["notes"].strip()
         extra = f"\n\nAdditional notes for this task (they change or add to it):\n{notes}" if notes else ""
@@ -933,6 +1102,13 @@ class ClaudeTerm(App):
         self.switch_tab("code")
         self.send(prompt)
 
+    def delete_task(self, key):
+        t = self.tasks.pop(key)
+        if key.startswith("p:"):
+            self.deleted.add(t["title"].lower())
+            self.save_plan_tasks()
+        self.render_tasks()
+
     # ---- sessions ------------------------------------------------------------
 
     def recent_sessions(self, limit=50):
@@ -944,7 +1120,7 @@ class ClaudeTerm(App):
     async def resume_session(self, sid):
         self.switch_tab("code")  # both side panels stay as they are
         await self.reset_view()
-        self.session_id = sid
+        self.session_id, self.context = sid, None
         try:
             msgs = await asyncio.to_thread(get_session_messages, sid, self.cwd)
         except Exception as e:
@@ -967,7 +1143,7 @@ class ClaudeTerm(App):
         texts = [b["text"] for b in content if b.get("type") == "text" and not b["text"].startswith("<")]
         if m.type == "user":
             if texts:
-                self.bubble(Static(Text("\n".join(texts))), "user", when=self.replay_at)
+                self.bubble(UserText("\n".join(texts)), "user", when=self.replay_at)
             results = [ToolResultBlock(b["tool_use_id"], b.get("content"), b.get("is_error"))
                        for b in content if b.get("type") == "tool_result"]
             results and await self.show(UserMessage(content=results), live=False)
@@ -1003,25 +1179,66 @@ class ClaudeTerm(App):
     def clear_continue(self):
         """The turn that finished a task has ended: fresh session, then pick up the handover."""
         self.armed = False
-        if not self.looping:
+        handover, self.ctx_handover = self.ctx_handover, False
+        if not (self.looping or handover):
             return
-        if (pct := self.loop_limit_hit()) is not None:
+        if self.looping and (pct := self.loop_limit_hit()) is not None:
             self.set_loop(False, kickoff=False)
             self.notify(f"clear-continue stopped: usage at {pct}%.", severity="warning", timeout=10)
-            return
-        self.session_id, self.code.cost = None, 0.0
+            return self.release_held()
+        self.session_id, self.code.cost, self.context = None, 0.0, None
         self.reset_view()
         self.reconnect()
-        self.say("note", "↻ clear-continue: fresh session, picking up the handover")
-        self.code.inbox.put_nowait(LOOP_RULES)
-        self.scout()  # the handover changed: refresh the plan tasks
+        self.say("note", "∞ clear-continue: fresh session, picking up the handover")
+        self.code.inbox.put_nowait(LOOP_RULES if self.looping else CONTEXT_CONTINUE)
+        self.release_held()  # no rescan here: the turn that edited the handover already started one
+
+    async def check_context(self, client):
+        """After a Code turn: how full the context window is (what /context shows), for the bar and the graph."""
+        try:
+            self.ctx_first, self.context = self.context is None, await client.get_context_usage()
+        except Exception:
+            return
+        self.refresh_bars()
+
+    def sample_usage(self, now=None):
+        """Once a minute: the latest limit % (from the rate-limit events every request brings) and context %,
+        so /usage-graph has a point per minute."""
+        now, acct = now or time.time(), self.session["account"]
+        windows = self.cfg["usage"].get(acct) or {}
+        point = {k: 0 if (w := windows[k]).get("resetsAt") and w["resetsAt"] <= now else 100 * w["utilization"]
+                 for k in ("five_hour", "seven_day") if k in windows}
+        if self.context:
+            point["context"] = self.context["percentage"]
+        point and store.log_usage(account=acct, **point)
+
+    def context_full(self):
+        # never on a session's first turn: a fresh session already over the limit would hand over forever
+        return (self.cfg["context_clear"] and self.context and not self.ctx_first
+                and self.context["percentage"] >= CONTEXT_LIMIT)
+
+    def hand_over_context(self):
+        """The context is half full: pause (your queued messages wait), have Claude write the handover, then clear."""
+        self.ctx_handover = True
+        while not self.code.inbox.empty():
+            self.held.append(self.code.inbox.get_nowait())
+        pct = round(self.context["percentage"])
+        self.say("note", f"context at {pct}%: pausing to write a handover, then a fresh session picks it up"
+                         + (f" ({len(self.held)} queued message(s) wait for it)" if self.held else ""))
+        self.code.inbox.put_nowait(CONTEXT_HANDOVER.format(pct=pct, limit=CONTEXT_LIMIT))
+
+    def release_held(self):
+        for item in self.held:
+            self.code.inbox.put_nowait(item)
+        self.held = []
 
     # ---- advisor: a read-only reviewer that looks over the session every few turns ----
 
     def count_turn(self):
         self.turns += 1
         adv = self.cfg["advisor"]
-        if adv["mode"] != "off" and self.turns % adv["every"] == 0:
+        # in the loop nobody is there to answer a Suggest dialog: only Act runs then
+        if adv["mode"] != "off" and self.turns % adv["every"] == 0 and not (self.looping and adv["mode"] == "suggest"):
             self.advise()
 
     def recent_transcript(self, limit=60, budget=12000):
@@ -1046,42 +1263,65 @@ class ClaudeTerm(App):
         manual and self.notify("Advisor is looking over the project…", title="advisor")
         transcript = await asyncio.to_thread(self.recent_transcript)
         tools = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]
+        # /advisor runs like your regular work; the automatic check uses its own (cheaper) model and effort
+        adv = self.session if manual else {**ADVISOR_DEFAULTS, **self.cfg["advisor"]}
         opts = ClaudeAgentOptions(
             cwd=self.cwd, cli_path=self.claude, env=store.account_env(self.session["account"]),
-            model=self.cfg["ask_model"] or None, tools=tools, allowed_tools=tools, permission_mode="dontAsk",
-            strict_mcp_config=True, max_turns=25, extra_args=NO_HISTORY, system_prompt=ADVISOR_SYSTEM,
+            model=adv["model"] or None, effort=adv["effort"] or None, tools=tools, allowed_tools=tools,
+            permission_mode="dontAsk",
+            strict_mcp_config=True, max_turns=12, extra_args=NO_HISTORY, system_prompt=ADVISOR_SYSTEM,
             output_format={"type": "json_schema", "schema": ADVISOR_SCHEMA})
         seen = (store.load_project(self.cwd, "advisor") or {}).get("titles", [])
+        notes = "".join(f"\n- “{e['title']}”: " + " / ".join(n["text"] for n in e["notes"])
+                        for e in self.advisor_log[-30:] if e.get("notes"))
         prompt = (f"{ADVISOR_PROMPT}\n\nCommands and skills available to the session: {' '.join(self.slash)}\n"
-                  f"Already suggested, don't repeat: {seen or 'nothing yet'}\n\nRecent conversation:\n{transcript}")
+                  f"Already suggested, don't repeat: {seen or 'nothing yet'}\n"
+                  + (f"The user's notes on your earlier suggestions (take them into account):{notes}\n" if notes else "")
+                  + f"\nRecent conversation:\n{transcript}")
         result = None
         try:
             async for m in query(prompt=prompt, options=opts):
                 if isinstance(m, ResultMessage):
+                    log_tokens(m, "advisor")
                     result = m
                 elif isinstance(m, RateLimitEvent):
                     self.note_usage(m, self.session["account"])
         except Exception as e:
             self.say("err", f"advisor failed: {e}")
             return
-        found = ((result and result.structured_output) or {}).get("suggestions") or []
+        out = (result and result.structured_output) or {}
+        found = out.get("suggestions") or []
         # ponytail: last 50 titles per project; enough to stop repeats without growing forever
-        store.save_project(self.cwd, {"titles": (seen + [s["title"] for s in found])[-50:]}, "advisor")
+        self.advisor_titles = (seen + [s["title"] for s in found])[-50:]
+        now = time.time()
+        self.advisor_log.append({"id": f"{now:.3f}-run", "at": now, "type": "run",
+                                 "summary": out.get("summary") or f"{len(found)} suggestion(s)."})
+        found = [{**s, "id": f"{now:.3f}-{i}", "at": now, "type": "suggestion", "status": "suggested", "notes": []}
+                 for i, s in enumerate(found)]
+        self.advisor_log += found
+        self.save_advisor()
         if not found:
             manual and self.notify("The advisor has nothing to add right now.", title="advisor")
             return
         if self.cfg["advisor"]["mode"] == "act" and not manual:
             picks = [s for s in found if s.get("recommended")]
             for s in found:
+                s["status"] = "noted"
                 self.say("note", f"advisor{' → acting' if s in picks else ''}: {s['title']}. {s['why']}")
             picks and self.hand_to_claude(picks, "")
+            self.save_advisor()
             return
         self.bell()
         answers = await self.modal(Form(self.advice_form(found)))
-        if answers and (picks := [found[int(i)] for i in answers["pick"]]):
-            self.hand_to_claude(picks, answers["note"])
-        elif answers and answers["note"]:
+        if answers is None:
+            return  # still "waiting for you": the Advisor tab can send them later
+        picks = [found[int(i)] for i in answers["pick"]]
+        for s in found:
+            s["status"] = "declined"
+        picks and self.hand_to_claude(picks, answers["note"])
+        if answers["note"] and not picks:
             self.send(f"About the advisor's suggestions: {answers['note']}")
+        self.save_advisor()
 
     @staticmethod
     def advice_form(found):
@@ -1094,23 +1334,139 @@ class ClaudeTerm(App):
             "recommended": [str(i) for i, s in enumerate(found) if s.get("recommended")]}]}
 
     def hand_to_claude(self, picks, note):
-        steps = "\n".join(f"- {s['prompt']}" for s in picks)
+        """Each approved suggestion is its own Code turn, so its changes can be undone on their own."""
         self.switch_tab("code")
-        self.send(f"The project advisor suggested this and I approve:\n{steps}" + (f"\n\n{note}" if note else ""))
+        for s in picks:
+            s["status"] = "applying"
+            self.send(f"The project advisor suggested this and I approve:\n{s['prompt']}" + (f"\n\n{note}" if note else ""),
+                      advisor_id=s["id"])
+        self.save_advisor()
+
+    # the advisor log (Advisor tab): runs and suggestions, with notes and per-suggestion undo
+
+    def load_advisor(self):
+        data = store.load_project(self.cwd, "advisor") or {}
+        self.advisor_titles, self.advisor_log = data.get("titles", []), data.get("log", [])
+        self.render_advisor()
+
+    def save_advisor(self):
+        # ponytail: last 100 log entries per project
+        self.advisor_log = self.advisor_log[-100:]
+        store.save_project(self.cwd, {"titles": self.advisor_titles, "log": self.advisor_log}, "advisor")
+        self.render_advisor()
+
+    def advisor_entry(self, eid):
+        return next((e for e in self.advisor_log if e["id"] == eid), None)
+
+    def render_advisor(self):
+        view = self.query_one("#advisor")
+        view.remove_children()
+        cards = []
+        for e in reversed(self.advisor_log):  # newest first
+            if e["type"] == "run":
+                cards.append(Static(Text(f"{stamp(e['at'])} · looked over the session: {e['summary']}"),
+                                    classes="adv-run"))
+                continue
+            links = "".join(f"\n- <{u}>" for u in e.get("links") or [])
+            notes = [Static(Text(f"» {stamp(n['at'])}  {n['text']}"), classes="adv-note") for n in e.get("notes", [])]
+            btns = [Chip("+ Note", data=("note", e["id"]), classes="adv-btn")]
+            if e["status"] in ("suggested", "declined", "noted", "undone"):
+                btns.append(Chip("→ Send to Claude", data=("send", e["id"]), classes="adv-btn"))
+            if e["status"] == "applied" and (e.get("before") is None or e["before"] != e.get("after")):
+                btns.append(Chip("← Undo", data=("undo", e["id"]), classes="adv-btn"))
+            cards.append(Vertical(
+                Static(Text(f"{stamp(e['at'])} · {e.get('kind', '')} · {ADVISOR_STATUS.get(e['status'], e['status'])}"),
+                       classes="adv-meta"),
+                Static(Text(e["title"], style="bold"), classes="adv-title"),
+                Markdown(e.get("why", "") + links, classes="adv-why"), *notes,
+                Horizontal(*btns, classes="adv-btns"), classes=f"adv-card -{e['status']}"))
+        view.mount_all(cards or [Static("The advisor hasn't looked yet. Claude → Ask the advisor now, or wait a few "
+                                        "Code turns.", classes="ask-intro")])
+
+    async def advisor_button(self, op, eid):
+        if not (e := self.advisor_entry(eid)):
+            return
+        if op == "send":
+            self.hand_to_claude([e], "")
+        elif op == "note":
+            answers = await self.modal(Form({"title": "NOTE", "question": f"**{e['title']}**\n\n{e.get('why', '')}",
+                                             "ok": "Save", "note": False, "fields": [{
+                                                 "id": "text", "type": "textarea", "rows": 5,
+                                                 "label": "Your note (the advisor reads it next time)"}]}))
+            if answers and answers["text"].strip():
+                e["notes"].append({"at": time.time(), "text": answers["text"].strip()})
+                self.save_advisor()
+        elif op == "undo":
+            await self.undo_advice(e)
+
+    async def snapshot(self):
+        """The whole working tree (untracked files too, .gitignore respected) as a git tree id; None outside git."""
+        index = os.path.join(tempfile.gettempdir(), f"claude-term-{os.getpid()}.index")
+        env = {"GIT_INDEX_FILE": index}
+        try:
+            await self.git("read-tree", "HEAD", env=env)  # fails on a repo without commits: then it starts empty
+            code, _ = await self.git("add", "-A", env=env)
+            code2, tree = await self.git("write-tree", env=env)
+            return tree.strip() if not code and not code2 else None
+        except OSError:
+            return None
+        finally:
+            with contextlib.suppress(OSError):
+                os.remove(index)
+
+    def advice_applied(self, eid, before, after):
+        if e := self.advisor_entry(eid):
+            e.update(status="applied", before=before, after=after, done_at=time.time())
+            self.save_advisor()
+
+    async def undo_advice(self, e):
+        if e.get("before") is None:  # no git here: Claude takes it out by hand
+            if await self.modal(Confirm("UNDO", "Ask Claude to undo this change?", e["title"], yes="Undo")):
+                e["status"] = "undone"
+                self.save_advisor()
+                self.switch_tab("code")
+                self.send(f"Undo only the change you made for the advisor suggestion “{e['title']}”; keep everything since.")
+            return
+        _, stat = await self.git("diff", "--stat", e["before"], e["after"])
+        if not await self.modal(Confirm("UNDO", "Undo what Claude changed for this suggestion?",
+                                        f"{e['title']}\n\n{stat}", yes="Undo")):
+            return
+        _, patch = await self.git("diff", "--binary", e["before"], e["after"])
+        path = os.path.join(tempfile.gettempdir(), f"claude-term-undo-{os.getpid()}.patch")
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(patch + "\n")
+        code, out = await self.git("apply", "-R", "--whitespace=nowarn", path)
+        with contextlib.suppress(OSError):
+            os.remove(path)
+        e["status"] = "undone"
+        self.save_advisor()
+        if not code:
+            self.notify(f"Undone: {e['title']}", title="advisor")
+            return
+        # later edits touched the same lines: let Claude take that one change out by hand
+        self.switch_tab("code")
+        self.send(f"Undo only the change you made for the advisor suggestion “{e['title']}”; keep everything since. "
+                  f"It made this diff (`git apply -R` failed: {out[:200]}):\n```diff\n{clip(patch, 8000)}\n```")
 
     def advisor_settings(self):
-        adv = self.cfg["advisor"]
+        adv = {**ADVISOR_DEFAULTS, **self.cfg["advisor"]}
         spec = {"title": "ADVISOR", "question": (
             "A read-only reviewer that looks over the session every few Code turns: scope creep, reuse, performance, "
-            "lighter or newer libraries, missing tests, helpful skills. It runs on the Ask Claude model."), "fields": [
+            "lighter or newer libraries, missing tests, helpful skills. Running /advisor yourself uses your session's model and effort."), "fields": [
             {"id": "mode", "type": "radio", "label": "Mode", "default": adv["mode"], "recommended": "suggest",
              "options": [{"value": k, "label": v} for k, v in ADVISOR_MODES.items()]},
             {"id": "every", "type": "select", "label": "Look over the session every", "default": str(adv["every"]),
-             "options": [{"value": str(n), "label": f"{n} turns"} for n in (3, 5, 8, 12, 20)]}]}
+             "options": [{"value": str(n), "label": f"{n} turns"} for n in (3, 5, 8, 12, 20)]},
+            {"id": "model", "type": "select", "label": "Model for the automatic check", "default": adv["model"],
+             "recommended": ADVISOR_DEFAULTS["model"], "options": [{"value": k, "label": v} for k, v in MODELS.items()]},
+            {"id": "effort", "type": "select", "label": "Effort", "default": adv["effort"],
+             "recommended": ADVISOR_DEFAULTS["effort"],
+             "options": [{"value": k, "label": v} for k, v in EFFORTS.items()]}]}
 
         def saved(answers):
             if answers:
-                self.cfg["advisor"] = {"mode": answers["mode"] or adv["mode"], "every": int(answers["every"] or adv["every"])}
+                self.cfg["advisor"] = {"mode": answers["mode"] or adv["mode"], "every": int(answers["every"] or adv["every"]),
+                                       "model": answers["model"] or "", "effort": answers["effort"] or ""}
                 self.save_and_refresh()
         self.push_screen(Form(spec), saved)
 
@@ -1133,8 +1489,8 @@ class ClaudeTerm(App):
         except OSError as e:
             lines.append(f"could not run the installer: {e}")
         self.claude = find_claude()
-        card.log("\n".join(lines[-6:] + ["", "✔ Installed. Click “Sign in, then continue”." if self.claude
-                                          else "✗ Install failed. See the output above."]))
+        card.log("\n".join(lines[-6:] + ["", "✓ Installed. Click “Sign in, then continue”." if self.claude
+                                          else "× Install failed. See the output above."]))
 
     def sign_in(self):
         """Open the CLI in its own console for the one-time login, then connect."""
@@ -1237,12 +1593,33 @@ class ClaudeTerm(App):
         view = self.query_one((lane or self.code).view)
         for w in view.query("#welcome, .ask-intro"):
             w.remove()
-        view.mount(widget)
-        view.scroll_end(animate=False)
+        lane = lane or self.code
+        # the working row stays last; the view is anchored, so new output scrolls into view unless you scrolled up
+        view.mount(widget, before=lane.working if lane.working and lane.working.parent is view else None)
 
     def bubble(self, body, who, lane=None, when=None):
-        avatar = (store.first_name()[:1] or "?").upper() if who == "user" else "✻"
-        self.add(Bubble(body, who, avatar, when or time.time()), lane)
+        avatar = (store.first_name()[:1] or "?").upper() if who == "user" else "*"
+        ref = f"c{next(self.refs)}" if who == "claude" else None
+        self.add(Bubble(body, who, avatar, when or time.time(), ref), lane)
+
+    def claude_bubbles(self, view):
+        return [b for b in self.query_one(view).query(Bubble) if b.ref]
+
+    def reply_to(self, text):
+        """"@c3 answer" replies to Claude's message c3: pinned under it, sent with a quote of it.
+        Returns (what Claude gets, what your bubble shows, or None when the pin is enough)."""
+        m = re.match(r"@(c\d+)\s+(.+)", text, re.S)
+        target = m and next((b for b in self.query(Bubble) if b.ref == m[1]), None)
+        if not target:
+            return text, text
+        reply, quote = m[2].strip(), target.text().strip()
+        target.pin(reply)
+        quote = "…" + quote[-600:] if len(quote) > 600 else quote  # ponytail: the tail is where the question is
+        sent = ("Replying to this earlier message of yours; take it as my answer to it:\n"
+                + "\n".join(f"> {line}" for line in quote.splitlines()) + f"\n\n{reply}")
+        latest = (mine := self.claude_bubbles(self.lane.view)) and mine[-1] is target
+        gist = " ".join(target.text().split())
+        return sent, None if latest else f"← re “{gist[:50]}{'…' if len(gist) > 50 else ''}”\n{reply}"
 
     def say(self, cls, text, lane=None):
         self.add(Static(Text(text), classes=cls), lane)
@@ -1253,10 +1630,21 @@ class ClaudeTerm(App):
         self.slash = sorted(names | {"/" + n for n in LOCAL_COMMANDS})
 
     def spin(self):
+        self.frame += 1
+        frame = SPINNER[self.frame % len(SPINNER)]
         if self.lane.busy:
-            self.frame += 1
             self.query_one("#state", Static).update(
-                Text.assemble((SPINNER[self.frame % len(SPINNER)], self.current_theme.primary), " working · esc to stop"))
+                Text.assemble((frame, self.current_theme.primary), " working · esc to stop"))
+        for lane in (self.code, self.ask):
+            if lane.busy:
+                if not lane.working or not lane.working.parent:
+                    lane.working = Static(classes="working")
+                    self.query_one(lane.view).mount(lane.working)
+                lane.working.update(Text.assemble((frame, self.current_theme.primary),
+                                                  f" {lane.doing}…  {clock(time.time() - lane.since)}"))
+            elif lane.working:
+                lane.working.remove()
+                lane.working = None
 
     def refresh_bars(self):
         c, lane = self.cfg, self.lane
@@ -1264,45 +1652,54 @@ class ClaudeTerm(App):
             self.query_one("#state", Static).update("○ ready")
         mode = self.query_one("#mode", Chip)
         mode.update(f"◇ {MODES[c['mode']]}")
-        mode.display = self.tab == "code"
+        mode.display = lane is self.code
         s = self.session
-        model = s["model"] if self.tab == "code" else c["ask_model"]
-        web = " · ⊕ web" if s["web"] else ""
+        model = s["model"] if lane is self.code else c["ask_model"]
+        web = " · web" if s["web"] else ""
         pct = store.usage_pct(c, s["account"])
         used = f" {pct}%" if pct is not None else ""
         self.query_one("#picker", Chip).update(
-            f"{store.nick(c, s['account'])}{used} · {MODELS.get(model, model)} · ◉ {EFFORTS[s['effort']]}{web}  ⌄")
-        live = f"{self.live_model} · " if self.live_model and not s["model"] and self.tab == "code" else ""
-        where = f"session {(self.session_id or 'new')[:8]}" if self.tab == "code" else "ask claude · not saved"
-        loop = "↻ clear-continue · " if self.looping else ""
-        self.query_one("#menu-info", Static).update(f"{loop}{live}{where} · ${lane.cost:.4f}")
+            f"{store.nick(c, s['account'])}{used} · {MODELS.get(model, model)} · ◉ {EFFORTS[s['effort']]}{web}  ▼")
+        live = f"{self.live_model} · " if self.live_model and not s["model"] and lane is self.code else ""
+        where = f"session {(self.session_id or 'new')[:8]}" if lane is self.code else "ask claude · not saved"
+        loop = "∞ clear-continue · " if self.looping else ""
+        if lane is self.code and self.context:
+            loop += f"context {round(self.context['percentage'])}% · "
+        # what the turns would cost at API prices; a subscription isn't charged it, so it's hidden unless asked for
+        cost = f" · ~${lane.cost:.4f} API est." if c["show_cost"] else ""
+        self.query_one("#menu-info", Static).update(f"{loop}{live}{where}{cost}")
 
     def switch_tab(self, tab):
         if tab == self.tab:
             return
         self.tab = tab
-        for t in ("code", "ask"):
+        for t, view in (("code", "#chat"), ("ask", "#ask"), ("advisor", "#advisor")):
             self.query_one(f"#tab-{t}").set_class(t == tab, "-active")
-        self.query_one("#chat").display = tab == "code"
+            self.query_one(view).display = t == tab
         ask_view = self.query_one("#ask")
-        ask_view.display = tab == "ask"
         if tab == "ask" and not ask_view.children:
             ask_view.mount(Static("Ask Claude: a side chat for quick questions, explanations and ideas.\n"
                                   "It can read this project and search the web, but never changes anything,\n"
                                   "and it doesn't touch your Code session.", classes="ask-intro"))
         prompt = self.query_one("#prompt", Prompt)
-        prompt.placeholder = ("Ask Claude anything…  (/ for commands)" if tab == "code"
-                              else "Quick question? Read-only, and separate from your Code session.")
+        prompt.placeholder = {"ask": "Quick question? Read-only, and separate from your Code session.",
+                              "advisor": "Message the Code session…  (the advisor log stays here)"}.get(
+                                  tab, "Ask Claude anything…  (/ for commands)")
         prompt.focus()
         self.refresh_bars()
 
-    def send(self, text):
+    def send(self, text, advisor_id=None):
+        if self.tab == "advisor":  # typing on the Advisor tab talks to the Code session
+            self.switch_tab("code")
         lane, files = self.lane, self.attachments
-        shown = text + "".join(f"\n▣ {os.path.basename(p)}" for p in files)
-        self.bubble(Static(Text(shown)), "user", lane)
+        text, shown = self.reply_to(text)
+        if shown is not None or files:
+            self.bubble(UserText((shown or "") + "".join(f"\n▣ {os.path.basename(p)}" for p in files)), "user", lane)
+        self.query_one(lane.view).anchor()  # you sent something: follow the reply again
         if lane.busy:
             self.say("note", "queued until the current reply finishes.", lane)
-        lane.inbox.put_nowait(attach.content_blocks(text, files) if files else text)
+        item = attach.content_blocks(text, files) if files else text
+        lane.inbox.put_nowait(("advisor", advisor_id, item) if advisor_id else item)  # tagged: snapshot around it
         self.attachments = []
         self.render_attachments()
         if lane is self.ask and not lane.started:
@@ -1329,6 +1726,9 @@ class ClaudeTerm(App):
             self.advise(manual=True)
         elif cmd == "tasks":
             self.scout()
+        elif cmd == "usage-graph":
+            graph = usage_graph(store.recent_usage(), self.session["account"], self.context, self.current_theme.primary)
+            self.add(Static(graph, classes="graph"), lane)
         elif cmd == "account":
             match = next((a["id"] for a in self.cfg["accounts"] if arg.lower() in (a["id"].lower(), a["nick"].lower())), None)
             self.switch_account(match) if arg and match else self.do("accounts")
@@ -1409,10 +1809,21 @@ class ClaudeTerm(App):
         elif chip.has_class("att"):
             self.attachments.remove(chip.data)
             self.render_attachments()
+        elif chip.has_class("choice") or chip.has_class("reply"):
+            ref, answer = chip.data
+            if answer:
+                self.send(f"@{ref} {answer}")
+            else:  # write your own: the prompt starts with @ref, so it goes in as a reply
+                prompt = self.query_one("#prompt", Prompt)
+                prompt.text = f"@{ref} "
+                prompt.move_cursor(prompt.document.end)
+                prompt.focus()
         elif chip.has_class("task"):
             self.run_worker(self.task_clicked(chip.data), exit_on_error=False)
         elif chip.data in ("install_claude", "sign_in"):
             self.install_claude() if chip.data == "install_claude" else self.sign_in()
+        elif chip.has_class("adv-btn"):
+            self.run_worker(self.advisor_button(*chip.data), exit_on_error=False)
         elif chip.has_class("explain"):  # failed tool call → Ask Claude lane
             self.switch_tab("ask")
             self.send(chip.data)
@@ -1435,6 +1846,7 @@ class ClaudeTerm(App):
                        ("  Copy last reply", "", "copy"), None,
                        ("  Permissions & web", "▸", "sub:permissions"),
                        (check(self.looping) + "Clear & continue loop", "", "loop"),
+                       (check(c["context_clear"]) + f"Clear & continue at {CONTEXT_LIMIT}% context", "", "ctxclear"),
                        (f"  Advisor: {c['advisor']['mode'].title()}…", "", "advisor"),
                        ("  Ask the advisor now", "", "advise"), ("  Rescan plan files", "", "scout")]
                       + ([("  Claude Code commands", "▸", "sub:commands")] if claude_cmds else [])
@@ -1445,7 +1857,8 @@ class ClaudeTerm(App):
                     + [(check(c["theme"] == n) + n.title(), "", f"theme:{n}") for n in THEMES]
                     + [None, ("  Side panel", "ctrl+b", "side"),
                        ("  Recent sessions", "ctrl+r", "resume"), ("  Ask Claude ↔ Code", "f2", "toggle_tab"), None,
-                       ("  Expand tool calls", "", "expand"), ("  Collapse tool calls", "", "collapse")],
+                       ("  Expand tool calls", "", "expand"), ("  Collapse tool calls", "", "collapse"), None,
+                       (check(c["show_cost"]) + "Show API cost estimate", "", "cost")],
             "help": [("Keyboard shortcuts", "", "shortcuts"), ("All commands", "/help", "/help"),
                      ("Next tip", "", "tip"), None, ("About claude-term", "", "about")],
             # submenus: opened from a "sub:<name>" entry, not on the bar
@@ -1478,7 +1891,7 @@ class ClaudeTerm(App):
 
     def open_picker(self):
         c, s = self.cfg, self.session
-        current_model = s["model"] if self.tab == "code" else c["ask_model"]
+        current_model = s["model"] if self.tab != "ask" else c["ask_model"]
         dot = lambda on: "● " if on else "○ "  # noqa: E731
 
         def account_row(a):
@@ -1541,6 +1954,10 @@ class ClaudeTerm(App):
             self.advise(manual=True)
         elif action == "loop":
             self.set_loop(not self.looping)
+        elif action == "ctxclear":
+            self.cfg["context_clear"] = not self.cfg["context_clear"]
+            self.save_and_refresh()
+            self.notify(f"Clear & continue at {CONTEXT_LIMIT}% context: {'on' if self.cfg['context_clear'] else 'off'}.")
         elif action == "clear":
             self.query_one(self.lane.view).remove_children()
         elif action == "copy" and self.last_reply:
@@ -1558,6 +1975,9 @@ class ClaudeTerm(App):
         elif action in ("expand", "collapse"):
             for c in self.query(Collapsible):
                 c.collapsed = action == "collapse"
+        elif action == "cost":
+            self.cfg["show_cost"] = not self.cfg["show_cost"]
+            self.save_and_refresh()
         elif action == "web":
             self.session["web"] = not self.session["web"]
             self.refresh_bars()
@@ -1629,6 +2049,7 @@ class ClaudeTerm(App):
         try:
             async for m in query(prompt=prompt, options=opts):
                 if isinstance(m, ResultMessage):
+                    log_tokens(m, "patcher")
                     result = m
                 elif isinstance(m, RateLimitEvent):
                     self.note_usage(m, self.session["account"])
@@ -1643,14 +2064,14 @@ class ClaudeTerm(App):
         summary = escape(out.get("summary") or "")
         if out.get("fixed") and (self.new_build() or not getattr(sys, "frozen", False)):
             self.say("note", f"self-heal: {out.get('summary')}")
-            self.notify(f"{summary}\n\n[b][@click=app.do('restart')]↻ Restart now[/][/]  "
+            self.notify(f"{summary}\n\n[b][@click=app.do('restart')]» Restart now[/][/]  "
                         "(your current prompt/session will be restored)", title="Fix ready", timeout=600)
         else:
             self.say("note", f"self-heal couldn't fix it: {out.get('summary')}")
             self.notify(f"Couldn't fix it automatically: {summary}", title="Self-heal", severity="warning")
 
     def new_session(self):
-        self.session_id, self.code.cost, self.worked = None, 0.0, False
+        self.session_id, self.code.cost, self.worked, self.context = None, 0.0, False, None
         self.session = self.fresh_session(self.session["account"])
         self.refresh_bars()
         self.switch_tab("code")
@@ -1700,6 +2121,7 @@ class ClaudeTerm(App):
         result = None
         async for m in query(prompt=prompt, options=opts):
             if isinstance(m, ResultMessage):
+                log_tokens(m, "handover")
                 result = m
             elif isinstance(m, RateLimitEvent):
                 self.note_usage(m, self.session["account"])
@@ -1715,9 +2137,10 @@ class ClaudeTerm(App):
 
     # ---- commit writer: Haiku drafts the message, you edit and confirm ----
 
-    async def git(self, *args):
+    async def git(self, *args, env=None):
         proc = await asyncio.create_subprocess_exec("git", *args, cwd=self.cwd, stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.STDOUT)
+                                                    stderr=asyncio.subprocess.STDOUT,
+                                                    env={**os.environ, **env} if env else None)
         out, _ = await proc.communicate()
         return proc.returncode, out.decode(errors="replace").rstrip()  # porcelain lines start with a space
 
@@ -1745,7 +2168,7 @@ class ClaudeTerm(App):
         self.notify("Drafting a commit message…", title="commit")
         opts = ClaudeAgentOptions(
             cwd=self.cwd, cli_path=self.claude, env=store.account_env(self.session["account"]), model=SCOUT_MODEL,
-            tools=[], setting_sources=[], strict_mcp_config=True, max_turns=2, extra_args=NO_HISTORY,
+            tools=[], setting_sources=[], strict_mcp_config=True, max_turns=2, extra_args=NO_HISTORY, effort="low",
             output_format={"type": "json_schema", "schema": COMMIT_SCHEMA},
             system_prompt="You write precise, terse git commit messages.")
         prompt = (f"{COMMIT_PROMPT}\n\nRecent log:\n{log or '(no commits yet)'}\n\n"
@@ -1754,6 +2177,7 @@ class ClaudeTerm(App):
         try:
             async for m in query(prompt=prompt, options=opts):
                 if isinstance(m, ResultMessage):
+                    log_tokens(m, "commit")
                     result = m
         except Exception as e:
             self.say("err", f"drafting the commit message failed: {e}")

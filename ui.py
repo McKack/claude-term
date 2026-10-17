@@ -47,7 +47,7 @@ TIPS = [
     "Ctrl+J adds a new line without sending.",
     "Ctrl+V pastes text, screenshots and file paths. Images become attachments.",
     "F2 flips between Code and Ask Claude, a side chat that never touches your files.",
-    "Click a task in the Tasks panel to start it. ↻ rescans the project's plan files.",
+    "Click a task in the Tasks panel to start it. ≡ rescans the project's plan files.",
 ]
 
 
@@ -193,20 +193,124 @@ def stamp(when, now=None):
     return time.strftime("%H:%M" if t[:3] == today[:3] else "%d %b %H:%M", t)
 
 
+def short(n):
+    return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.0f}k" if n >= 1e3 else str(round(n))
+
+
+def bar_rows(values, height, top):
+    """Columns of values as block-character rows, top row first; None = no data (blank)."""
+    eighths = [None if v is None else max(1 if v > 0 else 0, round(v / top * height * 8)) for v in values]
+    return ["".join(" " if e is None else "█" if e >= (r + 1) * 8 else "▁▂▃▄▅▆▇"[e - r * 8 - 1] if e > r * 8 else " "
+                    for e in eighths) for r in reversed(range(height))]
+
+
+def usage_graph(points, account, context, color, now=None, width=60):
+    """/usage-graph: the last hour, one column per minute. Tokens per minute, then the 5-hour and weekly limit %
+    and context % over time (each carried forward from its last reading). `context`: the latest
+    get_context_usage() reply, or None."""
+    now = now or time.time()
+    col = lambda p: min(width - 1, int((p["t"] - (now - width * 60)) // 60))  # noqa: E731
+    out = Text()
+
+    def chart(title, values, height, top, label):
+        out.append(f"{chr(10) if out else ''}{title}\n", style="bold")
+        for i, row in enumerate(bar_rows(values, height, top)):
+            out.append(f"{label(top) if i == 0 else '':>6} │", style="dim").append(row, style=color).append("\n")
+        out.append(f"{label(0):>6} └{'─' * width}\n", style="dim")
+
+    tokens = [0] * width
+    sums = {"inp": 0, "cache": 0, "out": 0}
+    for p in points:
+        if "tokens" in p and col(p) >= 0:
+            tokens[col(p)] += p["tokens"]
+            for k in sums:
+                sums[k] += p.get(k, 0)
+    chart(f"TOKENS PER MINUTE  {short(sum(tokens))} this hour (in {short(sums['inp'])} · cache read "
+          f"{short(sums['cache'])} · out {short(sums['out'])})", tokens, 6, max(tokens) or 1, short)
+    by = {}
+    for p in points:  # who spent them: the Code session, Ask Claude, or a helper (scout, advisor, summary…)
+        if "tokens" in p:
+            by[p.get("src", "?")] = by.get(p.get("src", "?"), 0) + p["tokens"]
+    if by:
+        out.append("  by source: " + " · ".join(f"{k} {short(v)}" for k, v in sorted(by.items(), key=lambda kv: -kv[1]))
+                   + "\n", style="dim")
+    for key, title in (("five_hour", "5-HOUR LIMIT"), ("seven_day", "WEEKLY LIMIT"), ("context", "CONTEXT WINDOW")):
+        series, last = [None] * width, None
+        for p in points:
+            if key in p and (key == "context" or p.get("account") == account):
+                series[max(0, col(p))], last = p[key], p[key]
+        for i in range(1, width):  # a reading holds until the next one
+            if series[i] is None:
+                series[i] = series[i - 1]
+        if key == "context" and context:
+            title += f"  {short(context['totalTokens'])} of {short(context['maxTokens'])} tokens"
+        now_txt = "no data this hour" if last is None else f"now {last:.0f}%"
+        chart(f"{title}  {now_txt}", series, 3, 100, lambda v: f"{v:.0f}%")
+    out.append(f"{'':>8}-60m{'-30m':^{width - 8}}now", style="dim")
+    return out
+
+
+class UserText(Static):
+    """Your message in its bubble. A long one folds to its first lines; click to unfold it (and fold it again)."""
+    LINES, CHARS = 8, 600  # ponytail: folds by source lines/chars, not wrapped rows; close enough at any width
+
+    def __init__(self, text, **kw):
+        self.full, self.open = text, False
+        self.short = "\n".join(text.split("\n")[:self.LINES])[:self.CHARS]
+        super().__init__(**kw)
+        self.set_class(self.short != text, "fold")
+        self.refresh_text()
+
+    def refresh_text(self):
+        if not self.has_class("fold"):
+            self.update(Text(self.full))
+        elif self.open:
+            self.update(Text(self.full).append("\n▴ show less", style="dim"))
+        else:
+            self.update(Text(self.short.rstrip() + "…").append("\n▾ show all", style="dim"))
+
+    def on_click(self):
+        if self.has_class("fold"):
+            self.open = not self.open
+            self.refresh_text()
+
+
 class Bubble(Horizontal):
     """A chat bubble: you on the right, Claude on the left, each with a round avatar and a timestamp below.
-    The body is any widget (Static for you, a streaming Markdown for Claude)."""
+    The body is any widget (Static for you, a streaming Markdown for Claude).
 
-    def __init__(self, body, who, avatar, when):
+    Claude's bubbles carry a ref (c1, c2…): a ← reply chip, answer buttons (`choices`) and replies pinned under it."""
+
+    def __init__(self, body, who, avatar, when, ref=None):
         super().__init__(classes=f"bubble -{who}")
-        self.body, self.who, self.avatar, self.when = body, who, avatar, when
+        self.body, self.who, self.avatar, self.when, self.ref = body, who, avatar, when, ref
 
     def compose(self) -> ComposeResult:
         mine = self.who == "user"
         self.body.add_class("bubble-body")
-        parts = [Static(self.avatar, classes="avatar"), Static("▶" if mine else "◀", classes="tail"),
-                 Vertical(self.body, Static(stamp(self.when), classes="stamp"), classes="bubble-col")]
+        foot = Static(stamp(self.when), classes="stamp")
+        if self.ref:
+            foot = Horizontal(foot, Chip("← reply", data=(self.ref, None), classes="reply"), classes="bubble-foot")
+        parts = [Static(self.avatar, classes="avatar"), Static("►" if mine else "◄", classes="tail"),
+                 Vertical(self.body, foot, classes="bubble-col")]
         yield from reversed(parts) if mine else parts
+
+    def text(self):
+        return self.body.source if isinstance(self.body, Markdown) else str(getattr(self.body, "full", ""))
+
+    def choices(self, options):
+        """Answer buttons under the message; the last one lets you write your own answer."""
+        self.query(".choices").remove()
+        chips = [Chip(f" {o} ", data=(self.ref, o), classes="choice") for o in options]
+        self.query_one(".bubble-col").mount(Horizontal(*chips, Chip(" Something else… ", data=(self.ref, None),
+                                                                    classes="choice -other"), classes="choices"),
+                                            before=self.query_one(".bubble-foot"))
+
+    def pin(self, text):
+        """Your reply to this message, pinned under it. Answers its question, so the buttons go."""
+        self.query(".choices").remove()
+        self.query_one(".bubble-col").mount(Static(Text.assemble(("← you: ", "bold"), text), classes="pinned"),
+                                            before=self.query_one(".bubble-foot"))
 
 
 class Welcome(Vertical):
@@ -222,8 +326,8 @@ class Welcome(Vertical):
             for label, action in self.suggestions:
                 yield Chip(label, data=action, classes="suggest")
         with Center(), Vertical(id="tip"):
-            yield Chip("↻", id="tip-next")
-            yield Static("✦ Did you know?", id="tip-title")
+            yield Chip("»", id="tip-next")
+            yield Static("* Did you know?", id="tip-title")
             yield Static(random.choice(TIPS), id="tip-text")
 
     def next_tip(self):
@@ -239,7 +343,7 @@ class InstallCard(Vertical):
         yield Static("claude-term runs on top of the official Claude Code CLI. Install it here with "
                      "Anthropic's installer (claude.ai/install.ps1), then sign in once.", id="facts")
         with Center(), Grid(id="chips"):
-            yield Chip("⤓  Install Claude Code", data="install_claude", classes="suggest", id="install-btn")
+            yield Chip("↓  Install Claude Code", data="install_claude", classes="suggest", id="install-btn")
             yield Chip("Sign in, then continue", data="sign_in", classes="suggest", id="signin-btn")
         with Center(), Vertical(id="tip"):
             yield Static("Click Install to start.", id="tip-text")
@@ -256,20 +360,22 @@ class TaskPanel(Vertical):
         with Horizontal(id="tasks-head"):
             yield Static("TASKS", id="tasks-title")
             yield Static(id="tasks-status")
-            yield Chip("↻", id="tasks-refresh")
+            yield Chip("≡", id="tasks-refresh")
             yield Chip("»", id="side-close")
         yield VerticalScroll(id="tasks-list")
 
-    def show(self, tasks, now):
+    def show(self, tasks, now, finished=5):
         box = self.query_one("#tasks-list")
         box.remove_children()
         rows = []
         for status, title in self.SECTIONS:
             group = [t for t in tasks if t["status"] == status]
+            if status == "completed":  # newest first; plan-file ones without an end time keep file order
+                group = sorted(group, key=lambda t: t.get("ended") or 0)[-finished:][::-1]
             if group:
                 rows.append(Static(title, classes="task-head"))
                 rows += [Chip(self.line(t, now), data=t["key"], classes=f"task -{status}") for t in group]
-        box.mount_all(rows or [Static("No tasks yet. ↻ scans this project's plan files.", classes="task-empty")])
+        box.mount_all(rows or [Static("No tasks yet. ≡ scans this project's plan files.", classes="task-empty")])
 
     def tick(self, tasks, now):
         by_key = {t["key"]: t for t in tasks}
@@ -343,7 +449,7 @@ class Ask(ModalScreen[bool]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dlg") as d:
-            d.border_title = "⚠ PERMISSION REQUEST"
+            d.border_title = "! PERMISSION REQUEST"
             yield Label(f"Claude wants to run [b]{escape(self.tool_name)}[/]")
             yield Static(self.body, id="dlg-body")
             with Horizontal(id="dlg-btns"):
@@ -699,7 +805,7 @@ class Form(ModalScreen[dict | None]):
     def label(f, o):
         rec = f.get("recommended")
         star = o["value"] in rec if isinstance(rec, list) else o["value"] == rec
-        return Text.assemble(("★ ", "bold") if star else "  ", (str(o.get("label") or o["value"]), "bold"),
+        return Text.assemble(("* ", "bold") if star else "  ", (str(o.get("label") or o["value"]), "bold"),
                              f"  {o['description']}" if o.get("description") else "",
                              ("  recommended", "italic") if star else "")
 
@@ -738,6 +844,8 @@ class Form(ModalScreen[dict | None]):
                 yield Input(placeholder="anything else to tell Claude? (optional)", id="form-note")
             with Horizontal(id="dlg-btns"):
                 yield Button("Cancel", id="cancel")
+                if self.spec.get("alt"):  # a second way out, e.g. Delete on a task
+                    yield Button(self.spec["alt"], variant="error", id="alt")
                 yield Button(f"{self.spec.get('ok') or 'Confirm'}  ctrl+s", variant="success", id="ok")
 
     def values(self):
@@ -765,4 +873,7 @@ class Form(ModalScreen[dict | None]):
         self.action_confirm()
 
     def on_button_pressed(self, e: Button.Pressed):
-        self.action_confirm() if e.button.id == "ok" else self.dismiss(None)
+        if e.button.id == "alt":
+            self.dismiss({"button": "alt"})
+        else:
+            self.action_confirm() if e.button.id == "ok" else self.dismiss(None)
