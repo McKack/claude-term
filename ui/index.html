@@ -147,7 +147,8 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 /* dock overlays the log's bottom: transparent at its top, fading into the page behind pills + composer */
 #dock { padding:40px 24px 14px; margin-top:-40px; position:relative; z-index:2; pointer-events:none;
   background:linear-gradient(to bottom, transparent, var(--bg) 40px); }
-#dock .col > * { pointer-events:auto; } #log { padding-bottom:48px; }
+#dock .col > * { pointer-events:auto; }
+#workpill, #handpill, #ready, #suggest, .qmsg { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:48px; }
 #log.term + #dock { background:linear-gradient(to bottom, transparent, #151412 40px); }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
   color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
@@ -1690,6 +1691,12 @@ layout();
 drawSide();
 applyView();
 refresh().then(() => S.active && openProject(S.active));
+// dock grows (input lines, pills, queue) → the log shrinks; if it was at the bottom, glide up by the same amount
+let dockH = 0;
+new ResizeObserver(() => {
+  const h = $('dock').offsetHeight, d = h - dockH, l = $('log'); dockH = h;
+  if (d > 0 && l.scrollHeight - l.scrollTop - l.clientHeight - d < 120) l.scrollBy({top: d, behavior: 'smooth'});
+}).observe($('dock'));
 setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 6 * 3600e3);
 </script>
 </body>
