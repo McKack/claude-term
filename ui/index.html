@@ -95,8 +95,8 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .msg { max-width:100%; }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
 /* thumbnails: fixed tiles, cropped (the viewer shows the whole image); wrap, never wider than the bubble */
-.msg.user .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
-.msg.user .thumbs img { width:96px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
+.msg .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
+.msg .thumbs img { width:96px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
 .crow .cb, .msg.user { min-width:0; } #log { overflow-x:hidden; }
 .crow { display:flex; gap:10px; align-items:flex-start; } .crow.user { flex-direction:row-reverse; }
 .crow > .av { border-color:var(--bg); } /* 26px = the name row's height: avatar sits in line with name + time */
@@ -189,7 +189,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 #workpill, #handpill, #ready, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:48px; }
 #log.term + #dock { background:linear-gradient(to bottom, transparent, #151412 40px); }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
-  color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
+  overflow:hidden; overflow-wrap:anywhere; color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
 #dock .col { gap:8px; }
 #queue { display:flex; gap:4px; align-items:center; } #queue .qnav { display:none; width:26px; height:26px; flex:none; } #queue.over .qnav { display:grid; }
 #queue .qnav.l svg { rotate:180deg; }
@@ -472,7 +472,11 @@ const MODES = {off: ['Off', 'Plain chat; only the context limit hands over'], ma
   auto: ['Auto', 'Clears and continues by itself until a limit'], auto_answer: ['Auto + answers', 'Also answers what it can; holds only real decisions']};
 const MODELS = {'': 'Default', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku'};
 const EFFORTS = {'': 'Default', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max'};
-const PERMS = {default: 'Ask first', acceptEdits: 'Accept edits', plan: 'Plan only', bypassPermissions: 'Bypass'};
+// short forms for the status row; full names in the menus. PERMS order = level 1..4 (least → most freedom)
+const EFF_S = {low: 'L', medium: 'M', high: 'H', xhigh: 'XH', max: 'Max'};
+const PERMS = {plan: 'Plan only', default: 'Ask first', acceptEdits: 'Accept edits', bypassPermissions: 'Bypass'};
+const permN = m => Object.keys(PERMS).indexOf(m) + 1 || '?';
+const MODE_S = {off: '', manual: 'M', auto: 'A', auto_answer: 'A+'};
 
 // ponytail: tiny markdown (fences, inline code, bold, headings, lists, links); a library when tables matter
 function md(src) {
@@ -610,6 +614,26 @@ function acctCard(btn) {
   const r = btn.getBoundingClientRect();
   card.style.left = r.left + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
 }
+// one card for the status-row stats: context (+ hand-over threshold), usage windows, session timers
+function statsCard(btn) {
+  const p = P(), u = S.usage[p.account] || {}, x = TIMES[cur] || {you: 0, ai: 0, any: 0, start: Date.now()};
+  const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
+  const bar = (v, l, ic) => `<div class="row" style="font-size:12px;gap:6px">${icon(ic)}<span class="grow">${l}</span><span class="bar" style="width:90px"><i style="width:${v || 0}%"></i></span>${v == null ? '–' : v + '%'}</div>`;
+  card.innerHTML = `<h5>Context</h5>${bar(ctx[cur], 'Used (last seen)', 'doc')}
+    <label class="row" style="font-size:12px;gap:6px">${icon('loop')}<span class="grow">Hand over at</span><input id="scLim" type="number" min="0" max="95" value="${p.context_limit}" style="width:64px">%</label>
+    <h5>Usage · ${esc(nick(p.account))}</h5>${bar(u.five_hour, '5-hour', 'clock')}${bar(u.seven_day, 'Weekly', 'cal')}
+    <h5>This session <span class="faint">since ${esc(tm(new Date(x.start).toISOString()))}</span></h5>
+    <div class="row" style="font-size:12px;gap:6px">${icon('timer')}<span class="grow">You, active</span>${dur(x.you)}</div>
+    <div class="row" style="font-size:12px;gap:6px">${icon('sparkle')}<span class="grow">Claude working</span>${dur(x.ai)}</div>
+    <div class="row" style="font-size:12px;gap:6px">${icon('clock')}<span class="grow">Total, either going</span>${dur(x.any)}</div>
+    <div class="btnrow"><button class="btn sm" id="scReset">Start timers over</button></div>`;
+  document.body.append(card); card.showPopover();
+  card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
+  card.querySelector('#scLim').onchange = e => setP({context_limit: Math.max(0, Math.min(95, +e.target.value || 0))}).then(refresh);
+  card.querySelector('#scReset').onclick = () => { TIMES[cur] = {start: Date.now(), you: 0, ai: 0, any: 0}; drawTimes(); card.hidePopover(); };
+  const r = btn.getBoundingClientRect();
+  card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
+}
 // ---- update check: Clauracle's latest GitHub release vs this build; a toast offers it ----
 async function checkUpdate() {
   let u; try { u = await call('update_check'); } catch { return; }
@@ -652,11 +676,11 @@ function drawChrome() {
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
   workTick();
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
-  $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account and model">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
-    + `<button onclick="menuAt(this, permItems())" title="Permissions: ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${esc(PERMS[p.mode] || p.mode)}</span></button>`
-    + `<button onclick="menuAt(this, contItems())" title="Clear & continue mode: ${esc(MODES[p.cont][0])}">${icon('loop')}<span class="lb">${esc(MODES[p.cont][0])}</span></button>`
-    + (ctx[cur] != null ? `<span title="Context window used (last seen)">${icon('doc')}${ctx[cur]}%</span>` : '') + meter('five_hour', '5-hour', 'clock') + meter('seven_day', 'Weekly', 'cal') + `<span id="stime" class="lb" style="cursor:pointer" onclick="TIMES[cur] = {start: Date.now(), you: 0, ai: 0, any: 0}; drawTimes()"></span>`
-    + (p.questions.length ? `<button onclick="showQuestions(cur)" style="color:var(--accent)">${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting</button>` : '');
+  $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? '·' + esc(EFF_S[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
+    + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 4, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}${permN(p.mode)}</button>`
+    + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${MODE_S[p.cont] || ''}</button>`
+    + `<button onclick="statsCard(this)" title="Context, usage and session time">${ctx[cur] != null ? `<span>${icon('doc')}${ctx[cur]}%</span>` : ''}${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime" class="lb"></span></button>`
+    + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
   drawTimes();
   const sendBtn = $('send');
   sendBtn.innerHTML = busy[cur] && !hasInput() ? icon('stop') : icon('up');
@@ -672,7 +696,7 @@ const dur = ms => { const m = Math.floor(ms / 60e3); return m < 60 ? `${m}m` : `
 function drawTimes() {
   const x = cur && TIMES[cur], el = $('stime'); if (!el || !x) return;
   el.innerHTML = `${icon('timer')}${dur(x.you)} · ${icon('sparkle')}${dur(x.ai)}`;
-  el.dataset.tip = `This session (since ${tm(new Date(x.start).toISOString())})\nYou, active: ${dur(x.you)} (2 min without input counts as idle)\nClaude working: ${dur(x.ai)}\nTotal, either going: ${dur(x.any)}\nClick to start over`;
+  el.dataset.tip = `This session (since ${tm(new Date(x.start).toISOString())})\nYou, active: ${dur(x.you)} (2 min without input counts as idle)\nClaude working: ${dur(x.ai)}\nTotal, either going: ${dur(x.any)}`;
 }
 setInterval(() => {
   const now = Date.now(), dt = now - lastTick; lastTick = now;
@@ -736,7 +760,7 @@ const acctItems = () => [...S.accounts.map(a => { const on = P().account === a.i
     ...Object.entries(MODELS).map(([k, l]) => ({check: on && P().model === k, label: l, run: () => setP({account: a.id, model: k})})), '-', {title: 'Effort'},
     ...Object.entries(EFFORTS).map(([k, l]) => ({check: on && (P().effort || '') === k, label: l, run: () => setP({account: a.id, effort: k})}))]}; }), '-',
   {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}];
-const permItems = () => Object.entries(PERMS).map(([k, l]) => ({check: P().mode === k, label: l, run: () => setP({mode: k})}));
+const permItems = () => [{title: 'Permissions (level)'}, ...Object.entries(PERMS).map(([k, l], i) => ({check: P().mode === k, label: `${i + 1}  ${l}`, run: () => setP({mode: k})}))];
 const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
 
 async function openProject(pid) {
@@ -825,12 +849,20 @@ function put(box, e) {
     let t = g._tabs.get(key);
     if (!t) g._tabs.set(key, t = {label: sh ? name : f ? shortPath(f).split(/[\\/]/).pop() : name, title: f ? shortPath(f) : name, es: []});
     t.es.push(e); g._last = key; if (!g._pin) g._on = key;
+    if (name === 'Read' && /\.(png|jpe?g|gif|webp|bmp)$/i.test(f || '')) (box._shots ||= []).includes(f) || box._shots.push(f);
     return drawAct(g);
   }
   if (e.kind === 'err' && view === 'chat') { // title: the most recent tool call (what failed), else "Error"
     const g = box.lastElementChild?.classList.contains('tools') && box.lastElementChild, t = g && g._tabs.get(g._last);
     el.innerHTML = `<span class="et">${t ? esc(t.title) + ' · ' + esc(toolName(t.es.at(-1))) + ' failed' : 'Error'}</span>`;
     el.append(e.text);
+  }
+  if (e.kind === 'claude' && box._shots?.length) { // images Claude read since its last message → thumbs on this one
+    const imgs = box._shots.map(f => ({path: f, name: f.split(/[\\/]/).pop()})); box._shots = [];
+    const th = document.createElement('div'); th.className = 'thumbs'; el.querySelector('.msg')?.prepend(th);
+    imgs.forEach((x, k) => { const im = document.createElement('img'); im.title = x.path; th.append(im);
+      shotUrl(x.path).then(u => { x.url = im.src = u; }, () => im.remove());
+      im.onclick = () => openViewer(imgs.filter(y => y.url), imgs.filter(y => y.url).indexOf(x), null); });
   }
   if (el.classList.contains('crow')) { // same speaker again (Claude across its tool lines too) → no second avatar/name
     let prev = box.lastElementChild;
@@ -840,6 +872,10 @@ function put(box, e) {
   const qs = box.querySelector('.qs');
   qs ? box.insertBefore(el, qs) : box.appendChild(el);
 }
+// file → blob URL, cached per path (ponytail: never revoked; fine for a session's handful of screenshots)
+const SHOTS = new Map();
+const shotUrl = f => SHOTS.get(f) || (SHOTS.set(f, call('read_image', {path: f}).then(b => URL.createObjectURL(new Blob([b])))
+  .catch(e => { SHOTS.delete(f); throw e; })), SHOTS.get(f));
 const TICON = {Edit: 'new', MultiEdit: 'new', Write: 'file', NotebookEdit: 'new', Read: 'doc', Grep: 'search', Glob: 'search', LS: 'folder'};
 // inside the project → relative; elsewhere the full path
 const shortPath = f => { const r = (P()?.path || '').replace(/[\\/]+$/, ''); return r && f.toLowerCase().startsWith(r.toLowerCase()) ? f.slice(r.length + 1) : f; };
@@ -1146,20 +1182,26 @@ $('prompt').addEventListener('keydown', e => {
 });
 const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
 $('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { drawChrome(); keepDraft(); } });
-function cont_() { hiddenQs[cur] = false; call('continue_now', {pid: cur}); }
+// Continue → fresh log + "Reading handover…" at once; the note stays (below the continue prompt) until Claude's first line/tool
+const READING = 'Reading handover…', reading = {};
+const readNote = (pid, on) => { logs[pid] = (logs[pid] || []).filter(x => x.text !== READING); if (on) logs[pid].push({kind: 'note', text: READING}); else delete reading[pid]; };
+function cont_() { hiddenQs[cur] = false; reading[cur] = true; logs[cur] = [{kind: 'note', text: 'Fresh session'}]; readNote(cur, true);
+  P().ready = false; $('ready').hidden = true; drawLog(); call('continue_now', {pid: cur}); }
 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
-  line: () => { if (d.kind === 'claude') live[d.pid] = ''; addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of}); if (d.result_of && d.pid === cur) drawAtp(); },
+  line: () => { if (d.kind === 'claude') live[d.pid] = '';
+    if (reading[d.pid]) { readNote(d.pid, false); if (d.kind === 'user') setTimeout(() => { reading[d.pid] = true; readNote(d.pid, true); d.pid === cur && drawLog(); }); else if (d.pid === cur) drawLog(); }
+    addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of}); if (d.result_of && d.pid === cur) drawAtp(); },
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
   status: () => { if ('busy' in d) busy[d.pid] = d.busy;
-    if (d.busy === false) { flushQueue(d.pid); refresh(); live[d.pid] = ''; } // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
+    if (d.busy === false) { if (reading[d.pid]) readNote(d.pid, false); flushQueue(d.pid); refresh(); live[d.pid] = ''; } // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
-  cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; if (reading[d.pid]) readNote(d.pid, true); delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   ready: () => refresh().then(() => d.pid === cur && drawLog()),
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
   queued: () => refresh(),

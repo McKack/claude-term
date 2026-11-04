@@ -708,6 +708,16 @@ fn read_file(st: St, pid: String, rel: String) -> R<String> {
     Ok(String::from_utf8_lossy(&bytes).into())
 }
 
+/// Images Claude read (screenshots) → chat thumbnails. Any path ∵ screenshots live in temp/scratchpad, not the project;
+/// ∴ image extensions only, ≤ 20 MB. Raw bytes (no base64 dep) → page gets an ArrayBuffer.
+#[tauri::command]
+fn read_image(path: String) -> R<tauri::ipc::Response> {
+    let ext = std::path::Path::new(&path).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if !["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(&ext.as_str()) { return Err("not an image".into()); }
+    if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > 20_000_000 { return Err("too large".into()); }
+    Ok(tauri::ipc::Response::new(std::fs::read(&path).map_err(|e| e.to_string())?))
+}
+
 // ---- browsers: open pages in a system browser profile (you stay logged in there) ----
 
 #[tauri::command]
@@ -800,7 +810,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])
+            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {
