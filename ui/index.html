@@ -951,11 +951,13 @@ function drawAtts() {
   if (cur) { drawChrome(); keepDraft(); }
 }
 // every keystroke/attachment lands on disk (debounced), so nothing typed is ever lost
-function keepDraft(pid = cur) {
+// now: queue changes save at once ∵ a restart inside the 300ms window lost a queued prompt
+function keepDraft(pid = cur, now = false) {
   if (pid === cur) texts[pid] = $('prompt').value;
   const text = texts[pid] || '', a = atts[pid] || [], q = queue[pid] || [], ed = editing[pid] || null; // ed: a queued one being edited
   clearTimeout(keepDraft[pid]);
-  keepDraft[pid] = setTimeout(() => call('save_draft', {pid, draft: text || a.length || q.length || ed ? {text, atts: a, queue: q, editing: ed} : null}), 300);
+  const save = () => call('save_draft', {pid, draft: text || a.length || q.length || ed ? {text, atts: a, queue: q, editing: ed} : null});
+  if (now) save(); else keepDraft[pid] = setTimeout(save, 300);
 }
 // ---- image viewer (chat, terminal, composer attachments) + editor: pen and numbered boxes with notes ----
 let VW = null; // {imgs: [{url, name}], i, map: composer attachment index per image | null (from chat → added as new)}
@@ -1070,7 +1072,7 @@ function send() {
   const q = queue[cur] ||= [];
   if (busy[cur]) q.splice(ed ? ed.i : q.length, 0, {text: t, atts: a}); // an edited one goes back to its place
   else sendNow(cur, {text: t, atts: a});
-  drawQueue(); keepDraft();
+  drawQueue(); keepDraft(cur, true);
 }
 // a queued message being edited holds the queue (nothing auto-sends) until it's sent or the edit is cancelled
 const editing = {}; // pid → {i: its place, m: the original, prev: what the composer held before}
@@ -1083,7 +1085,7 @@ function cancelEdit() {
 const drawEditBar = () => { $('cancelEdit').hidden = !editing[cur]; };
 function flushQueue(pid) {
   if (busy[pid] || editing[pid] || !queue[pid]?.length) return;
-  sendNow(pid, queue[pid].shift()); if (pid === cur) drawQueue(); keepDraft(pid);
+  sendNow(pid, queue[pid].shift()); if (pid === cur) drawQueue(); keepDraft(pid, true);
 }
 function sendNow(pid, {text: t, atts: a}) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
