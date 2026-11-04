@@ -98,6 +98,7 @@ pub struct Project {
     pub gcp: String,          // Google Cloud project id
     pub services: Vec<String>, // Services tab: what it signs in with, gets paid through, ships to (ids in the UI's list)
     pub working: bool,        // a turn is running; still true at startup = it was cut off (crash/restart): resume it
+    pub team_auto: bool,      // every task from a prompt becomes a team task (GitHub issue), claimed + closed by Claude
 }
 impl Default for Project {
     fn default() -> Self {
@@ -106,7 +107,7 @@ impl Default for Project {
             off: vec![], on: None, mode: "default".into(), model: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, ready: false, questions: vec![], answers: String::new(),
             build: Build::default(), hide_env: true, terse: true,
-            owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![],
+            owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], team_auto: false,
         }
     }
 }

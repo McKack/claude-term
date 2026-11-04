@@ -208,6 +208,11 @@ fn args(st: &State, p: &Project) -> Vec<String> {
         append += "\n# Team tasks\nShared tasks are GitHub issues labelled `clauracle`; one with an assignee and the `in progress` \
             label is taken. Before starting one, check it's free and claim it (`gh issue edit N --add-assignee @me --add-label \
             \"in progress\"`); close it when done. New work others should see: `gh issue create --label clauracle`.\n";
+        if p.team_auto {
+            append += "Every task the user gives you is a team task: before starting, `gh issue create --label clauracle \
+                --label \"in progress\" --assignee @me --title <short task>` (one per distinct task; skip questions and chat); \
+                close it with a one-line summary (`gh issue close N -c ...`) when done.\n";
+        }
     }
     if !p.gcp.is_empty() || !p.gaccount.is_empty() {
         append += &format!("\n# Google Cloud\ngcloud is already pointed at this project's account ({}) and Cloud project ({}) \

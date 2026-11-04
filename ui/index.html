@@ -117,7 +117,14 @@ pre.diff { margin:0; padding:8px 0; font:12px/1.5 ui-monospace,Consolas,monospac
 pre.diff span { display:block; padding:0 10px; } pre.diff .del { background:color-mix(in srgb, var(--err) 14%, transparent); }
 pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.diff .ctx { color:var(--faint); }
 .msg.tool::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--line2); flex:none; }
-.msg.note { color:var(--dim); font-size:13px; text-align:center; } .msg.err { color:var(--err); font-size:13px; white-space:pre-wrap; }
+.msg.note { color:var(--dim); font-size:13px; text-align:center; }
+/* error: red rounded box, monospace; title = where it came from (the tool line before it) */
+.msg.err { color:var(--err); font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; align-self:stretch;
+  background:color-mix(in srgb, var(--err) 9%, transparent); border:1px solid color-mix(in srgb, var(--err) 35%, transparent); border-radius:12px; padding:8px 12px; }
+.msg.err .et { display:block; font:600 12px system-ui,sans-serif; margin-bottom:4px; opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#log.term .msg.err { border:0; background:none; padding:0; }
+.lcol { position:absolute; top:14px; right:-13px; z-index:6; width:26px; height:26px; border-radius:50%; background:var(--card); border:1px solid var(--line2); box-shadow:var(--shadow); }
+.lcol svg { rotate:180deg; width:14px; height:14px; }
 .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
 .card.qs { border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .card h4 { margin:0 0 4px; font-size:14px; }
@@ -329,16 +336,15 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 
 <aside id="side">
   <div id="brand"><img src="icon.svg" alt="" onclick="goHome()" style="cursor:pointer" title="Home"><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b>
-    <button class="ib" title="Collapse the sidebar" onclick="toggleLeft()"><svg class="i"><use href="#i-panelL"/></svg></button></div>
+</div>
+  <button class="ib lcol" title="Collapse the sidebar" onclick="toggleLeft()"><svg class="i"><use href="#i-chev"/></svg></button>
   <div class="side-head"><span class="seg grow" id="stabs"><button data-s="projects" onclick="setSide('projects')">Projects</button><button data-s="files" onclick="setSide('files')">Files</button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
   <div id="files" hidden></div>
   <div id="lrail" class="railbox"></div><div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
-  <div class="side-foot"><button class="btn ghost grow" id="acctBtn" onclick="acctCard(this)"></button>
-    <button class="ib" title="Settings" onclick="openSettings()"><svg class="i"><use href="#i-gear"/></svg></button>
-    <button class="ib" title="Restart Clauracle (sessions, running turns and unsent input all come back)" onclick="call('restart')"><svg class="i"><use href="#i-loop"/></svg></button></div>
+  <div class="side-foot"><button class="btn ghost grow" id="acctBtn" onclick="acctCard(this)" title="Accounts, settings, restart"></button></div>
 </aside>
 
 <main id="main">
@@ -510,10 +516,14 @@ function acctCard(btn) {
     ${p ? `<h5>AI account for ${esc(p.name)}</h5>${S.accounts.map(x => `<button class="pick ${x === a ? 'on' : ''}" data-acct="${esc(x.id)}">${avAI(x)}<span class="grow">${esc(x.nick)}<small class="dim" style="display:block">${esc(usageText(x.id))}</small></span></button>`).join('')}` : ''}
     ${ghKnown().length ? `<h5>GitHub</h5><div class="row wrap" style="gap:4px">${ghKnown().map(g => `<span class="pill" style="display:inline-flex;gap:5px;align-items:center;padding:2px 8px 2px 2px">${avGh(g)}@${esc(g)}</span>`).join('')}</div>` : ''}
     <div class="btnrow"><button class="btn" data-go="ai">${icon('user')}AI accounts</button><button class="btn" data-go="gh">${icon('gh')}GitHub</button></div>`;
+  card.innerHTML += `<hr style="border:0;border-top:1px solid var(--line);margin:0">
+    <button class="pick" data-go="">${icon('gear')}<span class="grow">Settings</span></button>
+    <button class="pick" id="acRestart" title="Sessions, running turns and unsent input all come back">${icon('loop')}<span class="grow">Restart Clauracle</span></button>`;
   document.body.append(card); card.showPopover();
   card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
   card.querySelectorAll('[data-acct]').forEach(b => b.onclick = () => { card.hidePopover(); setP({account: b.dataset.acct}).then(refresh); });
-  card.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { card.hidePopover(); openSettings(b.dataset.go); });
+  card.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { card.hidePopover(); openSettings(b.dataset.go || undefined); });
+  card.querySelector('#acRestart').onclick = () => call('restart');
   const r = btn.getBoundingClientRect();
   card.style.left = r.left + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
 }
@@ -697,6 +707,11 @@ function put(box, e) {
     line.innerHTML = `<span class="tn">${esc(line._label)}</span>` + Object.entries(n).map(([t, c]) =>
       `<span class="tp" title="${esc(t)}${c > 1 ? ' ×' + c : ''}">${TICON[t] ? icon(TICON[t]) : esc(t)}${c > 1 ? '×' + c : ''}</span>`).join('');
     return g.appendChild(line);
+  }
+  if (e.kind === 'err' && view === 'chat') { // title: the most recent tool line (what failed), else "Error"
+    const t = box.lastElementChild?.classList.contains('tools') && box.lastElementChild.lastElementChild;
+    el.innerHTML = `<span class="et">${t ? esc(t._label) + ' · ' + esc(t._es.at(-1).text.replace(/^↳ /, '').split(' ')[0]) + ' failed' : 'Error'}</span>`;
+    el.append(e.text);
   }
   const qs = box.querySelector('.qs');
   qs ? box.insertBefore(el, qs) : box.appendChild(el);
@@ -1053,6 +1068,7 @@ function projectsPage() {
     <div class="label">Token savers</div><div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
+      ${p.gh ? optRow('Prompts become team tasks', 'Each task you give Claude is filed as a GitHub issue (Team tasks), claimed while it works and closed when done', sw(p.team_auto, 'setM({team_auto:this.checked})')) : ''}
       ${optRow('Keep .env away from Claude', 'Claude can\'t read or edit .env files; manage them in the .env panel', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>
     <div class="label">Build</div>
