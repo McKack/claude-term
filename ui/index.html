@@ -52,7 +52,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 
 /* sidebar */
 #side { background:var(--side); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
-#brand { display:flex; align-items:center; gap:9px; padding:16px 14px 10px; font-weight:700; font-size:16px; }
+#brand { display:flex; align-items:center; justify-content:center; gap:9px; padding:16px 14px 10px; font-weight:700; font-size:16px; }
 #brand img { width:22px; height:22px; } #brand b span { color:var(--crab); }
 /* the name in Fredoka (SIL OFL, bundled, latin subset): rounded and a bit silly, like the word */
 @font-face { font-family:'Fredoka'; font-weight:600; font-display:swap; src:url(fredoka-600.woff2) format('woff2'); }
@@ -283,7 +283,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 #rtabs button:hover { background:var(--hover); } #rtabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 #atp { position:relative; border-top:1px solid var(--line); height:240px; min-height:44px; display:flex; flex-direction:column; flex:none; } #atp:empty { display:none; }
-#atp.min { height:auto !important; min-height:0; } #atp.min .atbody, #atp.min .atgrip, #atp.tabbed .atgrip { display:none; }
+#atp.min { height:auto !important; min-height:0; } #atp.min .atbody, #atp.tabbed .atgrip { display:none; }
 #atp.tabbed { flex:1; height:auto !important; min-height:0; border-top:0; } .athead .ib.tog { margin:-4px -2px -4px -6px; }
 .atgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } .atgrip:hover, body.dragging .atgrip { background:color-mix(in srgb, var(--accent) 30%, transparent); }
 .athead { display:flex; gap:8px; align-items:center; padding:8px 14px 6px; color:var(--faint); } .athead .seg button { font-size:12.5px; }
@@ -1874,9 +1874,10 @@ function rMin() {
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
 applyLook();
+const LMIN = 220; // below this the side tabs/tasks wrap word by word; narrower = rail
 function layout() {
   try { localStorage.ui = JSON.stringify(UI); } catch {}
-  $('side').classList.toggle('rail', UI.lc); $('side').style.width = (UI.lc ? RAIL : UI.lw) + 'px';
+  $('side').classList.toggle('rail', UI.lc); $('side').style.width = (UI.lc ? RAIL : Math.max(UI.lw, LMIN)) + 'px';
   $('right').classList.toggle('rail', UI.rc); $('right').style.width = (UI.rc ? RAIL : Math.max(UI.rw, rMin())) + 'px';
   drawRails();
 }
@@ -1888,7 +1889,7 @@ document.querySelectorAll('.grip').forEach(g => {
     document.body.classList.add('dragging');
     const move = e => {
       const w = left ? e.clientX : innerWidth - e.clientX, rail = w < SNAP;
-      if (left) { UI.lc = rail; if (!rail) UI.lw = Math.min(w, innerWidth * .5); }
+      if (left) { UI.lc = rail; if (!rail) UI.lw = Math.max(LMIN, Math.min(w, innerWidth * .5)); }
       else { const was = UI.rc; UI.rc = rail; if (!rail) UI.rw = Math.max(rMin(), Math.min(w, innerWidth * .75)); if (was !== rail) drawRight(); }
       layout();
     };
@@ -1971,8 +1972,11 @@ function drawAtp() {
   el.querySelector('.atgrip').onpointerdown = e => {
     const g = e.target, y0 = e.clientY, h0 = el.offsetHeight, max = host.offsetHeight - 120;
     g.setPointerCapture(e.pointerId); document.body.classList.add('dragging');
-    g.onpointermove = m => { el.style.height = Math.max(44, Math.min(max, h0 + y0 - m.clientY)) + 'px'; };
-    g.onpointerup = () => { g.onpointermove = null; document.body.classList.remove('dragging'); try { localStorage.atpH = el.style.height; } catch {} };
+    // like the side panels: dragged under 70px → folds to its header; dragged up again → opens (min 120px)
+    g.onpointermove = m => { const h = h0 + y0 - m.clientY, fold = h < 70;
+      if (fold !== atpMin) { atpMin = fold; el.classList.toggle('min', fold); try { localStorage.atpMin = fold ? '1' : ''; } catch {} }
+      if (!fold) el.style.height = Math.max(120, Math.min(max, h)) + 'px'; };
+    g.onpointerup = () => { g.onpointermove = null; document.body.classList.remove('dragging'); try { localStorage.atpH = el.style.height; } catch {} drawAtp(); };
   };
 }
 async function queueToTeam(btn) {
