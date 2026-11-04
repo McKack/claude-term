@@ -91,6 +91,7 @@ pub struct Project {
     pub shared: bool,         // owner isn't one of our gh accounts (collaboration)
     pub keep: bool,           // user kept their own gh/account over the suggestion
     pub used: f64,            // last opened, for "recent"
+    pub working: bool,        // a turn is running; still true at startup = it was cut off (crash/restart): resume it
 }
 impl Default for Project {
     fn default() -> Self {
@@ -99,7 +100,7 @@ impl Default for Project {
             off: vec![], mode: "default".into(), model: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, ready: false, questions: vec![], answers: String::new(),
             build: Build::default(), hide_env: true, terse: true,
-            owner: String::new(), shared: false, keep: false, used: 0.0,
+            owner: String::new(), shared: false, keep: false, used: 0.0, working: false,
         }
     }
 }
@@ -210,6 +211,22 @@ pub fn save(cfg: &Config) {
     let tmp = home().join("config.json.tmp"); // write then rename: a crash never leaves half a config
     if std::fs::write(&tmp, serde_json::to_string_pretty(cfg).unwrap_or_default()).is_ok() {
         let _ = std::fs::rename(&tmp, home().join("config.json"));
+    }
+}
+
+/// Unsent input per project (text + attachments), so a crash or restart never loses what was typed.
+pub fn drafts() -> serde_json::Map<String, serde_json::Value> {
+    std::fs::read_to_string(home().join("drafts.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+pub fn save_draft(pid: &str, draft: serde_json::Value) {
+    let _g = SAVE.lock().unwrap();
+    let mut all = drafts();
+    if draft.is_null() { all.remove(pid); } else { all.insert(pid.into(), draft); }
+    let _ = std::fs::create_dir_all(home());
+    let tmp = home().join("drafts.json.tmp");
+    if std::fs::write(&tmp, serde_json::Value::Object(all).to_string()).is_ok() {
+        let _ = std::fs::rename(&tmp, home().join("drafts.json"));
     }
 }
 

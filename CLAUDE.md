@@ -17,6 +17,8 @@ Current state and open work: see `HANDOVER.md`. Frozen, don't edit: `archive/tui
 - Run: `npx tauri dev`. Test: `cargo test --manifest-path src-tauri/Cargo.toml`. Build: `npx tauri build` (bundle for this OS).
 - If cargo isn't found, prefix PATH with `~/.cargo/bin`.
 - UI is embedded at compile time: rebuild after editing `ui/index.html`. Syntax-check its script with `node --check`.
+- Dogfooding: run the installed build, not `target/debug` (Windows locks a running exe, so cargo can't overwrite it).
+  After building, the `mcp__clauracle__restart` tool with `exe` swaps to the new build; running turns resume.
 - Visual check: run the debug exe and capture with PrintWindow; never drive the user's mouse/keyboard (SendKeys, clicks).
 
 ## Conventions

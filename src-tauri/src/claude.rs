@@ -51,6 +51,10 @@ const PREPARE: &str = "Pause here; don't start anything new{why}. Update HANDOVE
 exactly where you are (goal, what you were doing and how far it got, what is verified and what isn't, next steps in \
 order, gotchas learned), move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
 
+const RESUMED: &str = "continue
+
+Clauracle restarted while you were working (a restart you asked for, an update, or a crash), so your last turn was cut off. Check where you got to (files, git status) and carry on.";
+
 const CONTINUE: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md at the \
 project root and carry on with the next step.";
 
@@ -291,6 +295,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
             }
         };
         live.busy.store(true, SeqCst);
+        st.with_project(pid, |p| p.working = true);
         emit(app, "status", json!({"pid": pid, "busy": true}));
         conn.write(&json!({"type": "user", "message": {"role": "user", "content": content},
                            "parent_tool_use_id": null, "session_id": "default"})).await?;
@@ -302,12 +307,19 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
             }
         }
         live.busy.store(false, SeqCst);
+        st.with_project(pid, |p| p.working = false);
         emit(app, "status", json!({"pid": pid, "busy": false}));
         after_turn(app, st, pid, live, &conn).await;
     }
 }
 
 fn show(app: &AppHandle, st: &State, pid: &str, m: &Value) {
+    // the id is known from the start: a first turn cut off by a crash can still be resumed
+    if m["type"] == "system" && m["subtype"] == "init" {
+        if let Some(sid) = m["session_id"].as_str() {
+            st.with_project(pid, |p| p.session = Some(sid.into()));
+        }
+    }
     match m["type"].as_str() {
         Some("stream_event") => {
             let e = &m["event"];
@@ -572,7 +584,39 @@ fn tool_list() -> Value {
           HANDOVER.md is updated. When the turn ends Clauracle clears the context and a fresh session continues \
           (or waits for the user's Continue).", "inputSchema": {"type": "object", "properties": {}}},
         {"name": "ask", "description": "Queue questions for the user (numbered in a card, options with your \
-          recommendation, a note field each). Don't wait: the answers arrive later.", "inputSchema": q}]})
+          recommendation, a note field each). Don't wait: the answers arrive later.", "inputSchema": q},
+        {"name": "restart", "description": "Restart Clauracle itself, e.g. to try a new build of it. Nothing is lost:           every session resumes, this turn continues after the restart, unsent input stays. `exe`: a newly built           Clauracle executable to run instead (it's copied first, so the build output stays writable).",
+         "inputSchema": {"type": "object", "properties": {"exe": {"type": "string"}}}}]})
+}
+
+/// The exe to start: this one, or a copy of a new build in ~/.clauracle/run (alternating a/b so the copy
+/// we're running from is never the one overwritten).
+fn restart_target(exe: &str) -> Result<std::path::PathBuf, String> {
+    let me = std::env::current_exe().map_err(|e| e.to_string())?;
+    if exe.is_empty() {
+        return Ok(me);
+    }
+    let src = std::path::Path::new(exe);
+    if !src.is_file() {
+        return Err(format!("{exe} isn't a file"));
+    }
+    let dir = store::home().join("run");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let ext = src.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let a = dir.join(format!("clauracle-a{ext}"));
+    let dest = if me == a { dir.join(format!("clauracle-b{ext}")) } else { a };
+    std::fs::copy(src, &dest).map_err(|e| e.to_string())?;
+    Ok(dest)
+}
+
+/// At startup: turns that were running when Clauracle went down (crash, restart) pick up where they were.
+pub fn resume_interrupted(app: &AppHandle, st: &Arc<State>) {
+    let cut: Vec<String> = st.cfg.lock().unwrap().projects.iter().filter(|p| p.working && p.session.is_some())
+        .map(|p| p.id.clone()).collect();
+    for pid in cut {
+        session(app, st, &pid).inbox.push(Input::Msg(RESUMED.into()));
+        line(app, &pid, "note", "Clauracle restarted mid-turn: resuming");
+    }
 }
 
 fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value) -> Value {
@@ -591,6 +635,20 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                 }
                 live.armed.store(true, SeqCst);
                 text("Armed. When this turn ends the context is cleared and a fresh session continues from HANDOVER.md. End the turn now.")
+            }
+            Some("restart") => {
+                let exe = m["params"]["arguments"]["exe"].as_str().unwrap_or("").to_string();
+                match restart_target(&exe) {
+                    Ok(target) => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(800)).await; // let this reply land
+                            crate::relaunch(&app, target);
+                        });
+                        text("Restarting Clauracle now. This turn resumes after the restart; end it here.")
+                    }
+                    Err(e) => text(&format!("Can't restart: {e}")),
+                }
             }
             Some("ask") => {
                 let mut qs: Vec<Question> = serde_json::from_value(m["params"]["arguments"]["questions"].clone()).unwrap_or_default();

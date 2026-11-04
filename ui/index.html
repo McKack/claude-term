@@ -213,7 +213,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
-  <div class="side-foot"><button class="btn ghost grow" onclick="openSettings()"><svg class="i"><use href="#i-gear"/></svg>Settings</button></div>
+  <div class="side-foot"><button class="btn ghost grow" onclick="openSettings()"><svg class="i"><use href="#i-gear"/></svg>Settings</button>
+    <button class="ib" title="Restart Clauracle (sessions, running turns and unsent input all come back)" onclick="call('restart')"><svg class="i"><use href="#i-loop"/></svg></button></div>
 </aside>
 
 <main id="main">
@@ -259,7 +260,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <script>
 const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
 let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'gh', mp = null;
-const logs = {}, busy = {}, ctx = {}, live = {}, builds = {}, hiddenQs = {}, atts = {};
+const logs = {}, busy = {}, ctx = {}, live = {}, builds = {}, hiddenQs = {}, atts = {}, texts = {};
+let draftsLoaded = false;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
@@ -301,6 +303,10 @@ const contItems = () => Object.entries(MODES).map(([k, [l, h]]) => ({check: P().
 
 async function refresh() {
   S = await call('state');
+  if (!draftsLoaded) { // unsent input from before a close, crash or restart
+    draftsLoaded = true;
+    for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; }
+  }
   for (const id of S.busy) busy[id] = true;
   drawProjects();
   if (P()) drawChrome(); else drawHome();
@@ -368,8 +374,10 @@ const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != nu
 
 async function openProject(pid) {
   if (!P(pid)) return;
+  if (cur) texts[cur] = $('prompt').value;
   cur = pid;
-  $('head').hidden = $('dock').hidden = false; $('suggest').hidden = true;
+  $('prompt').value = texts[pid] || '';
+  $('head').hidden = $('dock').hidden = false; $('suggest').hidden = true; grow(); // measure once visible
   drawProjects(); drawChrome(); drawAtts();
   const info = await call('open_project', {pid});
   if (!logs[pid]) logs[pid] = info.history.length ? [...info.history, {kind: 'note', text: 'Resumed session'}] : [];
@@ -446,7 +454,13 @@ const hasInput = () => $('prompt').value.trim() || (atts[cur] || []).length;
 function drawAtts() {
   $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}">` : icon('file')}<span>${esc(a.name)}</span>
     <button onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button></div>`).join('');
-  if (cur) drawChrome();
+  if (cur) { drawChrome(); keepDraft(); }
+}
+// every keystroke/attachment lands on disk (debounced), so nothing typed is ever lost
+function keepDraft() {
+  const pid = cur, text = texts[pid] = $('prompt').value, a = atts[pid] || [];
+  clearTimeout(keepDraft[pid]);
+  keepDraft[pid] = setTimeout(() => call('save_draft', {pid, draft: text || a.length ? {text, atts: a} : null}), 300);
 }
 function addImage(file) {
   const r = new FileReader();
@@ -475,7 +489,7 @@ function send() {
 }
 $('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
 const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
-$('prompt').addEventListener('input', () => { grow(); if (cur) drawChrome(); });
+$('prompt').addEventListener('input', () => { grow(); if (cur) { drawChrome(); keepDraft(); } });
 function cont_() { hiddenQs[cur] = false; call('continue_now', {pid: cur}); }
 
 // ---- events from Rust ----
@@ -637,7 +651,7 @@ async function drawRight() {
 function draft(kind, x) {
   $('prompt').value = kind === 'pr' ? `Review PR #${x.number} "${x.title}" (${x.url}): read the diff and comments with gh, then list risks and suggested changes.`
     : `Work on issue #${x.number} "${x.title}" (${x.url}): read it with gh, then fix it on a new branch.`;
-  grow(); $('prompt').focus();
+  grow(); keepDraft(); $('prompt').focus();
 }
 
 // code view: browse and read the project's files

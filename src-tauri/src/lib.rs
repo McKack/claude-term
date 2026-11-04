@@ -21,7 +21,7 @@ fn state(st: St) -> Value {
     let live = st.live.lock().unwrap();
     let busy: Vec<&String> = live.iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k).collect();
     json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "active": cfg.active, "busy": busy,
-           "default_account": cfg.default_account, "notify": cfg.notify,
+           "default_account": cfg.default_account, "notify": cfg.notify, "drafts": store::drafts(),
            "claude": store::which("claude").is_some(), "gh": store::which("gh").is_some()})
 }
 
@@ -516,6 +516,34 @@ fn open_in_browser(exe: String, profile: String, url: String) -> R<()> {
     c.arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
+/// Start `exe` (detached, it outlives us) and quit; the new instance resumes cut-off turns (claude::resume_interrupted).
+pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf) {
+    for pid in CHILDREN.lock().unwrap().drain(..) {
+        kill_tree(pid); // sessions end before the new instance resumes them
+    }
+    let mut c = std::process::Command::new(exe);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x8 | 0x200); // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    }
+    if c.spawn().is_ok() {
+        app.exit(0);
+    }
+}
+
+#[tauri::command]
+fn save_draft(pid: String, draft: Value) {
+    store::save_draft(&pid, draft);
+}
+
+#[tauri::command]
+fn restart(app: AppHandle) {
+    if let Ok(me) = std::env::current_exe() {
+        relaunch(&app, me);
+    }
+}
+
 fn kill_tree(pid: u32) {
     if cfg!(windows) {
         let _ = store::command(std::path::Path::new("taskkill")).args(["/F", "/T", "/PID", &pid.to_string()]).output();
@@ -535,6 +563,8 @@ pub fn run() {
                 .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugin")); // dev runs
             app.manage(Arc::new(State { cfg: Mutex::new(store::load()), live: Default::default(),
                                         asks: Default::default(), plugin_dir }));
+            let st = app.state::<Arc<State>>().inner().clone();
+            claude::resume_interrupted(app.handle(), &st);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -542,7 +572,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who])
+            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {
