@@ -843,14 +843,14 @@ pub fn history(session: &str) -> Vec<Value> {
                     } else if t.starts_with(RESUMED) {
                         json!({"kind": "note", "text": "Resumed after a restart"})
                     } else {
-                        json!({"kind": "user", "text": t})
+                        json!({"kind": "user", "text": t, "ts": m["timestamp"]})
                     });
                 }
             }
             Some("assistant") if !hide => {
                 for b in content.as_array().into_iter().flatten() {
                     match b["type"].as_str() {
-                        Some("text") => out.push(json!({"kind": "claude", "text": b["text"]})),
+                        Some("text") => out.push(json!({"kind": "claude", "text": b["text"], "ts": m["timestamp"]})),
                         Some("tool_use") if !b["name"].as_str().unwrap_or("").starts_with("mcp__clauracle__") => out.push(
                             json!({"kind": "tool", "detail": b["input"], "id": b["id"], "text": format!("{}  {}", b["name"].as_str().unwrap_or(""), summary(&b["input"]))})),
                         _ => {}
