@@ -80,6 +80,7 @@ pub struct Project {
     pub on: Option<Vec<String>>, // the connections/skills the user picked for this project; nothing else is enabled
     pub mode: String,  // permission mode
     pub model: String, // "" = the CLI's default
+    pub effort: String, // --effort low|medium|high|xhigh|max; "" = the CLI's default
     pub ponytail: bool,
     pub cont: String,         // continue mode: manual | auto | auto_answer
     pub context_limit: f64,   // % of context; past it the session prepares a handover
@@ -104,7 +105,7 @@ impl Default for Project {
     fn default() -> Self {
         Project {
             id: String::new(), name: String::new(), path: String::new(), account: MAIN.into(), gh: String::new(),
-            off: vec![], on: None, mode: "default".into(), model: String::new(), ponytail: true, cont: "manual".into(),
+            off: vec![], on: None, mode: "default".into(), model: String::new(), effort: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, ready: false, questions: vec![], answers: String::new(),
             build: Build::default(), hide_env: true, terse: true,
             owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], team_auto: false,

@@ -220,6 +220,8 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 .menu button { display:flex; width:100%; gap:9px; align-items:center; text-align:left; border:0; background:none; padding:7px 10px; border-radius:8px; cursor:pointer; }
 .menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
+.menu .mcap { font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; padding:6px 10px 2px; }
+.menu .mchev { color:var(--faint); display:inline-flex; } .menu .mchev svg { width:14px; height:14px; } .menu .grow { flex:1; }
 
 /* right panel */
 #right { border-left:1px solid var(--line); background:var(--side); display:flex; flex-direction:column; min-height:0; }
@@ -407,7 +409,8 @@ const P = (id = cur) => S.projects.find(p => p.id === id);
 const nick = id => (S.accounts.find(a => a.id === id) || {nick: id}).nick;
 const MODES = {off: ['Off', 'Plain chat; only the context limit hands over'], manual: ['Manual', 'Stops when a task is done; you press Continue'],
   auto: ['Auto', 'Clears and continues by itself until a limit'], auto_answer: ['Auto + answers', 'Also answers what it can; holds only real decisions']};
-const MODELS = {'': 'Default', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku'};
+const MODELS = {'': 'Default', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku'};
+const EFFORTS = {'': 'Default', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max'};
 const PERMS = {default: 'Ask first', acceptEdits: 'Accept edits', plan: 'Plan only', bypassPermissions: 'Bypass'};
 
 // ponytail: tiny markdown (fences, inline code, bold, headings, lists, links); a library when tables matter
@@ -423,19 +426,31 @@ document.addEventListener('click', e => { const u = e.target.closest('[data-url]
 // ---- popover menus ----
 function menuAt(anchor, items) {
   closeMenu();
-  const m = document.createElement('div'), r = anchor.getBoundingClientRect();
-  m.className = 'menu glass';
-  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
-    <span>${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span></button>`).join('');
-  document.body.appendChild(m);
-  const h = m.offsetHeight, w = m.offsetWidth;
-  m.style.left = Math.min(r.left, innerWidth - w - 8) + 'px';
-  m.style.top = (r.bottom + h + 8 > innerHeight ? r.top - h - 6 : r.bottom + 6) + 'px';
-  m.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { closeMenu(); items[b.dataset.i].run(); });
+  buildMenu(items, anchor.getBoundingClientRect(), false);
   setTimeout(() => document.addEventListener('mousedown', outside), 0);
 }
+// item: '-' | {label, hint, icon, check, run, sub (indented), title (caption, not clickable), items (› submenu on hover)}
+function buildMenu(items, r, side, level = 0) {
+  document.querySelectorAll('.menu').forEach(x => +x.dataset.level >= level && x.remove());
+  const m = document.createElement('div');
+  m.className = 'menu glass'; m.dataset.level = level;
+  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
+    <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
+  document.body.appendChild(m);
+  const h = m.offsetHeight, w = m.offsetWidth;
+  if (side) { // beside the parent row; flips left at the window edge
+    m.style.left = (r.right + w + 4 > innerWidth ? r.left - w - 4 : r.right + 4) + 'px';
+    m.style.top = Math.max(8, Math.min(r.top - 5, innerHeight - h - 8)) + 'px';
+  } else {
+    m.style.left = Math.min(r.left, innerWidth - w - 8) + 'px';
+    m.style.top = (r.bottom + h + 8 > innerHeight ? r.top - h - 6 : r.bottom + 6) + 'px';
+  }
+  m.querySelectorAll('[data-i]').forEach(b => { const it = items[b.dataset.i];
+    b.onmouseenter = () => it.items ? buildMenu(it.items, b.getBoundingClientRect(), true, level + 1) : document.querySelectorAll('.menu').forEach(x => +x.dataset.level > level && x.remove());
+    b.onclick = () => { if (it.run) { closeMenu(); it.run(); } else if (it.items) buildMenu(it.items, b.getBoundingClientRect(), true, level + 1); }; });
+}
 const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
-function closeMenu() { document.querySelector('.menu')?.remove(); document.removeEventListener('mousedown', outside); }
+function closeMenu() { document.querySelectorAll('.menu').forEach(x => x.remove()); document.removeEventListener('mousedown', outside); }
 const addItems = () => [{icon: 'plus', label: 'New project', hint: 'Local for now; publish to GitHub later', run: newLocal},
   {icon: 'folder', label: 'Open folder', run: addProject}, {icon: 'gh', label: 'Clone from GitHub', run: openClone}];
 function newLocal() {
@@ -569,7 +584,7 @@ function drawChrome() {
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
   workTick();
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
-  $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account and model">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}</span>${icon('down')}</button>`
+  $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account and model">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${esc(PERMS[p.mode] || p.mode)}</span></button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue mode: ${esc(MODES[p.cont][0])}">${icon('loop')}<span class="lb">${esc(MODES[p.cont][0])}</span></button>`
     + (ctx[cur] != null ? `<span title="Context window used (last seen)">${icon('doc')}${ctx[cur]}%</span>` : '') + meter('five_hour', '5-hour', 'clock') + meter('seven_day', 'Weekly', 'cal')
@@ -612,9 +627,11 @@ document.addEventListener('mouseover', e => {
   }, 450);
 });
 ['mousedown', 'wheel', 'keydown'].forEach(t => document.addEventListener(t, hideTip, true));
-// accounts, each with its models nested under it (picking one sets both)
-const acctItems = () => [...S.accounts.flatMap(a => [{check: P().account === a.id, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id})},
-  ...Object.entries(MODELS).map(([k, l]) => ({sub: 1, check: P().account === a.id && P().model === k, label: l, run: () => setP({account: a.id, model: k})}))]), '-',
+// accounts; each has a › submenu: models, divider, effort (picking one also picks that account)
+const acctItems = () => [...S.accounts.map(a => { const on = P().account === a.id;
+  return {check: on, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id}), items: [{title: 'Model'},
+    ...Object.entries(MODELS).map(([k, l]) => ({check: on && P().model === k, label: l, run: () => setP({account: a.id, model: k})})), '-', {title: 'Effort'},
+    ...Object.entries(EFFORTS).map(([k, l]) => ({check: on && (P().effort || '') === k, label: l, run: () => setP({account: a.id, effort: k})}))]}; }), '-',
   {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}];
 const permItems = () => Object.entries(PERMS).map(([k, l]) => ({check: P().mode === k, label: l, run: () => setP({mode: k})}));
 const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };

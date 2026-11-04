@@ -227,6 +227,9 @@ fn args(st: &State, p: &Project) -> Vec<String> {
         "--include-partial-messages", "--permission-prompt-tool", "stdio"].iter().map(|s| s.to_string()).collect();
     a.extend(["--append-system-prompt".into(), append, "--permission-mode".into(), p.mode.clone(),
               "--plugin-dir".into(), st.plugin_dir.to_string_lossy().into(), "--mcp-config".into(), mcp.to_string()]);
+    if !p.effort.is_empty() {
+        a.extend(["--effort".into(), p.effort.clone()]);
+    }
     if !p.model.is_empty() {
         a.extend(["--model".into(), p.model.clone()]);
     }
