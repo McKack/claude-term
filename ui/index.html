@@ -116,7 +116,9 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 /* composer */
 #dock { padding:0 24px 14px; }
 #dock .col { gap:8px; }
-#handpill { align-self:center; font-size:12.5px; color:var(--dim); padding:5px 16px; border-radius:99px; border:1px solid var(--line);
+#workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; }
+#workpill[hidden], #handpill[hidden] { display:none; }
+#handpill, #workpill { align-self:center; font-size:12.5px; color:var(--dim); padding:5px 16px; border-radius:99px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
 #readytext b { font-weight:600; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -304,6 +306,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="log"><div class="col"></div></div>
   <div id="dock" hidden><div class="col">
     <div id="handpill" hidden>Preparing handover…</div>
+    <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg>Working…</div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" onclick="cont_()">Continue</button></div>
     <div id="composer">
@@ -460,9 +463,9 @@ function drawChrome() {
     : next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}` : 'Handover written. Continue clears the context and carries on.';
   $('ready').title = next.map((t, i) => `${i + 1}. ${t}`).join('\n');
   $('handpill').hidden = !(busy[cur] && hand[cur]);
+  $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
-  $('status').innerHTML = (busy[cur] ? `<span id="working">${icon('sparkle')}Working…</span>` : '')
-    + `<button onclick="menuAt(this, acctItems())" title="AI account and model">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}</span>${icon('down')}</button>`
+  $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account and model">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${esc(PERMS[p.mode] || p.mode)}</span></button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue mode: ${esc(MODES[p.cont][0])}">${icon('loop')}<span class="lb">${esc(MODES[p.cont][0])}</span></button>`
     + (ctx[cur] != null ? `<span title="Context window used (last seen)">${icon('doc')}${ctx[cur]}%</span>` : '') + meter('five_hour', '5-hour', 'clock') + meter('seven_day', 'Weekly', 'cal')

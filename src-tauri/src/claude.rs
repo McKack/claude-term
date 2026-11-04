@@ -560,7 +560,13 @@ async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) ->
     if tool.starts_with("mcp__clauracle__") {
         return json!({"behavior": "allow", "updatedInput": input});
     }
-    let cont = st.project(pid).map(|p| p.cont).unwrap_or_default();
+    let (cont, mode) = st.project(pid).map(|p| (p.cont, p.mode)).unwrap_or_default();
+    // the project's mode as set now: a switch mid-turn only reaches the CLI on reconnect, and CLI acceptEdits
+    // still asks for files outside the project dir
+    let edit = matches!(tool, "Edit" | "Write" | "MultiEdit" | "NotebookEdit");
+    if mode == "bypassPermissions" && tool != "AskUserQuestion" || mode == "acceptEdits" && edit {
+        return json!({"behavior": "allow", "updatedInput": input});
+    }
     if tool == "AskUserQuestion" && cont != "off" {
         return json!({"behavior": "deny", "message": "Don't wait for the user: queue the questions with \
             mcp__clauracle__ask (they're answered later) and carry on with what doesn't depend on them."});
