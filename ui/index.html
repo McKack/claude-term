@@ -712,12 +712,12 @@ document.addEventListener('mouseover', e => {
   if (!el) return;
   if (el.hasAttribute('title')) { el.dataset.tip = el.title; el.removeAttribute('title'); }
   if (!el.dataset.tip) return;
-  tipEl = el;
+  tipEl = el; const mx = e.clientX;
   tipT = setTimeout(() => {
     if (!el.isConnected) return;
     tip.textContent = el.dataset.tip; tip.showPopover(); // shown last = above an open dialog/menu
-    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
-    tip.style.left = Math.max(6, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 6)) + 'px';
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight, x = r.width > 160 ? mx : r.left + r.width / 2; // wide rows: at the pointer
+    tip.style.left = Math.max(6, Math.min(x - w / 2, innerWidth - w - 6)) + 'px';
     tip.style.top = (r.top - h - 6 >= 6 ? r.top - h - 6 : r.bottom + 6) + 'px'; // above (the pointer covers below), else below
   }, 450);
 });
@@ -1142,7 +1142,8 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
   status: () => { if ('busy' in d) busy[d.pid] = d.busy;
-    if (d.busy === false) { flushQueue(d.pid); refresh(); } // refresh: HANDOVER/CHANGES may have changed (Tasks tab) if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); } if (d.busy === false) live[d.pid] = '';
+    if (d.busy === false) { flushQueue(d.pid); refresh(); live[d.pid] = ''; } // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
+    if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
