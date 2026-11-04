@@ -347,7 +347,18 @@ function menuAt(anchor, items) {
 }
 const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
 function closeMenu() { document.querySelector('.menu')?.remove(); document.removeEventListener('mousedown', outside); }
-const addItems = () => [{icon: 'folder', label: 'Open folder', run: addProject}, {icon: 'gh', label: 'Clone from GitHub', run: openClone}];
+const addItems = () => [{icon: 'plus', label: 'New project', hint: 'Local for now; publish to GitHub later', run: newLocal},
+  {icon: 'folder', label: 'Open folder', run: addProject}, {icon: 'gh', label: 'Clone from GitHub', run: openClone}];
+function newLocal() {
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">New project</h2><p class="dim" style="margin:0 0 10px;font-size:13px">A folder in <span class="mono">${esc(S.projects_dir)}/local</span>, only on this computer. Publish it to GitHub any time from the GitHub tab.</p>
+    <input id="nlName" style="width:100%" placeholder="Name" onkeydown="if(event.key==='Enter')makeLocal()"><p id="nlMsg" class="err" style="font-size:13px"></p>
+    <div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button><button class="btn primary" onclick="makeLocal()">Create</button></div>`);
+  $('nlName').focus();
+}
+async function makeLocal() {
+  try { const p = await call('new_local', {name: $('nlName').value}); closeDlg(); await refresh(); await openProject(p.id); askProject(P(p.id)); }
+  catch (e) { $('nlMsg').textContent = e; }
+}
 const contItems = () => Object.entries(MODES).map(([k, [l, h]]) => ({check: P().cont === k, label: l, hint: h, run: () => setP({cont: k})}));
 
 async function refresh() {
@@ -375,7 +386,7 @@ function drawHome() {
   const box = $('log').querySelector('.col');
   box.innerHTML = `<div id="empty">${CRAB}<h2 style="color:var(--text);margin:0 0 6px">Clauracle</h2>
     <p>${S.projects.length ? 'Pick up where you left off, or start something new.' : 'Open a folder or clone a GitHub repo. Each project keeps its own GitHub account, AI account, connections, build and .env.'}</p>
-    <p class="row" style="justify-content:center"><button class="btn primary" onclick="addProject()">${icon('folder')}Open folder</button><button class="btn" onclick="openClone()">${icon('gh')}Clone from GitHub</button></p>
+    <p class="row" style="justify-content:center"><button class="btn primary" onclick="newLocal()">${icon('plus')}New project</button><button class="btn" onclick="addProject()">${icon('folder')}Open folder</button><button class="btn" onclick="openClone()">${icon('gh')}Clone from GitHub</button></p>
     ${S.projects.length ? `<div class="recent"><div class="label">Recent</div>${recent().slice(0, 6).map(projRow).join('')}</div>` : ''}
     <p id="missing"></p></div>`;
   $('missing').innerHTML = [!S.claude && `Claude Code isn't installed. <button class="btn" onclick="install('claude', this)">Install Claude Code</button>`,
@@ -650,12 +661,19 @@ function openManager(pid) {
   if (pid && pid !== mp) { mp = pid; $('dlg').querySelector('.body')?.scrollTo(0, 0); }
   return openSettings('projects');
 }
+async function pickRoot() {
+  const dir = await T.dialog.open({directory: true, title: 'Projects folder'});
+  if (dir) { await call('set_projects_dir', {dir}); openSettings('projects'); }
+}
 function projectsPage() {
   if (!P(mp)) mp = cur || S.projects[0]?.id;
-  if (!mp) return `<p class="dim">No projects yet: open a folder or clone a repo.</p>`;
+  const root = `<div class="grid2" style="grid-template-columns:120px 1fr;margin-top:0"><span>Projects folder</span><span class="row">
+      <input class="grow mono" value="${esc(S.projects_dir)}" onchange="call('set_projects_dir', {dir:this.value.trim()}).then(refresh)"><button class="btn" onclick="pickRoot()">Choose…</button></span>
+      <span></span><small class="dim" style="margin-top:-6px">Clones go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> in here (others' repos under their owner), new projects to <span class="mono">local/</span>.</small></div>`;
+  if (!mp) return root + `<p class="dim">No projects yet: open a folder or clone a repo.</p>`;
   const p = P(mp);
   const items = kind => cxList(kind, 'project:' + p.id, p);
-  return `<div class="split"><div class="plist">${recent().map(x => `<button class="${x.id === mp ? 'on' : ''}" onclick="openManager('${x.id}')">${icon(x.shared ? 'gh' : 'folder')}<span>${esc(x.name)}</span></button>`).join('')}
+  return root + `<div class="split"><div class="plist">${recent().map(x => `<button class="${x.id === mp ? 'on' : ''}" onclick="openManager('${x.id}')">${icon(x.shared ? 'gh' : 'folder')}<span>${esc(x.name)}</span></button>`).join('')}
     <button onclick="closeDlg(); menuAt($('projects'), addItems())">${icon('plus')}<span>Add project</span></button></div>
     <div><div class="row"><input value="${esc(p.name)}" onchange="setM({name:this.value})" style="font-size:17px;font-weight:600;border-color:transparent;padding-left:0" class="grow"></div>
     <small class="dim sel mono">${esc(p.path)}</small>
@@ -923,11 +941,15 @@ async function preset(file, name) {
 // ---- settings: GitHub · Connections & Skills · Agents · AI accounts · Notifications ----
 const PAGES = {projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
+// GitHub accounts / catalog changed: drop the cache and load again
+const reloadSettings = p => { SET = null; return openSettings(p); };
 async function openSettings(p) {
   const same = !p || p === page; // re-render of the same tab keeps its scroll
   if (p) page = p;
   if (!$('dlg').open) dlg('<p class="dim" style="padding:20px">Loading… (the first time asks Claude Code which connections it has)</p>', 'prefs');
-  [SET, , AGENTS] = await Promise.all([call('settings'), refresh(), call('agents')]); ghUsers = SET.gh_users;
+  if (!SET || !AGENTS) [SET, AGENTS] = await Promise.all([call('settings'), call('agents')]);
+  else if (same) await refresh(); // after a change: state is a cheap in-process read
+  ghUsers = SET.gh_users;
   const scroll = $('dlg').querySelector('.body')?.scrollTop;
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
@@ -938,15 +960,19 @@ async function openSettings(p) {
 function ghPage() {
   return `<p class="dim">GitHub accounts live in the GitHub CLI. Each project gets its own account's token, so any number can be signed in at once.</p>
     <div class="box">${ghUsers.map(u => optRow('@' + esc(u), '', `<button class="btn ghost" onclick="rmGh('${esc(u)}')">Log out</button>`)).join('') || '<p class="dim">None yet.</p>'}</div>
-    <p>${S.gh ? `<button class="btn primary" onclick="addGh()">${icon('plus')}Add GitHub account</button>` : `<button class="btn primary" onclick="install('gh', this).then(() => openSettings())">Install the GitHub CLI</button>`}</p><p id="ghMsg" class="dim"></p>`;
+    <p>${S.gh ? `<button class="btn primary" onclick="addGh()">${icon('plus')}Add GitHub account</button>` : `<button class="btn primary" onclick="install('gh', this).then(() => reloadSettings())">Install the GitHub CLI</button>`}</p><p id="ghMsg" class="dim"></p>`;
 }
 const builtin = id => id.startsWith('skill:clauracle:'); // Clauracle's own (Ponytail): its own switch
 // what a project/account has on; one from before allow-lists (`on` null) has everything but its `off`
 const onOf = x => x.on ?? SET.catalog.map(i => i.id).filter(id => !x.off.includes(id));
 // global rows switch an item off everywhere; scoped rows (account id | project:<id>) pick it for that one
 const cxList = (kind, scope, x) => SET.catalog.filter(i => i.kind === kind && (scope === 'global' || (!SET.off.includes(i.id) && !builtin(i.id)))).map(i =>
-  optRow(esc(i.label), esc(i.note), scope === 'global' ? sw(!SET.off.includes(i.id), `call('set_off', {item:'${esc(i.id)}', off:!this.checked, scope:'global'})`)
+  optRow(esc(i.label), esc(i.note), scope === 'global' ? sw(!SET.off.includes(i.id), `setGlobalOff('${esc(i.id)}', !this.checked)`)
     : sw(onOf(x).includes(i.id), `toggleOn('${esc(scope)}', '${esc(i.id)}', this.checked)`))).join('') || '<p class="dim">None.</p>';
+function setGlobalOff(id, off) {
+  SET.off = SET.off.filter(i => i !== id).concat(off ? [id] : []);
+  return call('set_off', {item: id, off, scope: 'global'});
+}
 async function toggleOn(scope, id, checked) {
   const x = scope.startsWith('project:') ? P(scope.slice(8)) : S.accounts.find(a => a.id === scope);
   const on = onOf(x).filter(i => i !== id);
@@ -983,7 +1009,7 @@ async function askLegacy(pid) {
 }
 function cxPage() {
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
-    <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => openSettings())">${icon('loop')}Rescan</button></p>
+    <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => reloadSettings())">${icon('loop')}Rescan</button></p>
     <div class="label">Connections</div><div class="box">${cxList('mcp', 'global')}</div>
     <div class="label">Skills</div><div class="box">${cxList('skill', 'global')}</div>`;
 }
@@ -1048,14 +1074,14 @@ async function askNewAccount() {
   openSettings('ai');
 }
 async function rmClaude(id) { if (confirm('Remove this account? Its projects fall back to Main.')) { await call('claude_remove', {id}); openSettings(); } }
-async function addGh() { $('ghMsg').textContent = 'Waiting for gh…'; const ok = await call('gh_login').catch(e => ($('ghMsg').textContent = e, false)); if (ok) openSettings(); }
-async function rmGh(u) { if (confirm(`Log @${u} out of gh?`)) { await call('gh_logout', {user: u}); openSettings(); } }
+async function addGh() { $('ghMsg').textContent = 'Waiting for gh…'; const ok = await call('gh_login').catch(e => ($('ghMsg').textContent = e, false)); if (ok) reloadSettings(); }
+async function rmGh(u) { if (confirm(`Log @${u} out of gh?`)) { await call('gh_logout', {user: u}); reloadSettings(); } }
 
 // ---- clone ----
 async function openClone() {
-  ghUsers = (await call('settings')).gh_users;
+  SET ||= await call('settings'); ghUsers = SET.gh_users;
   dlg(`<div class="row"><h2 class="grow">Clone from GitHub</h2><button class="ib" onclick="closeDlg()">${icon('x')}</button></div>${ghUsers.length ? `<div class="row"><select id="cloneUser">${ghUsers.map(u => `<option>${esc(u)}</option>`).join('')}</select>
-    <input id="cloneFilter" class="grow" placeholder="Filter, or owner/repo"></div><div id="repoList" class="dim" style="height:340px;overflow:auto;margin-top:8px">Loading…</div>`
+    <input id="cloneFilter" class="grow" placeholder="Filter, or owner/repo"></div><small class="dim">Into <span class="mono">${esc(S.projects_dir)}/&lt;owner&gt;/&lt;repo&gt;</span></small><div id="repoList" class="dim" style="height:340px;overflow:auto;margin-top:8px">Loading…</div>`
     : '<p class="dim">Add a GitHub account first (Settings › GitHub).</p>'}`);
   if (!ghUsers.length) return;
   let repos = [];
@@ -1067,10 +1093,8 @@ async function openClone() {
   $('cloneUser').onchange = load; $('cloneFilter').oninput = draw; load();
 }
 async function clone(repo) {
-  const parent = await T.dialog.open({directory: true, title: 'Clone into…'});
-  if (!parent) return;
   $('repoList').textContent = `Cloning ${repo}…`;
-  try { const p = await call('clone_repo', {user: $('cloneUser').value, repo, parent}); closeDlg(); await refresh(); await openProject(p.id); askProject(P(p.id)); }
+  try { const p = await call('clone_repo', {user: $('cloneUser').value, repo}); closeDlg(); await refresh(); await openProject(p.id); askProject(P(p.id)); }
   catch (e) { $('repoList').textContent = e; }
 }
 

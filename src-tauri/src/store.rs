@@ -174,6 +174,12 @@ pub struct Config {
     pub catalog: Vec<Item>,
     pub off: Vec<String>, // switched off everywhere
     pub notify: Notify,
+    pub projects_dir: String, // where clones and new projects go ("" = ~/Clauracle): <root>/<owner>/<repo>, <root>/local/<name>
+}
+
+/// Projects root: clones land in <root>/<owner>/<repo> (owner = the repo's, so collaborations sit under their owner).
+pub fn projects_root(cfg: &Config) -> PathBuf {
+    if cfg.projects_dir.trim().is_empty() { dirs::home_dir().unwrap_or_default().join("Clauracle") } else { PathBuf::from(cfg.projects_dir.trim()) }
 }
 
 pub fn home() -> PathBuf {
@@ -440,6 +446,22 @@ pub fn run(name: &str, args: &[&str], cwd: Option<&str>, env: &[(String, String)
 }
 
 // ---- GitHub: every account's token is handed to whoever needs it; nobody touches `gh auth switch` ----
+
+static GH_USERS: Mutex<Option<Vec<String>>> = Mutex::new(None);
+
+/// gh_accounts, remembered: `gh auth status` checks every account with GitHub (~1-2s). Forgotten on login/logout.
+pub fn gh_users() -> Vec<String> {
+    if let Some(u) = GH_USERS.lock().unwrap().clone() {
+        return u;
+    }
+    let u = gh_accounts();
+    *GH_USERS.lock().unwrap() = Some(u.clone());
+    u
+}
+
+pub fn forget_gh_users() {
+    *GH_USERS.lock().unwrap() = None;
+}
 
 pub fn gh_accounts() -> Vec<String> {
     let o = run("gh", &["auth", "status", "--json", "hosts"], None, &[]);

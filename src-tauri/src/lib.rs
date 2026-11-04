@@ -22,6 +22,7 @@ fn state(st: St) -> Value {
     let busy: Vec<&String> = live.iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k).collect();
     json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "active": cfg.active, "busy": busy,
            "default_account": cfg.default_account, "notify": cfg.notify, "drafts": store::drafts(),
+           "projects_dir": store::projects_root(&cfg).to_string_lossy(),
            // next steps from HANDOVER.md, for the ready bar
            "queues": cfg.projects.iter().filter(|p| p.ready).map(|p| (p.id.clone(), json!(claude::queue(&p.path))))
                .collect::<serde_json::Map<String, Value>>(),
@@ -49,7 +50,7 @@ async fn detect(st: &St<'_>, path: String) -> Option<store::Who> {
     let cfg = st.cfg.lock().unwrap().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let (owner, repo) = store::repo_of(&path)?;
-        Some(store::suggest(&cfg, &owner, &store::gh_accounts(), |u| store::can_push(u, &owner, &repo)))
+        Some(store::suggest(&cfg, &owner, &store::gh_users(), |u| store::can_push(u, &owner, &repo)))
     }).await.ok().flatten()
 }
 
@@ -227,7 +228,7 @@ async fn settings(st: St<'_>) -> R<Value> {
     if st.cfg.lock().unwrap().catalog.is_empty() {
         refresh_catalog(st.clone()).await?;
     }
-    let gh = tauri::async_runtime::spawn_blocking(store::gh_accounts).await.map_err(|e| e.to_string())?;
+    let gh = tauri::async_runtime::spawn_blocking(store::gh_users).await.map_err(|e| e.to_string())?;
     let cfg = st.cfg.lock().unwrap();
     Ok(json!({"catalog": cfg.catalog, "off": cfg.off, "gh_users": gh}))
 }
@@ -411,6 +412,7 @@ async fn gcloud_do(st: St<'_>, pid: String, action: String, arg: String, on: Opt
 
 #[tauri::command]
 async fn gh_login(app: AppHandle) -> R<bool> {
+    store::forget_gh_users();
     tauri::async_runtime::spawn_blocking(move || {
         use std::io::BufRead;
         let gh = store::which("gh").ok_or("gh isn't installed")?;
@@ -438,8 +440,31 @@ async fn gh_login(app: AppHandle) -> R<bool> {
 
 #[tauri::command]
 async fn gh_logout(user: String) -> bool {
+    store::forget_gh_users();
     tauri::async_runtime::spawn_blocking(move || store::run("gh", &["auth", "logout", "-h", "github.com", "-u", &user], None, &[]).ok)
         .await.unwrap_or(false)
+}
+
+#[tauri::command]
+fn set_projects_dir(st: St, dir: String) {
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.projects_dir = dir;
+    store::save(&cfg);
+}
+
+/// A new, local-only project: <root>/local/<name> (publish it to GitHub later from the GitHub tab).
+#[tauri::command]
+fn new_local(st: St, name: String) -> R<Value> {
+    let name = name.trim();
+    if name.is_empty() || name.contains(['/', '\\', ':']) || name.starts_with('.') {
+        return Err("Use a plain folder name".into());
+    }
+    let mut cfg = st.cfg.lock().unwrap();
+    let dir = store::projects_root(&cfg).join("local").join(name);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let p = store::new_project(&mut cfg, &dir.to_string_lossy(), None, None);
+    store::save(&cfg);
+    Ok(json!(p))
 }
 
 #[tauri::command]
@@ -450,7 +475,7 @@ async fn gh_info(st: St<'_>, pid: String) -> R<Value> {
         json!({"repo": store::gh_json(&["repo", "view", "--json", "nameWithOwner,url"], &p.gh, Some(&p.path)),
                "prs": store::gh_json(&["pr", "list", "--json", f], &p.gh, Some(&p.path)),
                "issues": store::gh_json(&["issue", "list", "--json", f], &p.gh, Some(&p.path)),
-               "remote": store::repo_of(&p.path).is_some(), "users": store::gh_accounts()})
+               "remote": store::repo_of(&p.path).is_some(), "users": store::gh_users()})
     }).await.map_err(|e| e.to_string())
 }
 
@@ -500,13 +525,19 @@ async fn gh_repos(user: String) -> Value {
 }
 
 #[tauri::command]
-async fn clone_repo(st: St<'_>, user: String, repo: String, parent: String) -> R<Value> {
-    let dest = std::path::Path::new(&parent).join(repo.rsplit('/').next().unwrap_or(&repo)).to_string_lossy().to_string();
-    let (d, u) = (dest.clone(), user.clone());
-    let out = tauri::async_runtime::spawn_blocking(move || store::run("gh", &["repo", "clone", &repo, &d], None, &store::gh_env(&u)))
-        .await.map_err(|e| e.to_string())?;
-    if !out.ok {
-        return Err(out.stderr.trim().to_string());
+async fn clone_repo(st: St<'_>, user: String, repo: String) -> R<Value> {
+    // <root>/<owner>/<repo>; already cloned there = just add it
+    let dest = store::projects_root(&st.cfg.lock().unwrap()).join(repo.split('/').collect::<std::path::PathBuf>()).to_string_lossy().to_string();
+    if let Some(p) = st.cfg.lock().unwrap().projects.iter().find(|p| p.path == dest) {
+        return Ok(json!(p));
+    }
+    if !std::path::Path::new(&dest).join(".git").exists() {
+        let (d, u) = (dest.clone(), user.clone());
+        let out = tauri::async_runtime::spawn_blocking(move || store::run("gh", &["repo", "clone", &repo, &d], None, &store::gh_env(&u)))
+            .await.map_err(|e| e.to_string())?;
+        if !out.ok {
+            return Err(out.stderr.trim().to_string());
+        }
     }
     let who = detect(&st, dest.clone()).await;
     let mut cfg = st.cfg.lock().unwrap();
@@ -676,6 +707,19 @@ pub fn run() {
                                         asks: Default::default(), plugin_dir }));
             let st = app.state::<Arc<State>>().inner().clone();
             claude::resume_interrupted(app.handle(), &st);
+            // warm the slow lookups so Settings opens instantly: gh accounts, and the catalog on a first run
+            let st2 = st.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = tauri::async_runtime::spawn_blocking(store::gh_users).await;
+                if st2.cfg.lock().unwrap().catalog.is_empty() {
+                    let dir = st2.plugin_dir.clone();
+                    if let Ok(items) = tauri::async_runtime::spawn_blocking(move || store::catalog(&dir)).await {
+                        let mut cfg = st2.cfg.lock().unwrap();
+                        cfg.catalog = items;
+                        store::save(&cfg);
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -683,7 +727,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, set_items])
+            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, set_items, set_projects_dir, new_local])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {
