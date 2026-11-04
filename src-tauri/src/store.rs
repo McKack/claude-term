@@ -785,6 +785,73 @@ pub fn publish(dir: &str, user: &str, name: &str, private: bool) -> Result<Strin
     if o.ok { Ok(o.stdout.trim().to_string()) } else { fail(o) }
 }
 
+// ---- team tasks: GitHub issues labelled `clauracle`; taken = assignee + `in progress` (no commits, all live on GitHub) ----
+
+pub const TASK_LABEL: &str = "clauracle";
+pub const DOING_LABEL: &str = "in progress";
+
+pub fn tasks(dir: &str, user: &str) -> serde_json::Value {
+    gh_json(&["issue", "list", "--label", TASK_LABEL, "--state", "open", "--limit", "100",
+              "--json", "number,title,url,assignees,labels,updatedAt"], user, Some(dir))
+}
+
+/// gh issue actions: new (title) | claim | release | done (number).
+pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<(), String> {
+    let env = gh_env(user);
+    let gh = |a: &[&str]| { let o = run("gh", a, Some(dir), &env); if o.ok { Ok(()) } else { Err(o.stderr.trim().to_string()) } };
+    match action {
+        "new" => {
+            let _ = gh(&["label", "create", TASK_LABEL, "--color", "D77655", "--description", "Task tracked in Clauracle"]);
+            gh(&["issue", "create", "--title", arg, "--body", "", "--label", TASK_LABEL])
+        }
+        "claim" => {
+            let _ = gh(&["label", "create", DOING_LABEL, "--color", "4F5BD5", "--description", "Someone is on it"]);
+            gh(&["issue", "edit", arg, "--add-assignee", "@me", "--add-label", DOING_LABEL])
+        }
+        "release" => gh(&["issue", "edit", arg, "--remove-assignee", "@me", "--remove-label", DOING_LABEL]),
+        "done" => gh(&["issue", "close", arg]),
+        _ => Err("unknown task action".into()),
+    }
+}
+
+/// Files my work touches: uncommitted changes + commits on this branch since it left the default branch.
+pub fn my_files(dir: &str) -> Vec<String> {
+    let mut files: Vec<String> = run("git", &["status", "--porcelain"], Some(dir), &[]).stdout.lines()
+        .filter_map(|l| l.get(3..)).map(|f| f.rsplit(" -> ").next().unwrap_or(f).trim_matches('"').to_string()).collect();
+    for base in ["origin/HEAD", "origin/main", "origin/master"] {
+        let o = run("git", &["diff", "--name-only", &format!("{base}...HEAD")], Some(dir), &[]);
+        if o.ok {
+            files.extend(o.stdout.lines().map(String::from));
+            break;
+        }
+    }
+    files.sort();
+    files.dedup();
+    files
+}
+
+/// Someone else's open PRs that change the same files as my work: [{number, title, url, author, files}].
+pub fn overlap(mine: &[String], prs: &serde_json::Value, me: &str, branch: &str) -> Vec<serde_json::Value> {
+    prs.as_array().into_iter().flatten().filter(|pr| {
+        !pr["author"]["login"].as_str().unwrap_or("").eq_ignore_ascii_case(me) && pr["headRefName"] != branch
+    }).filter_map(|pr| {
+        let both: Vec<&str> = pr["files"].as_array().into_iter().flatten().filter_map(|f| f["path"].as_str())
+            .filter(|f| mine.iter().any(|m| m == f)).collect();
+        (!both.is_empty()).then(|| serde_json::json!({"number": pr["number"], "title": pr["title"], "url": pr["url"],
+                                                       "author": pr["author"]["login"], "files": both}))
+    }).collect()
+}
+
+pub fn conflicts(dir: &str, user: &str) -> Vec<serde_json::Value> {
+    let mine = my_files(dir);
+    if mine.is_empty() {
+        return vec![];
+    }
+    let branch = run("git", &["branch", "--show-current"], Some(dir), &[]).stdout.trim().to_string();
+    let prs = gh_json(&["pr", "list", "--state", "open", "--limit", "50", "--json", "number,title,url,author,files,headRefName"], user, Some(dir));
+    overlap(&mine, &prs, user, &branch)
+}
+
 pub fn git_ignored(dir: &str, file: &str) -> Option<bool> {
     if !Path::new(dir).join(".git").exists() { return None; }
     Some(run("git", &["check-ignore", "-q", file], Some(dir), &[]).ok)
@@ -891,6 +958,18 @@ mod tests {
         let t = env_set(&t, "C", Some("has \"quote\"\nand a line"));
         assert_eq!(env_parse(&t)[2], ("C".to_string(), "has \"quote\"\nand a line".to_string()));
         assert_eq!(env_parse(&env_set(&t, "A", None)).len(), 2);
+    }
+
+    #[test]
+    fn conflicting_prs() {
+        let prs = serde_json::json!([
+            {"number": 1, "author": {"login": "anna"}, "headRefName": "a", "files": [{"path": "src/auth.ts"}, {"path": "x"}]},
+            {"number": 2, "author": {"login": "Me"}, "headRefName": "b", "files": [{"path": "src/auth.ts"}]},
+            {"number": 3, "author": {"login": "bo"}, "headRefName": "mine", "files": [{"path": "src/auth.ts"}]},
+            {"number": 4, "author": {"login": "cy"}, "headRefName": "c", "files": [{"path": "README.md"}]}]);
+        let c = overlap(&["src/auth.ts".into(), "y".into()], &prs, "me", "mine");
+        assert_eq!(c.len(), 1); // not mine, not my branch, not without shared files
+        assert_eq!((c[0]["number"].as_i64(), c[0]["files"][0].as_str()), (Some(1), Some("src/auth.ts")));
     }
 
     #[test]

@@ -204,6 +204,11 @@ fn args(st: &State, p: &Project) -> Vec<String> {
         append += &format!("\n# Build (Clauracle runs these itself after a task; don't repeat them)\nbuild: {}\nrun: {}\n",
                            p.build.build, p.build.run);
     }
+    if !p.gh.is_empty() {
+        append += "\n# Team tasks\nShared tasks are GitHub issues labelled `clauracle`; one with an assignee and the `in progress` \
+            label is taken. Before starting one, check it's free and claim it (`gh issue edit N --add-assignee @me --add-label \
+            \"in progress\"`); close it when done. New work others should see: `gh issue create --label clauracle`.\n";
+    }
     if !p.gcp.is_empty() || !p.gaccount.is_empty() {
         append += &format!("\n# Google Cloud\ngcloud is already pointed at this project's account ({}) and Cloud project ({}) \
             through env vars: don't run `gcloud config set` or switch accounts.\n", p.gaccount, p.gcp);
@@ -300,7 +305,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
         };
         live.busy.store(true, SeqCst);
         st.with_project(pid, |p| p.working = true);
-        emit(app, "status", json!({"pid": pid, "busy": true}));
+        emit(app, "status", json!({"pid": pid, "busy": true, "handover": live.handing_over.load(SeqCst)}));
         conn.write(&json!({"type": "user", "message": {"role": "user", "content": content},
                            "parent_tool_use_id": null, "session_id": "default"})).await?;
         loop {
@@ -774,12 +779,32 @@ static RUNNING: std::sync::LazyLock<Mutex<HashMap<String, tokio::process::Child>
 // ---- history of a resumed session ------------------------------------------------------------------
 
 /// The visible part of a session's transcript (~/.claude/projects/*/<id>.jsonl), last 300 entries.
+/// Items of the "## Queue" list in HANDOVER.md (numbered or bulleted), in order.
+pub fn queue(dir: &str) -> Vec<String> {
+    let text = std::fs::read_to_string(std::path::Path::new(dir).join("HANDOVER.md")).unwrap_or_default();
+    let item = regex::Regex::new(r"^\s*(?:\d+[.)]|[-*])\s+(.+)").unwrap();
+    let mut on = false;
+    let mut out = vec![];
+    for l in text.lines() {
+        if l.starts_with('#') {
+            on = l.to_lowercase().contains("queue");
+        } else if on {
+            if let Some(c) = item.captures(l) {
+                out.push(c[1].replace("**", "").trim().to_string());
+            }
+        }
+    }
+    out
+}
+
 pub fn history(session: &str) -> Vec<Value> {
     let root = dirs::home_dir().unwrap_or_default().join(".claude/projects");
     let file = std::fs::read_dir(root).into_iter().flatten().flatten()
         .map(|d| d.path().join(format!("{session}.jsonl"))).find(|f| f.is_file());
     let Some(file) = file else { return vec![] };
     let mut out = vec![];
+    let prep = PREPARE.split('{').next().unwrap_or(PREPARE);
+    let mut hide = false; // inside a handover turn
     for l in std::fs::read_to_string(file).unwrap_or_default().lines() {
         let Ok(m) = serde_json::from_str::<Value>(l) else { continue };
         if m["isMeta"] == true || m["isSidechain"] == true {
@@ -789,12 +814,20 @@ pub fn history(session: &str) -> Vec<Value> {
         match m["type"].as_str() {
             Some("user") => {
                 if let Some(t) = content.as_str() {
-                    if !t.starts_with('<') {
-                        out.push(json!({"kind": "user", "text": t}));
+                    hide = t.starts_with(prep);
+                    if hide || t.starts_with('<') {
+                        continue;
                     }
+                    out.push(if t.starts_with(CONTINUE) {
+                        json!({"kind": "note", "text": "Fresh session, continued from HANDOVER.md"})
+                    } else if t.starts_with(RESUMED) {
+                        json!({"kind": "note", "text": "Resumed after a restart"})
+                    } else {
+                        json!({"kind": "user", "text": t})
+                    });
                 }
             }
-            Some("assistant") => {
+            Some("assistant") if !hide => {
                 for b in content.as_array().into_iter().flatten() {
                     match b["type"].as_str() {
                         Some("text") => out.push(json!({"kind": "claude", "text": b["text"]})),
@@ -814,6 +847,15 @@ pub fn history(session: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn handover_queue() {
+        let d = std::env::temp_dir().join("clauracle-queue-test");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("HANDOVER.md"), "# Handover\n## Where\n- not this\n## Queue\n1. **Add** login\n2) Tests\n   detail line\n- Docs\n## Gotchas\n- no\n").unwrap();
+        assert_eq!(queue(d.to_str().unwrap()), ["Add login", "Tests", "Docs"]);
+        assert!(queue("/nope").is_empty());
+    }
 
     #[test]
     fn inbox_front_goes_first_in_order() {

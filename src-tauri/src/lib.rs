@@ -22,6 +22,9 @@ fn state(st: St) -> Value {
     let busy: Vec<&String> = live.iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k).collect();
     json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "active": cfg.active, "busy": busy,
            "default_account": cfg.default_account, "notify": cfg.notify, "drafts": store::drafts(),
+           // next steps from HANDOVER.md, for the ready bar
+           "queues": cfg.projects.iter().filter(|p| p.ready).map(|p| (p.id.clone(), json!(claude::queue(&p.path))))
+               .collect::<serde_json::Map<String, Value>>(),
            "claude": store::which("claude").is_some(), "gh": store::which("gh").is_some()})
 }
 
@@ -451,6 +454,28 @@ async fn publish_repo(st: St<'_>, pid: String, user: String, name: String, priva
     Ok(url)
 }
 
+/// Team view, polled by the page: open `clauracle` issues + other people's PRs touching my files.
+#[tauri::command]
+async fn team(st: St<'_>, pid: String) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        if store::repo_of(&p.path).is_none() {
+            return json!({"repo": false});
+        }
+        let (tasks, conflicts) = std::thread::scope(|s| {
+            let t = s.spawn(|| store::tasks(&p.path, &p.gh));
+            (t.join().unwrap_or_default(), store::conflicts(&p.path, &p.gh))
+        });
+        json!({"repo": true, "me": p.gh, "tasks": tasks, "conflicts": conflicts})
+    }).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn task_do(st: St<'_>, pid: String, action: String, arg: String) -> R<()> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    tauri::async_runtime::spawn_blocking(move || store::task_do(&p.path, &p.gh, &action, &arg)).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn gh_repos(user: String) -> Value {
     tauri::async_runtime::spawn_blocking(move || store::gh_json(&["repo", "list", "--limit", "300", "--json", "nameWithOwner,description"], &user, None))
@@ -641,7 +666,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do])
+            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {

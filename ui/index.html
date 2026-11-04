@@ -87,7 +87,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .card pre { background:var(--code); padding:10px; border-radius:9px; max-height:260px; overflow:auto; white-space:pre-wrap; margin:8px 0; }
 .btns { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
 #empty { margin:12vh auto 0; text-align:center; color:var(--dim); max-width:460px; }
-.crab { color:var(--crab); font:20px/1.05 ui-monospace,"Cascadia Code",Consolas,monospace; margin:0 auto 14px; display:inline-block; text-align:left; }
+.crab { display:flex; gap:20px; align-items:flex-end; justify-content:center; margin:0 auto 16px; }
 .recent { text-align:left; margin:22px auto 0; max-width:420px; }
 .recent .proj { border:1px solid var(--line); margin:6px 0; background:var(--card); }
 .side-sub { padding:12px 10px 4px 9px; font-size:11.5px; color:var(--faint); }
@@ -105,6 +105,13 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 /* composer */
 #dock { padding:0 24px 14px; }
 #dock .col { gap:8px; }
+#handpill { align-self:center; font-size:12.5px; color:var(--dim); padding:5px 16px; border-radius:99px; border:1px solid var(--line);
+  background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
+@keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
+#readytext b { font-weight:600; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.btn.sm { padding:2px 8px; font-size:12px; }
+.warn { background:color-mix(in srgb, var(--err) 12%, transparent); color:var(--err); border-radius:10px; padding:8px 10px; font-size:12.5px; margin:6px 0; }
+.warn a { color:inherit; text-decoration:underline; cursor:pointer; }
 #ready, #suggest { display:flex; gap:12px; align-items:center; padding:9px 10px 9px 16px; border-radius:12px; background:var(--soft); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
 #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 60%, var(--line2)); }
@@ -242,6 +249,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   </div>
   <div id="log"><div class="col"></div></div>
   <div id="dock" hidden><div class="col">
+    <div id="handpill" hidden>Preparing handover…</div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" onclick="cont_()">Continue</button></div>
     <div id="composer">
@@ -279,7 +287,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <script>
 const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
 let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'gh', mp = null;
-const logs = {}, busy = {}, ctx = {}, live = {}, builds = {}, hiddenQs = {}, atts = {}, texts = {};
+const hand = {}, team = {}, logs = {}, busy = {}, ctx = {}, live = {}, builds = {}, hiddenQs = {}, atts = {}, texts = {};
 let draftsLoaded = false;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -331,9 +339,15 @@ async function refresh() {
   if (P()) drawChrome(); else drawHome();
 }
 // Claude Code's crab, on the home screen and on every fresh chat
-const CRAB = `<pre class="crab"> ▐▛███▜▌
-▝▜█████▛▘
-  ▘▘ ▝▝</pre>`;
+// mascots, one per AI account vibe: pixel grids drawn as whole-pixel SVG rects (crisp at any zoom; text glyphs left seams)
+const MASCOTS = [
+  ['#7c83ff', ['..#........#..', '..##########..', '..###.##.###..', '##############', '...#.#..#.#...']],
+  ['var(--crab)', ['...############...', '...##.######.##...', '.################.', '...############...', '....#.#....#.#....']],
+  ['#3fbf9f', ['....######....', '..##########..', '.###.####.###.', '##############', '##.###..###.##']],
+];
+const pix = ([c, rows], k = 6) => `<svg width="${rows[0].length * k}" height="${rows.length * k}" shape-rendering="crispEdges" style="fill:${c}">${rows.flatMap((r, y) =>
+  [...r.matchAll(/#+/g)].map(m => `<rect x="${m.index * k}" y="${y * k}" width="${m[0].length * k}" height="${k}"/>`)).join('')}</svg>`;
+const CRAB = `<div class="crab">${MASCOTS.map(m => pix(m)).join('')}</div>`;
 const recent = () => [...S.projects].sort((a, b) => b.used - a.used);
 function drawHome() {
   const box = $('log').querySelector('.col');
@@ -373,8 +387,11 @@ function drawChrome() {
   $('tCont').classList.toggle('on', p.cont !== 'off');
   $('tCont').title = 'Clear & continue: ' + MODES[p.cont][0];
   $('ready').hidden = !p.ready;
-  $('readytext').textContent = p.questions.length ? `Handover written. Answer the question${p.questions.length > 1 ? 's' : ''} above, then continue.`
-    : 'Handover written. Continue clears the context and carries on.';
+  const next = nextUp(cur);
+  $('readytext').innerHTML = p.questions.length ? `Answer the question${p.questions.length > 1 ? 's' : ''} above, then continue.`
+    : next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}` : 'Handover written. Continue clears the context and carries on.';
+  $('ready').title = next.map((t, i) => `${i + 1}. ${t}`).join('\n');
+  $('handpill').hidden = !(busy[cur] && hand[cur]);
   const meter = (k, l) => u[k] == null ? '' : `<span title="${l} usage">${l} <span class="bar"><i style="width:${u[k]}%"></i></span> ${u[k]}%</span>`;
   $('status').innerHTML = (busy[cur] ? `<span id="working">${icon('sparkle')}Working…</span>` : '')
     + `<button onclick="menuAt(this, acctItems())" title="AI account">${icon('user')}<b>${esc(nick(p.account))}</b>${icon('down')}</button>`
@@ -405,7 +422,7 @@ async function openProject(pid) {
   busy[pid] = info.busy;
   $('branch').hidden = !info.branch; $('branch').textContent = info.branch;
   drawLog(); drawChrome(); drawRight(); $('prompt').focus();
-  suggest(pid);
+  suggest(pid); pollTeam();
 }
 // the repo's owner decides (by code): its gh account and the AI account tied to it, if they're set up here
 async function suggest(pid) {
@@ -448,8 +465,11 @@ function put(box, e) {
   const qs = box.querySelector('.qs');
   qs ? box.insertBefore(el, qs) : box.appendChild(el);
 }
+// Clauracle's own process: handover files and its MCP tools (shown as the pill instead)
+const isProcess = e => e.kind === 'tool' && (/^mcp__clauracle__/.test(e.text) || /(^|[\\/])(HANDOVER|CHANGES)\.md$/i.test(e.detail?.file_path || ''));
 function entry(e) {
   if (e.kind === 'ask') return askCard(e);
+  if (isProcess(e)) return null;
   if (view === 'chat' && (e.kind === 'out' || e.kind === 'think')) return null;
   const d = document.createElement('div');
   d.className = 'msg ' + e.kind;
@@ -461,6 +481,8 @@ function entry(e) {
 }
 function liveEl(pid) { const d = document.createElement('div'); d.className = 'msg claude'; d.id = 'live'; d.innerHTML = md(live[pid]); return d; }
 function addEntry(pid, e) {
+  if (hand[pid] === true && e.kind !== 'err' && e.kind !== 'ask') return; // a handover turn: only the pill shows
+  if (isProcess(e) && busy[pid]) { hand[pid] = hand[pid] || 'soft'; if (pid === cur) drawChrome(); }
   (logs[pid] ||= []).push(e);
   if (pid !== cur) return;
   const log = $('log'), box = log.querySelector('.col'), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
@@ -517,9 +539,10 @@ function cont_() { hiddenQs[cur] = false; call('continue_now', {pid: cur}); }
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   line: () => { if (d.kind === 'claude') live[d.pid] = ''; addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail}); },
-  delta: () => { live[d.pid] = (live[d.pid] || '') + d.text;
+  delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
   status: () => { if ('busy' in d) busy[d.pid] = d.busy; if ('context' in d) ctx[d.pid] = d.context; if (d.busy === false) live[d.pid] = '';
+    if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; ctx[d.pid] = null; live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   ready: () => refresh().then(() => d.pid === cur && drawLog()),
@@ -665,13 +688,54 @@ async function drawRight() {
   box.innerHTML = '<p class="dim">Loading…</p>';
   const g = await call('gh_info', {pid: cur}), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
     <div class="row dim" style="font-size:12px"><span class="grow">${esc(x.author?.login)}</span><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask Claude</button></div></div>`;
-  box.innerHTML = `<div class="label">Repository</div>` + (g.repo ? `<p><a href="#" data-url="${esc(g.repo.url)}" style="color:var(--accent)">${esc(g.repo.nameWithOwner)}</a> <small class="dim">as @${esc(p.gh)}</small></p>`
+  box.innerHTML = `<div id="tasksBox">${tasksHtml()}</div><div class="label">Repository</div>` + (g.repo ? `<p><a href="#" data-url="${esc(g.repo.url)}" style="color:var(--accent)">${esc(g.repo.nameWithOwner)}</a> <small class="dim">as @${esc(p.gh)}</small></p>`
     : g.remote ? `<p class="dim">Can't read the GitHub repo${p.gh ? ` as @${esc(p.gh)}` : ': set a GitHub account in the project manager'}.</p>`
     : publishForm(p, g.users || []))
     + `<div class="label" style="margin-top:14px">Pull requests</div>` + ((g.prs || []).map(x => item(x, 'pr')).join('') || '<p class="dim">None open.</p>')
     + `<div class="label" style="margin-top:14px">Issues</div>` + ((g.issues || []).map(x => item(x, 'issue')).join('') || '<p class="dim">None open.</p>')
     + `<p><button class="btn ghost" onclick="drawRight()">Refresh</button></p>`;
 }
+// ---- team tasks: open GitHub issues labelled `clauracle`; taken = assignee + `in progress` ----
+// ponytail: polled every 60s for the open project (live push needs webhooks and a server)
+async function pollTeam() {
+  const pid = cur;
+  if (!pid || !P(pid).gh) return;
+  try { team[pid] = await call('team', {pid}); } catch { return; }
+  if (pid !== cur) return;
+  drawChrome();
+  if ($('tasksBox')) $('tasksBox').innerHTML = tasksHtml();
+}
+setInterval(pollTeam, 60000);
+const teamTasks = pid => Array.isArray(team[pid]?.tasks) ? team[pid].tasks : [];
+const isDoing = x => x.labels.some(l => l.name === 'in progress') || x.assignees.length;
+// what's next: HANDOVER.md's queue, else free team tasks
+const nextUp = pid => { const q = S.queues?.[pid] || []; return q.length ? q : teamTasks(pid).filter(x => !isDoing(x)).map(x => `#${x.number} ${x.title}`); };
+function tasksHtml() {
+  const t = team[cur];
+  if (!t?.repo) return '';
+  const me = (t.me || '').toLowerCase();
+  const row = x => { const who = x.assignees.map(a => a.login), mine = who.some(l => l.toLowerCase() === me);
+    return `<div class="item"><div class="row"><a class="grow" data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>${isDoing(x) ? `<span class="pill">${esc(who.join(', ') || 'in progress')}</span>` : ''}</div>
+      <div class="row" style="justify-content:flex-end;gap:4px;margin-top:4px">${mine ? `<button class="btn ghost sm" onclick="taskDo('release', ${x.number})">Release</button><button class="btn ghost sm" onclick="taskDo('done', ${x.number})">Done</button>`
+        : isDoing(x) ? '' : `<button class="btn ghost sm" onclick="taskStart(${x.number})">Start</button>`}</div></div>`; };
+  return `<div class="label">Team tasks</div>`
+    + (t.conflicts || []).map(c => `<div class="warn">@${esc(c.author)}'s PR <a data-url="${esc(c.url)}">#${c.number}</a> also changes ${c.files.map(f => `<code>${esc(f)}</code>`).join(', ')}</div>`).join('')
+    + (teamTasks(cur).map(row).join('') || '<p class="dim" style="font-size:13px">No open tasks.</p>')
+    + `<div class="row" style="margin:8px 0 18px"><input id="newTask" class="grow" placeholder="New task for the team" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="btn" onclick="taskDo('new', $('newTask').value)">Add</button></div>`;
+}
+async function taskDo(action, arg) {
+  if (!String(arg).trim()) return;
+  try { await call('task_do', {pid: cur, action, arg: String(arg)}); } catch (e) { $('tasksBox').insertAdjacentHTML('afterbegin', `<div class="warn">${esc(e)}</div>`); return; }
+  pollTeam();
+}
+// claim it on GitHub (others see it's taken), then hand it to Claude
+async function taskStart(n) {
+  const x = teamTasks(cur).find(t => t.number === n);
+  await taskDo('claim', n);
+  $('prompt').value = `Work on issue #${n} "${x?.title}" (${x?.url}): read it with gh, do it on a new branch, and close the issue when it's done.`;
+  grow(); keepDraft(); $('prompt').focus();
+}
+
 // local-only project → its own GitHub repo; defaults to the project's (or its AI account's) GitHub account
 function publishForm(p, users) {
   if (!users.length) return `<p class="dim">Only on this computer. Add a GitHub account in Settings › GitHub to publish it.</p>`;
@@ -979,6 +1043,8 @@ function drawRRail() {
   $('rrail').innerHTML = stat(t.length ? `${t.filter(x => x.status === 'in_progress').length}/${t.length}` : '–', 'tasks', list || "No task list yet (Claude's to-dos show here)")
     + (t.length ? stat(t.filter(x => x.status === 'completed').length, 'done', list) : '')
     + (p.questions.length ? stat(p.questions.length, 'asks', 'Questions waiting', `onclick="showQuestions(cur)" style="cursor:pointer;color:var(--accent)"`) : '')
+    + (team[cur]?.repo ? stat(`${teamTasks(cur).filter(isDoing).length}/${teamTasks(cur).length}`, 'team', teamTasks(cur).map(x => `#${x.number} ${x.title}${x.assignees.length ? ' (' + x.assignees.map(a => a.login).join(', ') + ')' : ''}`).join('\n') || 'No open team tasks', `onclick="expandRight('gh')" style="cursor:pointer"`) : '')
+    + (team[cur]?.conflicts?.length ? stat(team[cur].conflicts.length, 'overlap', team[cur].conflicts.map(c => `@${c.author} #${c.number}: ${c.files.join(', ')}`).join('\n'), `onclick="expandRight('gh')" style="cursor:pointer;color:var(--err)"`) : '')
     + (ctx[cur] != null ? stat(ctx[cur] + '%', 'context', 'Context window used') : '')
     + (u.five_hour != null ? stat(u.five_hour + '%', '5h', '5-hour usage') : '')
     + (u.seven_day != null ? stat(u.seven_day + '%', 'week', 'Weekly usage') : '')
