@@ -20,7 +20,10 @@
 html, body { height:100%; }
 body { margin:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; background:var(--bg); color:var(--text);
   font:14px/1.55 system-ui,-apple-system,"Segoe UI Variable Text","Segoe UI",sans-serif; overflow:hidden; user-select:none; -webkit-font-smoothing:antialiased; }
-.sel, .msg, pre, input, textarea { user-select:text; }
+/* selectable: chat/terminal log, inputs, code + build output, .sel; set per element (inheritance leaked in WebView2) */
+*, ::before, ::after { -webkit-user-select:none; user-select:none; }
+#log, #log *, input, textarea, .sel, .sel *, .code pre, .code pre *, .out, .out * { -webkit-user-select:text; user-select:text; }
+#empty, #empty *, #log button, #log button * { -webkit-user-select:none; user-select:none; }
 button, select, input, textarea { font:inherit; color:inherit; }
 svg.i { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none; }
 .btn { display:inline-flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line2); border-radius:99px; padding:6px 14px; cursor:pointer; transition:background .12s, border-color .12s; }
