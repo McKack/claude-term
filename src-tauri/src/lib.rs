@@ -474,6 +474,7 @@ async fn gh_info(st: St<'_>, pid: String) -> R<Value> {
         let f = "number,title,url,author";
         json!({"repo": store::gh_json(&["repo", "view", "--json", "nameWithOwner,url"], &p.gh, Some(&p.path)),
                "git": store::git_do(&p.path, &p.gh, "status", "").unwrap_or_default(),
+               "builds": store::builds(&p.path),
                "release": store::gh_json(&["release", "view", "--json", "tagName,url,publishedAt"], &p.gh, Some(&p.path)),
                "prs": store::gh_json(&["pr", "list", "--json", f], &p.gh, Some(&p.path)),
                "issues": store::gh_json(&["issue", "list", "--json", f], &p.gh, Some(&p.path)),

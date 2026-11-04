@@ -869,6 +869,31 @@ pub fn git_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<serde_js
     if o.ok { Ok(serde_json::json!(o.stderr.trim())) } else { Err(if o.stderr.trim().is_empty() { o.stdout } else { o.stderr }.trim().to_string()) }
 }
 
+/// Recent build outputs worth releasing (installers, packages, archives) in the usual output folders, newest first.
+/// ponytail: fixed folder list + depth 5; add a per-project artifact glob in Build if a project hides them elsewhere
+pub fn builds(dir: &str) -> Vec<serde_json::Value> {
+    const DIRS: [&str; 9] = ["dist", "build", "out", "release", "publish", "bin", "target/release/bundle", "src-tauri/target/release/bundle", "app/build/outputs"];
+    const EXT: [&str; 13] = ["exe", "msi", "msix", "dmg", "pkg", "appimage", "deb", "rpm", "apk", "aab", "ipa", "zip", "tar.gz"];
+    fn walk(p: &Path, depth: u8, out: &mut Vec<(std::time::SystemTime, std::path::PathBuf, u64)>) {
+        let Ok(rd) = std::fs::read_dir(p) else { return };
+        for e in rd.flatten() {
+            let path = e.path();
+            let Ok(m) = e.metadata() else { continue };
+            if m.is_dir() { if depth > 0 { walk(&path, depth - 1, out); } continue; }
+            let n = path.to_string_lossy().to_lowercase();
+            if EXT.iter().any(|x| n.ends_with(&format!(".{x}"))) {
+                out.push((m.modified().unwrap_or(std::time::UNIX_EPOCH), path, m.len()));
+            }
+        }
+    }
+    let mut out = vec![];
+    for d in DIRS { walk(&Path::new(dir).join(d), 5, &mut out); }
+    out.sort_by(|a, b| b.0.cmp(&a.0));
+    out.dedup_by(|a, b| a.1 == b.1);
+    out.into_iter().take(12).map(|(t, p, size)| serde_json::json!({"path": p.to_string_lossy(), "name": p.file_name().map(|n| n.to_string_lossy().to_string()),
+        "size": size, "mtime": t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)})).collect()
+}
+
 /// GitHub release `tag` with `files` attached and notes generated from the commits since the last one.
 pub fn release(dir: &str, user: &str, tag: &str, files: &[String]) -> Result<String, String> {
     if tag.is_empty() || tag.starts_with('-') { return Err("bad tag".into()); }
