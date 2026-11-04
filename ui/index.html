@@ -116,6 +116,9 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 /* composer */
 #dock { padding:0 24px 14px; }
 #dock .col { gap:8px; }
+#queue { display:flex; flex-direction:column; gap:4px; } #queue:empty { display:none; }
+.qmsg { display:flex; gap:8px; align-items:center; padding:4px 6px 4px 10px; border:1px dashed var(--line2); border-radius:12px; font-size:13px; background:var(--card); }
+.qmsg .grow { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; } .qmsg .ib { width:26px; height:26px; }
 #workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; }
 #workpill[hidden], #handpill[hidden] { display:none; }
 #handpill, #workpill { align-self:center; font-size:12.5px; color:var(--dim); padding:5px 16px; border-radius:99px; border:1px solid var(--line);
@@ -307,6 +310,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="dock" hidden><div class="col">
     <div id="handpill" hidden>Preparing handover…</div>
     <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg>Working…</div>
+    <div id="queue"></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" onclick="cont_()">Continue</button></div>
     <div id="composer">
@@ -347,7 +351,7 @@ const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
 let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'gh', mp = null;
 const ctx = (() => { try { return JSON.parse(localStorage.ctx || '{}'); } catch { return {}; } })();
 const saveCtx = () => { try { localStorage.ctx = JSON.stringify(ctx); } catch {} };
-const hand = {}, team = {}, logs = {}, busy = {}, live = {}, builds = {}, hiddenQs = {}, atts = {}, texts = {};
+const hand = {}, team = {}, logs = {}, busy = {}, live = {}, builds = {}, hiddenQs = {}, atts = {}, texts = {}, queue = {};
 let draftsLoaded = false;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -403,7 +407,7 @@ async function refresh() {
   S = await call('state');
   if (!draftsLoaded) { // unsent input from before a close, crash or restart
     draftsLoaded = true;
-    for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; }
+    for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; queue[pid] = d.queue || []; }
   }
   for (const id of S.busy) busy[id] = true;
   drawProjects();
@@ -487,7 +491,7 @@ async function openProject(pid) {
   cur = pid;
   $('prompt').value = texts[pid] || '';
   $('head').hidden = $('dock').hidden = $('right').hidden = false; $('suggest').hidden = true; grow(); // measure once visible
-  drawProjects(); drawChrome(); drawAtts();
+  drawProjects(); drawChrome(); drawAtts(); drawQueue();
   const info = await call('open_project', {pid});
   if (!logs[pid]) logs[pid] = info.history.length ? [...info.history, {kind: 'note', text: 'Resumed session'}] : [];
   busy[pid] = info.busy;
@@ -601,10 +605,11 @@ function drawAtts() {
   if (cur) { drawChrome(); keepDraft(); }
 }
 // every keystroke/attachment lands on disk (debounced), so nothing typed is ever lost
-function keepDraft() {
-  const pid = cur, text = texts[pid] = $('prompt').value, a = atts[pid] || [];
+function keepDraft(pid = cur) {
+  if (pid === cur) texts[pid] = $('prompt').value;
+  const text = texts[pid] || '', a = atts[pid] || [], q = queue[pid] || [];
   clearTimeout(keepDraft[pid]);
-  keepDraft[pid] = setTimeout(() => call('save_draft', {pid, draft: text || a.length ? {text, atts: a} : null}), 300);
+  keepDraft[pid] = setTimeout(() => call('save_draft', {pid, draft: text || a.length || q.length ? {text, atts: a, queue: q} : null}), 300);
 }
 function addImage(file) {
   const r = new FileReader();
@@ -623,13 +628,31 @@ T.event.listen('tauri://drag-enter', () => $('composer').classList.add('drop'));
 T.event.listen('tauri://drag-leave', () => $('composer').classList.remove('drop'));
 T.event.listen('tauri://drag-drop', e => { $('composer').classList.remove('drop'); if (cur) addPaths(e.payload.paths || []); });
 
+// sent while a turn runs → queued here (editable, saved with the draft); the oldest goes out when the turn ends
 function send() {
   const t = $('prompt').value, a = atts[cur] || [];
   if (!t.trim() && !a.length) return;
-  const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
   $('prompt').value = ''; atts[cur] = []; grow(); drawAtts();
-  addEntry(cur, {kind: 'user', text: t + (files.length ? `\n📎 ${files.map(f => f.split(/[\\/]/).pop()).join(', ')}` : ''), images: images.map(x => x.url)});
-  call('send', {pid: cur, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files});
+  if (busy[cur]) { (queue[cur] ||= []).push({text: t, atts: a}); drawQueue(); keepDraft(); }
+  else sendNow(cur, {text: t, atts: a});
+}
+function sendNow(pid, {text: t, atts: a}) {
+  const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
+  addEntry(pid, {kind: 'user', text: t + (files.length ? `\n📎 ${files.map(f => f.split(/[\\/]/).pop()).join(', ')}` : ''), images: images.map(x => x.url)});
+  call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files});
+}
+function drawQueue() {
+  const q = queue[cur] || [];
+  $('queue').innerHTML = q.map((m, i) => `<div class="qmsg"><span class="pill">Queued</span><span class="grow" title="${esc(m.text)}">${esc(m.text || m.atts.map(x => x.name).join(', '))}</span>
+    <button class="ib" title="Edit (↑ in an empty box)" onclick="editQueued(${i})">${icon('new')}</button>
+    <button class="ib" title="Send now (joins the running turn's inbox)" onclick="sendNow(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft()">${icon('up')}</button>
+    <button class="ib" title="Remove" onclick="queue[cur].splice(${i},1); drawQueue(); keepDraft()">${icon('x')}</button></div>`).join('');
+}
+// back into the composer (what was typed there stays, after it)
+function editQueued(i) {
+  const [m] = queue[cur].splice(i, 1), p = $('prompt');
+  p.value = m.text + (p.value ? '\n' + p.value : ''); atts[cur] = [...m.atts, ...(atts[cur] || [])];
+  drawQueue(); drawAtts(); grow(); p.focus();
 }
 // /commands: list from the session's initialize answer; typing "/x" filters, ↑↓ moves, Tab/Enter fills in, Esc hides
 const cmds = {}; let slashSel = 0;
@@ -652,6 +675,7 @@ $('prompt').addEventListener('keydown', e => {
     if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && $('prompt').value !== '/' + xs[slashSel].name)) { e.preventDefault(); return pickSlash(slashSel); }
   }
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  if (e.key === 'ArrowUp' && !hasInput() && queue[cur]?.length) { e.preventDefault(); editQueued(queue[cur].length - 1); }
 });
 const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
 $('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { drawChrome(); keepDraft(); } });
@@ -662,7 +686,8 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   line: () => { if (d.kind === 'claude') live[d.pid] = ''; addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail}); },
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
-  status: () => { if ('busy' in d) busy[d.pid] = d.busy; if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); } if (d.busy === false) live[d.pid] = '';
+  status: () => { if ('busy' in d) busy[d.pid] = d.busy;
+    if (d.busy === false && queue[d.pid]?.length) { sendNow(d.pid, queue[d.pid].shift()); if (d.pid === cur) drawQueue(); keepDraft(d.pid); } if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); } if (d.busy === false) live[d.pid] = '';
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
