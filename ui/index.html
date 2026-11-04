@@ -94,7 +94,10 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
 .msg { max-width:100%; }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
-.msg.user .thumbs { display:flex; gap:6px; margin-bottom:6px; } .msg.user .thumbs img { height:64px; border-radius:8px; }
+/* thumbnails: fixed tiles, cropped (the viewer shows the whole image); wrap, never wider than the bubble */
+.msg.user .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
+.msg.user .thumbs img { width:96px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
+.crow .cb, .msg.user { min-width:0; } #log { overflow-x:hidden; }
 .crow { display:flex; gap:10px; align-items:flex-start; } .crow.user { flex-direction:row-reverse; }
 .crow > .av { border-color:var(--bg); } /* 26px = the name row's height: avatar sits in line with name + time */
 .crow .cm { min-height:26px; } .crow.claude .msg.claude { background:var(--card); border:1px solid var(--line); padding:9px 14px; border-radius:4px 16px 16px 16px; }
@@ -188,7 +191,8 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 .qp:hover { border-color:var(--accent); } .qp .ib { width:22px; height:22px; } .qp .ib svg { width:13px; height:13px; }
 .qp .qi { display:inline-grid; place-items:center; width:24px; height:20px; border-radius:99px; background:var(--soft); color:var(--accent); flex:none; } .qp .qi svg { width:12px; height:12px; }
 .qp .qt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; padding:0 4px; }
-#workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; }
+#workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; white-space:nowrap; overflow:hidden; transition:width .4s ease; }
+#worktext { transition:opacity .35s ease; }
 #workpill[hidden], #handpill[hidden] { display:none; }
 #handpill, #workpill { align-self:center; font-size:12.5px; color:var(--dim); padding:5px 16px; border-radius:99px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
@@ -671,9 +675,20 @@ const WORDS = ['Reticulating splines', 'Entering the matrix', 'Calibrating the f
   'Asking the rubber duck', 'Herding electrons', 'Plotting a course', 'Engaging thrusters', 'Rolling for initiative', 'Speedrunning the codebase',
   'Collecting the power-ups', 'Booting the holodeck', 'Synchronising the neural link', 'Defragmenting the timeline', 'Dodging the blue shell'];
 let workT = null;
+// every 9s: text fades out, the pill glides to the new text's width, text fades in
 function workTick() {
-  const show = !$('workpill').hidden;
-  if (show && !workT) { const next = () => $('worktext').textContent = WORDS[Math.floor(Math.random() * WORDS.length)] + '…'; next(); workT = setInterval(next, 3500); }
+  const pill = $('workpill'), sp = $('worktext'), show = !pill.hidden, pick = () => WORDS[Math.floor(Math.random() * WORDS.length)] + '…';
+  if (show && !workT) {
+    pill.style.width = ''; sp.textContent = pick(); sp.style.opacity = 1;
+    workT = setInterval(() => {
+      sp.style.opacity = 0;
+      setTimeout(() => {
+        const w0 = pill.offsetWidth; sp.textContent = pick(); pill.style.width = 'auto';
+        const w1 = pill.offsetWidth; pill.style.width = w0 + 'px'; void pill.offsetWidth; // reflow, then animate to w1
+        pill.style.width = w1 + 'px'; sp.style.opacity = 1;
+      }, 350);
+    }, 9000);
+  }
   if (!show && workT) { clearInterval(workT); workT = null; }
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
