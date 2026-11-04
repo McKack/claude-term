@@ -68,6 +68,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #main { display:flex; flex-direction:column; min-width:0; min-height:0; }
 #head { display:flex; align-items:center; gap:10px; padding:10px 16px; min-height:54px; }
 #head .title { font-weight:600; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#branch { cursor:pointer; } #branch:hover { color:var(--text); border-color:var(--line2); }
 #branch { font-size:12px; color:var(--dim); background:var(--side); border:1px solid var(--line); padding:1px 8px; border-radius:99px; white-space:nowrap; }
 .seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
 .seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
@@ -138,6 +139,10 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 60%, var(--line2)); }
 #composer.drop { border-color:var(--accent); border-style:dashed; }
 #prompt { width:100%; border:0; padding:4px 0; resize:none; min-height:26px; max-height:260px; background:none; box-shadow:none; }
+#slash { display:flex; flex-direction:column; max-height:280px; overflow:auto; margin:0 0 6px -6px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+#slash[hidden] { display:none; }
+#slash button { display:flex; flex-wrap:wrap; gap:2px 8px; align-items:baseline; text-align:left; border:0; background:none; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:13px; }
+#slash button small { flex-basis:100%; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #slash button.on, #slash button:hover { background:var(--hover); }
 #atts { display:flex; gap:8px; flex-wrap:wrap; padding:2px 0 8px; } #atts:empty { display:none; }
 .att { position:relative; display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--bg); font-size:12px; padding:4px 26px 4px 6px; max-width:220px; }
 .att img { width:44px; height:44px; object-fit:cover; border-radius:7px; } .att span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -146,11 +151,14 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .tb { display:flex; align-items:center; gap:2px; margin-top:4px; }
 #send { width:32px; height:32px; border-radius:50%; border:0; background:var(--primary); color:var(--ink); display:grid; place-items:center; cursor:pointer; }
 #send:hover { background:var(--primary2); } #send:disabled { opacity:.4; cursor:default; }
-#status { display:flex; flex-wrap:wrap; gap:4px 14px; align-items:center; font-size:12px; color:var(--faint); padding:0 6px; }
+#status { display:flex; flex-wrap:nowrap; white-space:nowrap; overflow:hidden; gap:4px 10px; align-items:center; font-size:12px; color:var(--faint); padding:0 6px; }
 #status button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:5px; align-items:center; padding:2px 4px; border-radius:6px; }
 #status { container-type:inline-size; } #status .ab { display:none; }
+#status .bar { width:22px; height:3px; }
 @container (max-width:560px) { #status .lb, #status .bar, #status button > svg:last-child:not(:first-child) { display:none; } #status .ab { display:inline; } }
 #status button:hover { color:var(--text); background:var(--hover); } #status b { color:var(--dim); font-weight:500; }
+#status > span { display:inline-flex; gap:4px; align-items:center; } #status .i { width:14px; height:14px; }
+.menu button.sub { padding-left:34px; font-size:12.5px; color:var(--dim); } .menu button.sub .chk { width:12px; }
 .bar { display:inline-block; width:34px; height:4px; border-radius:2px; background:var(--line2); overflow:hidden; vertical-align:middle; } .bar i { display:block; height:100%; background:var(--accent); }
 #working { display:inline-flex; gap:6px; align-items:center; color:var(--accent); }
 
@@ -266,7 +274,12 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1zM12 15l-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2z"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/></symbol>
-  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9a6 6 0 0 1-6 6H6"/></symbol>
+  <symbol id="i-sparkle"viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
 </svg>
 
 <aside id="side">
@@ -284,7 +297,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 
 <main id="main">
   <div id="head" hidden>
-    <span class="title" id="pname"></span><span id="branch" hidden></span><span class="grow"></span>
+    <span class="title" id="pname"></span><span id="branch" hidden title="Branches: switch, new, push" onclick="branchMenu(this)"></span><span class="grow"></span>
     <span class="seg"><button data-v="chat" onclick="setView('chat')"><svg class="i"><use href="#i-chat"/></svg>Chat</button><button data-v="term" onclick="setView('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button></span>
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
@@ -294,6 +307,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" onclick="cont_()">Continue</button></div>
     <div id="composer">
+      <div id="slash" hidden></div>
       <div id="atts"></div>
       <textarea id="prompt" rows="1" placeholder="Message Claude…"></textarea>
       <div class="tb">
@@ -339,7 +353,7 @@ const P = (id = cur) => S.projects.find(p => p.id === id);
 const nick = id => (S.accounts.find(a => a.id === id) || {nick: id}).nick;
 const MODES = {off: ['Off', 'Plain chat; only the context limit hands over'], manual: ['Manual', 'Stops when a task is done; you press Continue'],
   auto: ['Auto', 'Clears and continues by itself until a limit'], auto_answer: ['Auto + answers', 'Also answers what it can; holds only real decisions']};
-const MODELS = {'': 'Default model', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku'};
+const MODELS = {'': 'Default', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku'};
 const PERMS = {default: 'Ask first', acceptEdits: 'Accept edits', plan: 'Plan only', bypassPermissions: 'Bypass'};
 
 // ponytail: tiny markdown (fences, inline code, bold, headings, lists, links); a library when tables matter
@@ -357,7 +371,7 @@ function menuAt(anchor, items) {
   closeMenu();
   const m = document.createElement('div'), r = anchor.getBoundingClientRect();
   m.className = 'menu glass';
-  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : `<button data-i="${i}">${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
+  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
     <span>${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span></button>`).join('');
   document.body.appendChild(m);
   const h = m.offsetHeight, w = m.offsetWidth;
@@ -446,21 +460,21 @@ function drawChrome() {
     : next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}` : 'Handover written. Continue clears the context and carries on.';
   $('ready').title = next.map((t, i) => `${i + 1}. ${t}`).join('\n');
   $('handpill').hidden = !(busy[cur] && hand[cur]);
-  const meter = (k, l) => u[k] == null ? '' : `<span title="${l} usage">${l} <span class="bar"><i style="width:${u[k]}%"></i></span> ${u[k]}%</span>`;
+  const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
   $('status').innerHTML = (busy[cur] ? `<span id="working">${icon('sparkle')}Working…</span>` : '')
-    + `<button onclick="menuAt(this, acctItems())" title="AI account">${icon('user')}<b class="lb">${esc(nick(p.account))}</b>${icon('down')}</button>`
-    + `<button onclick="menuAt(this, modelItems())" title="Model">${icon('bot')}<span class="lb">${esc(MODELS[p.model] || p.model)}</span></button>`
-    + `<button onclick="menuAt(this, permItems())" title="Permissions">${icon('sliders')}<span class="lb">${esc(PERMS[p.mode] || p.mode)}</span></button>`
-    + `<button onclick="menuAt(this, contItems())" title="Clear & continue mode">${icon('loop')}<span class="lb">${esc(MODES[p.cont][0])}</span></button>`
-    + (ctx[cur] != null ? `<span title="Context window used (last seen)"><span class="lb">context</span><span class="ab">ctx</span> ${ctx[cur]}%</span>` : '') + meter('five_hour', '5h') + meter('seven_day', '7d')
+    + `<button onclick="menuAt(this, acctItems())" title="AI account and model">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}</span>${icon('down')}</button>`
+    + `<button onclick="menuAt(this, permItems())" title="Permissions: ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${esc(PERMS[p.mode] || p.mode)}</span></button>`
+    + `<button onclick="menuAt(this, contItems())" title="Clear & continue mode: ${esc(MODES[p.cont][0])}">${icon('loop')}<span class="lb">${esc(MODES[p.cont][0])}</span></button>`
+    + (ctx[cur] != null ? `<span title="Context window used (last seen)">${icon('doc')}${ctx[cur]}%</span>` : '') + meter('five_hour', '5-hour', 'clock') + meter('seven_day', 'Weekly', 'cal')
     + (p.questions.length ? `<button onclick="showQuestions(cur)" style="color:var(--accent)">${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting</button>` : '');
   const sendBtn = $('send');
   sendBtn.innerHTML = busy[cur] && !hasInput() ? icon('stop') : icon('up');
   sendBtn.title = busy[cur] && !hasInput() ? 'Stop' : 'Send (Enter)';
 }
-const acctItems = () => [...S.accounts.map(a => ({check: P().account === a.id, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id})})), '-',
+// accounts, each with its models nested under it (picking one sets both)
+const acctItems = () => [...S.accounts.flatMap(a => [{check: P().account === a.id, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id})},
+  ...Object.entries(MODELS).map(([k, l]) => ({sub: 1, check: P().account === a.id && P().model === k, label: l, run: () => setP({account: a.id, model: k})}))]), '-',
   {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}];
-const modelItems = () => Object.entries(MODELS).map(([k, l]) => ({check: P().model === k, label: l, run: () => setP({model: k})}));
 const permItems = () => Object.entries(PERMS).map(([k, l]) => ({check: P().mode === k, label: l, run: () => setP({mode: k})}));
 const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
 
@@ -492,6 +506,35 @@ async function suggest(pid) {
     <button class="btn primary" onclick='setP({gh:${esc(JSON.stringify(w.gh))}, account:${esc(JSON.stringify(w.account))}}); $("suggest").hidden=true'>Use these</button>`;
 }
 const setP = changes => call('update_project', {pid: cur, changes});
+
+// ---- branches: header pill → switch / new (type/name) / push, as the project's gh account ----
+const BTYPES = ['feature', 'fix', 'chore', 'docs', 'refactor', ''];
+async function branchMenu(el) {
+  const b = await call('git_do', {pid: cur, action: 'list', arg: ''});
+  menuAt(el, [...b.branches.map(n => ({check: n === b.current, label: n, run: () => n !== b.current && gitDo('switch', n)})), '-',
+    {icon: 'plus', label: 'New branch…', hint: 'feature/, fix/, chore/…', run: newBranch},
+    {icon: 'up', label: `Push ${b.current}`, hint: P().gh ? `to GitHub as @${P().gh}` : 'to origin', run: () => gitDo('push', '')}]);
+}
+async function gitDo(action, arg) {
+  if (busy[cur] && action !== 'push') return addEntry(cur, {kind: 'err', text: 'Wait for the turn to finish before switching branches.'});
+  const pid = cur;
+  try { await call('git_do', {pid, action, arg}); addEntry(pid, {kind: 'note', text: action === 'push' ? 'Pushed' : `On branch ${arg}`}); }
+  catch (e) { addEntry(pid, {kind: 'err', text: String(e)}); }
+  const b = await call('git_do', {pid, action: 'list', arg: ''});
+  if (pid === cur) $('branch').textContent = b.current;
+}
+function newBranch() {
+  dlg(`<h2 style="margin:0 0 10px;font-size:17px">New branch</h2><p class="row"><select id="nbType">${BTYPES.map(t => `<option value="${t}">${t ? t + '/' : '(no prefix)'}</option>`).join('')}</select>
+    <input id="nbName" class="grow" placeholder="short-name" onkeydown="if(event.key==='Enter')makeBranch()"></p>
+    <div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button><button class="btn primary" onclick="makeBranch()">Create and switch</button></div>`);
+  $('nbName').focus();
+}
+function makeBranch() {
+  const slug = $('nbName').value.trim().toLowerCase().replace(/[^a-z0-9._/-]+/g, '-').replace(/^[-/.]+|[-/.]+$/g, '');
+  const t = $('nbType').value;
+  if (!slug) return;
+  closeDlg(); gitDo('new', (t ? t + '/' : '') + slug);
+}
 
 // ---- the log: chat or terminal ----
 let view = (() => { try { return localStorage.view || 'chat'; } catch { return 'chat'; } })();
@@ -585,9 +628,30 @@ function send() {
   addEntry(cur, {kind: 'user', text: t + (files.length ? `\n📎 ${files.map(f => f.split(/[\\/]/).pop()).join(', ')}` : ''), images: images.map(x => x.url)});
   call('send', {pid: cur, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files});
 }
-$('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+// /commands: list from the session's initialize answer; typing "/x" filters, ↑↓ moves, Tab/Enter fills in, Esc hides
+const cmds = {}; let slashSel = 0;
+const slashMatches = () => { const m = /^\/(\S*)$/.exec($('prompt').value);
+  return m && cur ? (cmds[cur] || []).filter(c => c.name.toLowerCase().startsWith(m[1].toLowerCase())).slice(0, 8) : []; };
+function drawSlash() {
+  const xs = slashMatches(), el = $('slash');
+  slashSel = Math.min(slashSel, Math.max(xs.length - 1, 0));
+  el.hidden = !xs.length;
+  el.innerHTML = xs.map((c, i) => `<button class="${i === slashSel ? 'on' : ''}" onmousedown="event.preventDefault(); pickSlash(${i})"><b>/${esc(c.name)}</b>
+    ${c.argumentHint ? `<span class="faint">${esc(c.argumentHint)}</span>` : ''}<small>${esc(c.description || '')}</small></button>`).join('');
+}
+function pickSlash(i) { const c = slashMatches()[i]; if (c) { $('prompt').value = '/' + c.name + ' '; slashSel = 0; drawSlash(); grow(); } }
+$('prompt').addEventListener('keydown', e => {
+  const xs = $('slash').hidden ? [] : slashMatches();
+  if (xs.length) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); slashSel = (slashSel + (e.key === 'ArrowDown' ? 1 : xs.length - 1)) % xs.length; return drawSlash(); }
+    if (e.key === 'Escape') return void ($('slash').hidden = true);
+    // Enter on a fully typed name sends it; otherwise it fills in the highlighted one
+    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && $('prompt').value !== '/' + xs[slashSel].name)) { e.preventDefault(); return pickSlash(slashSel); }
+  }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
 const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
-$('prompt').addEventListener('input', () => { grow(); if (cur) { drawChrome(); keepDraft(); } });
+$('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { drawChrome(); keepDraft(); } });
 function cont_() { hiddenQs[cur] = false; call('continue_now', {pid: cur}); }
 
 // ---- events from Rust ----
@@ -605,6 +669,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
   usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },
+  commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
   build: () => { const b = builds[d.pid] ||= {out: ''}; b.out += d.line + '\n';
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
@@ -1064,7 +1129,8 @@ function ghPage() {
     <div class="box">${ghUsers.map(u => optRow('@' + esc(u), '', `<button class="btn ghost" onclick="rmGh('${esc(u)}')">Log out</button>`)).join('') || '<p class="dim">None yet.</p>'}</div>
     <p>${S.gh ? `<button class="btn primary" onclick="addGh()">${icon('plus')}Add GitHub account</button>` : `<button class="btn primary" onclick="install('gh', this).then(() => reloadSettings())">Install the GitHub CLI</button>`}</p><p id="ghMsg" class="dim"></p>`;
 }
-const builtin = id => id.startsWith('skill:clauracle:'); // Clauracle's own (Ponytail): its own switch
+// Clauracle's own (Ponytail, always on) + a separately installed ponytail plugin (duplicate of it): never offered
+const builtin = id => /^skill:(clauracle|ponytail):/.test(id);
 // what a project/account has on; one from before allow-lists (`on` null) has everything but its `off`
 const onOf = x => x.on ?? SET.catalog.map(i => i.id).filter(id => !x.off.includes(id));
 // global rows switch an item off everywhere; scoped rows (account id | project:<id>) pick it for that one
@@ -1089,14 +1155,19 @@ async function pickItems(scope, title, pre) {
   const row = i => `<label class="check"><input type="checkbox" value="${esc(i.id)}" ${pre.includes(i.id) ? 'checked' : ''}>
     <span class="grow">${esc(i.label)}<small class="dim" style="display:block">${esc(i.note)}</small></span></label>`;
   const part = (k, l) => { const xs = all.filter(i => i.kind === k); return xs.length ? `<div class="label" style="margin-top:12px">${l}</div><div class="box" style="max-height:210px;overflow:auto;margin-bottom:0">${xs.map(row).join('')}</div>` : ''; };
-  const tick = v => document.querySelectorAll('#dlg input[type=checkbox]').forEach(c => c.checked = v);
+  const tick = f => document.querySelectorAll('#dlg input[type=checkbox]').forEach(c => c.checked = f(c.value));
+  let last = []; try { last = JSON.parse(localStorage.lastPick || '[]'); } catch {} // per computer, last Save of any picker
   dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(title)}</h2><p class="dim" style="margin:0;font-size:13px">Only what you tick is enabled; everything else on this computer stays off for it. You can change it later in Settings.</p>
+    <p class="row" style="margin:10px 0 0">${last.length ? `<button class="btn sm" id="pickLast" title="${esc(last.length + ' items')}">${icon('loop')}Use last settings</button>` : ''}
+      <button class="btn ghost sm" id="pickAll">All</button><button class="btn ghost sm" id="pickNone">None</button></p>
     ${part('mcp', 'Connections')}${part('skill', 'Skills')}
-    <div class="btns" style="justify-content:space-between"><span class="row"><button class="btn ghost sm" id="pickAll">All</button><button class="btn ghost sm" id="pickNone">None</button></span>
-      <button class="btn primary" id="pickSave">Save</button></div>`);
-  $('pickAll').onclick = () => tick(true); $('pickNone').onclick = () => tick(false);
+    <div class="btns"><button class="btn primary" id="pickSave">Save</button></div>`);
+  $('pickAll').onclick = () => tick(() => true); $('pickNone').onclick = () => tick(() => false);
+  if ($('pickLast')) $('pickLast').onclick = () => tick(v => last.includes(v));
   await new Promise(res => $('pickSave').onclick = res);
-  await call('set_items', {scope, items: [...document.querySelectorAll('#dlg input[type=checkbox]:checked')].map(c => c.value)});
+  const items = [...document.querySelectorAll('#dlg input[type=checkbox]:checked')].map(c => c.value);
+  try { localStorage.lastPick = JSON.stringify(items); } catch {}
+  await call('set_items', {scope, items});
   closeDlg(); await refresh();
 }
 const askProject = p => pickItems('project:' + p.id, `What can Claude use in ${p.name}?`, p.on || []);

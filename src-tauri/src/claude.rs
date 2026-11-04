@@ -290,7 +290,9 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
     if !agents.is_empty() {
         init["agents"] = Value::Object(agents);
     }
-    conn.request(init, 90).await?;
+    let r = conn.request(init, 90).await?;
+    // /commands for the composer's autocomplete: [{name, description, argumentHint}], known before the first turn
+    emit(app, "commands", json!({"pid": pid, "commands": r["commands"]}));
     *live.conn.lock().unwrap() = Some(conn.clone());
     emit(app, "status", json!({"pid": pid, "busy": false, "connected": true}));
 

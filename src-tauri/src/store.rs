@@ -832,6 +832,27 @@ pub fn publish(dir: &str, user: &str, name: &str, private: bool) -> Result<Strin
     if o.ok { Ok(o.stdout.trim().to_string()) } else { fail(o) }
 }
 
+/// Branch actions from the header pill, as the project's gh account: list | switch <b> | new <b> | push.
+pub fn git_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<serde_json::Value, String> {
+    let env = gh_env(user);
+    let git = |args: &[&str]| run("git", args, Some(dir), &env);
+    // a branch name never starts with '-' (would read as a flag)
+    if arg.starts_with('-') { return Err("bad branch name".into()); }
+    let o = match action {
+        "list" => {
+            let b = git(&["branch", "--format=%(refname:short)"]).stdout;
+            return Ok(serde_json::json!({"current": git(&["branch", "--show-current"]).stdout.trim(),
+                                         "branches": b.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>()}));
+        }
+        "switch" => git(&["switch", arg]),
+        "new" => git(&["switch", "-c", arg]),
+        "push" => git(&["push", "-u", "origin", "HEAD"]),
+        _ => return Err(format!("unknown action {action}")),
+    };
+    // git writes progress to stderr even on success
+    if o.ok { Ok(serde_json::json!(o.stderr.trim())) } else { Err(if o.stderr.trim().is_empty() { o.stdout } else { o.stderr }.trim().to_string()) }
+}
+
 // ---- team tasks: GitHub issues labelled `clauracle`; taken = assignee + `in progress` (no commits, all live on GitHub) ----
 
 pub const TASK_LABEL: &str = "clauracle";
