@@ -79,7 +79,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 
 /* main */
 #main { display:flex; flex-direction:column; min-width:0; min-height:0; }
-#head { display:flex; align-items:center; gap:10px; padding:10px 16px; min-height:54px; }
+#head { display:flex; align-items:center; gap:10px; padding:10px 8px; min-height:54px; }
 #head .title { font-weight:600; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #branch { cursor:pointer; } #branch:hover { color:var(--text); border-color:var(--line2); }
 #branch { font-size:12px; color:var(--dim); background:var(--side); border:1px solid var(--line); padding:1px 8px; border-radius:99px; white-space:nowrap; }
@@ -123,8 +123,6 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
   background:color-mix(in srgb, var(--err) 9%, transparent); border:1px solid color-mix(in srgb, var(--err) 35%, transparent); border-radius:12px; padding:8px 12px; }
 .msg.err .et { display:block; font:600 12px system-ui,sans-serif; margin-bottom:4px; opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #log.term .msg.err { border:0; background:none; padding:0; }
-.lcol { position:absolute; top:14px; right:-13px; z-index:6; width:26px; height:26px; border-radius:50%; background:var(--card); border:1px solid var(--line2); box-shadow:var(--shadow); }
-.lcol svg { rotate:180deg; width:14px; height:14px; }
 .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
 .card.qs { border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .card h4 { margin:0 0 4px; font-size:14px; }
@@ -343,7 +341,6 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="side">
   <div id="brand"><img src="icon.svg" alt="" onclick="goHome()" style="cursor:pointer" title="Home"><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b>
 </div>
-  <button class="ib lcol" title="Collapse the sidebar" onclick="toggleLeft()"><svg class="i"><use href="#i-chev"/></svg></button>
   <div class="side-head"><span class="seg grow" id="stabs"><button data-s="projects" onclick="setSide('projects')">Projects</button><button data-s="files" onclick="setSide('files')">Files</button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
@@ -355,6 +352,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 
 <main id="main">
   <div id="head" hidden>
+    <button class="ib" title="Sidebar: projects and files" onclick="toggleLeft()"><svg class="i"><use href="#i-panelL"/></svg></button>
     <span class="title" id="pname"></span><span id="branch" hidden title="Branches: switch, new, push" onclick="branchMenu(this)"></span><span class="grow"></span>
     <span class="seg"><button data-v="chat" onclick="setView('chat')"><svg class="i"><use href="#i-chat"/></svg>Chat</button><button data-v="term" onclick="setView('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button></span>
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
