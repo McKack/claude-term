@@ -32,7 +32,8 @@ pub struct Account {
     pub nick: String,
     pub provider: String, // ponytail: always "claude" until a second provider exists
     pub gh: String,
-    pub off: Vec<String>,
+    pub off: Vec<String>,       // legacy deny-list, used only while `on` is None
+    pub on: Option<Vec<String>>, // what new projects start with (connections/skills); Some([]) = nothing yet
     pub limits: Limits,
     pub pool: String, // accounts sharing a pool take over from each other at their limits
 }
@@ -75,7 +76,8 @@ pub struct Project {
     pub path: String,
     pub account: String,
     pub gh: String,
-    pub off: Vec<String>,
+    pub off: Vec<String>,        // legacy deny-list, used only while `on` is None (projects from before allow-lists)
+    pub on: Option<Vec<String>>, // the connections/skills the user picked for this project; nothing else is enabled
     pub mode: String,  // permission mode
     pub model: String, // "" = the CLI's default
     pub ponytail: bool,
@@ -100,7 +102,7 @@ impl Default for Project {
     fn default() -> Self {
         Project {
             id: String::new(), name: String::new(), path: String::new(), account: MAIN.into(), gh: String::new(),
-            off: vec![], mode: "default".into(), model: String::new(), ponytail: true, cont: "manual".into(),
+            off: vec![], on: None, mode: "default".into(), model: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, ready: false, questions: vec![], answers: String::new(),
             build: Build::default(), hide_env: true, terse: true,
             owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(),
@@ -269,7 +271,9 @@ pub fn new_project(cfg: &mut Config, path: &str, account: Option<&str>, gh: Opti
     let name = Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(path.into());
     let p = Project {
         id: new_id(), name, path: path.into(), account: acct.id.clone(),
-        gh: gh.map(String::from).unwrap_or(acct.gh.clone()), off: acct.off.clone(), ..Default::default()
+        gh: gh.map(String::from).unwrap_or(acct.gh.clone()),
+        on: Some(acct.on.clone().unwrap_or_default()), // the account's picks, else nothing: the page asks
+        ..Default::default()
     };
     cfg.projects.push(p.clone());
     p
@@ -302,7 +306,7 @@ pub fn add_account(cfg: &mut Config, nick: &str, token: &str) -> Account {
         .find(|c| !cfg.accounts.iter().any(|a| &a.id == c)).unwrap();
     set_token(&id, token);
     let a = Account { id, nick: if nick.trim().is_empty() { "Account".into() } else { nick.trim().into() },
-                      provider: "claude".into(), ..Default::default() };
+                      provider: "claude".into(), on: Some(vec![]), ..Default::default() };
     cfg.accounts.push(a.clone());
     a
 }
@@ -541,16 +545,26 @@ pub fn catalog(plugin_dir: &Path) -> Vec<Item> {
     items
 }
 
-/// Switched-off MCP servers become deny rules; skills an allowlist for `initialize` (None = all of them).
+/// Disabled MCP servers become deny rules; skills an allowlist for `initialize` (None = all of them).
+/// A project with `on` gets only what it picked (Clauracle's own skills always); a legacy one (`on` None)
+/// everything but its `off`. The global `off` switches things off for every project.
 pub fn restrictions(cfg: &Config, p: &Project) -> (Vec<String>, Option<Vec<String>>) {
-    let off: Vec<&String> = cfg.off.iter().chain(p.off.iter()).collect();
-    let mut deny: Vec<String> = off.iter().filter_map(|i| i.strip_prefix("mcp:")).map(|s| format!("mcp__{s}")).collect();
+    let has = |l: &[String], id: &str| l.iter().any(|x| x == id);
+    let enabled = |id: &str| !has(&cfg.off, id) && (id.starts_with("skill:clauracle:") || match &p.on {
+        Some(on) => has(on, id),
+        None => !has(&p.off, id),
+    });
+    // ponytail: built from the catalog, so a server added after the last scan stays on until a rescan
+    let ids: Vec<String> = cfg.catalog.iter().map(|i| i.id.clone()).chain(cfg.off.iter().cloned()).chain(p.off.iter().cloned()).collect();
+    let mut deny: Vec<String> = ids.iter().filter(|i| !enabled(i)).filter_map(|i| i.strip_prefix("mcp:")).map(|s| format!("mcp__{s}")).collect();
+    deny.sort();
+    deny.dedup();
     if p.hide_env {
         deny.extend(["Read(**/.env*)", "Edit(**/.env*)", "Write(**/.env*)", "Bash(cat *.env*)"].map(String::from));
     }
-    let skills_off = off.iter().any(|i| i.starts_with("skill:"));
-    let allow = skills_off.then(|| cfg.catalog.iter().filter(|i| i.kind == "skill" && !off.contains(&&i.id))
-        .map(|i| i.id["skill:".len()..].to_string()).collect());
+    let skills = cfg.catalog.iter().filter(|i| i.kind == "skill");
+    let allow = (p.on.is_some() || skills.clone().any(|i| !enabled(&i.id)))
+        .then(|| skills.filter(|i| enabled(&i.id)).map(|i| i.id["skill:".len()..].to_string()).collect());
     (deny, allow)
 }
 
@@ -905,10 +919,12 @@ mod tests {
     #[test]
     fn project_keeps_its_github_and_choices() {
         let mut cfg = Config::default();
-        cfg.accounts.push(Account { id: MAIN.into(), gh: "octo".into(), off: vec!["mcp:x".into()], ..Default::default() });
+        cfg.accounts.push(Account { id: MAIN.into(), gh: "octo".into(), on: Some(vec!["mcp:x".into()]), ..Default::default() });
         cfg.default_account = MAIN.into();
         let p = new_project(&mut cfg, "/x/My App", None, None);
-        assert_eq!((p.name.as_str(), p.gh.as_str(), p.off.clone()), ("My App", "octo", vec!["mcp:x".to_string()]));
+        assert_eq!((p.name.as_str(), p.gh.as_str(), p.on.clone()), ("My App", "octo", Some(vec!["mcp:x".to_string()])));
+        cfg.accounts[0].on = None; // an account that never picked: its new projects start with nothing
+        assert_eq!(new_project(&mut cfg, "/y", None, None).on, Some(vec![]));
         cfg.accounts[0].gh = "other".into();
         assert_eq!(cfg.projects[0].gh, "octo");
         assert_eq!(new_project(&mut cfg, "y", None, Some("cloner")).gh, "cloner");
@@ -947,6 +963,19 @@ mod tests {
         cfg.off = vec!["mcp:rea".into()];
         p.off = vec!["skill:a".into()];
         assert_eq!(restrictions(&cfg, &p), (vec!["mcp__rea".to_string()], Some(vec!["p:b".to_string()])));
+    }
+
+    #[test]
+    fn picked_items_only() {
+        let mut cfg = Config::default();
+        cfg.catalog = ["skill:a", "skill:clauracle:ponytail", "mcp:rea", "mcp:gh"].iter()
+            .map(|i| Item { id: i.to_string(), kind: if i.starts_with("mcp") { "mcp" } else { "skill" }.into(), ..Default::default() }).collect();
+        let mut p = Project { hide_env: false, on: Some(vec![]), ..Default::default() };
+        // nothing picked: every server denied, only Clauracle's own skills
+        assert_eq!(restrictions(&cfg, &p), (vec!["mcp__gh".to_string(), "mcp__rea".to_string()], Some(vec!["clauracle:ponytail".to_string()])));
+        p.on = Some(vec!["mcp:gh".into(), "skill:a".into()]);
+        cfg.off = vec!["skill:a".into()]; // switched off globally wins over a pick
+        assert_eq!(restrictions(&cfg, &p), (vec!["mcp__rea".to_string()], Some(vec!["clauracle:ponytail".to_string()])));
     }
 
     #[test]

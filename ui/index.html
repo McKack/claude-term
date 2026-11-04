@@ -46,7 +46,9 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #side { background:var(--side); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
 #brand { display:flex; align-items:center; gap:9px; padding:16px 14px 10px; font-weight:700; font-size:16px; }
 #brand img { width:22px; height:22px; } #brand b span { color:var(--crab); }
-.side-head { display:flex; align-items:center; padding:10px 10px 4px 16px; }
+.side-head { display:flex; align-items:center; gap:2px; padding:8px 8px 6px 10px; }
+#stabs button { flex:1; justify-content:center; } #brand .ib { margin-left:auto; }
+#files { flex:1; overflow:auto; padding:2px 8px; } .tree div.on { background:var(--soft); color:var(--text); }
 #projects { flex:1; overflow:auto; padding:2px 8px; }
 .proj { display:flex; gap:10px; align-items:center; padding:7px 9px; border-radius:9px; cursor:pointer; transition:background .12s; }
 .proj:hover { background:var(--hover); } .proj.on { background:var(--card); box-shadow:var(--shadow); }
@@ -220,6 +222,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
   <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></symbol>
   <symbol id="i-gh" viewBox="0 0 24 24"><path d="M9 19c-4 1.5-4-2-6-2.5m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></symbol>
+  <symbol id="i-panelL" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
   <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
   <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
@@ -248,11 +251,13 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 </svg>
 
 <aside id="side">
-  <div id="brand" onclick="goHome()" style="cursor:pointer" title="Home"><img src="icon.svg" alt=""><b>Claur<span>acle</span></b></div>
-  <div class="side-head"><span class="label grow">Projects</span>
+  <div id="brand"><img src="icon.svg" alt="" onclick="goHome()" style="cursor:pointer" title="Home"><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b>
+    <button class="ib" title="Collapse the sidebar" onclick="toggleLeft()"><svg class="i"><use href="#i-panelL"/></svg></button></div>
+  <div class="side-head"><span class="seg grow" id="stabs"><button data-s="projects" onclick="setSide('projects')">Projects</button><button data-s="files" onclick="setSide('files')">Files</button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
+  <div id="files" hidden></div>
   <div id="lrail" class="railbox"></div><div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
   <div class="side-foot"><button class="btn ghost grow" onclick="openSettings()"><svg class="i"><use href="#i-gear"/></svg>Settings</button>
     <button class="ib" title="Restart Clauracle (sessions, running turns and unsent input all come back)" onclick="call('restart')"><svg class="i"><use href="#i-loop"/></svg></button></div>
@@ -376,7 +381,7 @@ function drawHome() {
   $('missing').innerHTML = [!S.claude && `Claude Code isn't installed. <button class="btn" onclick="install('claude', this)">Install Claude Code</button>`,
     !S.gh && `GitHub features need the GitHub CLI. <button class="btn" onclick="install('gh', this)">Install gh</button>`].filter(Boolean).join('<br><br>');
 }
-function goHome() { cur = null; $('head').hidden = $('dock').hidden = $('right').hidden = true; drawProjects(); drawHome(); }
+function goHome() { cur = null; drawSide(); $('head').hidden = $('dock').hidden = $('right').hidden = true; drawProjects(); drawHome(); }
 async function install(what, btn) {
   btn.disabled = true; btn.textContent = 'Installing…';
   try { await call('install', {what}); } catch (e) { btn.textContent = 'Failed: ' + e; return false; }
@@ -439,7 +444,7 @@ async function openProject(pid) {
   busy[pid] = info.busy;
   $('branch').hidden = !info.branch; $('branch').textContent = info.branch;
   drawLog(); drawChrome(); drawRight(); $('prompt').focus();
-  suggest(pid); pollTeam();
+  suggest(pid); pollTeam(); drawSide(); askLegacy(pid);
 }
 // the repo's owner decides (by code): its gh account and the AI account tied to it, if they're set up here
 async function suggest(pid) {
@@ -629,7 +634,7 @@ function askCard(e) {
 async function addProject() {
   const path = await T.dialog.open({directory: true});
   if (!path) return;
-  const p = await call('add_project', {path}); await refresh(); openProject(p.id);
+  const p = await call('add_project', {path}); await refresh(); await openProject(p.id); askProject(P(p.id));
 }
 
 // ---- dialogs ----
@@ -649,8 +654,7 @@ function projectsPage() {
   if (!P(mp)) mp = cur || S.projects[0]?.id;
   if (!mp) return `<p class="dim">No projects yet: open a folder or clone a repo.</p>`;
   const p = P(mp);
-  const items = kind => SET.catalog.filter(i => i.kind === kind && !SET.off.includes(i.id)).map(i =>
-    optRow(esc(i.label), esc(i.note), sw(!p.off.includes(i.id), `call('set_off', {item:'${esc(i.id)}', off:!this.checked, scope:'project:${p.id}'}).then(refresh)`))).join('') || '<p class="dim">None.</p>';
+  const items = kind => cxList(kind, 'project:' + p.id, p);
   return `<div class="split"><div class="plist">${recent().map(x => `<button class="${x.id === mp ? 'on' : ''}" onclick="openManager('${x.id}')">${icon(x.shared ? 'gh' : 'folder')}<span>${esc(x.name)}</span></button>`).join('')}
     <button onclick="closeDlg(); menuAt($('projects'), addItems())">${icon('plus')}<span>Add project</span></button></div>
     <div><div class="row"><input value="${esc(p.name)}" onchange="setM({name:this.value})" style="font-size:17px;font-weight:600;border-color:transparent;padding-left:0" class="grow"></div>
@@ -778,22 +782,35 @@ function draft(kind, x) {
   grow(); keepDraft(); $('prompt').focus();
 }
 
-// code view: browse and read the project's files
-const codeAt = {};
-async function drawCode(rel = codeAt[cur]?.dir ?? '', file = codeAt[cur]?.file) {
-  codeAt[cur] = {dir: rel, file};
-  const parts = rel ? rel.split('/') : [], box = $('rbody');
-  const crumbs = `<div class="crumbs"><a onclick="drawCode('')">${esc(P().name)}</a>${parts.map((x, i) => ` / <a onclick="drawCode('${esc(parts.slice(0, i + 1).join('/'))}')">${esc(x)}</a>`).join('')}${file ? ' / <b>' + esc(file.split('/').pop()) + '</b>' : ''}</div>`;
-  if (file) {
-    let text;
-    try { text = await call('read_file', {pid: cur, rel: file}); } catch (e) { box.innerHTML = crumbs + `<p class="dim">${esc(e)}</p>`; return; }
-    const lines = text.split('\n');
-    box.innerHTML = crumbs + `<div class="code"><div class="ln">${lines.map((_, i) => i + 1).join('\n')}</div><pre class="sel">${esc(text)}</pre></div>`;
-    return;
-  }
-  const items = await call('list_dir', {pid: cur, rel}).catch(() => []);
-  box.innerHTML = crumbs + `<div class="tree">${items.map(i => { const path = (rel ? rel + '/' : '') + i.name;
-    return `<div onclick="drawCode(${i.dir ? `'${esc(path)}'` : `'${esc(rel)}', '${esc(path)}'`})">${icon(i.dir ? 'folder' : 'file')}${esc(i.name)}</div>`; }).join('') || '<p class="dim">Empty.</p>'}</div>`;
+// files: the tree lives in the left panel (Files tab); a picked file previews in the right panel's Code tab
+const codeAt = {}, filesAt = {};
+async function drawFiles(rel = filesAt[cur] ?? '') {
+  const box = $('files');
+  if (!cur) { box.innerHTML = '<p class="faint" style="padding:4px 10px;font-size:13px">Open a project to see its files.</p>'; return; }
+  filesAt[cur] = rel;
+  const parts = rel ? rel.split('/') : [], items = await call('list_dir', {pid: cur, rel}).catch(() => []);
+  box.innerHTML = `<div class="crumbs" style="padding:2px 8px"><a data-p="" onclick="drawFiles(this.dataset.p)">${esc(P().name)}</a>${parts.map((x, i) =>
+      ` / <a data-p="${esc(parts.slice(0, i + 1).join('/'))}" onclick="drawFiles(this.dataset.p)">${esc(x)}</a>`).join('')}</div>
+    <div class="tree">${items.map(i => { const path = (rel ? rel + '/' : '') + i.name;
+      return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'drawFiles' : 'previewFile'}(this.dataset.p)">${icon(i.dir ? 'folder' : 'file')}${esc(i.name)}</div>`; }).join('')
+      || '<p class="dim" style="padding:0 8px">Empty.</p>'}</div>`;
+}
+function previewFile(rel) { codeAt[cur] = {file: rel}; expandRight('code'); drawFiles(); }
+async function drawCode() {
+  const file = codeAt[cur]?.file, box = $('rbody');
+  if (!file) { box.innerHTML = '<p class="dim">Pick a file in the Files tab on the left.</p>'; return; }
+  const head = `<div class="crumbs mono">${esc(file)}</div>`;
+  let text;
+  try { text = await call('read_file', {pid: cur, rel: file}); } catch (e) { box.innerHTML = head + `<p class="dim">${esc(e)}</p>`; return; }
+  box.innerHTML = head + `<div class="code"><div class="ln">${text.split('\n').map((_, i) => i + 1).join('\n')}</div><pre class="sel">${esc(text)}</pre></div>`;
+}
+function setSide(t) { UI.st = t; layout(); drawSide(); }
+function toggleLeft() { UI.lc = !UI.lc; layout(); }
+function drawSide() {
+  const t = UI.st || 'projects';
+  document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', b.dataset.s === t));
+  $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files';
+  if (t === 'files') drawFiles();
 }
 
 // browser view: preview inside Clauracle, or open in a real browser profile (your logins live there)
@@ -923,13 +940,52 @@ function ghPage() {
     <div class="box">${ghUsers.map(u => optRow('@' + esc(u), '', `<button class="btn ghost" onclick="rmGh('${esc(u)}')">Log out</button>`)).join('') || '<p class="dim">None yet.</p>'}</div>
     <p>${S.gh ? `<button class="btn primary" onclick="addGh()">${icon('plus')}Add GitHub account</button>` : `<button class="btn primary" onclick="install('gh', this).then(() => openSettings())">Install the GitHub CLI</button>`}</p><p id="ghMsg" class="dim"></p>`;
 }
-const cxList = (kind, off, scope, under = []) => SET.catalog.filter(i => i.kind === kind && !under.includes(i.id)).map(i =>
-  optRow(esc(i.label), esc(i.note), sw(!off.includes(i.id), `call('set_off', {item:'${esc(i.id)}', off:!this.checked, scope:'${esc(scope)}'})`))).join('') || '<p class="dim">None.</p>';
+const builtin = id => id.startsWith('skill:clauracle:'); // Clauracle's own (Ponytail): its own switch
+// what a project/account has on; one from before allow-lists (`on` null) has everything but its `off`
+const onOf = x => x.on ?? SET.catalog.map(i => i.id).filter(id => !x.off.includes(id));
+// global rows switch an item off everywhere; scoped rows (account id | project:<id>) pick it for that one
+const cxList = (kind, scope, x) => SET.catalog.filter(i => i.kind === kind && (scope === 'global' || (!SET.off.includes(i.id) && !builtin(i.id)))).map(i =>
+  optRow(esc(i.label), esc(i.note), scope === 'global' ? sw(!SET.off.includes(i.id), `call('set_off', {item:'${esc(i.id)}', off:!this.checked, scope:'global'})`)
+    : sw(onOf(x).includes(i.id), `toggleOn('${esc(scope)}', '${esc(i.id)}', this.checked)`))).join('') || '<p class="dim">None.</p>';
+async function toggleOn(scope, id, checked) {
+  const x = scope.startsWith('project:') ? P(scope.slice(8)) : S.accounts.find(a => a.id === scope);
+  const on = onOf(x).filter(i => i !== id);
+  if (checked) on.push(id);
+  await call('set_items', {scope, items: on}); await refresh();
+}
+// the picker: nothing on unless ticked (a shared machine can have plenty that isn't for this account/project)
+async function pickItems(scope, title, pre) {
+  SET ||= await call('settings');
+  const all = SET.catalog.filter(i => !SET.off.includes(i.id) && !builtin(i.id));
+  if (!all.length) return;
+  const row = i => `<label class="check"><input type="checkbox" value="${esc(i.id)}" ${pre.includes(i.id) ? 'checked' : ''}>
+    <span class="grow">${esc(i.label)}<small class="dim" style="display:block">${esc(i.note)}</small></span></label>`;
+  const part = (k, l) => { const xs = all.filter(i => i.kind === k); return xs.length ? `<div class="label" style="margin-top:12px">${l}</div><div class="box" style="max-height:210px;overflow:auto;margin-bottom:0">${xs.map(row).join('')}</div>` : ''; };
+  const tick = v => document.querySelectorAll('#dlg input[type=checkbox]').forEach(c => c.checked = v);
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(title)}</h2><p class="dim" style="margin:0;font-size:13px">Only what you tick is enabled; everything else on this computer stays off for it. You can change it later in Settings.</p>
+    ${part('mcp', 'Connections')}${part('skill', 'Skills')}
+    <div class="btns" style="justify-content:space-between"><span class="row"><button class="btn ghost sm" id="pickAll">All</button><button class="btn ghost sm" id="pickNone">None</button></span>
+      <button class="btn primary" id="pickSave">Save</button></div>`);
+  $('pickAll').onclick = () => tick(true); $('pickNone').onclick = () => tick(false);
+  await new Promise(res => $('pickSave').onclick = res);
+  await call('set_items', {scope, items: [...document.querySelectorAll('#dlg input[type=checkbox]:checked')].map(c => c.value)});
+  closeDlg(); await refresh();
+}
+const askProject = p => pickItems('project:' + p.id, `What can Claude use in ${p.name}?`, p.on || []);
+// projects from before allow-lists: ask once, ticked as they are now
+const asked = {};
+async function askLegacy(pid) {
+  const p = P(pid);
+  if (!p || p.on != null || asked[pid]) return;
+  asked[pid] = true;
+  SET ||= await call('settings');
+  pickItems('project:' + pid, `Choose what Claude can use in ${p.name}`, onOf(p));
+}
 function cxPage() {
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
     <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => openSettings())">${icon('loop')}Rescan</button></p>
-    <div class="label">Connections</div><div class="box">${cxList('mcp', SET.off, 'global')}</div>
-    <div class="label">Skills</div><div class="box">${cxList('skill', SET.off, 'global')}</div>`;
+    <div class="label">Connections</div><div class="box">${cxList('mcp', 'global')}</div>
+    <div class="label">Skills</div><div class="box">${cxList('skill', 'global')}</div>`;
 }
 function agentsPage() {
   return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.</p>`
@@ -957,8 +1013,8 @@ function aiPage() {
         <span>Pool</span><input list="pools" value="${esc(a.pool)}" placeholder="None" onchange="acct('${esc(a.id)}', {pool:this.value.trim()})">
         <span>GitHub for new projects</span><select onchange="acct('${esc(a.id)}', {gh:this.value})">${options({'': 'None', ...Object.fromEntries(ghUsers.map(g => [g, '@' + g]))}, a.gh)}</select>
       </div>
-      <div class="label">Connections for new projects</div><div class="box">${cxList('mcp', a.off, a.id, SET.off)}</div>
-      <div class="label">Skills for new projects</div><div class="box">${cxList('skill', a.off, a.id, SET.off)}</div>
+      <div class="label">Connections for new projects</div><div class="box">${cxList('mcp', a.id, a)}</div>
+      <div class="label">Skills for new projects</div><div class="box">${cxList('skill', a.id, a)}</div>
       <div class="btns">${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
     + `<div class="label" style="margin-top:10px">Add an account</div><div class="row" style="margin-top:8px"><input id="nick" class="grow" placeholder="Name, e.g. Work"><button class="btn primary" onclick="addClaude()">Sign in with Claude</button></div>
@@ -979,10 +1035,17 @@ function notifyPage() {
 const saveNotify = c => call('set_notify', {notify: {...S.notify, ...c}}).then(refresh);
 async function addClaude() {
   $('loginMsg').textContent = 'Starting claude setup-token…';
-  try { await call('claude_login', {nick: $('nick').value}); openSettings(); } catch (e) { $('loginMsg').textContent = e; }
+  try { await call('claude_login', {nick: $('nick').value}); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; }
 }
 async function pasteClaude() {
-  try { await call('claude_add_token', {nick: $('nick').value, token: $('token').value}); openSettings(); } catch (e) { $('loginMsg').textContent = e; }
+  try { await call('claude_add_token', {nick: $('nick').value, token: $('token').value}); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; }
+}
+async function askNewAccount() {
+  const known = S.accounts.map(a => a.id);
+  await refresh();
+  const a = S.accounts.find(x => !known.includes(x.id));
+  if (a) await pickItems(a.id, `What should ${a.nick}'s new projects get?`, []);
+  openSettings('ai');
 }
 async function rmClaude(id) { if (confirm('Remove this account? Its projects fall back to Main.')) { await call('claude_remove', {id}); openSettings(); } }
 async function addGh() { $('ghMsg').textContent = 'Waiting for gh…'; const ok = await call('gh_login').catch(e => ($('ghMsg').textContent = e, false)); if (ok) openSettings(); }
@@ -1007,13 +1070,13 @@ async function clone(repo) {
   const parent = await T.dialog.open({directory: true, title: 'Clone into…'});
   if (!parent) return;
   $('repoList').textContent = `Cloning ${repo}…`;
-  try { const p = await call('clone_repo', {user: $('cloneUser').value, repo, parent}); closeDlg(); await refresh(); openProject(p.id); }
+  try { const p = await call('clone_repo', {user: $('cloneUser').value, repo, parent}); closeDlg(); await refresh(); await openProject(p.id); askProject(P(p.id)); }
   catch (e) { $('repoList').textContent = e; }
 }
 
 // ---- panels: drag to resize (no minimum); under SNAP px a panel collapses to a rail ----
 const RAIL = 52, SNAP = 140;
-let UI = {lw: 252, rw: 380, lc: false, rc: true};
+let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
 function layout() {
   try { localStorage.ui = JSON.stringify(UI); } catch {}
@@ -1046,7 +1109,9 @@ const todos = pid => (logs[pid] || []).filter(e => e.kind === 'tool' && /^TodoWr
 function drawRails() {
   if (UI.lc) {
     const p = P();
-    $('lrail').innerHTML = `<button class="ib" title="Home" onclick="goHome()" style="width:36px;height:36px"><img src="icon.svg" style="width:22px"></button><hr>`
+    $('lrail').innerHTML = `<button class="ib" title="Home" onclick="goHome()" style="width:36px;height:36px"><img src="icon.svg" style="width:22px"></button>
+      <button class="ib" title="Expand the sidebar" onclick="toggleLeft()">${icon('panelL')}</button>
+      <button class="ib" title="Files" onclick="UI.lc = false; setSide('files')">${icon('folder')}</button><hr>`
       + (p ? `<div class="tile on" title="${esc(p.name)} (open)">${initials(p.name)}<span class="dot ${dotOf(p)}"></span></div>`
         + touched(cur).map(f => `<button class="ib" title="${esc(f)}" data-file="${esc(f)}" onclick="openFile(this.dataset.file)">${icon('file')}</button>`).join('') + '<hr>' : '')
       + recent().filter(x => x.id !== cur).map(x => `<div class="tile" title="${esc(x.name)}" onclick="openProject('${x.id}')">${initials(x.name)}<span class="dot ${dotOf(x)}"></span>
@@ -1076,10 +1141,10 @@ function openFile(abs) {
   const base = P().path.replace(/\\/g, '/').replace(/\/$/, ''), f = abs.replace(/\\/g, '/');
   if (!f.toLowerCase().startsWith(base.toLowerCase() + '/')) return;
   const rel = f.slice(base.length + 1);
-  codeAt[cur] = {dir: rel.split('/').slice(0, -1).join('/'), file: rel};
-  expandRight('code');
+  previewFile(rel);
 }
 layout();
+drawSide();
 applyView();
 refresh().then(() => S.active && openProject(S.active));
 </script>

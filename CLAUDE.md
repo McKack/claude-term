@@ -23,7 +23,9 @@ Current state and open work: see `HANDOVER.md`. Frozen, don't edit: `archive/tui
 
 ## Conventions
 - Keep it minimal: std first, no new deps without a reason. Mark deliberate shortcuts with `ponytail:`.
-- Settings are deny-lists (`off`), so new connections/skills start on. Switched-off items become `--disallowedTools`.
+- Connections/skills are allow-lists per project/account (`on`): nothing is on until picked (a picker asks on every new
+  project/account). `on: None` = legacy deny-list (`off`). Global `cfg.off` switches an item off everywhere.
+  Disabled MCP servers become `--disallowedTools`; Clauracle's own `skill:clauracle:*` are always on.
 - The project is the source of truth: its `gh`/`off` are copied from its AI account at creation and never follow it after.
 - Never touch `gh auth switch`: per-process `GH_TOKEN` (+ git credential helper via `GIT_CONFIG_*`) instead.
 - Account/settings changes reconnect sessions after the current reply (`Input::Reconnect`).

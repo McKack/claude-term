@@ -268,6 +268,23 @@ fn set_off(st: St, item: String, off: bool, scope: String) {
     }
 }
 
+/// The picker's result: exactly these connections/skills for a project (`project:<id>`) or an account's new projects.
+#[tauri::command]
+fn set_items(st: St, scope: String, items: Vec<String>) {
+    let mut cfg = st.cfg.lock().unwrap();
+    if let Some(pid) = scope.strip_prefix("project:") {
+        if let Some(p) = cfg.projects.iter_mut().find(|p| p.id == pid) {
+            p.on = Some(items);
+        }
+        if let Some(l) = st.live.lock().unwrap().get(pid) {
+            l.inbox.front(vec![Input::Reconnect]);
+        }
+    } else if let Some(a) = cfg.accounts.iter_mut().find(|a| a.id == scope) {
+        a.on = Some(items);
+    }
+    store::save(&cfg);
+}
+
 #[tauri::command]
 fn update_account(st: St, id: String, changes: Value) {
     let mut cfg = st.cfg.lock().unwrap();
@@ -666,7 +683,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do])
+            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, set_items])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {
