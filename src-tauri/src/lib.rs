@@ -23,8 +23,10 @@ fn state(st: St) -> Value {
     json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "active": cfg.active, "busy": busy,
            "default_account": cfg.default_account, "agents_on": cfg.agents_on, "notify": cfg.notify, "drafts": store::drafts(),
            "projects_dir": store::projects_root(&cfg).to_string_lossy(),
-           // next steps from HANDOVER.md, for the ready bar
-           "queues": cfg.projects.iter().filter(|p| p.ready).map(|p| (p.id.clone(), json!(claude::queue(&p.path))))
+           // next steps from HANDOVER.md (ready bar, Tasks tab) + the last few done from CHANGES.md (Tasks tab)
+           "queues": cfg.projects.iter().map(|p| (p.id.clone(), json!(claude::queue(&p.path))))
+               .collect::<serde_json::Map<String, Value>>(),
+           "done": cfg.projects.iter().map(|p| (p.id.clone(), json!(claude::done(&p.path, 3))))
                .collect::<serde_json::Map<String, Value>>(),
            "claude": store::which("claude").is_some(), "gh": store::which("gh").is_some()})
 }

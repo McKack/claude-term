@@ -817,6 +817,13 @@ pub fn queue(dir: &str) -> Vec<String> {
     out
 }
 
+/// The newest `n` entries of CHANGES.md (newest first, one bullet per change): what was done lately.
+pub fn done(dir: &str, n: usize) -> Vec<String> {
+    let text = std::fs::read_to_string(std::path::Path::new(dir).join("CHANGES.md")).unwrap_or_default();
+    text.lines().filter_map(|l| l.trim_start().strip_prefix("- ")).take(n)
+        .map(|l| l.split_once(": ").filter(|(d, _)| d.len() <= 12).map_or(l, |(_, rest)| rest).to_string()).collect() // drop a "2026-11-04: " prefix
+}
+
 pub fn history(session: &str) -> Vec<Value> {
     let root = dirs::home_dir().unwrap_or_default().join(".claude/projects");
     let file = std::fs::read_dir(root).into_iter().flatten().flatten()
@@ -867,6 +874,14 @@ pub fn history(session: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn done_reads_newest_changes() {
+        let d = std::env::temp_dir().join("clauracle-done-test");
+        let _ = std::fs::create_dir_all(&d);
+        std::fs::write(d.join("CHANGES.md"), "# Changes\n\n- 2026-11-04: Newest: thing\n- Older\n- Oldest\n- Gone\n").unwrap();
+        assert_eq!(done(d.to_str().unwrap(), 3), ["Newest: thing", "Older", "Oldest"]);
+    }
 
     #[test]
     fn handover_queue() {
