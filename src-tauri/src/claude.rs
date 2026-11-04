@@ -682,6 +682,9 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                 let exe = m["params"]["arguments"]["exe"].as_str().unwrap_or("").to_string();
                 match restart_target(&exe) {
                     Ok(target) => {
+                        // page holds new prompts in its (saved) queue from now on ∵ one sent in the next 800ms reached
+                        // the CLI, which was killed before writing it to the transcript → lost after the restart
+                        emit(app, "restarting", json!({}));
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_millis(800)).await; // let this reply land

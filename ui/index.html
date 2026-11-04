@@ -1071,7 +1071,7 @@ function send() {
   const ed = editing[cur]; delete editing[cur];
   $('prompt').value = ed ? ed.prev.text : ''; atts[cur] = ed ? ed.prev.atts : []; grow(); drawAtts(); drawEditBar();
   const q = queue[cur] ||= [];
-  if (busy[cur]) q.splice(ed ? ed.i : q.length, 0, {text: t, atts: a}); // an edited one goes back to its place
+  if (busy[cur] || RESTARTING) q.splice(ed ? ed.i : q.length, 0, {text: t, atts: a}); // an edited one goes back to its place
   else sendNow(cur, {text: t, atts: a});
   drawQueue(); keepDraft(cur, true);
 }
@@ -1084,8 +1084,9 @@ function cancelEdit() {
   drawQueue(); drawAtts(); grow(); drawEditBar(); keepDraft(); flushQueue(cur);
 }
 const drawEditBar = () => { $('cancelEdit').hidden = !editing[cur]; };
+let RESTARTING = false; // Claude asked for a restart: hold everything in the saved queue until the new app is up
 function flushQueue(pid) {
-  if (busy[pid] || editing[pid] || !queue[pid]?.length) return;
+  if (RESTARTING || busy[pid] || editing[pid] || !queue[pid]?.length) return;
   sendNow(pid, queue[pid].shift()); if (pid === cur) drawQueue(); keepDraft(pid, true);
 }
 function sendNow(pid, {text: t, atts: a}) {
@@ -1149,6 +1150,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
+  restarting: () => { RESTARTING = true; },
   cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   ready: () => refresh().then(() => d.pid === cur && drawLog()),
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
@@ -1317,10 +1319,10 @@ async function drawRight() {
   const g = await call('gh_info', {pid: cur}), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
     <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask Claude</button></div></div>`;
   const list = (xs, kind) => xs?.length ? `<div class="list">${xs.map(x => item(x, kind)).join('')}</div>` : empty('None open');
-  box.innerHTML = `<div id="tasksBox">${tasksHtml()}</div>`
-    + sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
+  box.innerHTML = sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
       : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
       : publishForm(p, g.users || []), `<button class="ib" title="Refresh" onclick="drawRight()">${icon('loop')}</button>`)
+    + `<div id="tasksBox">${tasksHtml()}</div>`
     + (g.remote ? changesSec(g.git || {}) + releaseSec(g.release, g.builds) : '')
     + fold('prs', 'Pull requests', list(g.prs, 'pr'), g.prs?.length || 0) + fold('issues', 'Issues', list(g.issues, 'issue'), g.issues?.length || 0);
   relReady();
