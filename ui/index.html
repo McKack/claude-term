@@ -277,6 +277,8 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 #rtabs button:hover { background:var(--hover); } #rtabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 #atp { position:relative; border-top:1px solid var(--line); height:240px; min-height:44px; display:flex; flex-direction:column; flex:none; } #atp:empty { display:none; }
+#atp.min { height:auto !important; min-height:0; } #atp.min .atbody, #atp.min .atgrip, #atp.tabbed .atgrip { display:none; }
+#atp.tabbed { flex:1; height:auto !important; min-height:0; border-top:0; } .athead .ib.tog { margin:-4px -2px -4px -6px; }
 .atgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } .atgrip:hover, body.dragging .atgrip { background:color-mix(in srgb, var(--accent) 30%, transparent); }
 .athead { display:flex; gap:8px; align-items:center; padding:8px 14px 6px; color:var(--faint); } .athead .seg button { font-size:12.5px; }
 .atbody { flex:1; overflow:auto; padding:2px 14px 12px; display:flex; flex-direction:column; gap:5px; } .atbody .label { margin:6px 0 0; }
@@ -381,7 +383,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="side">
   <div id="brand"><img src="icon.svg" alt="" onclick="goHome()" style="cursor:pointer" title="Home"><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b>
 </div>
-  <div class="side-head"><span class="seg grow" id="stabs"><button data-s="projects" onclick="setSide('projects')">Projects</button><button data-s="files" onclick="setSide('files')">Files</button></span>
+  <div class="side-head"><span class="seg grow" id="stabs"><button data-s="projects" onclick="setSide('projects')">Projects</button><button data-s="files" onclick="setSide('files')">Files</button><button data-s="tasks" id="stabTasks" hidden onclick="setSide('tasks')">Tasks</button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
@@ -431,6 +433,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
     <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
     <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
+    <button data-t="tasks" id="rtabTasks" hidden onclick="rightTab('tasks')" title="Tasks & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button>
   </div>
   <div id="rbody"></div>
   <div id="atp"></div>
@@ -1250,6 +1253,7 @@ function projectsPage() {
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
       ${(p.allow || []).length ? optRow('Always allowed', 'Tools this project runs without asking', `<span class="row wrap" style="gap:4px">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t)} ✕</span>`).join('')}</span>`) : ''}
+      ${optRow('Credit Claude in commits', 'Off: no Co-Authored-By or "Generated with" lines; Claude never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
       ${p.gh ? optRow('Prompts become team tasks', 'Each task you give Claude is filed as a GitHub issue (Team tasks), claimed while it works and closed when done', sw(p.team_auto, 'setM({team_auto:this.checked})')) : ''}
       ${optRow('Keep .env away from Claude', 'Claude can\'t read or edit .env files; manage them in the .env panel', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>
@@ -1277,6 +1281,7 @@ async function drawRight() {
   if (UI.rc) return drawRRail();
   document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
   const box = $('rbody'), p = P();
+  box.hidden = tab === 'tasks'; if (tab === 'tasks') return drawAtp();
   if (tab === 'code') return drawCode();
   if (tab === 'web') return drawWeb();
   if (tab === 'env') return drawEnv();
@@ -1445,6 +1450,7 @@ function drawSide() {
   document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', b.dataset.s === t));
   $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files';
   if (t === 'files') drawFiles();
+  drawAtp();
 }
 
 // browser view: preview inside Clauracle, or open in a real browser profile (your logins live there)
@@ -1901,8 +1907,28 @@ const agentsOf = pid => { const l = logs[pid] || [];
 // Tasks: Claude's live list (open + last 3 done) → HANDOVER.md's queue (next) → CHANGES.md's newest 3 (done, faded)
 let atpTab = (() => { try { return localStorage.atpTab || 'tasks'; } catch { return 'tasks'; } })();
 const atpSet = t => { atpTab = t; try { localStorage.atpTab = t; } catch {} drawAtp(); };
+// placement: 'right|left' + '-dock' (bottom of that panel) | '-tab' (a tab in that panel); atpMin = docked + folded to its header
+let ATW = (() => { try { return localStorage.atpWhere || 'right-dock'; } catch { return 'right-dock'; } })();
+let atpMin = (() => { try { return localStorage.atpMin === '1'; } catch { return false; } })();
+function atpMinT() { atpMin = !atpMin; try { localStorage.atpMin = atpMin ? '1' : ''; } catch {} drawAtp(); }
+function atpPlace(w) {
+  ATW = w; try { localStorage.atpWhere = w; } catch {}
+  if (tab === 'tasks') tab = 'gh'; if (UI.st === 'tasks') UI.st = 'projects';
+  if (w === 'right-tab') tab = 'tasks'; if (w === 'left-tab') UI.st = 'tasks';
+  drawSide(); drawRight(); drawAtp();
+}
+const atpPlaceItems = () => [{title: 'Show as'},
+  {label: 'Panel at the bottom', check: ATW.endsWith('dock'), run: () => atpPlace(ATW.split('-')[0] + '-dock')},
+  {label: 'A tab', check: ATW.endsWith('tab'), run: () => atpPlace(ATW.split('-')[0] + '-tab')}, '-', {title: 'Side'},
+  {label: 'Right', check: ATW.startsWith('right'), run: () => atpPlace('right-' + ATW.split('-')[1])},
+  {label: 'Left', check: ATW.startsWith('left'), run: () => atpPlace('left-' + ATW.split('-')[1])}];
 function drawAtp() {
   const el = $('atp'); if (!el || !cur) return;
+  const [side, mode] = ATW.split('-'), tabbed = mode === 'tab', host = $(side === 'left' ? 'side' : 'right'), rail = $(side === 'left' ? 'lrail' : 'rrail');
+  if (el.nextElementSibling !== rail) host.insertBefore(el, rail);
+  $('rtabTasks').hidden = ATW !== 'right-tab'; $('stabTasks').hidden = ATW !== 'left-tab';
+  el.hidden = tabbed && (side === 'right' ? tab !== 'tasks' : UI.st !== 'tasks');
+  el.classList.toggle('tabbed', tabbed); el.classList.toggle('min', !tabbed && atpMin);
   if (!el.style.height) try { if (localStorage.atpH) el.style.height = localStorage.atpH; } catch {}
   const ag = agentsOf(cur), t = todos(cur), run = ag.filter(a => a.running), q = S.queues?.[cur] || [], dn = S.done?.[cur] || [];
   const open = t.filter(x => x.status !== 'completed'), fin = t.filter(x => x.status === 'completed');
@@ -1919,12 +1945,14 @@ function drawAtp() {
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
     : empty('No helper agents started in this session');
   const cnt = open.length ? open.length : q.length;
-  el.innerHTML = `<div class="atgrip" title="Drag to resize"></div><div class="athead">${icon('list')}<span class="seg">
+  el.innerHTML = `<div class="atgrip" title="Drag to resize"></div><div class="athead">${tabbed ? icon('list')
+      : `<button class="ib tog" title="${atpMin ? 'Expand' : 'Collapse'}" onclick="atpMinT()">${icon('list')}</button>`}<span class="seg">
       <button class="${atpTab === 'tasks' ? 'on' : ''}" onclick="atpSet('tasks')">Tasks${cnt ? ` <span class="pill">${cnt}</span>` : ''}</button>
-      <button class="${atpTab === 'agents' ? 'on' : ''}" onclick="atpSet('agents')">Agents${run.length ? ` <span class="pill">${run.length}</span>` : ''}</button></span></div>
+      <button class="${atpTab === 'agents' ? 'on' : ''}" onclick="atpSet('agents')">Agents${run.length ? ` <span class="pill">${run.length}</span>` : ''}</button></span><span class="grow"></span>
+      <button class="ib" title="Where this panel shows" onclick="menuAt(this, atpPlaceItems())">${icon('more')}</button></div>
     <div class="atbody">${atpTab === 'agents' ? agents : tasks}</div>`;
   el.querySelector('.atgrip').onpointerdown = e => {
-    const g = e.target, y0 = e.clientY, h0 = el.offsetHeight, max = $('right').offsetHeight - 120;
+    const g = e.target, y0 = e.clientY, h0 = el.offsetHeight, max = host.offsetHeight - 120;
     g.setPointerCapture(e.pointerId); document.body.classList.add('dragging');
     g.onpointermove = m => { el.style.height = Math.max(44, Math.min(max, h0 + y0 - m.clientY)) + 'px'; };
     g.onpointerup = () => { g.onpointermove = null; document.body.classList.remove('dragging'); try { localStorage.atpH = el.style.height; } catch {} };

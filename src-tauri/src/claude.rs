@@ -200,6 +200,10 @@ fn args(st: &State, p: &Project) -> Vec<String> {
     if p.terse {
         append += TERSE_RULES;
     }
+    if !p.ai_credit {
+        append += "\n# Attribution\nNo AI credit in this repo: no Co-Authored-By trailers, no \"Generated with\" lines, never add \
+            yourself as contributor/collaborator/author in commits, PRs, or files.\n";
+    }
     if !p.build.build.is_empty() || !p.build.run.is_empty() {
         append += &format!("\n# Build (Clauracle runs these itself after a task; don't repeat them)\nbuild: {}\nrun: {}\n",
                            p.build.build, p.build.run);
@@ -227,6 +231,13 @@ fn args(st: &State, p: &Project) -> Vec<String> {
         "--include-partial-messages", "--permission-prompt-tool", "stdio"].iter().map(|s| s.to_string()).collect();
     a.extend(["--append-system-prompt".into(), append, "--permission-mode".into(), p.mode.clone(),
               "--plugin-dir".into(), st.plugin_dir.to_string_lossy().into(), "--mcp-config".into(), mcp.to_string()]);
+    // no AI credit in commits/PRs unless the project turns it on; a settings file, not inline JSON (cmd /c mangles quotes)
+    if !p.ai_credit {
+        let f = store::home().join("no-credit.json");
+        if std::fs::write(&f, r#"{"includeCoAuthoredBy":false,"attribution":{"commit":"","pr":""}}"#).is_ok() {
+            a.extend(["--settings".into(), f.to_string_lossy().into()]);
+        }
+    }
     if !p.effort.is_empty() {
         a.extend(["--effort".into(), p.effort.clone()]);
     }
