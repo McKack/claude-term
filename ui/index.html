@@ -87,6 +87,13 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .msg.claude a { color:var(--accent); }
 .tools { display:flex; flex-direction:column; gap:2px; }
 .msg.tool { font:12px ui-monospace,"Cascadia Code",Consolas,monospace; color:var(--faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; gap:6px; align-items:center; }
+#log:not(.term) .msg.tool { cursor:pointer; text-decoration:underline dashed var(--line2); text-underline-offset:3px; }
+#log:not(.term) .msg.tool:hover { color:var(--dim); text-decoration-color:var(--faint); }
+.msg.tool[data-n]::after { content:attr(data-n); font-size:11px; padding:0 6px; border-radius:99px; background:var(--soft); color:var(--accent); flex:none; }
+.small-dlg.wide { width:min(820px,94vw); }
+pre.diff { margin:0; padding:8px 0; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; white-space:pre; }
+pre.diff span { display:block; padding:0 10px; } pre.diff .del { background:color-mix(in srgb, var(--err) 14%, transparent); }
+pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.diff .ctx { color:var(--faint); }
 .msg.tool::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--line2); flex:none; }
 .msg.note { color:var(--dim); font-size:13px; text-align:center; } .msg.err { color:var(--err); font-size:13px; white-space:pre-wrap; }
 .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
@@ -560,13 +567,16 @@ function drawLog() {
   $('log').replaceChildren(box);
   $('log').scrollTop = $('log').scrollHeight;
 }
-// consecutive tool lines share one compact group in chat view
+// consecutive tool lines share one compact group in chat view; the same call again bumps "×N" on its line; click → what it did
 function put(box, e) {
   const el = entry(e);
   if (!el) return;
   if (e.kind === 'tool' && view === 'chat') {
     let g = box.lastElementChild;
     if (!g || !g.classList.contains('tools')) { g = document.createElement('div'); g.className = 'tools'; box.appendChild(g); }
+    const last = g.lastElementChild;
+    if (last?.dataset.t === e.text) { last._es.push(e); last.dataset.n = '×' + last._es.length; return; }
+    el.dataset.t = e.text; el._es = [e]; el.title = 'Show what it did'; el.onclick = () => toolDlg(el._es);
     return g.appendChild(el);
   }
   const qs = box.querySelector('.qs');
@@ -585,6 +595,26 @@ function entry(e) {
   else if (e.kind === 'user' && e.images?.length) { d.innerHTML = `<div class="thumbs">${e.images.map(src => `<img src="${src}">`).join('')}</div>`; d.append(e.text); }
   else d.textContent = e.text;
   return d;
+}
+// ponytail: diff = common head/tail lines as context, the middle as -/+ blocks (no LCS); enough for Edit's small hunks
+function diff(a = '', b = '') {
+  const x = a ? a.split('\n') : [], y = b ? b.split('\n') : [];
+  let h = 0, t = 0;
+  while (h < x.length && h < y.length && x[h] === y[h]) h++;
+  while (t < x.length - h && t < y.length - h && x[x.length - 1 - t] === y[y.length - 1 - t]) t++;
+  const row = (c, l) => `<span class="${c}">${c === 'ctx' ? ' ' : c === 'del' ? '-' : '+'} ${esc(l)}\n</span>`;
+  return `<pre class="diff">${[...x.slice(0, h).map(l => row('ctx', l)), ...x.slice(h, x.length - t).map(l => row('del', l)),
+    ...y.slice(h, y.length - t).map(l => row('add', l)), ...x.slice(x.length - t).map(l => row('ctx', l))].join('')}</pre>`;
+}
+function toolDlg(es) {
+  const body = es.map(e => { const d = e.detail || {};
+    if ('old_string' in d) return diff(d.old_string, d.new_string);
+    if (Array.isArray(d.edits)) return d.edits.map(x => diff(x.old_string, x.new_string)).join('');
+    if (typeof d.content === 'string') return diff('', d.content);
+    return `<pre class="diff">${esc(d.command ?? JSON.stringify(d, null, 2))}</pre>`; }).join('');
+  dlg(`<h2 class="mono" style="margin:0 0 10px;font-size:14px;overflow-wrap:anywhere">${esc(es[0].text)}${es.length > 1 ? ` <span class="pill">×${es.length}</span>` : ''}</h2>
+    <div style="max-height:65vh;overflow:auto;display:grid;gap:8px">${body}</div>
+    <div class="btns"><button class="btn primary" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');
 }
 function liveEl(pid) { const d = document.createElement('div'); d.className = 'msg claude'; d.id = 'live'; d.innerHTML = md(live[pid]); return d; }
 function addEntry(pid, e) {
