@@ -179,9 +179,9 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .tile .dot { position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border:2px solid var(--side); }
 .stat { text-align:center; line-height:1.15; padding:2px 0; } .stat b { display:block; font-size:14px; font-weight:600; }
 .stat small { font-size:10px; color:var(--faint); }
-#rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
-#rtabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; }
-#rtabs button span { display:none; } #rtabs button.on span { display:inline; }
+#rtabs, .rtabs-probe { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
+#rtabs button, .rtabs-probe button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; }
+#rtabs button span, .rtabs-probe button span { display:none; } #rtabs button.on span, .rtabs-probe button.on span { display:inline; }
 #rtabs button:hover { background:var(--hover); } #rtabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
@@ -1235,13 +1235,25 @@ async function clone(repo) {
 
 // ---- panels: drag to resize (no minimum); under SNAP px a panel collapses to a rail ----
 const RAIL = 52, SNAP = 140;
+// right panel's narrowest: the tab bar with its longest label open, measured once, so it never jumps between tabs
+let RMIN = 0;
+function rMin() {
+  if (RMIN) return RMIN;
+  const c = $('rtabs').cloneNode(true);
+  c.style.cssText = 'position:absolute;visibility:hidden;width:max-content;left:-9999px'; c.removeAttribute('id'); c.classList.add('rtabs-probe');
+  document.body.append(c);
+  const bs = [...c.querySelectorAll('button')];
+  RMIN = Math.max(...bs.map(b => { bs.forEach(x => x.classList.toggle('on', x === b)); return c.offsetWidth; })) + 2;
+  c.remove();
+  return RMIN;
+}
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
 applyLook();
 function layout() {
   try { localStorage.ui = JSON.stringify(UI); } catch {}
   $('side').classList.toggle('rail', UI.lc); $('side').style.width = (UI.lc ? RAIL : UI.lw) + 'px';
-  $('right').classList.toggle('rail', UI.rc); $('right').style.width = (UI.rc ? RAIL : UI.rw) + 'px';
+  $('right').classList.toggle('rail', UI.rc); $('right').style.width = (UI.rc ? RAIL : Math.max(UI.rw, rMin())) + 'px';
   drawRails();
 }
 document.querySelectorAll('.grip').forEach(g => {
@@ -1253,7 +1265,7 @@ document.querySelectorAll('.grip').forEach(g => {
     const move = e => {
       const w = left ? e.clientX : innerWidth - e.clientX, rail = w < SNAP;
       if (left) { UI.lc = rail; if (!rail) UI.lw = Math.min(w, innerWidth * .5); }
-      else { const was = UI.rc; UI.rc = rail; if (!rail) UI.rw = Math.min(w, innerWidth * .75); if (was !== rail) drawRight(); }
+      else { const was = UI.rc; UI.rc = rail; if (!rail) UI.rw = Math.max(rMin(), Math.min(w, innerWidth * .75)); if (was !== rail) drawRight(); }
       layout();
     };
     const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('dragging'); };
