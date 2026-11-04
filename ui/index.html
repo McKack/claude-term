@@ -246,7 +246,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 #status .bar { width:22px; height:3px; }
 @container (max-width:560px) { #status .lb, #status .bar, #status button > svg:last-child:not(:first-child) { display:none; } #status .ab { display:inline; } }
 #status button:hover { color:var(--text); background:var(--hover); } #status b { color:var(--dim); font-weight:500; }
-#status > span { display:inline-flex; gap:4px; align-items:center; } #status .i { width:14px; height:14px; }
+#status > span, #status button > span { display:inline-flex; gap:4px; align-items:center; } #status .stats { gap:10px; } #status .i { width:14px; height:14px; }
 .menu button.sub { padding-left:34px; font-size:12.5px; color:var(--dim); } .menu button.sub .chk { width:12px; }
 .bar { display:inline-block; width:34px; height:4px; border-radius:2px; background:var(--line2); overflow:hidden; vertical-align:middle; } .bar i { display:block; height:100%; background:var(--accent); }
 #working { display:inline-flex; gap:6px; align-items:center; color:var(--accent); }
@@ -680,7 +680,7 @@ function drawChrome() {
   $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? '·' + esc(EFF_S[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 4, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}${permN(p.mode)}</button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${MODE_S[p.cont] || ''}</button>`
-    + `<button onclick="statsCard(this)" title="Context, usage and session time">${ctx[cur] != null ? `<span>${icon('doc')}${ctx[cur]}%</span>` : ''}${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime" class="lb"></span></button>`
+    + `<button class="stats" onclick="statsCard(this)" title="Context, usage and session time">${ctx[cur] != null ? `<span>${icon('doc')}${ctx[cur]}%</span>` : ''}${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime" class="lb"></span></button>`
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
   drawTimes();
   const sendBtn = $('send');
