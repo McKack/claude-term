@@ -135,10 +135,11 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .termcard .cp { border:0; border-radius:6px; background:#2e2c2a; color:#d8d4cb; font-size:11px; padding:2px 8px; cursor:pointer; } .termcard .cp:hover { background:#3a3835; }
 .termcard pre { margin:0; padding:9px 12px; color:#d8d4cb; font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:9em; overflow:auto; cursor:pointer; }
 .sh-p { color:#8c877e; } .sh-c { color:#f0c674; font-weight:600; } .sh-s { color:#a8d982; } .sh-v { color:#8fb8ff; } .sh-f { color:#c49cf0; } .sh-o { color:#f28b82; } .sh-m { color:#7a756c; font-style:italic; }
-pre.termout { background:#161514; color:#d8d4cb; padding:8px 12px; } pre.errout { color:var(--err); }
+pre.termout { background:#161514; color:#d8d4cb; padding:8px 12px; white-space:pre-wrap; overflow-wrap:anywhere; } pre.errout { color:var(--err); }
 .small-dlg.wide { width:min(820px,94vw); }
 pre.diff { margin:0; padding:8px 0; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; white-space:pre; }
-pre.diff span { display:block; padding:0 10px; } pre.diff .del { background:color-mix(in srgb, var(--err) 14%, transparent); }
+pre.diff > .ctx, pre.diff > .del, pre.diff > .add { display:block; padding:0 10px; } /* diff rows only, not colour spans */
+pre.diff:not(:has(> .ctx, > .del, > .add)) { padding:8px 12px; white-space:pre-wrap; overflow-wrap:anywhere; } /* commands, output, JSON */ pre.diff .del { background:color-mix(in srgb, var(--err) 14%, transparent); }
 pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.diff .ctx { color:var(--faint); }
 .msg.tool::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--line2); flex:none; }
 .msg.note { color:var(--dim); font-size:13px; text-align:center; } .msg.note .i { width:13px; height:13px; vertical-align:-2px; }
