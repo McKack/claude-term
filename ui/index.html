@@ -1311,7 +1311,7 @@ function projectsPage() {
   const items = kind => cxList(kind, 'project:' + p.id, p);
   return root + `<div class="split"><div class="plist">${recent().map(x => `<button class="${x.id === mp ? 'on' : ''}" onclick="openManager('${x.id}')">${icon(x.shared ? 'gh' : 'folder')}<span>${esc(x.name)}</span></button>`).join('')}
     <button onclick="closeDlg(); menuAt($('projects'), addItems())">${icon('plus')}<span>Add project</span></button></div>
-    <div><div class="row"><input value="${esc(p.name)}" onchange="setM({name:this.value})" style="font-size:17px;font-weight:600;border-color:transparent;padding-left:0" class="grow"></div>
+    <div><div class="row"><input value="${esc(p.name)}" onchange="this.value.trim() ? setM({name:this.value.trim()}) : (this.value = this.defaultValue)" title="Display name in Clauracle only; the folder and repo keep their names" placeholder="Project name" style="font-size:17px;font-weight:600" class="grow"></div>
     <small class="dim sel mono">${esc(p.path)}</small>
     <p class="dim">The project is the source of truth: these stay with it whichever AI account runs it.</p>
     <div class="grid2">
