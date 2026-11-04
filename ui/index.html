@@ -537,11 +537,13 @@ const contItems = () => Object.entries(MODES).map(([k, [l, h]]) => ({check: P().
 
 async function refresh() {
   S = await call('state');
-  if (!draftsLoaded) { // unsent input from before a close, crash or restart
+  const first = !draftsLoaded;
+  if (first) { // unsent input from before a close, crash or restart
     draftsLoaded = true;
     for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; queue[pid] = d.queue || []; if (d.editing) editing[pid] = d.editing; }
   }
   for (const id of S.busy) busy[id] = true;
+  if (first) Object.keys(queue).forEach(flushQueue); // held across a restart with no resumed turn: busy:false never comes → send now
   drawProjects();
   if (P()) drawChrome(); else drawHome();
 }
