@@ -58,7 +58,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 @font-face { font-family:'Fredoka'; font-weight:600; font-display:swap; src:url(fredoka-600.woff2) format('woff2'); }
 #brand b, .brandname { font-family:'Fredoka',system-ui,sans-serif; font-weight:600; font-size:19px; letter-spacing:.01em; }
 .side-head { display:flex; align-items:center; gap:2px; padding:8px 8px 6px 10px; }
-#stabs button { flex:1; justify-content:center; } #brand .ib { margin-left:auto; }
+#stabs { display:flex; gap:2px; min-width:0; } #brand .ib { margin-left:auto; }
 #files { flex:1; overflow:auto; padding:2px 8px; } .tree div.on { background:var(--soft); color:var(--text); }
 #projects { flex:1; overflow:auto; padding:2px 8px; }
 .proj { display:flex; gap:10px; align-items:center; padding:7px 9px; border-radius:9px; cursor:pointer; transition:background .12s; }
@@ -277,10 +277,10 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .tile .dot { position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border:2px solid var(--side); }
 .stat { text-align:center; line-height:1.15; padding:2px 0; } .stat b { display:block; font-size:14px; font-weight:600; }
 .stat small { font-size:10px; color:var(--faint); }
-#rtabs, .rtabs-probe { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
-#rtabs button, .rtabs-probe button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; }
-#rtabs button span, .rtabs-probe button span { display:none; } #rtabs button.on span, .rtabs-probe button.on span { display:inline; }
-#rtabs button:hover { background:var(--hover); } #rtabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
+#rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
+#rtabs button, #stabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; flex:none; }
+#rtabs button span, #stabs button span { display:none; } #rtabs button.on span, #stabs button.on span { display:inline; }
+#rtabs button:hover, #stabs button:hover { background:var(--hover); } #rtabs button.on, #stabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 #atp { position:relative; border-top:1px solid var(--line); height:240px; min-height:44px; display:flex; flex-direction:column; flex:none; } #atp:empty { display:none; }
 #atp.min { height:auto !important; min-height:0; } #atp.min .atbody, #atp.tabbed .atgrip { display:none; }
@@ -389,7 +389,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="side">
   <div id="brand"><img src="icon.svg" alt="" onclick="goHome()" style="cursor:pointer" title="Home"><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b>
 </div>
-  <div class="side-head"><span class="seg grow" id="stabs"><button data-s="projects" onclick="setSide('projects')">Projects</button><button data-s="files" onclick="setSide('files')">Files</button><button data-s="tasks" id="stabTasks" hidden onclick="setSide('tasks')">Tasks</button></span>
+  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="tasks" id="stabTasks" hidden onclick="setSide('tasks')" title="Tasks & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
@@ -433,13 +433,13 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 
 <aside id="right" hidden>
   <div id="rtabs">
+    <button data-t="tasks" id="rtabTasks" hidden onclick="rightTab('tasks')" title="Tasks & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button>
     <button data-t="gh" onclick="rightTab('gh')" title="GitHub"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
     <button data-t="build" onclick="rightTab('build')" title="Build"><svg class="i"><use href="#i-hammer"/></svg><span>Build</span></button>
     <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
     <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
     <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
     <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
-    <button data-t="tasks" id="rtabTasks" hidden onclick="rightTab('tasks')" title="Tasks & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button>
   </div>
   <div id="rbody"></div>
   <div id="atp"></div>
@@ -792,7 +792,7 @@ function makeBranch() {
 // ---- the log: chat or terminal ----
 let view = (() => { try { return localStorage.view || 'chat'; } catch { return 'chat'; } })();
 function setView(v) { view = v; try { localStorage.view = v; } catch {} applyView(); if (cur) drawLog(); }
-function applyView() { $('log').classList.toggle('term', view === 'term'); document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.v === view)); }
+function applyView() { $('log').classList.toggle('term', view === 'term'); document.querySelectorAll('#head .seg button').forEach(b => b.classList.toggle('on', b.dataset.v === view)); }
 function drawLog() {
   const box = document.createElement('div'), l = logs[cur] || [];
   box.className = 'col';
@@ -1861,25 +1861,26 @@ async function clone(repo) {
 
 // ---- panels: drag to resize (no minimum); under SNAP px a panel collapses to a rail ----
 const RAIL = 52, SNAP = 140;
-// right panel's narrowest: the tab bar with its longest label open, measured once, so it never jumps between tabs
-let RMIN = 0;
-function rMin() {
-  if (RMIN) return RMIN;
-  const c = $('rtabs').cloneNode(true);
-  c.style.cssText = 'position:absolute;visibility:hidden;width:max-content;left:-9999px'; c.removeAttribute('id'); c.classList.add('rtabs-probe');
+// a panel's narrowest: its tab bar with the longest label open, so it never jumps between tabs; cached, MINW reset
+// when the Tasks tab shows/hides. Probe = clone keeping ids (styles hit it; $ still finds the original, it comes first)
+const MINW = {};
+function barMin(id) {
+  if (MINW[id]) return MINW[id];
+  const c = $(id).cloneNode(true);
+  c.style.cssText = 'position:absolute;visibility:hidden;width:max-content;left:-9999px';
   document.body.append(c);
-  const bs = [...c.querySelectorAll('button')];
-  RMIN = Math.max(...bs.map(b => { bs.forEach(x => x.classList.toggle('on', x === b)); return c.offsetWidth; })) + 2;
+  const bs = [...c.querySelectorAll('[data-t], [data-s]')].filter(b => !b.hidden);
+  MINW[id] = Math.max(...bs.map(b => { bs.forEach(x => x.classList.toggle('on', x === b)); return c.offsetWidth; })) + 2;
   c.remove();
-  return RMIN;
+  return MINW[id];
 }
+const rMin = () => barMin('rtabs'), lMin = () => Math.max(180, barMin('shead'));
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
 applyLook();
-const LMIN = 220; // below this the side tabs/tasks wrap word by word; narrower = rail
 function layout() {
   try { localStorage.ui = JSON.stringify(UI); } catch {}
-  $('side').classList.toggle('rail', UI.lc); $('side').style.width = (UI.lc ? RAIL : Math.max(UI.lw, LMIN)) + 'px';
+  $('side').classList.toggle('rail', UI.lc); $('side').style.width = (UI.lc ? RAIL : Math.max(UI.lw, lMin())) + 'px';
   $('right').classList.toggle('rail', UI.rc); $('right').style.width = (UI.rc ? RAIL : Math.max(UI.rw, rMin())) + 'px';
   drawRails();
 }
@@ -1891,7 +1892,7 @@ document.querySelectorAll('.grip').forEach(g => {
     document.body.classList.add('dragging');
     const move = e => {
       const w = left ? e.clientX : innerWidth - e.clientX, rail = w < SNAP;
-      if (left) { UI.lc = rail; if (!rail) UI.lw = Math.max(LMIN, Math.min(w, innerWidth * .5)); }
+      if (left) { UI.lc = rail; if (!rail) UI.lw = Math.max(lMin(), Math.min(w, innerWidth * .5)); }
       else { const was = UI.rc; UI.rc = rail; if (!rail) UI.rw = Math.max(rMin(), Math.min(w, innerWidth * .75)); if (was !== rail) drawRight(); }
       layout();
     };
@@ -1946,7 +1947,8 @@ function drawAtp() {
   const el = $('atp'); if (!el || !cur) return;
   const [side, mode] = ATW.split('-'), tabbed = mode === 'tab', host = $(side === 'left' ? 'side' : 'right'), rail = $(side === 'left' ? 'lrail' : 'rrail');
   if (el.nextElementSibling !== rail) host.insertBefore(el, rail);
-  $('rtabTasks').hidden = ATW !== 'right-tab'; $('stabTasks').hidden = ATW !== 'left-tab';
+  const rt = ATW !== 'right-tab', st = ATW !== 'left-tab'; // Tasks tab shown/hidden → tab bars' min widths change
+  if ($('rtabTasks').hidden !== rt || $('stabTasks').hidden !== st) { $('rtabTasks').hidden = rt; $('stabTasks').hidden = st; for (const k in MINW) delete MINW[k]; layout(); }
   el.hidden = tabbed && (side === 'right' ? tab !== 'tasks' : UI.st !== 'tasks');
   el.classList.toggle('tabbed', tabbed); el.classList.toggle('min', !tabbed && atpMin);
   if (!el.style.height) try { if (localStorage.atpH) el.style.height = localStorage.atpH; } catch {}
