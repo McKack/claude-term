@@ -4,6 +4,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::io::Read;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -91,6 +92,8 @@ pub struct Project {
     pub shared: bool,         // owner isn't one of our gh accounts (collaboration)
     pub keep: bool,           // user kept their own gh/account over the suggestion
     pub used: f64,            // last opened, for "recent"
+    pub gaccount: String,     // Google account for gcloud ("" = gcloud's active one)
+    pub gcp: String,          // Google Cloud project id
     pub working: bool,        // a turn is running; still true at startup = it was cut off (crash/restart): resume it
 }
 impl Default for Project {
@@ -100,7 +103,7 @@ impl Default for Project {
             off: vec![], mode: "default".into(), model: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, ready: false, questions: vec![], answers: String::new(),
             build: Build::default(), hide_env: true, terse: true,
-            owner: String::new(), shared: false, keep: false, used: 0.0, working: false,
+            owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(),
         }
     }
 }
@@ -387,7 +390,8 @@ pub fn which(name: &str) -> Option<PathBuf> {
     let h = dirs::home_dir().unwrap_or_default();
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     dirs.extend([bin_dir(), h.join(".local/bin"), h.join(".claude/local"), h.join(".npm-global/bin"),
-                 "/opt/homebrew/bin".into(), "/usr/local/bin".into(), "/usr/bin".into()]);
+                 h.join("google-cloud-sdk/bin"), dirs::data_local_dir().unwrap_or_default().join("Google/Cloud SDK/google-cloud-sdk/bin"),
+                 "C:/Program Files (x86)/Google/Cloud SDK/google-cloud-sdk/bin".into(), "/opt/homebrew/bin".into(), "/usr/local/bin".into(), "/usr/bin".into()]);
     let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat"] } else { &[""] };
     dirs.iter().flat_map(|d| exts.iter().map(move |e| d.join(format!("{name}{e}")))).find(|p| p.is_file())
 }
@@ -596,6 +600,42 @@ pub fn token_ok(t: &str) -> bool {
 }
 
 // ---- nothing to install by hand: fetch the official Claude Code installer / the gh release ----
+
+// ---- Google Cloud (gcloud) ----
+
+/// A project's Google account + Cloud project, per process (like GH_TOKEN): never `gcloud config set`.
+pub fn gcloud_env(account: &str, project: &str) -> Vec<(String, String)> {
+    let mut v = vec![];
+    if !account.is_empty() { v.push(("CLOUDSDK_CORE_ACCOUNT".to_string(), account.to_string())); }
+    if !project.is_empty() { v.push(("CLOUDSDK_CORE_PROJECT".to_string(), project.to_string())); }
+    v
+}
+
+pub fn gcloud(args: &[&str], account: &str, project: &str) -> Result<serde_json::Value, String> {
+    let mut a = args.to_vec();
+    a.extend(["--format=json", "--quiet"]);
+    let o = run("gcloud", &a, None, &gcloud_env(account, project));
+    if o.ok {
+        Ok(serde_json::from_str(&o.stdout).unwrap_or(serde_json::Value::Null))
+    } else {
+        Err(o.stderr.lines().filter(|l| !l.trim().is_empty()).last().unwrap_or("gcloud failed").to_string())
+    }
+}
+
+/// Google's own installer: silent NSIS on Windows (per user), install script elsewhere (~/google-cloud-sdk).
+pub fn install_gcloud() -> Result<(), String> {
+    let o = if cfg!(windows) {
+        let exe = std::env::temp_dir().join("GoogleCloudSDKInstaller.exe");
+        let mut body = vec![];
+        ureq::get("https://dl.google.com/dl/cloudsdk/channels/rapid/GoogleCloudSDKInstaller.exe").call()
+            .map_err(|e| e.to_string())?.into_reader().read_to_end(&mut body).map_err(|e| e.to_string())?;
+        std::fs::write(&exe, body).map_err(|e| e.to_string())?;
+        command(&exe).args(["/S", "/noreporting", "/nostartmenu", "/nodesktop"]).output()
+    } else {
+        Command::new("bash").args(["-c", "curl -fsSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir=$HOME"]).output()
+    }.map_err(|e| e.to_string())?;
+    if which("gcloud").is_some() { Ok(()) } else { Err(String::from_utf8_lossy(&o.stderr).trim().to_string() + " (gcloud not found after install)") }
+}
 
 pub fn install_claude() -> Result<(), String> {
     let o = if cfg!(windows) {

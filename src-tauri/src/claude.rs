@@ -204,6 +204,10 @@ fn args(st: &State, p: &Project) -> Vec<String> {
         append += &format!("\n# Build (Clauracle runs these itself after a task; don't repeat them)\nbuild: {}\nrun: {}\n",
                            p.build.build, p.build.run);
     }
+    if !p.gcp.is_empty() || !p.gaccount.is_empty() {
+        append += &format!("\n# Google Cloud\ngcloud is already pointed at this project's account ({}) and Cloud project ({}) \
+            through env vars: don't run `gcloud config set` or switch accounts.\n", p.gaccount, p.gcp);
+    }
     if p.ponytail {
         append += "\n\n";
         append += PONYTAIL_MD.splitn(3, "---").nth(2).unwrap_or(PONYTAIL_MD).trim();
@@ -228,7 +232,7 @@ fn args(st: &State, p: &Project) -> Vec<String> {
 async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
     let p = st.project(pid).ok_or("project removed")?;
     let claude = store::which("claude").ok_or("Claude Code isn't installed (Settings › Install)")?;
-    let env: Vec<(String, String)> = [store::account_env(&p.account), store::gh_env(&p.gh),
+    let env: Vec<(String, String)> = [store::account_env(&p.account), store::gh_env(&p.gh), store::gcloud_env(&p.gaccount, &p.gcp),
         vec![("CLAUDE_CODE_ENTRYPOINT".into(), "sdk-clauracle".into())]].concat();
     let mut cmd = tokio::process::Command::from(store::command(&claude));
     cmd.args(args(st, &p)).envs(env).env_remove("CLAUDECODE").current_dir(&p.path)
@@ -712,7 +716,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     let say = |t: &str, done: Option<bool>| emit(app, "build", json!({"pid": pid, "step": step, "line": t, "done": done}));
     say(&format!("$ {cmd}"), None);
     let mut c = shell(&cmd);
-    c.current_dir(&p.path).envs(store::gh_env(&p.gh)).stdin(std::process::Stdio::null())
+    c.current_dir(&p.path).envs(store::gh_env(&p.gh)).envs(store::gcloud_env(&p.gaccount, &p.gcp)).stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
     let mut child = match c.spawn() {
         Ok(c) => {

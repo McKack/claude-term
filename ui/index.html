@@ -13,7 +13,7 @@
   --hover:#2a2a2e; --code:#1c1c1f; --err:#ff7b6e; --ok:#5fd08e; --shadow:0 1px 2px #00000040, 0 4px 16px #00000030; color-scheme:dark; } }
 * { box-sizing:border-box; } [hidden] { display:none !important; }
 html, body { height:100%; }
-body { margin:0; display:grid; grid-template-columns:252px minmax(0,1fr) auto; background:var(--bg); color:var(--text);
+body { margin:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; background:var(--bg); color:var(--text);
   font:14px/1.55 system-ui,-apple-system,"Segoe UI Variable Text","Segoe UI",sans-serif; overflow:hidden; user-select:none; -webkit-font-smoothing:antialiased; }
 .sel, .msg, pre, input, textarea { user-select:text; }
 button, select, input, textarea { font:inherit; color:inherit; }
@@ -131,10 +131,25 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
 
 /* right panel */
-#right { width:360px; border-left:1px solid var(--line); background:var(--side); display:flex; flex-direction:column; min-height:0; }
-#right.wide { width:min(50vw, 860px); }
+#right { border-left:1px solid var(--line); background:var(--side); display:flex; flex-direction:column; min-height:0; }
+/* resizable panels; dragged under SNAP they collapse to a rail of context icons */
+#side, #right { position:relative; min-width:0; }
+.grip { position:absolute; top:0; bottom:0; width:7px; cursor:col-resize; z-index:5; } #side .grip { right:-4px; } #right .grip { left:-4px; }
+.grip:hover, body.dragging .grip { background:color-mix(in srgb, var(--accent) 30%, transparent); }
+body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { pointer-events:none; }
+#side.rail > :not(#lrail):not(.grip), #right.rail > :not(#rrail):not(.grip) { display:none !important; }
+#side:not(.rail) #lrail, #right:not(.rail) #rrail { display:none !important; }
+.railbox { display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 0; height:100%; overflow:hidden auto; }
+.railbox hr { width:60%; border:0; border-top:1px solid var(--line); margin:4px 0; }
+.tile { position:relative; width:34px; height:34px; border-radius:10px; display:grid; place-items:center; font-weight:600; font-size:12.5px;
+  background:var(--card); border:1px solid var(--line); cursor:pointer; flex:none; }
+.tile:hover { border-color:var(--line2); } .tile.on { border-color:var(--accent); color:var(--accent); }
+.tile .dot { position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border:2px solid var(--side); }
+.stat { text-align:center; line-height:1.15; padding:2px 0; } .stat b { display:block; font-size:14px; font-weight:600; }
+.stat small { font-size:10px; color:var(--faint); }
 #rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
 #rtabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; }
+#rtabs button span { display:none; } #rtabs button.on span { display:inline; }
 #rtabs button:hover { background:var(--hover); } #rtabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
@@ -204,6 +219,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9z"/></symbol>
   <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1zM12 15l-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2z"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/></symbol>
   <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
 </svg>
 
@@ -213,6 +229,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
+  <div id="lrail" class="railbox"></div><div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
   <div class="side-foot"><button class="btn ghost grow" onclick="openSettings()"><svg class="i"><use href="#i-gear"/></svg>Settings</button>
     <button class="ib" title="Restart Clauracle (sessions, running turns and unsent input all come back)" onclick="call('restart')"><svg class="i"><use href="#i-loop"/></svg></button></div>
 </aside>
@@ -246,13 +263,15 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 
 <aside id="right" hidden>
   <div id="rtabs">
-    <button data-t="gh" onclick="rightTab('gh')"><svg class="i"><use href="#i-gh"/></svg>GitHub</button>
-    <button data-t="build" onclick="rightTab('build')"><svg class="i"><use href="#i-hammer"/></svg>Build</button>
-    <button data-t="env" onclick="rightTab('env')"><svg class="i"><use href="#i-key"/></svg>.env</button>
-    <button data-t="code" onclick="rightTab('code')"><svg class="i"><use href="#i-code"/></svg>Code</button>
-    <button data-t="web" onclick="rightTab('web')"><svg class="i"><use href="#i-globe"/></svg>Browser</button>
+    <button data-t="gh" onclick="rightTab('gh')" title="GitHub"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
+    <button data-t="build" onclick="rightTab('build')" title="Build"><svg class="i"><use href="#i-hammer"/></svg><span>Build</span></button>
+    <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
+    <button data-t="cloud" onclick="rightTab('cloud')" title="Cloud"><svg class="i"><use href="#i-cloud"/></svg><span>Cloud</span></button>
+    <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
+    <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
   </div>
   <div id="rbody"></div>
+  <div id="rrail" class="railbox"></div><div class="grip" data-side="r" title="Drag to resize, double-click to collapse"></div>
 </aside>
 
 <dialog id="dlg"></dialog>
@@ -329,8 +348,9 @@ function drawHome() {
 function goHome() { cur = null; $('head').hidden = $('dock').hidden = $('right').hidden = true; drawProjects(); drawHome(); }
 async function install(what, btn) {
   btn.disabled = true; btn.textContent = 'Installing…';
-  try { await call('install', {what}); } catch (e) { btn.textContent = 'Failed: ' + e; return; }
+  try { await call('install', {what}); } catch (e) { btn.textContent = 'Failed: ' + e; return false; }
   refresh();
+  return true;
 }
 
 const projRow = p => `<div class="proj ${p.id === cur ? 'on' : ''}" onclick="openProject('${p.id}')" title="${esc(p.path)}">
@@ -346,6 +366,7 @@ function drawProjects() {
 
 // header, ready bar, toolbar toggles and the status row under the input
 function drawChrome() {
+  drawRails();
   const p = P(), u = S.usage[p.account] || {};
   $('pname').textContent = p.name;
   $('tPony').classList.toggle('on', p.ponytail);
@@ -377,7 +398,7 @@ async function openProject(pid) {
   if (cur) texts[cur] = $('prompt').value;
   cur = pid;
   $('prompt').value = texts[pid] || '';
-  $('head').hidden = $('dock').hidden = false; $('suggest').hidden = true; grow(); // measure once visible
+  $('head').hidden = $('dock').hidden = $('right').hidden = false; $('suggest').hidden = true; grow(); // measure once visible
   drawProjects(); drawChrome(); drawAtts();
   const info = await call('open_project', {pid});
   if (!logs[pid]) logs[pid] = info.history.length ? [...info.history, {kind: 'note', text: 'Resumed session'}] : [];
@@ -446,6 +467,7 @@ function addEntry(pid, e) {
   box.querySelector('#empty')?.remove(); $('live')?.remove();
   put(box, e);
   if (live[pid]) box.appendChild(liveEl(pid));
+  if (e.kind === 'tool') drawRails();
   if (stick) log.scrollTop = log.scrollHeight;
 }
 
@@ -623,16 +645,17 @@ async function removeProject() {
 }
 
 // ---- right panel: GitHub · Build · .env · Code · Browser ----
-function toggleRight() { $('right').hidden = !$('right').hidden; drawRight(); }
+function toggleRight() { UI.rc = !UI.rc; layout(); drawRight(); }
 function rightTab(t) { tab = t; drawRight(); }
 async function drawRight() {
   if ($('right').hidden || !cur) return;
+  if (UI.rc) return drawRRail();
   document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
-  $('right').classList.toggle('wide', tab === 'code' || tab === 'web');
   const box = $('rbody'), p = P();
   if (tab === 'code') return drawCode();
   if (tab === 'web') return drawWeb();
   if (tab === 'env') return drawEnv();
+  if (tab === 'cloud') return drawCloud();
   if (tab === 'build') {
     box.innerHTML = `<div class="row wrap">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
       <button class="btn ghost" onclick="call('stop_run', {pid:cur})">${icon('stop')}Stop</button></div>
@@ -713,6 +736,55 @@ function openIn() {
 }
 
 // .env: keys shown, values masked until revealed
+// Google Cloud: the project's own Google account + Cloud project (env for Claude and build steps, like GH_TOKEN),
+// APIs, billing. Sign-in-with-Google clients have no CLI/API, so those are console links + the .env preset.
+const APIS = {'run.googleapis.com': 'Cloud Run', 'cloudbuild.googleapis.com': 'Cloud Build', 'secretmanager.googleapis.com': 'Secret Manager',
+  'storage.googleapis.com': 'Cloud Storage', 'firestore.googleapis.com': 'Firestore', 'firebase.googleapis.com': 'Firebase',
+  'maps-backend.googleapis.com': 'Maps JavaScript', 'places-backend.googleapis.com': 'Places', 'people.googleapis.com': 'People (profile)',
+  'gmail.googleapis.com': 'Gmail', 'drive.googleapis.com': 'Drive', 'calendar-json.googleapis.com': 'Calendar'};
+async function drawCloud() {
+  const box = $('rbody'), p = P();
+  box.innerHTML = '<p class="dim">Asking gcloud…</p>';
+  const g = await call('gcloud_info', {pid: cur}).catch(e => ({installed: true, error: String(e)}));
+  if (tab !== 'cloud') return;
+  if (!g.installed) {
+    box.innerHTML = `<p class="dim">Google Cloud setup goes through Google's own gcloud CLI.</p><button class="btn primary" onclick="install('gcloud', this).then(ok => ok && drawCloud())">${icon('cloud')}Install gcloud</button>`;
+    return;
+  }
+  const list = x => Array.isArray(x) ? x : [], err = g.error || [g.accounts, g.projects].find(x => x?.error)?.error;
+  const accts = list(g.accounts).map(a => a.account), projs = list(g.projects);
+  const on = new Set(list(g.apis).map(a => a.config?.name || a.name?.split('/').pop()));
+  const id = p.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^[^a-z]+/, '').slice(0, 23) + '-' + Math.random().toString(36).slice(2, 6);
+  const con = path => `https://console.cloud.google.com/${path}?project=${encodeURIComponent(p.gcp)}`;
+  box.innerHTML = `<div class="label">Google account</div>
+    <div class="row" style="margin:6px 0 14px"><select class="grow" onchange="setP({gaccount:this.value}).then(drawCloud)">${options({'': 'gcloud default', ...Object.fromEntries(accts.map(a => [a, a]))}, p.gaccount)}</select>
+      <button class="btn" onclick="gLogin(this)">${icon('plus')}Add</button></div>
+    <div class="label">Cloud project</div>
+    <select style="width:100%;margin:6px 0" onchange="setP({gcp:this.value}).then(drawCloud)">${options({'': 'None', ...Object.fromEntries(projs.map(x => [x.projectId, `${x.name} (${x.projectId})`]))}, p.gcp)}</select>
+    <div class="row" style="margin-bottom:14px"><input id="gNew" class="grow mono" value="${esc(id)}" title="6-30 characters: lowercase letters, digits, hyphens"><button class="btn" onclick="gDo('create', $('gNew').value.trim())">Create</button></div>
+    ${p.gcp ? `<div class="label">Billing</div>
+    <select style="width:100%;margin:6px 0 14px" onchange="gDo('billing', this.value)">${options({'': g.linked?.billingEnabled ? 'Linked' : 'Not linked',
+      ...Object.fromEntries(list(g.billing).filter(b => b.open).map(b => [b.name.split('/').pop(), b.displayName]))}, (g.linked?.billingAccountName || '').split('/').pop())}</select>
+    <div class="label">APIs</div><div class="box">${Object.entries(APIS).map(([api, l]) => optRow(esc(l), `<span class="mono">${api}</span>`,
+      sw(on.has(api), `gDo('api', '${api}', this.checked, this)`))).join('')}</div>
+    <div class="label">Sign in with Google</div>
+    <p class="dim" style="font-size:13px">Google has no CLI for OAuth clients: set up the consent screen and a client in the console, then paste the ID and secret into .env.</p>
+    <p class="row wrap"><button class="btn" data-url="${con('auth/overview')}">Consent screen</button><button class="btn" data-url="${con('auth/clients')}">Clients</button>
+      <button class="btn" onclick="tab='env'; drawRight()">${icon('key')}Add keys to .env</button></p>
+    <p><a href="#" data-url="${con('home/dashboard')}" style="color:var(--accent)">Open ${esc(p.gcp)} in the console</a></p>` : ''}
+    <p id="gMsg" class="${err ? 'err' : 'dim'}" style="font-size:13px">${esc(err || '')}</p>`;
+}
+async function gDo(action, arg, on, el) {
+  if (!arg) return;
+  $('gMsg').className = 'dim'; $('gMsg').textContent = 'Working…';
+  try { await call('gcloud_do', {pid: cur, action, arg, on}); if (action === 'create') await setP({gcp: arg}); drawCloud(); }
+  catch (e) { $('gMsg').className = 'err'; $('gMsg').textContent = e; if (el) el.checked = !on; }
+}
+async function gLogin(btn) {
+  btn.disabled = true; $('gMsg').textContent = 'Finish signing in in your browser…';
+  try { await call('gcloud_login'); drawCloud(); } catch (e) { $('gMsg').textContent = e; btn.disabled = false; }
+}
+
 const PRESETS = {
   'Google OAuth': ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'],
   'Apple Sign in': ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY'],
@@ -855,6 +927,73 @@ async function clone(repo) {
   catch (e) { $('repoList').textContent = e; }
 }
 
+// ---- panels: drag to resize (no minimum); under SNAP px a panel collapses to a rail ----
+const RAIL = 52, SNAP = 140;
+let UI = {lw: 252, rw: 380, lc: false, rc: true};
+try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
+function layout() {
+  try { localStorage.ui = JSON.stringify(UI); } catch {}
+  $('side').classList.toggle('rail', UI.lc); $('side').style.width = (UI.lc ? RAIL : UI.lw) + 'px';
+  $('right').classList.toggle('rail', UI.rc); $('right').style.width = (UI.rc ? RAIL : UI.rw) + 'px';
+  drawRails();
+}
+document.querySelectorAll('.grip').forEach(g => {
+  const left = g.dataset.side === 'l';
+  g.ondblclick = () => { left ? UI.lc = !UI.lc : UI.rc = !UI.rc; layout(); drawRight(); };
+  g.onmousedown = e => {
+    e.preventDefault();
+    document.body.classList.add('dragging');
+    const move = e => {
+      const w = left ? e.clientX : innerWidth - e.clientX, rail = w < SNAP;
+      if (left) { UI.lc = rail; if (!rail) UI.lw = Math.min(w, innerWidth * .5); }
+      else { const was = UI.rc; UI.rc = rail; if (!rail) UI.rw = Math.min(w, innerWidth * .75); if (was !== rail) drawRight(); }
+      layout();
+    };
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('dragging'); };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  };
+});
+const initials = n => esc(n.split(/[\s_.-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?');
+const dotOf = p => busy[p.id] ? 'busy' : p.ready ? 'ready' : '';
+// files Claude touched lately in this project, newest first
+const touched = pid => [...new Set((logs[pid] || []).filter(e => e.kind === 'tool' && e.detail?.file_path).map(e => e.detail.file_path).reverse())].slice(0, 6);
+// Claude Code's own task list (its latest TodoWrite)
+const todos = pid => (logs[pid] || []).filter(e => e.kind === 'tool' && /^TodoWrite\b/.test(e.text) && Array.isArray(e.detail?.todos)).pop()?.detail.todos || [];
+function drawRails() {
+  if (UI.lc) {
+    const p = P();
+    $('lrail').innerHTML = `<button class="ib" title="Home" onclick="goHome()" style="width:36px;height:36px"><img src="icon.svg" style="width:22px"></button><hr>`
+      + (p ? `<div class="tile on" title="${esc(p.name)} (open)">${initials(p.name)}<span class="dot ${dotOf(p)}"></span></div>`
+        + touched(cur).map(f => `<button class="ib" title="${esc(f)}" data-file="${esc(f)}" onclick="openFile(this.dataset.file)">${icon('file')}</button>`).join('') + '<hr>' : '')
+      + recent().filter(x => x.id !== cur).map(x => `<div class="tile" title="${esc(x.name)}" onclick="openProject('${x.id}')">${initials(x.name)}<span class="dot ${dotOf(x)}"></span>
+          ${x.questions.length ? '<span class="pill" style="position:absolute;top:-6px;right:-8px;padding:0 4px;font-size:10px">' + x.questions.length + '</span>' : ''}</div>`).join('')
+      + `<span class="grow"></span><button class="ib" title="Add a project" onclick="menuAt(this, addItems())">${icon('plus')}</button>
+        <button class="ib" title="Settings" onclick="openSettings()">${icon('gear')}</button>`;
+  }
+  if (UI.rc && cur && !$('right').hidden) drawRRail();
+}
+function drawRRail() {
+  const p = P(), t = todos(cur), u = S.usage[p.account] || {};
+  const stat = (big, small, title, attrs = '') => `<div class="stat" title="${esc(title)}" ${attrs}><b>${big}</b><small>${small}</small></div>`;
+  const list = t.map(x => (x.status === 'completed' ? '✓ ' : x.status === 'in_progress' ? '▸ ' : '○ ') + x.content).join('\n');
+  $('rrail').innerHTML = stat(t.length ? `${t.filter(x => x.status === 'in_progress').length}/${t.length}` : '–', 'tasks', list || "No task list yet (Claude's to-dos show here)")
+    + (t.length ? stat(t.filter(x => x.status === 'completed').length, 'done', list) : '')
+    + (p.questions.length ? stat(p.questions.length, 'asks', 'Questions waiting', `onclick="showQuestions(cur)" style="cursor:pointer;color:var(--accent)"`) : '')
+    + (ctx[cur] != null ? stat(ctx[cur] + '%', 'context', 'Context window used') : '')
+    + (u.five_hour != null ? stat(u.five_hour + '%', '5h', '5-hour usage') : '')
+    + (u.seven_day != null ? stat(u.seven_day + '%', 'week', 'Weekly usage') : '')
+    + '<hr>' + [['gh', 'gh', 'GitHub'], ['build', 'hammer', 'Build'], ['env', 'key', '.env'], ['cloud', 'cloud', 'Cloud'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
+      .map(([k, i, l]) => `<button class="ib" title="${l}" onclick="expandRight('${k}')">${icon(i)}</button>`).join('');
+}
+function expandRight(t) { tab = t; UI.rc = false; layout(); drawRight(); }
+function openFile(abs) {
+  const base = P().path.replace(/\\/g, '/').replace(/\/$/, ''), f = abs.replace(/\\/g, '/');
+  if (!f.toLowerCase().startsWith(base.toLowerCase() + '/')) return;
+  const rel = f.slice(base.length + 1);
+  codeAt[cur] = {dir: rel.split('/').slice(0, -1).join('/'), file: rel};
+  expandRight('code');
+}
+layout();
 applyView();
 refresh().then(() => S.active && openProject(S.active));
 </script>

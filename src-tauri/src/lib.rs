@@ -332,8 +332,59 @@ fn test_notify(app: AppHandle, st: St) {
 
 #[tauri::command]
 async fn install(what: String) -> R<()> {
-    tauri::async_runtime::spawn_blocking(move || if what == "gh" { store::install_gh() } else { store::install_claude() })
+    tauri::async_runtime::spawn_blocking(move || match what.as_str() {
+        "gh" => store::install_gh(), "gcloud" => store::install_gcloud(), _ => store::install_claude() })
         .await.map_err(|e| e.to_string())?
+}
+
+// ---- Google Cloud ----
+
+/// Everything the Cloud tab shows, fetched in parallel (each gcloud call takes a second or two).
+#[tauri::command]
+async fn gcloud_info(st: St<'_>, pid: String) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    if store::which("gcloud").is_none() {
+        return Ok(json!({"installed": false}));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (a, g) = (p.gaccount.as_str(), p.gcp.as_str());
+        let r = |x: Result<Value, String>| x.unwrap_or_else(|e| json!({"error": e}));
+        std::thread::scope(|s| {
+            let accounts = s.spawn(|| r(store::gcloud(&["auth", "list"], "", "")));
+            let projects = s.spawn(|| r(store::gcloud(&["projects", "list"], a, "")));
+            let billing = s.spawn(|| r(store::gcloud(&["billing", "accounts", "list"], a, "")));
+            let (apis, linked) = if g.is_empty() { (Value::Null, Value::Null) } else {
+                let apis = s.spawn(|| r(store::gcloud(&["services", "list", "--enabled"], a, g)));
+                let linked = r(store::gcloud(&["billing", "projects", "describe", g], a, ""));
+                (apis.join().unwrap_or_default(), linked)
+            };
+            json!({"installed": true, "accounts": accounts.join().unwrap_or_default(),
+                   "projects": projects.join().unwrap_or_default(), "billing": billing.join().unwrap_or_default(),
+                   "apis": apis, "linked": linked})
+        })
+    }).await.map_err(|e| e.to_string())
+}
+
+/// gcloud's browser sign-in; the new account joins `gcloud auth list` (gcloud keeps the credentials).
+#[tauri::command]
+async fn gcloud_login() -> R<()> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let o = store::run("gcloud", &["auth", "login", "--brief", "--update-adc=false"], None, &[]);
+        if o.ok { Ok(()) } else { Err(o.stderr.trim().lines().last().unwrap_or("sign-in failed").to_string()) }
+    }).await.map_err(|e| e.to_string())?
+}
+
+/// Project actions: create a Cloud project, switch an API on/off, link billing.
+#[tauri::command]
+async fn gcloud_do(st: St<'_>, pid: String, action: String, arg: String, on: Option<bool>) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let (a, g) = (p.gaccount.clone(), p.gcp.clone());
+    tauri::async_runtime::spawn_blocking(move || match action.as_str() {
+        "create" => store::gcloud(&["projects", "create", &arg, &format!("--name={arg}")], &a, ""),
+        "api" => store::gcloud(&["services", if on.unwrap_or(true) { "enable" } else { "disable" }, &arg], &a, &g),
+        "billing" => store::gcloud(&["billing", "projects", "link", &g, &format!("--billing-account={arg}")], &a, ""),
+        _ => Err("unknown action".into()),
+    }).await.map_err(|e| e.to_string())?
 }
 
 // ---- GitHub ----
@@ -590,7 +641,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo])
+            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {

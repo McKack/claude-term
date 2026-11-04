@@ -32,4 +32,6 @@ Current state and open work: see `HANDOVER.md`. Frozen, don't edit: `archive/tui
 - Shells started by Claude Code carry `NO_COLOR=1` and `CLAUDE*` vars; strip them before launching for a check.
 - Windows: `.cmd` shims run via `cmd /c`; children use CREATE_NO_WINDOW and are killed with `taskkill /T` on exit.
 - Config written by PowerShell can carry a BOM; the loader strips it, and backs up an unparsable file to `config.broken.json`.
+- New app icon (`npx tauri icon assets/icon.svg`): run `cargo clean -p clauracle` first, or the exe keeps the old one.
+- gcloud, like gh: per-process `CLOUDSDK_CORE_ACCOUNT/PROJECT` from the project, never `gcloud config set`.
 - Bash heredocs feeding code mangle backslashes: edit files with the Edit tool instead.
