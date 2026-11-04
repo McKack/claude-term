@@ -65,7 +65,17 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--line2); }
 .dot.busy { background:var(--accent); animation:pulse 1s infinite alternate; } .dot.ready { background:var(--ok); }
 @keyframes pulse { to { opacity:.25; } }
-.side-foot { display:flex; gap:4px; padding:10px; border-top:1px solid var(--line); }
+.side-foot { display:flex; gap:4px; padding:10px; border-top:1px solid var(--line); align-items:center; }
+#acctBtn { justify-content:flex-start; gap:8px; min-width:0; padding-left:6px; } #acctBtn .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; text-align:left; line-height:1.2; }
+#acctBtn .nm small { display:block; color:var(--faint); font-size:11px; }
+.av { width:26px; height:26px; border-radius:50%; flex:none; display:inline-grid; place-items:center; font:600 11px system-ui; color:#fff; object-fit:cover; border:2px solid var(--side); }
+.av.lg { width:44px; height:44px; font-size:16px; }
+.stack { display:inline-flex; flex:none; } .stack > * + * { margin-left:-9px; } .stack .more { background:var(--hover); color:var(--dim); }
+.acard { position:fixed; inset:auto; margin:0; width:290px; border-radius:16px; padding:14px; display:flex; flex-direction:column; gap:10px; color:var(--text); }
+.acard .who { display:flex; gap:10px; align-items:center; } .acard .who b { display:block; } .acard h5 { margin:4px 0 0; font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; }
+.acard .pick { display:flex; gap:8px; align-items:center; border:0; background:none; padding:5px 6px; border-radius:8px; cursor:pointer; width:100%; text-align:left; }
+.acard .pick:hover { background:var(--hover); } .acard .pick.on { background:var(--soft); }
+.toast { position:fixed; inset:auto 16px 16px auto; margin:0; width:320px; border-radius:14px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; color:var(--text); font-size:13px; }
 
 /* main */
 #main { display:flex; flex-direction:column; min-width:0; min-height:0; }
@@ -90,6 +100,16 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #log:not(.term) .msg.tool { cursor:pointer; text-decoration:underline dashed var(--line2); text-underline-offset:3px; }
 #log:not(.term) .msg.tool:hover { color:var(--dim); text-decoration-color:var(--faint); }
 .msg.tool[data-n]::after { content:attr(data-n); font-size:11px; padding:0 6px; border-radius:99px; background:var(--soft); color:var(--accent); flex:none; }
+.viewer { width:92vw; height:90vh; display:grid; grid-template-rows:auto minmax(0,1fr); }
+.vbar { display:flex; gap:8px; align-items:center; padding:10px 12px 10px 18px; border-bottom:1px solid var(--line); }
+.vname { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.vstage { position:relative; display:grid; place-items:center; padding:14px; min-height:0; overflow:hidden; }
+.vstage > img, #edC { max-width:100%; max-height:calc(90vh - 90px); object-fit:contain; border-radius:6px; display:block; }
+#edWrap { position:relative; } #edC { cursor:crosshair; touch-action:none; }
+.varrow { position:absolute; top:50%; translate:0 -50%; width:40px; height:40px; border-radius:50%; background:var(--card); box-shadow:var(--shadow); z-index:1; }
+.varrow.l { left:14px; } .varrow.l svg { rotate:180deg; } .varrow.r { right:14px; }
+.ednote { position:absolute; width:220px; font-size:12.5px; padding:4px 8px; border:2px solid; border-radius:8px; background:var(--card); }
+.thumbs img { cursor:zoom-in; }
 .small-dlg.wide { width:min(820px,94vw); }
 pre.diff { margin:0; padding:8px 0; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; white-space:pre; }
 pre.diff span { display:block; padding:0 10px; } pre.diff .del { background:color-mix(in srgb, var(--err) 14%, transparent); }
@@ -124,7 +144,13 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 #log.term .tools { gap:4px; }
 
 /* composer */
-#dock { padding:0 24px 14px; }
+/* dock overlays the log's bottom: transparent at its top, fading into the page behind pills + composer */
+#dock { padding:40px 24px 14px; margin-top:-40px; position:relative; z-index:2; pointer-events:none;
+  background:linear-gradient(to bottom, transparent, var(--bg) 40px); }
+#dock .col > * { pointer-events:auto; } #log { padding-bottom:48px; }
+#log.term + #dock { background:linear-gradient(to bottom, transparent, #151412 40px); }
+#tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
+  color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
 #dock .col { gap:8px; }
 #queue { display:flex; flex-direction:column; gap:4px; } #queue:empty { display:none; }
 .qmsg { display:flex; gap:8px; align-items:center; padding:4px 6px 4px 10px; border:1px dashed var(--line2); border-radius:12px; font-size:13px; background:var(--card); }
@@ -306,7 +332,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="projects"></div>
   <div id="files" hidden></div>
   <div id="lrail" class="railbox"></div><div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
-  <div class="side-foot"><button class="btn ghost grow" onclick="openSettings()"><svg class="i"><use href="#i-gear"/></svg>Settings</button>
+  <div class="side-foot"><button class="btn ghost grow" id="acctBtn" onclick="acctCard(this)"></button>
+    <button class="ib" title="Settings" onclick="openSettings()"><svg class="i"><use href="#i-gear"/></svg></button>
     <button class="ib" title="Restart Clauracle (sessions, running turns and unsent input all come back)" onclick="call('restart')"><svg class="i"><use href="#i-loop"/></svg></button></div>
 </aside>
 
@@ -319,7 +346,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="log"><div class="col"></div></div>
   <div id="dock" hidden><div class="col">
     <div id="handpill" hidden>Preparing handover…</div>
-    <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg>Working…</div>
+    <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Working…</span></div>
     <div id="queue"></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" onclick="cont_()">Continue</button></div>
@@ -456,11 +483,59 @@ const projRow = p => `<div class="proj ${p.id === cur ? 'on' : ''}" onclick="ope
     <span class="dot ${busy[p.id] ? 'busy' : p.ready ? 'ready' : ''}"></span><span class="grow" style="min-width:0"><div class="name">${esc(p.name)}</div>
     <div class="who">${esc(nick(p.account))}${p.gh ? ' · @' + esc(p.gh) : ''}${p.shared ? ' · ' + esc(p.owner) + "'s" : ''}</div></span>
     ${p.questions.length ? `<span class="pill">${p.questions.length}?</span>` : ''}</div>`;
+// ---- account card (bottom-left): the open project's AI + GitHub account, others as a stack ----
+// GitHub avatars from github.com/<user>.png; Claude accounts have no pictures → initials in the mascot colours
+const AVC = ['#7c83ff', '#d97757', '#3fbf9f', '#c9a86a', '#b67be0'];
+const avAI = (a, cls = '') => `<span class="av ${cls}" style="background:${AVC[Math.max(0, S.accounts.indexOf(a)) % AVC.length]}" title="${esc(a.nick)}">${esc(a.nick.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?')}</span>`;
+const avGh = (u, cls = '') => `<img class="av ${cls}" src="https://github.com/${encodeURIComponent(u)}.png?size=88" alt="" title="@${esc(u)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av ${cls}',textContent:'${esc(u[0] || '?').toUpperCase()}',style:'background:#555'}))">`;
+const ghKnown = () => [...new Set([...ghUsers, ...S.projects.map(p => p.gh)].filter(Boolean))];
+function drawAcct() {
+  const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0];
+  if (!a) return $('acctBtn').innerHTML = `${icon('user')}<span class="nm">Sign in</span>`;
+  const gh = p?.gh, others = [...S.accounts.filter(x => x !== a).map(x => avAI(x)), ...ghKnown().filter(u => u !== gh).map(u => avGh(u))];
+  $('acctBtn').innerHTML = `<span class="stack">${gh ? avGh(gh) : ''}${avAI(a)}${others.slice(0, 3).join('')}${others.length > 3 ? `<span class="av more">+${others.length - 3}</span>` : ''}</span>
+    <span class="nm">${esc(a.nick)}<small>${gh ? '@' + esc(gh) : 'no GitHub account'}</small></span>`;
+}
+function acctCard(btn) {
+  const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0], u = S.usage[a?.id] || {};
+  const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
+  const bar = (v, l, ic) => v == null ? '' : `<div class="row" style="font-size:12px;gap:6px">${icon(ic)}<span class="grow">${l}</span><span class="bar" style="width:90px"><i style="width:${v}%"></i></span>${v}%</div>`;
+  card.innerHTML = !a ? `<button class="btn primary block" onclick="openSettings('ai')">Add an AI account</button>` : `
+    <div class="who">${p?.gh ? avGh(p.gh, 'lg') : avAI(a, 'lg')}<span class="grow" style="min-width:0"><b>${esc(a.nick)}</b><small class="dim">${p?.gh ? '@' + esc(p.gh) + ' on GitHub' : 'No GitHub account'}${p ? ' · ' + esc(p.name) : ''}</small></span></div>
+    ${bar(u.five_hour, '5-hour', 'clock')}${bar(u.seven_day, 'Weekly', 'cal')}
+    ${p ? `<h5>AI account for ${esc(p.name)}</h5>${S.accounts.map(x => `<button class="pick ${x === a ? 'on' : ''}" data-acct="${esc(x.id)}">${avAI(x)}<span class="grow">${esc(x.nick)}<small class="dim" style="display:block">${esc(usageText(x.id))}</small></span></button>`).join('')}` : ''}
+    ${ghKnown().length ? `<h5>GitHub</h5><div class="row wrap" style="gap:4px">${ghKnown().map(g => `<span class="pill" style="display:inline-flex;gap:5px;align-items:center;padding:2px 8px 2px 2px">${avGh(g)}@${esc(g)}</span>`).join('')}</div>` : ''}
+    <div class="btnrow"><button class="btn" data-go="ai">${icon('user')}AI accounts</button><button class="btn" data-go="gh">${icon('gh')}GitHub</button></div>`;
+  document.body.append(card); card.showPopover();
+  card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
+  card.querySelectorAll('[data-acct]').forEach(b => b.onclick = () => { card.hidePopover(); setP({account: b.dataset.acct}).then(refresh); });
+  card.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { card.hidePopover(); openSettings(b.dataset.go); });
+  const r = btn.getBoundingClientRect();
+  card.style.left = r.left + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
+}
+// ---- update check: Clauracle's latest GitHub release vs this build; a toast offers it ----
+async function checkUpdate() {
+  let u; try { u = await call('update_check'); } catch { return; }
+  if (!u.newer || sessionStorage.skipUpdate === u.latest) return;
+  const t = Object.assign(document.createElement('div'), {className: 'toast glass', popover: 'manual'});
+  t.innerHTML = `<div class="row"><svg class="i ok"><use href="#i-sparkle"/></svg><b class="grow">Clauracle ${esc(u.latest)} is available</b></div>
+    <span class="dim">You have ${esc(u.current)}. ${/Windows/.test(navigator.userAgent) ? 'Update downloads the installer and restarts; sessions and unsent input come back.' : 'Opens the release page.'}</span>
+    <div class="row" style="justify-content:flex-end"><button class="btn ghost sm" data-k="notes">What's new</button><button class="btn ghost sm" data-k="later">Later</button><button class="btn primary sm" data-k="go">Update</button></div>`;
+  document.body.append(t); t.showPopover();
+  t.querySelector('[data-k=notes]').onclick = () => T.opener.openUrl(u.url);
+  t.querySelector('[data-k=later]').onclick = () => { try { sessionStorage.skipUpdate = u.latest; } catch {} t.remove(); };
+  t.querySelector('[data-k=go]').onclick = async e => {
+    if (!/Windows/.test(navigator.userAgent)) return T.opener.openUrl(u.url);
+    e.target.disabled = true; e.target.textContent = 'Downloading…';
+    try { await call('update_run'); } catch (err) { e.target.textContent = 'Failed'; t.querySelector('.dim').textContent = String(err); }
+  };
+}
 // yours first; repos owned by someone else (collaborations) in their own group
 function drawProjects() {
   const mine = S.projects.filter(p => !p.shared), shared = S.projects.filter(p => p.shared);
   $('projects').innerHTML = (mine.map(projRow).join('') || (shared.length ? '' : '<p class="faint" style="padding:4px 10px;font-size:13px">No projects yet.</p>'))
     + (shared.length ? `<div class="side-sub" title="GitHub repos owned by someone else that you can push to">Collaborations</div>${shared.map(projRow).join('')}` : '');
+  drawAcct();
 }
 
 // header, ready bar, toolbar toggles and the status row under the input
@@ -478,6 +553,7 @@ function drawChrome() {
   $('ready').title = next.map((t, i) => `${i + 1}. ${t}`).join('\n');
   $('handpill').hidden = !(busy[cur] && hand[cur]);
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
+  workTick();
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
   $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account and model">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${esc(PERMS[p.mode] || p.mode)}</span></button>`
@@ -488,6 +564,40 @@ function drawChrome() {
   sendBtn.innerHTML = busy[cur] && !hasInput() ? icon('stop') : icon('up');
   sendBtn.title = busy[cur] && !hasInput() ? 'Stop' : 'Send (Enter)';
 }
+// Working… pill: a new line every few seconds while visible
+const WORDS = ['Reticulating splines', 'Entering the matrix', 'Calibrating the flux capacitor', 'Charging the warp core', 'Consulting the oracle',
+  'Rerouting power to the shields', 'Spinning up the hyperdrive', 'Compiling the multiverse', 'Loading the next level', 'Grinding XP',
+  'Respawning at the last checkpoint', 'Hacking the mainframe', 'Aligning the dilithium crystals', 'Decrypting the transmission',
+  'Scanning for life forms', 'Bending spacetime', 'Feeding the hamsters', 'Untangling the quantum foam', 'Polishing the pixels',
+  'Asking the rubber duck', 'Herding electrons', 'Plotting a course', 'Engaging thrusters', 'Rolling for initiative', 'Speedrunning the codebase',
+  'Collecting the power-ups', 'Booting the holodeck', 'Synchronising the neural link', 'Defragmenting the timeline', 'Dodging the blue shell'];
+let workT = null;
+function workTick() {
+  const show = !$('workpill').hidden;
+  if (show && !workT) { const next = () => $('worktext').textContent = WORDS[Math.floor(Math.random() * WORDS.length)] + '…'; next(); workT = setInterval(next, 3500); }
+  if (!show && workT) { clearInterval(workT); workT = null; }
+}
+// tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
+const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
+let tipEl = null, tipT;
+const hideTip = () => { clearTimeout(tipT); tipEl = null; if (tip.matches(':popover-open')) tip.hidePopover(); };
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest?.('[title], [data-tip]');
+  if (el === tipEl) return;
+  hideTip();
+  if (!el) return;
+  if (el.hasAttribute('title')) { el.dataset.tip = el.title; el.removeAttribute('title'); }
+  if (!el.dataset.tip) return;
+  tipEl = el;
+  tipT = setTimeout(() => {
+    if (!el.isConnected) return;
+    tip.textContent = el.dataset.tip; tip.showPopover(); // shown last = above an open dialog/menu
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.max(6, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 6)) + 'px';
+    tip.style.top = (r.bottom + h + 8 > innerHeight ? r.top - h - 6 : r.bottom + 6) + 'px';
+  }, 450);
+});
+['mousedown', 'wheel', 'keydown'].forEach(t => document.addEventListener(t, hideTip, true));
 // accounts, each with its models nested under it (picking one sets both)
 const acctItems = () => [...S.accounts.flatMap(a => [{check: P().account === a.id, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id})},
   ...Object.entries(MODELS).map(([k, l]) => ({sub: 1, check: P().account === a.id && P().model === k, label: l, run: () => setP({account: a.id, model: k})}))]), '-',
@@ -590,9 +700,14 @@ function entry(e) {
   if (view === 'chat' && (e.kind === 'out' || e.kind === 'think')) return null;
   const d = document.createElement('div');
   d.className = 'msg ' + e.kind;
-  if (view === 'term') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')' : e.text;
+  if (e.kind === 'user' && e.images?.length) { // older entries: url strings; newer: {url, name}
+    const imgs = e.images.map((x, k) => typeof x === 'string' ? {url: x, name: `image ${k + 1}`} : x);
+    d.innerHTML = `<div class="thumbs">${imgs.map(x => `<img src="${x.url}" title="${esc(x.name)}">`).join('')}</div>`;
+    d.querySelectorAll('.thumbs img').forEach((im, k) => im.onclick = () => openViewer(imgs, k, null));
+    d.append(e.text);
+  }
+  else if (view === 'term') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')' : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
-  else if (e.kind === 'user' && e.images?.length) { d.innerHTML = `<div class="thumbs">${e.images.map(src => `<img src="${src}">`).join('')}</div>`; d.append(e.text); }
   else d.textContent = e.text;
   return d;
 }
@@ -633,7 +748,7 @@ function addEntry(pid, e) {
 // ---- composer: text, pasted images (previews), attached files ----
 const hasInput = () => $('prompt').value.trim() || (atts[cur] || []).length;
 function drawAtts() {
-  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}">` : icon('file')}<span>${esc(a.name)}</span>
+  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})">` : icon('file')}<span>${esc(a.name)}</span>
     <button onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button></div>`).join('');
   if (cur) { drawChrome(); keepDraft(); }
 }
@@ -644,6 +759,93 @@ function keepDraft(pid = cur) {
   clearTimeout(keepDraft[pid]);
   keepDraft[pid] = setTimeout(() => call('save_draft', {pid, draft: text || a.length || q.length ? {text, atts: a, queue: q} : null}), 300);
 }
+// ---- image viewer (chat, terminal, composer attachments) + editor: pen and numbered boxes with notes ----
+let VW = null; // {imgs: [{url, name}], i, map: composer attachment index per image | null (from chat → added as new)}
+function viewAtt(i) {
+  const a = atts[cur] || [], map = a.map((x, k) => x.url ? k : -1).filter(k => k >= 0);
+  openViewer(map.map(k => a[k]), map.indexOf(i), map);
+}
+function openViewer(imgs, i, map) { VW = {imgs, i, map}; drawViewer(); }
+function drawViewer() {
+  ED = null;
+  const m = VW.imgs[VW.i], n = VW.imgs.length;
+  const arrow = (d, cls) => n > 1 ? `<button class="ib varrow ${cls}" title="${d < 0 ? 'Previous' : 'Next'} (${d < 0 ? '←' : '→'})" onclick="stepViewer(${d})">${icon('chev')}</button>` : '';
+  dlg(`<div class="vbar"><span class="grow vname">${esc(m.name)}${n > 1 ? ` <span class="faint">${VW.i + 1} / ${n}</span>` : ''}</span>
+    <button class="btn sm" onclick="editImage()">${icon('new')}${VW.map ? 'Edit' : 'Edit and resend'}</button>
+    <button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
+    <div class="vstage">${arrow(-1, 'l')}<img src="${m.url}" alt="">${arrow(1, 'r')}</div>`, 'viewer');
+}
+const stepViewer = d => { VW.i = (VW.i + d + VW.imgs.length) % VW.imgs.length; drawViewer(); };
+let ED = null, edColor = (() => { try { return localStorage.penColor || '#ff4d4f'; } catch { return '#ff4d4f'; } })();
+function editImage() {
+  const m = VW.imgs[VW.i];
+  dlg(`<div class="vbar"><span class="grow vname">${esc(m.name)}</span>
+    <span class="seg" id="edTools"><button data-tool="pen" class="on" title="Draw freehand">Pen</button><button data-tool="box" title="Drag a box, then type a note for it">Box + note</button></span>
+    <input type="color" id="edColor" value="${edColor}" title="Colour" onchange="edColor=this.value; try{localStorage.penColor=edColor}catch{}">
+    <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>
+    <button class="btn ghost sm" onclick="drawViewer()">Cancel</button>
+    <button class="btn primary sm" onclick="edDone()">${VW.map ? 'Save' : 'Add to message'}</button></div>
+    <div class="vstage"><div id="edWrap"><canvas id="edC"></canvas></div></div>`, 'viewer');
+  $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+  const img = new Image();
+  img.onload = () => {
+    const c = $('edC'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    ED = {img, ops: [], tool: 'pen', cur: null, w: Math.max(3, img.naturalWidth / 300)};
+    edDraw();
+    const pt = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
+    c.onpointerdown = e => { c.setPointerCapture(e.pointerId); const [x, y] = pt(e);
+      ED.cur = ED.tool === 'pen' ? {t: 'pen', color: edColor, pts: [[x, y]]} : {t: 'box', color: edColor, x, y, w: 0, h: 0, note: ''}; ED.ops.push(ED.cur); };
+    c.onpointermove = e => { if (!ED.cur) return; const [x, y] = pt(e);
+      if (ED.cur.t === 'pen') ED.cur.pts.push([x, y]); else { ED.cur.w = x - ED.cur.x; ED.cur.h = y - ED.cur.y; } edDraw(); };
+    c.onpointerup = () => { const o = ED.cur; ED.cur = null; if (!o) return;
+      if (o.t === 'box') { // normalise; a click without a drag is no box
+        if (Math.abs(o.w) < 8 || Math.abs(o.h) < 8) ED.ops.pop();
+        else { if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } edDraw(); edNotes(ED.ops.indexOf(o)); return; } }
+      edDraw(); };
+  };
+  img.src = m.url;
+}
+const edBoxes = () => ED.ops.filter(o => o.t === 'box');
+function edDraw() {
+  const c = $('edC'), g = c.getContext('2d');
+  g.drawImage(ED.img, 0, 0); g.lineCap = g.lineJoin = 'round';
+  for (const o of ED.ops) {
+    g.strokeStyle = g.fillStyle = o.color; g.lineWidth = ED.w;
+    if (o.t === 'pen') { g.beginPath(); o.pts.forEach(([x, y], k) => k ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); continue; }
+    g.strokeRect(o.x, o.y, o.w, o.h);
+    const n = edBoxes().indexOf(o) + 1, r = ED.w * 4; // numbered tag on the corner = the note's number in the prompt
+    g.beginPath(); g.arc(o.x, o.y, r, 0, 7); g.fill();
+    g.fillStyle = '#fff'; g.font = `bold ${r * 1.2}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(n, o.x, o.y);
+  }
+}
+// one note field under each box (screen coordinates over the scaled canvas)
+function edNotes(focus) {
+  const c = $('edC'), s = c.clientWidth / c.width;
+  $('edWrap').querySelectorAll('.ednote').forEach(x => x.remove());
+  edBoxes().forEach((o, k) => {
+    const inp = Object.assign(document.createElement('input'), {className: 'ednote', value: o.note, placeholder: `${k + 1}. Note for this area`});
+    inp.style.left = o.x * s + 'px'; inp.style.top = (o.y + o.h) * s + 6 + 'px'; inp.style.borderColor = o.color;
+    inp.oninput = () => o.note = inp.value; inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); };
+    $('edWrap').append(inp);
+    if (ED.ops.indexOf(o) === focus) setTimeout(() => inp.focus());
+  });
+}
+function edUndo() { if (ED?.ops.length) { ED.ops.pop(); edDraw(); edNotes(); } }
+function edDone() {
+  const m = VW.imgs[VW.i], url = $('edC').toDataURL('image/png'), name = m.name.replace(/\.\w+$/, '') + ' (marked).png';
+  const notes = edBoxes().map((o, k) => o.note.trim() && `${k + 1}. ${o.note.trim()}`).filter(Boolean);
+  const a = {name, url, media_type: 'image/png', data: url.split(',')[1]};
+  if (VW.map) atts[cur][VW.map[VW.i]] = a; else (atts[cur] ||= []).push(a);
+  const p = $('prompt');
+  if (notes.length) p.value += (p.value ? '\n\n' : '') + `Notes on ${name} (numbered boxes):\n` + notes.join('\n');
+  ED = null; closeDlg(); drawAtts(); grow(); p.focus();
+}
+document.addEventListener('keydown', e => {
+  if (!$('dlg').open || !VW) return;
+  if (ED && (e.ctrlKey || e.metaKey) && e.key === 'z' && document.activeElement?.tagName !== 'INPUT') { e.preventDefault(); edUndo(); }
+  if (!ED && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
+});
+$('dlg').addEventListener('close', () => { VW = ED = null; });
 function addImage(file) {
   const r = new FileReader();
   r.onload = () => { (atts[cur] ||= []).push({name: file.name || 'pasted image', url: r.result, media_type: file.type, data: r.result.split(',')[1]}); drawAtts(); };
@@ -671,7 +873,7 @@ function send() {
 }
 function sendNow(pid, {text: t, atts: a}) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
-  addEntry(pid, {kind: 'user', text: t + (files.length ? `\n📎 ${files.map(f => f.split(/[\\/]/).pop()).join(', ')}` : ''), images: images.map(x => x.url)});
+  addEntry(pid, {kind: 'user', text: t + (files.length ? `\n📎 ${files.map(f => f.split(/[\\/]/).pop()).join(', ')}` : ''), images: images.map(x => ({url: x.url, name: x.name}))});
   call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files});
 }
 function drawQueue() {
@@ -885,7 +1087,44 @@ async function drawRight() {
     + sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
       : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
       : publishForm(p, g.users || []), `<button class="ib" title="Refresh" onclick="drawRight()">${icon('loop')}</button>`)
+    + (g.remote ? changesSec(g.git || {}) + releaseSec(g.release) : '')
     + sec('Pull requests', list(g.prs, 'pr')) + sec('Issues', list(g.issues, 'issue'));
+}
+// uncommitted files → message + Commit & push; committed but unpushed → Push
+function changesSec(s) {
+  const f = s.files || [];
+  if (!f.length && !s.ahead) return sec('Changes', empty('Everything is committed and pushed'));
+  return sec('Changes', (f.length ? `<div class="keys">${f.slice(0, 8).map(x => `<div><span>${esc(x)}</span></div>`).join('')}${f.length > 8 ? `<div class="faint">+${f.length - 8} more</div>` : ''}</div>
+      <input id="cmMsg" placeholder="What changed (commit message)" onkeydown="if(event.key==='Enter')commitPush()">
+      <button class="btn primary block" onclick="commitPush()">${icon('up')}Commit ${f.length} file${f.length > 1 ? 's' : ''} and push</button>`
+    : `<button class="btn primary block" onclick="gitDo('push', '').then(drawRight)">${icon('up')}Push ${s.ahead} commit${s.ahead > 1 ? 's' : ''}</button>`) + '<p id="cmErr" class="err" style="font-size:12.5px;margin:0"></p>',
+    f.length ? `<span class="pill">${f.length}</span>` : '');
+}
+async function commitPush() {
+  const m = $('cmMsg').value.trim();
+  if (!m) return $('cmMsg').focus();
+  try { await call('git_do', {pid: cur, action: 'commit', arg: m}); addEntry(cur, {kind: 'note', text: `Committed and pushed: ${m}`}); drawRight(); }
+  catch (e) { $('cmErr').textContent = e; }
+}
+// a GitHub release with files attached (e.g. the installer from Build); tag suggested as the last one +1 patch
+function releaseSec(r) {
+  const last = r?.tagName || '', next = last ? last.replace(/(\d+)(?!.*\d)/, n => +n + 1) : 'v0.1.0';
+  return sec('Release', `${last ? `<p class="dim">Latest: <a data-url="${esc(r.url)}" style="cursor:pointer;color:var(--accent)">${esc(last)}</a></p>` : '<p class="dim">No releases yet.</p>'}
+    <label class="fl">Version tag<input id="relTag" value="${esc(next)}"></label>
+    <div id="relFiles" class="keys"></div>
+    <div class="btnrow"><button class="btn" onclick="pickRelFiles()">${icon('clip')}Add files</button><button class="btn primary" onclick="makeRelease(this)">${icon('rocket')}Publish</button></div>
+    <p id="relErr" class="err" style="font-size:12.5px;margin:0"></p>`);
+}
+let relFiles = [];
+async function pickRelFiles() {
+  const f = await T.dialog.open({multiple: true, defaultPath: P().path}); if (!f) return;
+  relFiles = [...new Set(relFiles.concat(f))];
+  $('relFiles').innerHTML = relFiles.map(x => `<div><span title="${esc(x)}">${esc(x.split(/[\\/]/).pop())}</span></div>`).join('');
+}
+async function makeRelease(btn) {
+  btn.disabled = true;
+  try { const url = await call('release', {pid: cur, tag: $('relTag').value.trim(), files: relFiles}); relFiles = []; addEntry(cur, {kind: 'note', text: 'Released: ' + url}); drawRight(); }
+  catch (e) { $('relErr').textContent = e; btn.disabled = false; }
 }
 // ---- team tasks: open GitHub issues labelled `clauracle`; taken = assignee + `in progress` ----
 // ponytail: polled every 60s for the open project (live push needs webhooks and a server)
@@ -1451,6 +1690,7 @@ layout();
 drawSide();
 applyView();
 refresh().then(() => S.active && openProject(S.active));
+setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 6 * 3600e3);
 </script>
 </body>
 </html>

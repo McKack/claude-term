@@ -473,6 +473,8 @@ async fn gh_info(st: St<'_>, pid: String) -> R<Value> {
     tauri::async_runtime::spawn_blocking(move || {
         let f = "number,title,url,author";
         json!({"repo": store::gh_json(&["repo", "view", "--json", "nameWithOwner,url"], &p.gh, Some(&p.path)),
+               "git": store::git_do(&p.path, &p.gh, "status", "").unwrap_or_default(),
+               "release": store::gh_json(&["release", "view", "--json", "tagName,url,publishedAt"], &p.gh, Some(&p.path)),
                "prs": store::gh_json(&["pr", "list", "--json", f], &p.gh, Some(&p.path)),
                "issues": store::gh_json(&["issue", "list", "--json", f], &p.gh, Some(&p.path)),
                "remote": store::repo_of(&p.path).is_some(), "users": store::gh_users()})
@@ -516,6 +518,61 @@ async fn team(st: St<'_>, pid: String) -> R<Value> {
 async fn git_do(st: St<'_>, pid: String, action: String, arg: String) -> R<Value> {
     let p = st.project(&pid).ok_or("no such project")?;
     tauri::async_runtime::spawn_blocking(move || store::git_do(&p.path, &p.gh, &action, &arg)).await.map_err(|e| e.to_string())?
+}
+
+// ---- updates: Clauracle's own GitHub releases; via gh when signed in (the repo may be private), else plain HTTPS ----
+const REPO: &str = "McKack/claude-term";
+fn latest_release() -> Value {
+    match store::gh_users().first() {
+        Some(u) => store::gh_json(&["api", &format!("repos/{REPO}/releases/latest")], u, None),
+        None => ureq::get(&format!("https://api.github.com/repos/{REPO}/releases/latest")).set("User-Agent", "Clauracle")
+            .call().ok().and_then(|r| r.into_string().ok()).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default(),
+    }
+}
+/// "0.2.0" > "0.1.9"; non-numbers count as 0
+fn newer(a: &str, b: &str) -> bool {
+    let v = |s: &str| s.trim_start_matches('v').split('.').map(|x| x.parse::<u32>().unwrap_or(0)).collect::<Vec<_>>();
+    v(a) > v(b)
+}
+#[tauri::command]
+async fn update_check() -> R<Value> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let r = latest_release();
+        let tag = r["tag_name"].as_str().unwrap_or("");
+        json!({"current": env!("CARGO_PKG_VERSION"), "latest": tag, "newer": !tag.is_empty() && newer(tag, env!("CARGO_PKG_VERSION")),
+               "url": r["html_url"], "notes": r["body"]})
+    }).await.map_err(|e| e.to_string())
+}
+/// Windows: fetch the release's *-setup.exe, start it, quit (the installer replaces this exe). Elsewhere the page opens the release.
+#[tauri::command]
+async fn update_run(app: AppHandle) -> R<()> {
+    let exe = tauri::async_runtime::spawn_blocking(|| -> R<std::path::PathBuf> {
+        let r = latest_release();
+        let tag = r["tag_name"].as_str().ok_or("no release")?;
+        let dir = std::env::temp_dir().join("clauracle-update");
+        let _ = std::fs::create_dir_all(&dir);
+        let asset = r["assets"].as_array().into_iter().flatten().find(|a| a["name"].as_str().map_or(false, |n| n.ends_with("-setup.exe"))).ok_or("no installer in the release")?;
+        let path = dir.join(asset["name"].as_str().unwrap_or("setup.exe"));
+        if let Some(u) = store::gh_users().first() {
+            let d = dir.to_string_lossy();
+            let o = store::run("gh", &["release", "download", tag, "-R", REPO, "-p", "*-setup.exe", "-D", &d, "--clobber"], None, &store::gh_env(u));
+            if !o.ok { return Err(o.stderr.trim().to_string()); }
+        } else {
+            let resp = ureq::get(asset["browser_download_url"].as_str().unwrap_or("")).call().map_err(|e| e.to_string())?;
+            let mut f = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+            std::io::copy(&mut resp.into_reader(), &mut f).map_err(|e| e.to_string())?;
+        }
+        Ok(path)
+    }).await.map_err(|e| e.to_string())??;
+    std::process::Command::new(exe).spawn().map_err(|e| e.to_string())?;
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+async fn release(st: St<'_>, pid: String, tag: String, files: Vec<String>) -> R<String> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    tauri::async_runtime::spawn_blocking(move || store::release(&p.path, &p.gh, &tag, &files)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -739,7 +796,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, set_items, set_projects_dir, new_local, set_zoom])
+            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {
@@ -750,4 +807,10 @@ pub fn run() {
             }
         }
     });
+}
+
+#[cfg(test)]
+#[test]
+fn newer_versions() {
+    assert!(newer("v0.2.0", "0.1.9") && newer("0.1.10", "0.1.9") && !newer("v0.1.0", "0.1.0") && !newer("0.0.9", "0.1.0"));
 }

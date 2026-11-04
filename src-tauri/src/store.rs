@@ -837,8 +837,22 @@ pub fn git_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<serde_js
     let env = gh_env(user);
     let git = |args: &[&str]| run("git", args, Some(dir), &env);
     // a branch name never starts with '-' (would read as a flag)
-    if arg.starts_with('-') { return Err("bad branch name".into()); }
+    if arg.starts_with('-') && action != "commit" { return Err("bad branch name".into()); }
     let o = match action {
+        // uncommitted/unpushed state for the GitHub tab
+        "status" => {
+            let files: Vec<String> = git(&["status", "--porcelain"]).stdout.lines().map(|l| l.get(3..).unwrap_or("").to_string()).collect();
+            let up = git(&["rev-list", "--count", "@{u}..HEAD"]);
+            return Ok(serde_json::json!({"files": files, "ahead": if up.ok { up.stdout.trim().parse::<u32>().unwrap_or(0) } else { 0 },
+                                         "upstream": up.ok}));
+        }
+        // everything, one commit, pushed (`-m` keeps a message starting with '-' a message)
+        "commit" => {
+            git(&["add", "-A"]);
+            let c = git(&["commit", "-m", arg]);
+            if !c.ok { return Err(if c.stdout.trim().is_empty() { c.stderr } else { c.stdout }.trim().to_string()); }
+            git(&["push", "-u", "origin", "HEAD"])
+        }
         "list" => {
             let b = git(&["branch", "--format=%(refname:short)"]).stdout;
             return Ok(serde_json::json!({"current": git(&["branch", "--show-current"]).stdout.trim(),
@@ -851,6 +865,15 @@ pub fn git_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<serde_js
     };
     // git writes progress to stderr even on success
     if o.ok { Ok(serde_json::json!(o.stderr.trim())) } else { Err(if o.stderr.trim().is_empty() { o.stdout } else { o.stderr }.trim().to_string()) }
+}
+
+/// GitHub release `tag` with `files` attached and notes generated from the commits since the last one.
+pub fn release(dir: &str, user: &str, tag: &str, files: &[String]) -> Result<String, String> {
+    if tag.is_empty() || tag.starts_with('-') { return Err("bad tag".into()); }
+    let mut a = vec!["release", "create", tag, "--title", tag, "--generate-notes"];
+    a.extend(files.iter().map(String::as_str));
+    let o = run("gh", &a, Some(dir), &gh_env(user));
+    if o.ok { Ok(o.stdout.trim().to_string()) } else { Err(o.stderr.trim().to_string()) }
 }
 
 // ---- team tasks: GitHub issues labelled `clauracle`; taken = assignee + `in progress` (no commits, all live on GitHub) ----
