@@ -647,7 +647,7 @@ document.addEventListener('mouseover', e => {
     tip.textContent = el.dataset.tip; tip.showPopover(); // shown last = above an open dialog/menu
     const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
     tip.style.left = Math.max(6, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 6)) + 'px';
-    tip.style.top = (r.bottom + h + 8 > innerHeight ? r.top - h - 6 : r.bottom + 6) + 'px';
+    tip.style.top = (r.top - h - 6 >= 6 ? r.top - h - 6 : r.bottom + 6) + 'px'; // above (the pointer covers below), else below
   }, 450);
 });
 ['mousedown', 'wheel', 'keydown'].forEach(t => document.addEventListener(t, hideTip, true));
