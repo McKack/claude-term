@@ -300,6 +300,9 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .kv .k { font:600 12.5px ui-monospace,Consolas,monospace; overflow:hidden; text-overflow:ellipsis; }
 .kv .v { grid-column:1/-1; font:12px ui-monospace,Consolas,monospace; color:var(--dim); overflow-wrap:anywhere; }
 .crumbs { font-size:12.5px; margin-bottom:8px; } .crumbs a { cursor:pointer; color:var(--accent); }
+.pathbar { display:flex; gap:2px; align-items:center; margin:2px 0 6px; } .pathbar .ib:disabled { opacity:.35; cursor:default; }
+.pathbar .crumbs { flex:1; min-width:0; margin:0 0 0 4px; padding:4px 8px; background:var(--card); border:1px solid var(--line); border-radius:8px;
+  white-space:nowrap; overflow-x:auto; scrollbar-width:none; display:flex; gap:4px; font-size:12px; } .pathbar .crumbs a { color:var(--dim); } .pathbar .crumbs a:hover { color:var(--accent); }
 .tree div { padding:3px 8px; border-radius:6px; cursor:pointer; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; gap:6px; align-items:center; }
 .tree div:hover { background:var(--hover); } .tree svg { color:var(--faint); }
 .code { display:grid; grid-template-columns:auto 1fr; font:12.5px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); }
@@ -350,6 +353,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-gh" viewBox="0 0 24 24"><path d="M9 19c-4 1.5-4-2-6-2.5m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></symbol>
   <symbol id="i-panelL" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
   <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
   <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
   <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol>
@@ -1441,16 +1446,23 @@ function draft(kind, x) {
 
 // files: the tree lives in the left panel (Files tab); a picked file previews in the right panel's Code tab
 const codeAt = {}, filesAt = {};
+// path bar: back (history per project) + home, then the crumbs in a field that keeps its right end in view
+const filesHist = {};
+const filesGo = rel => { if (rel !== (filesAt[cur] ?? '')) (filesHist[cur] ||= []).push(filesAt[cur] ?? ''); drawFiles(rel); };
+const filesBack = () => { const h = filesHist[cur]; if (h?.length) drawFiles(h.pop()); };
 async function drawFiles(rel = filesAt[cur] ?? '') {
   const box = $('files');
   if (!cur) { box.innerHTML = '<p class="faint" style="padding:4px 10px;font-size:13px">Open a project to see its files.</p>'; return; }
   filesAt[cur] = rel;
   const parts = rel ? rel.split('/') : [], items = await call('list_dir', {pid: cur, rel}).catch(() => []);
-  box.innerHTML = `<div class="crumbs" style="padding:2px 8px"><a data-p="" onclick="drawFiles(this.dataset.p)">${esc(P().name)}</a>${parts.map((x, i) =>
-      ` / <a data-p="${esc(parts.slice(0, i + 1).join('/'))}" onclick="drawFiles(this.dataset.p)">${esc(x)}</a>`).join('')}</div>
+  box.innerHTML = `<div class="pathbar"><button class="ib" title="Back" ${filesHist[cur]?.length ? '' : 'disabled'} onclick="filesBack()">${icon('back')}</button>
+      <button class="ib" title="Project root" onclick="filesGo('')">${icon('home')}</button>
+      <div class="crumbs mono"><a data-p="" onclick="filesGo(this.dataset.p)">${esc(P().name)}</a>${parts.map((x, i) =>
+      `<span class="faint">/</span><a data-p="${esc(parts.slice(0, i + 1).join('/'))}" onclick="filesGo(this.dataset.p)">${esc(x)}</a>`).join('')}</div></div>
     <div class="tree">${items.map(i => { const path = (rel ? rel + '/' : '') + i.name;
-      return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'drawFiles' : 'previewFile'}(this.dataset.p)">${icon(i.dir ? 'folder' : 'file')}${esc(i.name)}</div>`; }).join('')
+      return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p)">${icon(i.dir ? 'folder' : 'file')}${esc(i.name)}</div>`; }).join('')
       || '<p class="dim" style="padding:0 8px">Empty.</p>'}</div>`;
+  const c = box.querySelector('.pathbar .crumbs'); c.scrollLeft = c.scrollWidth;
 }
 let envAt = null;
 function previewFile(rel) {
