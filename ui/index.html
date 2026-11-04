@@ -97,9 +97,11 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .msg.claude a { color:var(--accent); }
 .tools { display:flex; flex-direction:column; gap:2px; }
 .msg.tool { font:12px ui-monospace,"Cascadia Code",Consolas,monospace; color:var(--faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; gap:6px; align-items:center; }
-#log:not(.term) .msg.tool { cursor:pointer; text-decoration:underline dashed var(--line2); text-underline-offset:3px; }
-#log:not(.term) .msg.tool:hover { color:var(--dim); text-decoration-color:var(--faint); }
-.msg.tool[data-n]::after { content:attr(data-n); font-size:11px; padding:0 6px; border-radius:99px; background:var(--soft); color:var(--accent); flex:none; }
+#log:not(.term) .msg.tool { cursor:pointer; }
+#log:not(.term) .msg.tool .tn { overflow:hidden; text-overflow:ellipsis; min-width:0; text-decoration:underline dashed var(--line2); text-underline-offset:3px; }
+#log:not(.term) .msg.tool:hover .tn { color:var(--dim); text-decoration-color:var(--faint); }
+.msg.tool .tp { flex:none; display:inline-flex; gap:2px; align-items:center; font-size:11px; padding:0 6px; border-radius:99px; background:var(--soft); color:var(--accent); }
+.msg.tool .tp .i { width:11px; height:11px; }
 .viewer { width:92vw; height:90vh; display:grid; grid-template-rows:auto minmax(0,1fr); }
 .vbar { display:flex; gap:8px; align-items:center; padding:10px 12px 10px 18px; border-bottom:1px solid var(--line); }
 .vname { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
@@ -316,7 +318,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1zM12 15l-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2z"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/></symbol>
-  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-clock"viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
   <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
@@ -685,14 +688,22 @@ function put(box, e) {
   if (e.kind === 'tool' && view === 'chat') {
     let g = box.lastElementChild;
     if (!g || !g.classList.contains('tools')) { g = document.createElement('div'); g.className = 'tools'; box.appendChild(g); }
-    const last = g.lastElementChild;
-    if (last?.dataset.t === e.text) { last._es.push(e); last.dataset.n = '×' + last._es.length; return; }
-    el.dataset.t = e.text; el._es = [e]; el.title = 'Show what it did'; el.onclick = () => toolDlg(el._es);
-    return g.appendChild(el);
+    // one line per file (else per identical call) in this run of tool lines; touched again → moves to the bottom
+    const d = e.detail || {}, f = d.file_path || d.notebook_path || d.path, key = f ? 'f:' + f : 't:' + e.text;
+    let line = [...g.children].find(x => x.dataset.k === key);
+    if (!line) { line = el; line.dataset.k = key; line._es = []; line._label = f ? shortPath(f) : e.text; line.title = f || ''; line.onclick = () => toolDlg(line._es, line._label); }
+    line._es.push(e);
+    const n = {}; line._es.forEach(x => { const t = x.text.replace(/^↳ /, '').split(' ')[0]; n[t] = (n[t] || 0) + 1; });
+    line.innerHTML = `<span class="tn">${esc(line._label)}</span>` + Object.entries(n).map(([t, c]) =>
+      `<span class="tp" title="${esc(t)}${c > 1 ? ' ×' + c : ''}">${TICON[t] ? icon(TICON[t]) : esc(t)}${c > 1 ? '×' + c : ''}</span>`).join('');
+    return g.appendChild(line);
   }
   const qs = box.querySelector('.qs');
   qs ? box.insertBefore(el, qs) : box.appendChild(el);
 }
+const TICON = {Edit: 'new', MultiEdit: 'new', Write: 'file', NotebookEdit: 'new', Read: 'doc', Grep: 'search', Glob: 'search', LS: 'folder'};
+// inside the project → relative; elsewhere the full path
+const shortPath = f => { const r = (P()?.path || '').replace(/[\\/]+$/, ''); return r && f.toLowerCase().startsWith(r.toLowerCase()) ? f.slice(r.length + 1) : f; };
 // Clauracle's own process: handover files and its MCP tools (shown as the pill instead)
 const isProcess = e => e.kind === 'tool' && (/^mcp__clauracle__/.test(e.text) || /(^|[\\/])(HANDOVER|CHANGES)\.md$/i.test(e.detail?.file_path || ''));
 function entry(e) {
@@ -722,13 +733,13 @@ function diff(a = '', b = '') {
   return `<pre class="diff">${[...x.slice(0, h).map(l => row('ctx', l)), ...x.slice(h, x.length - t).map(l => row('del', l)),
     ...y.slice(h, y.length - t).map(l => row('add', l)), ...x.slice(x.length - t).map(l => row('ctx', l))].join('')}</pre>`;
 }
-function toolDlg(es) {
-  const body = es.map(e => { const d = e.detail || {};
+function toolDlg(es, title = es[0].text) {
+  const body = es.map(e => `<div class="faint mono" style="font-size:12px">${esc(e.text)}</div>` + (d => {
     if ('old_string' in d) return diff(d.old_string, d.new_string);
     if (Array.isArray(d.edits)) return d.edits.map(x => diff(x.old_string, x.new_string)).join('');
     if (typeof d.content === 'string') return diff('', d.content);
-    return `<pre class="diff">${esc(d.command ?? JSON.stringify(d, null, 2))}</pre>`; }).join('');
-  dlg(`<h2 class="mono" style="margin:0 0 10px;font-size:14px;overflow-wrap:anywhere">${esc(es[0].text)}${es.length > 1 ? ` <span class="pill">×${es.length}</span>` : ''}</h2>
+    return `<pre class="diff">${esc(d.command ?? JSON.stringify(d, null, 2))}</pre>`; })(e.detail || {})).join('');
+  dlg(`<h2 class="mono" style="margin:0 0 10px;font-size:14px;overflow-wrap:anywhere">${esc(title)}${es.length > 1 ? ` <span class="pill">×${es.length}</span>` : ''}</h2>
     <div style="max-height:65vh;overflow:auto;display:grid;gap:8px">${body}</div>
     <div class="btns"><button class="btn primary" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');
 }
