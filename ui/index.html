@@ -250,6 +250,9 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 #rtabs button span, .rtabs-probe button span { display:none; } #rtabs button.on span, .rtabs-probe button.on span { display:inline; }
 #rtabs button:hover { background:var(--hover); } #rtabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
+#atp { border-top:1px solid var(--line); padding:10px 14px 0; max-height:45%; overflow:auto; flex:none; } #atp:empty { display:none; } #atp .sec { margin-bottom:10px; }
+.atrow { display:flex; gap:8px; align-items:baseline; font-size:13px; } .atrow small { display:block; color:var(--faint); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.atrow .dot { flex:none; translate:0 -1px; } .atrow .tk { width:14px; flex:none; color:var(--faint); } .atrow.in_progress { color:var(--accent); } .atrow.completed { color:var(--faint); text-decoration:line-through; }
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .item a { color:var(--text); text-decoration:none; cursor:pointer; } .item a:hover { color:var(--accent); }
 .out { background:#151412; color:#d8d4cb; border-radius:10px; padding:10px; height:calc(100vh - 190px); overflow:auto; font:12px/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; margin-top:10px; user-select:text; }
@@ -372,13 +375,13 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
       <div id="atts"></div>
       <textarea id="prompt" rows="1" placeholder="Message Claude…"></textarea>
       <div class="tb">
-        <button class="btn ghost sm" id="cancelEdit" hidden title="Put the queued message back, unchanged, in its place" onclick="cancelEdit()"><svg class="i"><use href="#i-x"/></svg>Cancel edit</button>
         <button class="ib" title="Attach files" onclick="pickFiles()"><svg class="i"><use href="#i-clip"/></svg></button>
         <button class="ib" id="tPony" title="Ponytail: the simplest code that works" onclick="setP({ponytail:!P().ponytail})"><svg class="i"><use href="#i-feather"/></svg></button>
         <button class="ib" id="tCont" title="Clear & continue mode" onclick="menuAt(this, contItems())"><svg class="i"><use href="#i-loop"/></svg></button>
         <button class="ib" title="Clear & continue now: write the handover, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-sparkle"/></svg></button>
         <button class="ib" title="New session" onclick="call('new_session', {pid:cur})"><svg class="i"><use href="#i-new"/></svg></button>
         <span class="grow"></span>
+        <button class="btn ghost sm" id="cancelEdit" hidden title="Put the queued message back, unchanged, in its place" onclick="cancelEdit()" style="margin-right:6px"><svg class="i"><use href="#i-x"/></svg>Cancel edit</button>
         <button id="send" onclick="busy[cur] && !hasInput() ? call('interrupt', {pid:cur}) : send()" title="Send (Enter)"><svg class="i"><use href="#i-up"/></svg></button>
       </div>
     </div>
@@ -396,6 +399,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
   </div>
   <div id="rbody"></div>
+  <div id="atp"></div>
   <div id="rrail" class="railbox"></div><div class="grip" data-side="r" title="Drag to resize, double-click to collapse"></div>
 </aside>
 
@@ -990,7 +994,7 @@ function cont_() { hiddenQs[cur] = false; call('continue_now', {pid: cur}); }
 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
-  line: () => { if (d.kind === 'claude') live[d.pid] = ''; addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail}); },
+  line: () => { if (d.kind === 'claude') live[d.pid] = ''; addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of}); if (d.result_of && d.pid === cur) drawAtp(); },
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
   status: () => { if ('busy' in d) busy[d.pid] = d.busy;
@@ -1049,10 +1053,11 @@ function askCard(e) {
   } else {
     const body = i.command || (i.file_path ? i.file_path + '\n\n' + (i.new_string || i.content || '') : JSON.stringify(i, null, 2));
     d.innerHTML = `<h4>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
-      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn primary" data-a="1">Allow</button></div>`;
+      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-a="2" title="This project stops asking for ${esc(e.tool)} (undo in the project manager)">Always allow ${esc(e.tool)} here</button><button class="btn primary" data-a="1">Allow</button></div>`;
   }
   d.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
-    const allow = b.dataset.a === '1', answers = {};
+    const allow = b.dataset.a !== '0', answers = {};
+    if (b.dataset.a === '2') { const p = P(e.pid) || P(); call('update_project', {pid: p.id, changes: {allow: [...new Set([...(p.allow || []), e.tool])]}}).then(refresh); }
     (i.questions || []).forEach((q, n) => answers[q.question] = [...d.querySelectorAll(`[name=a${n}]:checked`)]
       .map(x => x.value === '__other' ? x.closest('.q').querySelector('.other').value : x.value).join(', '));
     call('answer_ask', {id: e.id, answer: {allow, answers, note: d.querySelector('.deny')?.value || ''}});
@@ -1119,6 +1124,7 @@ function projectsPage() {
     <div class="label">Token savers</div><div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
+      ${(p.allow || []).length ? optRow('Always allowed', 'Tools this project runs without asking', `<span class="row wrap" style="gap:4px">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t)} ✕</span>`).join('')}</span>`) : ''}
       ${p.gh ? optRow('Prompts become team tasks', 'Each task you give Claude is filed as a GitHub issue (Team tasks), claimed while it works and closed when done', sw(p.team_auto, 'setM({team_auto:this.checked})')) : ''}
       ${optRow('Keep .env away from Claude', 'Claude can\'t read or edit .env files; manage them in the .env panel', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>
@@ -1509,7 +1515,7 @@ async function openSettings(p) {
   const scroll = $('dlg').querySelector('.body')?.scrollTop;
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
-    <div class="body">${page === 'projects' ? '' : `<h2>${PAGES[page][1]}</h2>`}
+    <div class="body">${page === 'projects' ? '' : `<h2 class="row">${PAGES[page][1]}${page === 'agents' ? `<span class="grow"></span>${sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')}` : ''}</h2>`}
     ${{look: lookPage, projects: projectsPage, gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
 }
@@ -1576,13 +1582,13 @@ function cxPage() {
     <div class="label">Skills</div><div class="box">${cxList('skill', 'global')}</div>`;
 }
 function agentsPage() {
-  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.</p>`
-    + AGENTS.map((a, i) => `<div class="agent"><div class="row">${sw(a.on, `agentSet(${i}, 'on', this.checked)`)}<input class="mono" value="${esc(a.name)}" style="width:160px" onchange="agentSet(${i}, 'name', this.value.trim())">
+  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to Claude until you switch them on (top right).'}</p>`
+    + `<div style="${S.agents_on ? '' : 'opacity:.5'}">` + AGENTS.map((a, i) => `<div class="agent"><div class="row">${sw(a.on, `agentSet(${i}, 'on', this.checked)`)}<input class="mono" value="${esc(a.name)}" style="width:160px" onchange="agentSet(${i}, 'name', this.value.trim())">
         <select onchange="agentSet(${i}, 'model', this.value)">${options({haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus', inherit: 'Same as session'}, a.model || 'inherit')}</select>
         <span class="grow"></span><button class="ib" title="Remove" onclick="AGENTS.splice(${i},1); saveAgents()">${icon('x')}</button></div>
       <input value="${esc(a.description)}" placeholder="When Claude should use it" onchange="agentSet(${i}, 'description', this.value)">
       <textarea placeholder="Its instructions" onchange="agentSet(${i}, 'prompt', this.value)">${esc(a.prompt)}</textarea></div>`).join('')
-    + `<p class="row"><button class="btn" onclick="AGENTS.push({name:'helper', model:'haiku', description:'', prompt:'', on:true}); saveAgents()">${icon('plus')}Add agent</button></p>`;
+    + `<p class="row"><button class="btn" onclick="AGENTS.push({name:'helper', model:'haiku', description:'', prompt:'', on:true}); saveAgents()">${icon('plus')}Add agent</button></p></div>`;
 }
 const agentSet = (i, k, v) => { AGENTS[i][k] = v; saveAgents(); };
 const saveAgents = () => call('set_agents', {agents: AGENTS}).then(() => openSettings());
@@ -1615,7 +1621,11 @@ const acct = (id, changes) => call('update_account', {id, changes}).then(() => o
 // Appearance: per computer (localStorage), applied before anything draws
 const ACCENTS = {Indigo: ['#4f5bd5', '#8b93ff'], Blue: ['#2563eb', '#6ea8fe'], Teal: ['#0f8b80', '#3cc9b9'], Green: ['#2b8a3e', '#69db7c'],
   Orange: ['#c8613f', '#e8916f'], Pink: ['#c2255c', '#f783ac'], Graphite: ['#4a4a50', '#b8b8c0']};
-let LOOK = {theme: 'system', accent: 'Indigo', scale: 110, glass: true, motion: true};
+let LOOK = {theme: 'system', accent: 'Indigo', tint: '', tintPct: 30, scale: 110, glass: true, motion: true};
+// the stylesheet's surface colours per theme (light, dark), the base the tint mixes into; keep in sync with :root
+const SURF = [{'--bg': '#ffffff', '--side': '#f7f7f8', '--card': '#ffffff', '--line': '#ececee', '--line2': '#dcdce0', '--hover': '#f0f0f2', '--code': '#f6f6f7'},
+  {'--bg': '#161618', '--side': '#1c1c1f', '--card': '#232326', '--line': '#2c2c30', '--line2': '#3a3a3f', '--hover': '#2a2a2e', '--code': '#1c1c1f'}];
+const TINT_MAX = 40; // ponytail: 40% real mix at the slider's 100%; raise if people want louder tints
 try { Object.assign(LOOK, JSON.parse(localStorage.look || '{}')); } catch {}
 const darkMq = matchMedia('(prefers-color-scheme: dark)');
 function applyLook() {
@@ -1625,6 +1635,9 @@ function applyLook() {
   for (const [k, v] of Object.entries(LOOK.accent === 'Indigo' || !a ? {} : {'--accent': a, '--accent2': `color-mix(in srgb, ${a} 85%, ${dark ? '#fff' : '#000'})`,
     '--soft': `color-mix(in srgb, ${a} ${dark ? 22 : 10}%, var(--bg))`})) h.style.setProperty(k, v);
   if (LOOK.accent === 'Indigo') ['--accent', '--accent2', '--soft'].forEach(k => h.style.removeProperty(k));
+  // theme tint: surfaces mixed with a colour; slider 100% = TINT_MAX real mix, so text stays readable
+  const t = ACCENTS[LOOK.tint]?.[dark ? 1 : 0], m = (LOOK.tintPct ?? 30) * TINT_MAX / 100;
+  for (const [k, base] of Object.entries(SURF[dark ? 1 : 0])) t && m ? h.style.setProperty(k, `color-mix(in srgb, ${t} ${m}%, ${base})`) : h.style.removeProperty(k);
   h.classList.toggle('noglass', !LOOK.glass); h.classList.toggle('nomotion', !LOOK.motion);
   zoom(LOOK.scale);
 }
@@ -1636,6 +1649,9 @@ const choice = (key, opts) => `<span class="seg">${opts.map(o => `<button class=
 function lookPage() {
   return `<div class="box">${optRow('Theme', '', choice('theme', ['system', 'light', 'dark']))}
     ${optRow('Accent', '', `<span class="row" style="gap:8px">${Object.entries(ACCENTS).map(([n, c]) => `<button class="swatch ${LOOK.accent === n ? 'on' : ''}" title="${n}" style="background:${c[document.documentElement.dataset.theme === 'dark' ? 1 : 0]}" onclick="setLook({accent:'${n}'})"></button>`).join('')}</span>`)}
+    ${optRow('Theme tint', 'Colours the whole app a little', `<span class="row wrap" style="gap:8px"><button class="swatch ${!LOOK.tint ? 'on' : ''}" title="None" style="background:var(--bg);display:grid;place-items:center;color:var(--faint)" onclick="setLook({tint:''})">✕</button>${Object.entries(ACCENTS).map(([n, c]) => `<button class="swatch ${LOOK.tint === n ? 'on' : ''}" title="${n}" style="background:${c[document.documentElement.dataset.theme === 'dark' ? 1 : 0]}" onclick="setLook({tint:'${n}'})"></button>`).join('')}
+      ${LOOK.tint ? `<input type="range" min="5" max="100" step="5" value="${LOOK.tintPct}" style="width:120px;padding:0;border:0;background:none" title="Amount"
+        oninput="LOOK.tintPct=+this.value; this.nextElementSibling.textContent=this.value+'%'; applyLook()" onchange="setLook({tintPct:+this.value})"><b style="width:40px">${LOOK.tintPct}%</b>` : ''}</span>`)}
     ${optRow('UI scale', 'Text and everything else, together. Same proportions on any screen: it adds to Windows display scaling',
       `<span class="row" style="gap:10px"><input type="range" min="80" max="150" step="5" value="${LOOK.scale}" style="width:160px;padding:0;border:0;background:none"
         oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="setLook({scale:+this.value})"><b style="width:40px">${LOOK.scale}%</b>
@@ -1737,8 +1753,38 @@ const dotOf = p => busy[p.id] ? 'busy' : p.ready ? 'ready' : '';
 // files Claude touched lately in this project, newest first
 const touched = pid => [...new Set((logs[pid] || []).filter(e => e.kind === 'tool' && e.detail?.file_path).map(e => e.detail.file_path).reverse())].slice(0, 6);
 // Claude Code's own task list (its latest TodoWrite)
-const todos = pid => (logs[pid] || []).filter(e => e.kind === 'tool' && /^TodoWrite\b/.test(e.text) && Array.isArray(e.detail?.todos)).pop()?.detail.todos || [];
+// Claude's own task list: TaskCreate/TaskUpdate (newer Claude Code; ids = creation order from 1, per session) else the latest TodoWrite
+// ponytail: ids inferred from order, not read from TaskCreate's result; read the result text if they ever skip numbers
+const todos = pid => {
+  const l = logs[pid] || [], tasks = [];
+  for (const e of l) {
+    if (e.kind === 'note' && e.text === 'Fresh session') tasks.length = 0;
+    if (e.kind !== 'tool') continue;
+    const n = e.text.split(' ')[0], d = e.detail || {};
+    if (n === 'TaskCreate') tasks.push({id: String(tasks.length + 1), content: d.subject || d.description || '', activeForm: d.activeForm, status: 'pending'});
+    if (n === 'TaskUpdate') { const t = tasks.find(x => x.id === String(d.taskId)); if (t) { if (d.status) t.status = d.status; if (d.subject) t.content = d.subject; if (d.activeForm) t.activeForm = d.activeForm; } }
+  }
+  if (tasks.length) return tasks.filter(t => t.status !== 'deleted');
+  return l.filter(e => e.kind === 'tool' && /^TodoWrite\b/.test(e.text) && Array.isArray(e.detail?.todos)).pop()?.detail.todos || [];
+};
+// subagents Claude started (Task/Agent tool): running = no result yet while the turn runs; their own tool calls carry `parent`
+const agentsOf = pid => { const l = logs[pid] || [];
+  return l.filter(e => e.kind === 'tool' && /^(Task|Agent)\b/.test(e.text)).map(e => { const sub = l.filter(x => x.parent && x.parent === e.id);
+    return {type: e.detail?.subagent_type || 'agent', desc: e.detail?.description || '', running: !!busy[pid] && !!e.id && !l.some(x => x.result_of === e.id),
+      steps: sub.length, last: sub.at(-1)?.text.replace(/^↳ /, '')}; }); };
+// bottom of the right panel: running agents (+ the last few finished) and the task list
+function drawAtp() {
+  const el = $('atp'); if (!el || !cur) return;
+  const ag = agentsOf(cur), t = todos(cur), run = ag.filter(a => a.running), done = t.filter(x => x.status === 'completed').length;
+  const body = (ag.length ? `<div class="label" style="margin:0">Agents</div>` + [...run, ...ag.filter(a => !a.running).slice(-4).reverse()].map(a =>
+      `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
+        <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('') : '')
+    + `<div class="label" style="margin:0">Tasks</div>` + (t.length ? t.map(x => `<div class="atrow t ${esc(x.status)}"><span class="tk">${x.status === 'completed' ? '✓' : x.status === 'in_progress' ? '▸' : '○'}</span>
+        <span class="grow" style="min-width:0">${esc(x.status === 'in_progress' && x.activeForm || x.content)}</span></div>`).join('') : empty("Claude's to-dos show here while it works"));
+  el.innerHTML = fold('atp', 'Agents & Tasks', body, [run.length && `${run.length} running`, t.length && `${done}/${t.length}`].filter(Boolean).join(' · '));
+}
 function drawRails() {
+  drawAtp();
   if (UI.lc) {
     const p = P();
     $('lrail').innerHTML = `<button class="ib" title="Home" onclick="goHome()" style="width:36px;height:36px"><img src="icon.svg" style="width:22px"></button>

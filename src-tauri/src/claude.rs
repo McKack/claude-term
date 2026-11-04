@@ -295,7 +295,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
         .map(|a| (a.name.trim().to_string(), json!({"description": a.description, "prompt": a.prompt,
                                                      "model": if a.model.is_empty() { "inherit" } else { a.model.as_str() }})))
         .collect();
-    if !agents.is_empty() {
+    if !agents.is_empty() && st.cfg.lock().unwrap().agents_on {
         init["agents"] = Value::Object(agents);
     }
     let r = conn.request(init, 90).await?;
@@ -353,7 +353,8 @@ fn show(app: &AppHandle, st: &State, pid: &str, m: &Value) {
                     Some("tool_use") if !b["name"].as_str().unwrap_or("").starts_with("mcp__clauracle__") => {
                         let sub = if m["parent_tool_use_id"].is_null() { "" } else { "↳ " };
                         // chat shows the one-liner; terminal view shows `detail` (the full input)
-                        emit(app, "line", json!({"pid": pid, "kind": "tool", "detail": b["input"],
+                        // id + parent: the Agents & Tasks panel pairs calls with results and subagent work with its agent
+                        emit(app, "line", json!({"pid": pid, "kind": "tool", "detail": b["input"], "id": b["id"], "parent": m["parent_tool_use_id"],
                             "text": format!("{sub}{}  {}", b["name"].as_str().unwrap_or(""), summary(&b["input"]))}));
                     }
                     Some("thinking") => line(app, pid, "think", b["thinking"].as_str().unwrap_or("")),
@@ -376,7 +377,7 @@ fn show(app: &AppHandle, st: &State, pid: &str, m: &Value) {
                 if kind == "err" {
                     t = t.chars().take(300).collect();
                 }
-                line(app, pid, kind, &t);
+                emit(app, "line", json!({"pid": pid, "kind": kind, "text": t, "result_of": b["tool_use_id"]}));
             }
         }
         Some("result") => {
@@ -568,7 +569,10 @@ async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) ->
     if tool.starts_with("mcp__clauracle__") {
         return json!({"behavior": "allow", "updatedInput": input});
     }
-    let (cont, mode) = st.project(pid).map(|p| (p.cont, p.mode)).unwrap_or_default();
+    let (cont, mode, allow) = st.project(pid).map(|p| (p.cont, p.mode, p.allow)).unwrap_or_default();
+    if tool != "AskUserQuestion" && allow.iter().any(|t| t == tool) {
+        return json!({"behavior": "allow", "updatedInput": input});
+    }
     // the project's mode as set now: a switch mid-turn only reaches the CLI on reconnect, and CLI acceptEdits
     // still asks for files outside the project dir
     let edit = matches!(tool, "Edit" | "Write" | "MultiEdit" | "NotebookEdit");
@@ -848,7 +852,7 @@ pub fn history(session: &str) -> Vec<Value> {
                     match b["type"].as_str() {
                         Some("text") => out.push(json!({"kind": "claude", "text": b["text"]})),
                         Some("tool_use") if !b["name"].as_str().unwrap_or("").starts_with("mcp__clauracle__") => out.push(
-                            json!({"kind": "tool", "detail": b["input"], "text": format!("{}  {}", b["name"].as_str().unwrap_or(""), summary(&b["input"]))})),
+                            json!({"kind": "tool", "detail": b["input"], "id": b["id"], "text": format!("{}  {}", b["name"].as_str().unwrap_or(""), summary(&b["input"]))})),
                         _ => {}
                     }
                 }

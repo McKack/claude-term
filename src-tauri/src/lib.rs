@@ -21,7 +21,7 @@ fn state(st: St) -> Value {
     let live = st.live.lock().unwrap();
     let busy: Vec<&String> = live.iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k).collect();
     json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "active": cfg.active, "busy": busy,
-           "default_account": cfg.default_account, "notify": cfg.notify, "drafts": store::drafts(),
+           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "notify": cfg.notify, "drafts": store::drafts(),
            "projects_dir": store::projects_root(&cfg).to_string_lossy(),
            // next steps from HANDOVER.md, for the ready bar
            "queues": cfg.projects.iter().filter(|p| p.ready).map(|p| (p.id.clone(), json!(claude::queue(&p.path))))
@@ -102,7 +102,7 @@ fn remove_project(st: St, pid: String) {
 /// current reply, same session).
 #[tauri::command]
 fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Value> {
-    let quiet = ["name", "context_limit", "build", "keep", "services"];
+    let quiet = ["name", "context_limit", "build", "keep", "services", "allow"]; // read live per call: no reconnect
     let p = st.with_project(&pid, |p| {
         let mut v = json!(p);
         for (k, val) in changes.as_object().cloned().unwrap_or_default() {
@@ -151,9 +151,10 @@ fn agents(st: St) -> Value {
 
 /// Takes effect when a session next connects (new session / continue / settings change).
 #[tauri::command]
-fn set_agents(st: St, agents: Vec<store::Agent>) {
+fn set_agents(st: St, agents: Vec<store::Agent>, on: Option<bool>) {
     let mut cfg = st.cfg.lock().unwrap();
     cfg.agents = Some(agents);
+    if let Some(on) = on { cfg.agents_on = on; }
     store::save(&cfg);
     for l in st.live.lock().unwrap().values() {
         l.inbox.front(vec![Input::Reconnect]);
