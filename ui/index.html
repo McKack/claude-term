@@ -8,9 +8,14 @@
 :root { --bg:#ffffff; --side:#f7f7f8; --card:#ffffff; --line:#ececee; --line2:#dcdce0; --text:#1d1d1f; --dim:#6e6e76; --faint:#a1a1a8;
   --accent:#4f5bd5; --accent2:#3f4ac0; --soft:#eef0fd; --primary:#1d1d1f; --primary2:#3a3a3e; --ink:#fff; --hover:#f0f0f2; --code:#f6f6f7;
   --err:#c4281c; --ok:#1f8a4c; --crab:#d77757; --shadow:0 1px 2px #0000000a, 0 2px 12px #00000008; color-scheme:light; }
-@media (prefers-color-scheme: dark) { :root { --bg:#161618; --side:#1c1c1f; --card:#232326; --line:#2c2c30; --line2:#3a3a3f; --text:#ededef;
+:root[data-theme=dark] { --bg:#161618; --side:#1c1c1f; --card:#232326; --line:#2c2c30; --line2:#3a3a3f; --text:#ededef;
   --dim:#a0a0a8; --faint:#6c6c74; --accent:#8b93ff; --accent2:#a3a9ff; --soft:#262a4a; --primary:#ededef; --primary2:#ffffff; --ink:#161618;
-  --hover:#2a2a2e; --code:#1c1c1f; --err:#ff7b6e; --ok:#5fd08e; --shadow:0 1px 2px #00000040, 0 4px 16px #00000030; color-scheme:dark; } }
+  --hover:#2a2a2e; --code:#1c1c1f; --err:#ff7b6e; --ok:#5fd08e; --shadow:0 1px 2px #00000040, 0 4px 16px #00000030; color-scheme:dark; }
+/* Appearance: no frosted glass (cheaper to draw), no motion */
+.noglass .glass { background:var(--card); backdrop-filter:none; -webkit-backdrop-filter:none; } .noglass dialog::backdrop { backdrop-filter:none; }
+.nomotion *, .nomotion *::before, .nomotion *::after { animation:none !important; transition:none !important; }
+.swatch { width:26px; height:26px; border-radius:50%; border:2px solid var(--bg); box-shadow:0 0 0 1px var(--line2); cursor:pointer; padding:0; }
+.swatch.on { box-shadow:0 0 0 2px var(--text); }
 * { box-sizing:border-box; } [hidden] { display:none !important; }
 html, body { height:100%; }
 body { margin:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; background:var(--bg); color:var(--text);
@@ -778,7 +783,7 @@ async function taskStart(n) {
 
 // local-only project → its own GitHub repo; defaults to the project's (or its AI account's) GitHub account
 function publishForm(p, users) {
-  if (!users.length) return `<p class="dim">Only on this computer. Add a GitHub account in Settings › GitHub to publish it.</p>`;
+  if (!users.length) return `<p class="dim">Only on this computer. Add a GitHub account to publish it.</p><p><button class="btn primary" onclick="addGh()">${icon('plus')}Add GitHub account</button></p>`;
   const def = p.gh || S.accounts.find(a => a.id === p.account)?.gh || users[0];
   return `<p class="dim" style="font-size:13px">Only on this computer so far. Publish it to start syncing with GitHub.
     .env files are git-ignored first; if there's no commit yet, everything else goes into a first one.</p>
@@ -813,10 +818,14 @@ async function drawFiles(rel = filesAt[cur] ?? '') {
       return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'drawFiles' : 'previewFile'}(this.dataset.p)">${icon(i.dir ? 'folder' : 'file')}${esc(i.name)}</div>`; }).join('')
       || '<p class="dim" style="padding:0 8px">Empty.</p>'}</div>`;
 }
-function previewFile(rel) { codeAt[cur] = {file: rel}; expandRight('code'); drawFiles(); }
+let envAt = null;
+function previewFile(rel) {
+  if (/^\.env(\.|$)/.test(rel.split('/').pop())) { envAt = rel; expandRight('env'); return; }
+  codeAt[cur] = {file: rel}; expandRight('code'); drawFiles();
+}
 async function drawCode() {
   const file = codeAt[cur]?.file, box = $('rbody');
-  if (!file) { box.innerHTML = '<p class="dim">Pick a file in the Files tab on the left.</p>'; return; }
+  if (!file) { box.innerHTML = '<p class="dim">Pick a file on the left.</p>'; if (UI.lc || UI.st !== 'files') { UI.lc = false; setSide('files'); } return; }
   const head = `<div class="crumbs mono">${esc(file)}</div>`;
   let text;
   try { text = await call('read_file', {pid: cur, rel: file}); } catch (e) { box.innerHTML = head + `<p class="dim">${esc(e)}</p>`; return; }
@@ -921,6 +930,8 @@ async function drawEnv() {
       <div class="row" style="margin-top:8px"><input class="grow mono" placeholder="NEW_KEY" id="nk-${esc(f.file)}"><button class="btn" onclick="editKey('${esc(f.file)}', $('nk-${esc(f.file)}').value)">Add</button>
       <select onchange="preset('${esc(f.file)}', this.value); this.value=''"><option value="">Preset…</option>${Object.keys(PRESETS).map(k => `<option>${k}</option>`).join('')}</select></div></div>`).join('')
     + `<div class="row"><input id="newEnv" class="mono" value="${files.length ? '.env.local' : '.env'}" style="width:130px"><button class="btn" onclick="setKey($('newEnv').value, 'EXAMPLE_KEY', '')">New file</button></div>`;
+  if (envAt) { const i = files.findIndex(f => f.file === envAt), el = box.querySelectorAll('.envfile')[i];
+    if (el) { el.scrollIntoView({block: 'start'}); el.style.borderColor = 'var(--accent)'; } envAt = null; }
 }
 async function setKey(file, key, value) {
   try { await call('env_set', {pid: cur, file, key, value}); } catch (e) { alert(e); }
@@ -939,7 +950,7 @@ async function preset(file, name) {
 }
 
 // ---- settings: GitHub · Connections & Skills · Agents · AI accounts · Notifications ----
-const PAGES = {projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], notify: ['bell', 'Notifications']};
+const PAGES = {look: ['sliders', 'Appearance'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
 // GitHub accounts / catalog changed: drop the cache and load again
 const reloadSettings = p => { SET = null; return openSettings(p); };
@@ -954,7 +965,7 @@ async function openSettings(p) {
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="body">${page === 'projects' ? '' : `<h2>${PAGES[page][1]}</h2>`}
-    ${{projects: projectsPage, gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
+    ${{look: lookPage, projects: projectsPage, gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
 }
 function ghPage() {
@@ -1049,6 +1060,38 @@ function aiPage() {
 }
 const limitsOf = id => S.accounts.find(a => a.id === id).limits;
 const acct = (id, changes) => call('update_account', {id, changes}).then(() => openSettings());
+// Appearance: per computer (localStorage), applied before anything draws
+const ACCENTS = {Indigo: ['#4f5bd5', '#8b93ff'], Blue: ['#2563eb', '#6ea8fe'], Teal: ['#0f8b80', '#3cc9b9'], Green: ['#2b8a3e', '#69db7c'],
+  Orange: ['#c8613f', '#e8916f'], Pink: ['#c2255c', '#f783ac'], Graphite: ['#4a4a50', '#b8b8c0']};
+let LOOK = {theme: 'system', accent: 'Indigo', scale: 110, glass: true, motion: true};
+try { Object.assign(LOOK, JSON.parse(localStorage.look || '{}')); } catch {}
+const darkMq = matchMedia('(prefers-color-scheme: dark)');
+function applyLook() {
+  const h = document.documentElement, dark = LOOK.theme === 'dark' || (LOOK.theme === 'system' && darkMq.matches);
+  h.dataset.theme = dark ? 'dark' : 'light';
+  const a = ACCENTS[LOOK.accent]?.[dark ? 1 : 0];
+  for (const [k, v] of Object.entries(LOOK.accent === 'Indigo' || !a ? {} : {'--accent': a, '--accent2': `color-mix(in srgb, ${a} 85%, ${dark ? '#fff' : '#000'})`,
+    '--soft': `color-mix(in srgb, ${a} ${dark ? 22 : 10}%, var(--bg))`})) h.style.setProperty(k, v);
+  if (LOOK.accent === 'Indigo') ['--accent', '--accent2', '--soft'].forEach(k => h.style.removeProperty(k));
+  h.classList.toggle('noglass', !LOOK.glass); h.classList.toggle('nomotion', !LOOK.motion);
+  zoom(LOOK.scale);
+}
+// on top of the OS display scaling (CSS px are already DPI-independent), so 110% looks the same on any screen
+const zoom = pct => call('set_zoom', {scale: pct / 100}).catch(() => {});
+function setLook(c) { Object.assign(LOOK, c); try { localStorage.look = JSON.stringify(LOOK); } catch {} applyLook(); openSettings('look'); }
+darkMq.addEventListener('change', applyLook);
+const choice = (key, opts) => `<span class="seg">${opts.map(o => `<button class="${LOOK[key] === o ? 'on' : ''}" onclick="setLook({${key}:'${o}'})">${o[0].toUpperCase() + o.slice(1)}</button>`).join('')}</span>`;
+function lookPage() {
+  return `<div class="box">${optRow('Theme', '', choice('theme', ['system', 'light', 'dark']))}
+    ${optRow('Accent', '', `<span class="row" style="gap:8px">${Object.entries(ACCENTS).map(([n, c]) => `<button class="swatch ${LOOK.accent === n ? 'on' : ''}" title="${n}" style="background:${c[document.documentElement.dataset.theme === 'dark' ? 1 : 0]}" onclick="setLook({accent:'${n}'})"></button>`).join('')}</span>`)}
+    ${optRow('UI scale', 'Text and everything else, together. Same proportions on any screen: it adds to Windows display scaling',
+      `<span class="row" style="gap:10px"><input type="range" min="80" max="150" step="5" value="${LOOK.scale}" style="width:160px;padding:0;border:0;background:none"
+        oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="setLook({scale:+this.value})"><b style="width:40px">${LOOK.scale}%</b>
+        <button class="btn sm" onclick="setLook({scale:100})">Reset</button></span>`)}</div>
+    <div class="label">Performance</div>
+    <div class="box">${optRow('Frosted glass', 'Blur behind menus and dialogs. Off is lighter to draw', sw(LOOK.glass, 'setLook({glass:this.checked})'))}
+    ${optRow('Animations', 'Shimmer, pulses and fades', sw(LOOK.motion, 'setLook({motion:this.checked})'))}</div>`;
+}
 function notifyPage() {
   const n = S.notify;
   return `<p class="dim">When questions need you in auto mode, or the loop pauses at a limit.</p>
@@ -1102,6 +1145,7 @@ async function clone(repo) {
 const RAIL = 52, SNAP = 140;
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
+applyLook();
 function layout() {
   try { localStorage.ui = JSON.stringify(UI); } catch {}
   $('side').classList.toggle('rail', UI.lc); $('side').style.width = (UI.lc ? RAIL : UI.lw) + 'px';

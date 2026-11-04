@@ -620,6 +620,12 @@ fn list_dir(st: St, pid: String, rel: String) -> R<Value> {
     Ok(json!(items.iter().map(|(d, n)| json!({"name": n, "dir": d})).collect::<Vec<_>>()))
 }
 
+/// Appearance › Size: browser-style zoom, so text, panels and mouse math scale together.
+#[tauri::command]
+fn set_zoom(w: tauri::WebviewWindow, scale: f64) -> R<()> {
+    w.set_zoom(scale.clamp(0.7, 1.6)).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn read_file(st: St, pid: String, rel: String) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
@@ -727,7 +733,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, set_items, set_projects_dir, new_local])
+            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, set_items, set_projects_dir, new_local, set_zoom])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {
