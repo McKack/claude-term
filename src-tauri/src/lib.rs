@@ -378,8 +378,26 @@ async fn gh_info(st: St<'_>, pid: String) -> R<Value> {
         let f = "number,title,url,author";
         json!({"repo": store::gh_json(&["repo", "view", "--json", "nameWithOwner,url"], &p.gh, Some(&p.path)),
                "prs": store::gh_json(&["pr", "list", "--json", f], &p.gh, Some(&p.path)),
-               "issues": store::gh_json(&["issue", "list", "--json", f], &p.gh, Some(&p.path))})
+               "issues": store::gh_json(&["issue", "list", "--json", f], &p.gh, Some(&p.path)),
+               "remote": store::repo_of(&p.path).is_some(), "users": store::gh_accounts()})
     }).await.map_err(|e| e.to_string())
+}
+
+/// Local project → new GitHub repo; the project then runs as that gh account.
+#[tauri::command]
+async fn publish_repo(st: St<'_>, pid: String, user: String, name: String, private: bool) -> R<String> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let u = user.clone();
+    let url = tauri::async_runtime::spawn_blocking(move || store::publish(&p.path, &u, &name, private))
+        .await.map_err(|e| e.to_string())??;
+    let who = detect(&st, st.project(&pid).ok_or("no such project")?.path).await;
+    let mut cfg = st.cfg.lock().unwrap();
+    if let Some(p) = cfg.projects.iter_mut().find(|p| p.id == pid) {
+        p.gh = user;
+    }
+    mark(&mut cfg, &pid, who.as_ref());
+    store::save(&cfg);
+    Ok(url)
 }
 
 #[tauri::command]
@@ -572,7 +590,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart])
+            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {

@@ -643,10 +643,29 @@ async function drawRight() {
   const g = await call('gh_info', {pid: cur}), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
     <div class="row dim" style="font-size:12px"><span class="grow">${esc(x.author?.login)}</span><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask Claude</button></div></div>`;
   box.innerHTML = `<div class="label">Repository</div>` + (g.repo ? `<p><a href="#" data-url="${esc(g.repo.url)}" style="color:var(--accent)">${esc(g.repo.nameWithOwner)}</a> <small class="dim">as @${esc(p.gh)}</small></p>`
-    : `<p class="dim">No GitHub repo here${p.gh ? '' : ', or no GitHub account set in the project manager'}.</p>`)
+    : g.remote ? `<p class="dim">Can't read the GitHub repo${p.gh ? ` as @${esc(p.gh)}` : ': set a GitHub account in the project manager'}.</p>`
+    : publishForm(p, g.users || []))
     + `<div class="label" style="margin-top:14px">Pull requests</div>` + ((g.prs || []).map(x => item(x, 'pr')).join('') || '<p class="dim">None open.</p>')
     + `<div class="label" style="margin-top:14px">Issues</div>` + ((g.issues || []).map(x => item(x, 'issue')).join('') || '<p class="dim">None open.</p>')
     + `<p><button class="btn ghost" onclick="drawRight()">Refresh</button></p>`;
+}
+// local-only project → its own GitHub repo; defaults to the project's (or its AI account's) GitHub account
+function publishForm(p, users) {
+  if (!users.length) return `<p class="dim">Only on this computer. Add a GitHub account in Settings › GitHub to publish it.</p>`;
+  const def = p.gh || S.accounts.find(a => a.id === p.account)?.gh || users[0];
+  return `<p class="dim" style="font-size:13px">Only on this computer so far. Publish it to start syncing with GitHub.
+    .env files are git-ignored first; if there's no commit yet, everything else goes into a first one.</p>
+    <div class="grid2" style="grid-template-columns:80px 1fr"><span>Account</span><select id="pubUser">${users.map(u => `<option ${u === def ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select>
+    <span>Name</span><input id="pubName" value="${esc(p.name)}" placeholder="name or org/name">
+    <span></span><label class="row"><input type="checkbox" id="pubPrivate" checked> Private</label></div>
+    <button class="btn primary" onclick="publish(this)">${icon('gh')}Publish to GitHub</button><p id="pubMsg" class="dim"></p>`;
+}
+async function publish(btn) {
+  btn.disabled = true; $('pubMsg').textContent = 'Publishing…';
+  try {
+    await call('publish_repo', {pid: cur, user: $('pubUser').value, name: $('pubName').value.trim(), private: $('pubPrivate').checked});
+    await refresh(); drawRight();
+  } catch (e) { $('pubMsg').textContent = e; btn.disabled = false; }
 }
 function draft(kind, x) {
   $('prompt').value = kind === 'pr' ? `Review PR #${x.number} "${x.title}" (${x.url}): read the diff and comments with gh, then list risks and suggested changes.`

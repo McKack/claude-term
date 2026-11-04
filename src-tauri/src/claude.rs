@@ -585,7 +585,9 @@ fn tool_list() -> Value {
           (or waits for the user's Continue).", "inputSchema": {"type": "object", "properties": {}}},
         {"name": "ask", "description": "Queue questions for the user (numbered in a card, options with your \
           recommendation, a note field each). Don't wait: the answers arrive later.", "inputSchema": q},
-        {"name": "restart", "description": "Restart Clauracle itself, e.g. to try a new build of it. Nothing is lost:           every session resumes, this turn continues after the restart, unsent input stays. `exe`: a newly built           Clauracle executable to run instead (it's copied first, so the build output stays writable).",
+        {"name": "restart", "description": "Restart Clauracle itself, e.g. to try a new build of it. Nothing is lost: \
+          every session resumes, this turn continues after the restart, unsent input stays. `exe`: a newly built \
+          Clauracle executable to run instead (it's copied first, so the build output stays writable).",
          "inputSchema": {"type": "object", "properties": {"exe": {"type": "string"}}}}]})
 }
 

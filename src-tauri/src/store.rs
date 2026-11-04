@@ -719,6 +719,32 @@ pub fn env_set(text: &str, key: &str, value: Option<&str>) -> String {
 }
 
 /// Is the file ignored by git (so secrets don't get committed)? None outside a repo.
+/// A local-only folder becomes a new GitHub repo (`name` or `owner/name`) as `user`: git init if needed,
+/// .env* git-ignored before anything is committed, a first commit if there is none, then create + push.
+pub fn publish(dir: &str, user: &str, name: &str, private: bool) -> Result<String, String> {
+    let env = gh_env(user);
+    let git = |args: &[&str]| run("git", args, Some(dir), &env);
+    let fail = |o: Out| Err(if o.stderr.trim().is_empty() { o.stdout.trim().to_string() } else { o.stderr.trim().to_string() });
+    if !Path::new(dir).join(".git").exists() {
+        let o = git(&["init", "-b", "main"]);
+        if !o.ok { return fail(o); }
+    }
+    if git_ignored(dir, ".env") == Some(false) {
+        let gi = Path::new(dir).join(".gitignore");
+        let mut t = std::fs::read_to_string(&gi).unwrap_or_default();
+        if !t.is_empty() && !t.ends_with('\n') { t.push('\n'); }
+        std::fs::write(&gi, t + ".env*\n").map_err(|e| e.to_string())?;
+    }
+    if !git(&["rev-parse", "--verify", "HEAD"]).ok {
+        git(&["add", "-A"]);
+        let o = git(&["commit", "-m", "Initial commit"]);
+        if !o.ok { return fail(o); }
+    }
+    let vis = if private { "--private" } else { "--public" };
+    let o = run("gh", &["repo", "create", name, vis, "--source", ".", "--remote", "origin", "--push"], Some(dir), &env);
+    if o.ok { Ok(o.stdout.trim().to_string()) } else { fail(o) }
+}
+
 pub fn git_ignored(dir: &str, file: &str) -> Option<bool> {
     if !Path::new(dir).join(".git").exists() { return None; }
     Some(run("git", &["check-ignore", "-q", file], Some(dir), &[]).ok)
