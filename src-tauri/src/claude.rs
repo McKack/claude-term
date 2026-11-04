@@ -1,0 +1,782 @@
+//! One `claude` process per project, spoken to over its stream-json protocol (what claude-agent-sdk does):
+//! user messages in, messages out, plus control requests both ways (permissions, our in-process MCP tools,
+//! interrupt, context usage). On top: the continue modes, held questions, limits and pool switching.
+use crate::store::{self, Config, Project, Question};
+use serde_json::{json, Value};
+use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::SeqCst};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::{mpsc, oneshot, Notify};
+
+const PONYTAIL_MD: &str = include_str!("../../plugin/skills/ponytail/SKILL.md");
+
+const APPEND: &str = "You are running inside Clauracle, a desktop app around Claude Code that keeps long work going \
+across fresh sessions through HANDOVER.md. Its tools: mcp__clauracle__ready (the task is done and the handover is \
+written: Clauracle clears the context and continues) and mcp__clauracle__ask (questions for the user, queued; never \
+wait for them). Save tokens: hand searching, reading many files and running builds/tests to the helper agents \
+(Task tool) when they fit, and keep your own replies short.";
+
+const HANDOVER_RULES: &str = "
+# Handover (Clauracle)
+- HANDOVER.md at the project root lets a fresh session resume: goal, current state, an ordered \"## Queue\" of open
+  tasks (first = next), how to build and test, gotchas. Under ~50 lines. In a git repo where it isn't tracked, add it
+  to .git/info/exclude. Finished work goes to CHANGES.md (newest first, one line per change), not the handover.
+- Finishing a task: verify it, update HANDOVER.md and CHANGES.md, commit if the project's rules allow, then call
+  mcp__clauracle__ready as the LAST action of the turn.
+- Do NOT call ready, stop and say why instead, when something failed you can't fix or the queue is empty.
+- Questions for the user go through mcp__clauracle__ask (numbered, options with your recommendation marked). They
+  are queued and answered later: carry on with whatever doesn't depend on them.";
+
+const AUTO_RULES: &str = "
+# Auto mode: the user is away
+Work ONE task per session from HANDOVER.md's queue, then hand over with mcp__clauracle__ready; Clauracle starts the
+next session by itself.";
+
+const AUTO_ANSWER_RULES: &str = "
+# Auto mode with answers: the user is away
+Work ONE task per session from HANDOVER.md's queue, then hand over with mcp__clauracle__ready. When a question has a
+sensible recommended answer, decide it yourself, go with that, and note the decision in CHANGES.md. Only questions
+that truly need the user (taste, money, accounts, irreversible or risky choices) go to mcp__clauracle__ask with
+blocking=true; they are held, and you continue with other tasks.";
+
+const TERSE_RULES: &str = "
+# Comments: dense, for AI readers
+Write code comments as compact notes an AI reads fully: fragments, symbols (→ = ≠ ∵ ∴), no filler words, but keep
+every fact (why, constraint, edge case, upgrade path). Example: `// cache: 5m TTL ∵ API rate limit; ↑ if stale data hurts`.";
+
+const PREPARE: &str = "Pause here; don't start anything new{why}. Update HANDOVER.md so a fresh session can pick up \
+exactly where you are (goal, what you were doing and how far it got, what is verified and what isn't, next steps in \
+order, gotchas learned), move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
+
+const CONTINUE: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md at the \
+project root and carry on with the next step.";
+
+// ---------------------------------------------------------------------------------------------
+
+pub enum Input {
+    Msg(String),
+    Rich(Value), // content blocks: text plus pasted images
+    Reconnect,
+}
+
+/// The project's queue of things to send. `front` puts items ahead of what you queued meanwhile.
+#[derive(Default)]
+pub struct Inbox {
+    q: Mutex<VecDeque<Input>>,
+    n: Notify,
+}
+impl Inbox {
+    pub fn push(&self, i: Input) {
+        self.q.lock().unwrap().push_back(i);
+        self.n.notify_one();
+    }
+    pub fn front(&self, items: Vec<Input>) {
+        let mut q = self.q.lock().unwrap();
+        for i in items.into_iter().rev() {
+            q.push_front(i);
+        }
+        drop(q);
+        self.n.notify_one();
+    }
+    async fn pop(&self) -> Input {
+        loop {
+            if let Some(i) = self.q.lock().unwrap().pop_front() {
+                return i;
+            }
+            self.n.notified().await;
+        }
+    }
+}
+
+/// Writing to the running claude, and waiting for answers to our control requests.
+pub struct Conn {
+    stdin: tokio::sync::Mutex<tokio::process::ChildStdin>,
+    pending: Mutex<HashMap<String, oneshot::Sender<Value>>>,
+    counter: AtomicU64,
+}
+impl Conn {
+    async fn write(&self, v: &Value) -> Result<(), String> {
+        let mut s = self.stdin.lock().await;
+        s.write_all(format!("{v}\n").as_bytes()).await.map_err(|e| e.to_string())?;
+        s.flush().await.map_err(|e| e.to_string())
+    }
+    pub async fn request(&self, req: Value, secs: u64) -> Result<Value, String> {
+        let id = format!("req_{}_{}", self.counter.fetch_add(1, SeqCst), store::new_id());
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().unwrap().insert(id.clone(), tx);
+        self.write(&json!({"type": "control_request", "request_id": id, "request": req})).await?;
+        match tokio::time::timeout(std::time::Duration::from_secs(secs), rx).await {
+            Ok(Ok(r)) if r["subtype"] == "error" => Err(r["error"].as_str().unwrap_or("error").into()),
+            Ok(Ok(r)) => Ok(r["response"].clone()),
+            _ => {
+                self.pending.lock().unwrap().remove(&id);
+                Err(format!("no answer to {}", req["subtype"]))
+            }
+        }
+    }
+}
+
+/// Per-project live state.
+#[derive(Default)]
+pub struct Live {
+    pub inbox: Inbox,
+    pub busy: AtomicBool,
+    pub conn: Mutex<Option<Arc<Conn>>>,
+    armed: AtomicBool,        // ready was called this turn
+    handing_over: AtomicBool, // Clauracle asked for a handover (context limit / Clear & continue)
+    first_turn: AtomicBool,   // a fresh session already past the context limit must not hand over forever
+}
+
+pub struct State {
+    pub cfg: Mutex<Config>,
+    pub live: Mutex<HashMap<String, Arc<Live>>>,
+    pub asks: Mutex<HashMap<String, oneshot::Sender<Value>>>,
+    pub plugin_dir: PathBuf,
+}
+
+impl State {
+    pub fn project(&self, pid: &str) -> Option<Project> {
+        self.cfg.lock().unwrap().projects.iter().find(|p| p.id == pid).cloned()
+    }
+    pub fn with_project<R>(&self, pid: &str, f: impl FnOnce(&mut Project) -> R) -> Option<R> {
+        let mut cfg = self.cfg.lock().unwrap();
+        let r = cfg.projects.iter_mut().find(|p| p.id == pid).map(f);
+        store::save(&cfg);
+        r
+    }
+}
+
+pub fn emit(app: &AppHandle, event: &str, data: Value) {
+    let _ = app.emit("clauracle", json!({"event": event, "data": data}));
+}
+
+fn line(app: &AppHandle, pid: &str, kind: &str, text: &str) {
+    emit(app, "line", json!({"pid": pid, "kind": kind, "text": text}));
+}
+
+/// The project's session, started on first use.
+pub fn session(app: &AppHandle, st: &Arc<State>, pid: &str) -> Arc<Live> {
+    let mut map = st.live.lock().unwrap();
+    if let Some(l) = map.get(pid) {
+        return l.clone();
+    }
+    let live = Arc::new(Live::default());
+    live.first_turn.store(true, SeqCst);
+    map.insert(pid.into(), live.clone());
+    let (app, st, pid, l) = (app.clone(), st.clone(), pid.to_string(), live.clone());
+    tauri::async_runtime::spawn(async move { run(app, st, pid, l).await });
+    live
+}
+
+async fn run(app: AppHandle, st: Arc<State>, pid: String, live: Arc<Live>) {
+    loop {
+        if st.project(&pid).is_none() {
+            return; // removed
+        }
+        if let Err(e) = connect_and_serve(&app, &st, &pid, &live).await {
+            *live.conn.lock().unwrap() = None;
+            live.busy.store(false, SeqCst);
+            emit(&app, "status", json!({"pid": pid, "busy": false}));
+            if e != "reconnect" {
+                line(&app, &pid, "err", &format!("claude: {e} (retrying in 5s)"));
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    }
+}
+
+fn args(st: &State, p: &Project) -> Vec<String> {
+    let cfg = st.cfg.lock().unwrap();
+    let (deny, _) = store::restrictions(&cfg, p);
+    let mut append = format!("{APPEND}\n{HANDOVER_RULES}");
+    append += match p.cont.as_str() { "auto" => AUTO_RULES, "auto_answer" => AUTO_ANSWER_RULES, _ => "" };
+    if p.terse {
+        append += TERSE_RULES;
+    }
+    if !p.build.build.is_empty() || !p.build.run.is_empty() {
+        append += &format!("\n# Build (Clauracle runs these itself after a task; don't repeat them)\nbuild: {}\nrun: {}\n",
+                           p.build.build, p.build.run);
+    }
+    if p.ponytail {
+        append += "\n\n";
+        append += PONYTAIL_MD.splitn(3, "---").nth(2).unwrap_or(PONYTAIL_MD).trim();
+    }
+    let mcp = json!({"mcpServers": {"clauracle": {"type": "sdk", "name": "clauracle"}}});
+    let mut a: Vec<String> = ["--output-format", "stream-json", "--verbose", "--input-format", "stream-json",
+        "--include-partial-messages", "--permission-prompt-tool", "stdio"].iter().map(|s| s.to_string()).collect();
+    a.extend(["--append-system-prompt".into(), append, "--permission-mode".into(), p.mode.clone(),
+              "--plugin-dir".into(), st.plugin_dir.to_string_lossy().into(), "--mcp-config".into(), mcp.to_string()]);
+    if !p.model.is_empty() {
+        a.extend(["--model".into(), p.model.clone()]);
+    }
+    if !deny.is_empty() {
+        a.extend(["--disallowedTools".into(), deny.join(",")]);
+    }
+    if let Some(s) = &p.session {
+        a.push(format!("--resume={s}")); // = form: a dash-leading value can't smuggle in a flag
+    }
+    a
+}
+
+async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
+    let p = st.project(pid).ok_or("project removed")?;
+    let claude = store::which("claude").ok_or("Claude Code isn't installed (Settings › Install)")?;
+    let env: Vec<(String, String)> = [store::account_env(&p.account), store::gh_env(&p.gh),
+        vec![("CLAUDE_CODE_ENTRYPOINT".into(), "sdk-clauracle".into())]].concat();
+    let mut cmd = tokio::process::Command::from(store::command(&claude));
+    cmd.args(args(st, &p)).envs(env).env_remove("CLAUDECODE").current_dir(&p.path)
+        .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null()).kill_on_drop(true);
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    child.id().map(|id| crate::CHILDREN.lock().unwrap().push(id));
+    let conn = Arc::new(Conn { stdin: tokio::sync::Mutex::new(child.stdin.take().unwrap()),
+                               pending: Mutex::new(HashMap::new()), counter: AtomicU64::new(0) });
+    let (msgs_tx, mut msgs) = mpsc::unbounded_channel::<Value>();
+
+    // reader: control traffic is handled here, everything else goes to the turn loop
+    let stdout = child.stdout.take().unwrap();
+    let (app2, st2, pid2, live2, conn2) = (app.clone(), st.clone(), pid.to_string(), live.clone(), conn.clone());
+    tauri::async_runtime::spawn(async move {
+        let mut lines = BufReader::new(stdout).lines();
+        while let Ok(Some(l)) = lines.next_line().await {
+            let Ok(v) = serde_json::from_str::<Value>(&l) else { continue };
+            match v["type"].as_str() {
+                Some("control_response") => {
+                    let id = v["response"]["request_id"].as_str().unwrap_or("").to_string();
+                    if let Some(tx) = conn2.pending.lock().unwrap().remove(&id) {
+                        let _ = tx.send(v["response"].clone());
+                    }
+                }
+                Some("control_request") => {
+                    let (a, s, p, l, c) = (app2.clone(), st2.clone(), pid2.clone(), live2.clone(), conn2.clone());
+                    tauri::async_runtime::spawn(async move { control(&a, &s, &p, &l, &c, v).await });
+                }
+                Some("control_cancel_request") | Some("keep_alive") => {}
+                _ => {
+                    let _ = msgs_tx.send(v);
+                }
+            }
+        }
+    });
+
+    let p = st.project(pid).unwrap();
+    let (_, skills) = store::restrictions(&st.cfg.lock().unwrap(), &p);
+    let mut init = json!({"subtype": "initialize", "hooks": null});
+    if let Some(s) = skills {
+        init["skills"] = json!(s);
+    }
+    // Settings › Agents: cheaper helpers Claude can hand work to
+    let agents = st.cfg.lock().unwrap().agents.clone().unwrap_or_else(store::default_agents);
+    let agents: serde_json::Map<String, Value> = agents.iter().filter(|a| a.on && !a.name.trim().is_empty())
+        .map(|a| (a.name.trim().to_string(), json!({"description": a.description, "prompt": a.prompt,
+                                                     "model": if a.model.is_empty() { "inherit" } else { a.model.as_str() }})))
+        .collect();
+    if !agents.is_empty() {
+        init["agents"] = Value::Object(agents);
+    }
+    conn.request(init, 90).await?;
+    *live.conn.lock().unwrap() = Some(conn.clone());
+    emit(app, "status", json!({"pid": pid, "busy": false, "connected": true}));
+
+    loop {
+        let content = match live.inbox.pop().await {
+            Input::Msg(text) => json!(text),
+            Input::Rich(blocks) => blocks,
+            Input::Reconnect => {
+                let _ = child.kill().await;
+                return Err("reconnect".into());
+            }
+        };
+        live.busy.store(true, SeqCst);
+        emit(app, "status", json!({"pid": pid, "busy": true}));
+        conn.write(&json!({"type": "user", "message": {"role": "user", "content": content},
+                           "parent_tool_use_id": null, "session_id": "default"})).await?;
+        loop {
+            let m = msgs.recv().await.ok_or("claude stopped")?;
+            show(app, st, pid, &m);
+            if m["type"] == "result" {
+                break;
+            }
+        }
+        live.busy.store(false, SeqCst);
+        emit(app, "status", json!({"pid": pid, "busy": false}));
+        after_turn(app, st, pid, live, &conn).await;
+    }
+}
+
+fn show(app: &AppHandle, st: &State, pid: &str, m: &Value) {
+    match m["type"].as_str() {
+        Some("stream_event") => {
+            let e = &m["event"];
+            if e["type"] == "content_block_delta" && e["delta"]["type"] == "text_delta" && m["parent_tool_use_id"].is_null() {
+                emit(app, "delta", json!({"pid": pid, "text": e["delta"]["text"]}));
+            }
+        }
+        Some("assistant") => {
+            for b in m["message"]["content"].as_array().into_iter().flatten() {
+                match b["type"].as_str() {
+                    Some("text") if m["parent_tool_use_id"].is_null() => line(app, pid, "claude", b["text"].as_str().unwrap_or("")),
+                    Some("tool_use") if !b["name"].as_str().unwrap_or("").starts_with("mcp__clauracle__") => {
+                        let sub = if m["parent_tool_use_id"].is_null() { "" } else { "↳ " };
+                        // chat shows the one-liner; terminal view shows `detail` (the full input)
+                        emit(app, "line", json!({"pid": pid, "kind": "tool", "detail": b["input"],
+                            "text": format!("{sub}{}  {}", b["name"].as_str().unwrap_or(""), summary(&b["input"]))}));
+                    }
+                    Some("thinking") => line(app, pid, "think", b["thinking"].as_str().unwrap_or("")),
+                    _ => {}
+                }
+            }
+        }
+        Some("user") => {
+            for b in m["message"]["content"].as_array().into_iter().flatten() {
+                if b["type"] != "tool_result" {
+                    continue;
+                }
+                let t = match &b["content"] {
+                    Value::String(s) => s.clone(),
+                    Value::Array(parts) => parts.iter().filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join("\n"),
+                    v => v.to_string(),
+                };
+                let kind = if b["is_error"] == true { "err" } else { "out" }; // out: terminal view only
+                let mut t: String = t.chars().take(4000).collect();
+                if kind == "err" {
+                    t = t.chars().take(300).collect();
+                }
+                line(app, pid, kind, &t);
+            }
+        }
+        Some("result") => {
+            if let Some(sid) = m["session_id"].as_str() {
+                st.with_project(pid, |p| p.session = Some(sid.into()));
+            }
+            if m["is_error"] == true {
+                line(app, pid, "err", m["result"].as_str().unwrap_or("the turn ended with an error"));
+            }
+        }
+        Some("rate_limit_event") => {
+            let acct = st.project(pid).map(|p| p.account).unwrap_or_default();
+            let mut cfg = st.cfg.lock().unwrap();
+            store::record_usage(&mut cfg, &acct, &m["rate_limit_info"]);
+            store::save(&cfg);
+            emit(app, "usage", json!({"account": acct, "usage": store::usage(&cfg, &acct)}));
+        }
+        Some("system") if m["subtype"] == "init" => {
+            emit(app, "commands", json!({"pid": pid, "commands": m["slash_commands"]}));
+        }
+        _ => {}
+    }
+}
+
+pub fn summary(input: &Value) -> String {
+    for k in ["command", "file_path", "path", "pattern", "url", "query", "description", "prompt"] {
+        if let Some(s) = input[k].as_str() {
+            return s.lines().next().unwrap_or("").chars().take(160).collect();
+        }
+    }
+    input.to_string().chars().take(160).collect()
+}
+
+// ---- after a turn: continue, hand over, switch account, or stop ----------------------------------
+
+async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, conn: &Conn) {
+    let Some(p) = st.project(pid) else { return };
+    if live.armed.swap(false, SeqCst) {
+        let was_handover = live.handing_over.swap(false, SeqCst);
+        if !was_handover && !p.build.after.is_empty() {
+            // a task finished: build (and run/deploy) in plain code; a failure can go back to Claude
+            let mut steps = vec!["build"];
+            steps.extend(match p.build.after.as_str() { "build_run" => vec!["run"], "build_deploy" => vec!["deploy"], _ => vec![] });
+            for step in steps {
+                let (ok, tail) = run_step(app, st, pid, step).await;
+                if !ok && p.build.fix {
+                    line(app, pid, "note", &format!("{step} failed: sending the error to Claude."));
+                    live.inbox.front(vec![Input::Msg(format!(
+                        "The {step} step failed after your task (`{}`). Fix it, then call mcp__clauracle__ready again.\n```\n{tail}\n```",
+                        step_cmd(&p, step)))]);
+                    return;
+                }
+                if !ok {
+                    break;
+                }
+            }
+        }
+        let auto = p.cont.starts_with("auto") || (p.cont == "off" && was_handover);
+        st.with_project(pid, |p| p.ready = true);
+        emit(app, "ready", json!({"pid": pid, "ready": true}));
+        if !auto {
+            if !p.questions.is_empty() {
+                emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
+            }
+            return; // manual: the Continue button takes it from here
+        }
+        return auto_continue(app, st, pid, live);
+    }
+    if live.handing_over.swap(false, SeqCst) {
+        line(app, pid, "note", "No handover came back, so the context wasn't cleared.");
+    }
+    if p.cont == "off" && !p.questions.is_empty() {
+        emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
+    }
+    if let Ok(r) = conn.request(json!({"subtype": "get_context_usage"}), 15).await {
+        let pct = r["percentage"].as_f64().unwrap_or(0.0);
+        emit(app, "status", json!({"pid": pid, "context": pct.round()}));
+        if p.context_limit > 0.0 && pct >= p.context_limit && !live.first_turn.load(SeqCst) {
+            prepare(app, live, pid, &format!(": the context window is at {}%", pct.round()));
+        }
+    }
+    live.first_turn.store(false, SeqCst);
+}
+
+/// Auto modes: check the limits, switch to a pool account or stop, else start the next session.
+fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) {
+    let p = st.project(pid).unwrap();
+    let over = store::over_limit(&st.cfg.lock().unwrap(), &p.account);
+    if let Some(window) = over {
+        let next = store::pool_pick(&st.cfg.lock().unwrap(), &p.account);
+        match next {
+            Some(n) => {
+                let nick = store::account_or_main(&st.cfg.lock().unwrap(), &n).nick.clone();
+                st.with_project(pid, |p| p.account = n.clone());
+                line(app, pid, "note", &format!("{} reached its {} limit: switched to {nick}.", p.account, label(&window)));
+                emit(app, "project", json!(st.project(pid)));
+            }
+            None => {
+                let msg = format!("Paused: {} is at its {} limit and no pool account has room.", p.account, label(&window));
+                line(app, pid, "note", &msg);
+                if !p.questions.is_empty() {
+                    emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
+                }
+                notify(app, st, &format!("{}: paused", p.name), &format!("{msg} {} question(s) waiting.", p.questions.len()));
+                return; // ready stays: Continue resumes once there's room
+            }
+        }
+    }
+    fresh(app, st, pid, live, true);
+}
+
+fn label(window: &str) -> &str {
+    match window { "five_hour" => "5-hour", "seven_day" => "weekly", w => w }
+}
+
+/// Clear the context: a new session, then (optionally) "continue" plus any answers.
+pub fn fresh(app: &AppHandle, st: &State, pid: &str, live: &Live, cont: bool) {
+    live.armed.store(false, SeqCst);
+    live.handing_over.store(false, SeqCst);
+    live.first_turn.store(true, SeqCst);
+    let answers = st.with_project(pid, |p| {
+        p.session = None;
+        p.ready = false;
+        std::mem::take(&mut p.answers)
+    }).unwrap_or_default();
+    emit(app, "cleared", json!({"pid": pid}));
+    let mut items = vec![Input::Reconnect];
+    if cont {
+        items.push(Input::Msg(if answers.is_empty() { CONTINUE.into() } else { format!("{CONTINUE}\n\n{answers}") }));
+    } else if !answers.is_empty() {
+        items.push(Input::Msg(answers));
+    }
+    live.inbox.front(items);
+}
+
+pub fn prepare(app: &AppHandle, live: &Live, pid: &str, why: &str) {
+    live.handing_over.store(true, SeqCst);
+    line(app, pid, "note", "Writing the handover, then the context gets cleared.");
+    live.inbox.front(vec![Input::Msg(PREPARE.replace("{why}", why))]);
+}
+
+pub fn notify(app: &AppHandle, st: &State, title: &str, body: &str) {
+    let n = st.cfg.lock().unwrap().notify.clone();
+    if n.desktop {
+        use tauri_plugin_notification::NotificationExt;
+        let _ = app.notification().builder().title(title).body(body).show();
+    }
+    let (t, b, topic) = (title.to_string(), body.to_string(), n.ntfy);
+    std::thread::spawn(move || store::push_phone(&topic, &t, &b));
+}
+
+/// The user's answers, as text for Claude. answers: [{id, choice: [labels], note}]
+pub fn answers_text(questions: &[Question], answers: &[Value]) -> String {
+    let mut out = String::from("Answers to your questions:");
+    for (i, q) in questions.iter().enumerate() {
+        let Some(a) = answers.iter().find(|a| a["id"] == q.id.as_str()) else { continue };
+        let choice: Vec<&str> = a["choice"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect();
+        let note = a["note"].as_str().unwrap_or("").trim();
+        let mut s = format!("\n{}. {} → {}", i + 1, q.question, if choice.is_empty() { "(no choice)".into() } else { choice.join(", ") });
+        if !note.is_empty() {
+            s += &format!(" (note: {note})");
+        }
+        out += &s;
+    }
+    out
+}
+
+// ---- control requests from claude --------------------------------------------------------------
+
+async fn control(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, conn: &Conn, v: Value) {
+    let req = &v["request"];
+    let id = v["request_id"].clone();
+    let resp = match req["subtype"].as_str() {
+        Some("can_use_tool") => Ok(permission(app, st, pid, req).await),
+        Some("mcp_message") => Ok(json!({"mcp_response": mcp(app, st, pid, live, &req["message"])})),
+        Some("hook_callback") => Ok(json!({})),
+        s => Err(format!("unsupported control request {s:?}")),
+    };
+    let out = match resp {
+        Ok(r) => json!({"type": "control_response", "response": {"subtype": "success", "request_id": id, "response": r}}),
+        Err(e) => json!({"type": "control_response", "response": {"subtype": "error", "request_id": id, "error": e}}),
+    };
+    let _ = conn.write(&out).await;
+}
+
+async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) -> Value {
+    let tool = req["tool_name"].as_str().unwrap_or("");
+    let input = req["input"].clone();
+    if tool.starts_with("mcp__clauracle__") {
+        return json!({"behavior": "allow", "updatedInput": input});
+    }
+    let cont = st.project(pid).map(|p| p.cont).unwrap_or_default();
+    if tool == "AskUserQuestion" && cont != "off" {
+        return json!({"behavior": "deny", "message": "Don't wait for the user: queue the questions with \
+            mcp__clauracle__ask (they're answered later) and carry on with what doesn't depend on them."});
+    }
+    let ask_id = store::new_id();
+    let (tx, rx) = oneshot::channel();
+    st.asks.lock().unwrap().insert(ask_id.clone(), tx);
+    emit(app, "ask", json!({"pid": pid, "id": ask_id, "tool": tool, "input": input}));
+    let a = rx.await.unwrap_or(json!({"allow": false}));
+    if a["allow"] != true {
+        let note = a["note"].as_str().filter(|n| !n.is_empty()).unwrap_or("The user denied this.");
+        return json!({"behavior": "deny", "message": note});
+    }
+    let mut input = input;
+    if tool == "AskUserQuestion" {
+        input["answers"] = a["answers"].clone();
+    }
+    json!({"behavior": "allow", "updatedInput": input})
+}
+
+fn tool_list() -> Value {
+    let q = json!({"type": "object", "required": ["questions"], "properties": {"questions": {"type": "array", "items": {
+        "type": "object", "required": ["question", "options"], "properties": {
+            "question": {"type": "string", "description": "the question only; Clauracle numbers them"},
+            "options": {"type": "array", "items": {"type": "object", "required": ["label"], "properties": {
+                "label": {"type": "string"}, "description": {"type": "string"},
+                "recommended": {"type": "boolean", "description": "your suggestion; at most one per question"}}}},
+            "multi": {"type": "boolean", "description": "more than one option may be picked"},
+            "blocking": {"type": "boolean", "description": "true only if work truly can't go on without the user"}}}}}});
+    json!({"tools": [
+        {"name": "ready", "description": "Call as the LAST action of a turn once the task is done (or paused) and \
+          HANDOVER.md is updated. When the turn ends Clauracle clears the context and a fresh session continues \
+          (or waits for the user's Continue).", "inputSchema": {"type": "object", "properties": {}}},
+        {"name": "ask", "description": "Queue questions for the user (numbered in a card, options with your \
+          recommendation, a note field each). Don't wait: the answers arrive later.", "inputSchema": q}]})
+}
+
+fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value) -> Value {
+    let id = m["id"].clone();
+    let ok = |result: Value| json!({"jsonrpc": "2.0", "id": id, "result": result});
+    let text = |t: &str| ok(json!({"content": [{"type": "text", "text": t}]}));
+    match m["method"].as_str() {
+        Some("initialize") => ok(json!({"protocolVersion": m["params"]["protocolVersion"].as_str().unwrap_or("2025-06-18"),
+            "capabilities": {"tools": {}}, "serverInfo": {"name": "clauracle", "version": "1.0.0"}})),
+        Some("tools/list") => ok(tool_list()),
+        Some("tools/call") => match m["params"]["name"].as_str() {
+            Some("ready") => {
+                let p = st.project(pid).unwrap();
+                if p.cont == "off" && !live.handing_over.load(SeqCst) {
+                    return text("Clear-continue is off for this project: nothing will be cleared. Just end the turn.");
+                }
+                live.armed.store(true, SeqCst);
+                text("Armed. When this turn ends the context is cleared and a fresh session continues from HANDOVER.md. End the turn now.")
+            }
+            Some("ask") => {
+                let mut qs: Vec<Question> = serde_json::from_value(m["params"]["arguments"]["questions"].clone()).unwrap_or_default();
+                for q in qs.iter_mut() {
+                    q.id = store::new_id() + &q.question.len().to_string();
+                }
+                let cont = st.with_project(pid, |p| {
+                    p.questions.extend(qs.clone());
+                    p.cont.clone()
+                }).unwrap_or_default();
+                let name = st.project(pid).map(|p| p.name).unwrap_or_default();
+                emit(app, "queued", json!({"pid": pid, "count": st.project(pid).map(|p| p.questions.len())}));
+                match cont.as_str() {
+                    "auto" => {
+                        emit(app, "questions", json!({"pid": pid, "questions": st.project(pid).map(|p| p.questions)}));
+                        notify(app, st, &format!("{name}: questions"), &format!("{} question(s) need your answer.", qs.len()));
+                        text("Queued and the user was notified. Carry on with the next task that doesn't depend on them; answers arrive in a later message.")
+                    }
+                    "auto_answer" => text("Held until the user is back. Carry on with other tasks."),
+                    _ => text("Queued: the user sees them when this turn ends. Finish what doesn't depend on them first."),
+                }
+            }
+            _ => json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": "unknown tool"}}),
+        },
+        _ if m.get("id").is_none() => json!({"jsonrpc": "2.0", "result": {}}), // a notification: just ack
+        _ => json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": "method not found"}}),
+    }
+}
+
+// ---- build / run / deploy: plain commands, output streamed to the Build panel ------------------------
+
+fn step_cmd(p: &Project, step: &str) -> String {
+    match step { "build" => &p.build.build, "run" => &p.build.run, _ => &p.build.deploy }.clone()
+}
+
+fn shell(cmd: &str) -> tokio::process::Command {
+    let mut c = if cfg!(windows) {
+        let mut c = tokio::process::Command::new("cmd");
+        c.arg("/C").arg(cmd);
+        c
+    } else {
+        let mut c = tokio::process::Command::new("sh");
+        c.arg("-c").arg(cmd);
+        c
+    };
+    #[cfg(windows)]
+    c.creation_flags(0x0800_0000);
+    c
+}
+
+/// Runs one step. `run` stays up (a dev server or the app): it's started, not awaited, and replaces the last one.
+/// Returns (ok, last 40 lines of output).
+pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -> (bool, String) {
+    let Some(p) = st.project(pid) else { return (false, String::new()) };
+    let cmd = step_cmd(&p, step);
+    if cmd.trim().is_empty() {
+        return (true, String::new());
+    }
+    let say = |t: &str, done: Option<bool>| emit(app, "build", json!({"pid": pid, "step": step, "line": t, "done": done}));
+    say(&format!("$ {cmd}"), None);
+    let mut c = shell(&cmd);
+    c.current_dir(&p.path).envs(store::gh_env(&p.gh)).stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
+    let mut child = match c.spawn() {
+        Ok(c) => {
+            c.id().map(|id| crate::CHILDREN.lock().unwrap().push(id));
+            c
+        }
+        Err(e) => {
+            say(&e.to_string(), Some(false));
+            return (false, e.to_string());
+        }
+    };
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+    for out in [child.stdout.take().map(|o| Box::new(o) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
+                child.stderr.take().map(|o| Box::new(o) as Box<dyn tokio::io::AsyncRead + Unpin + Send>)].into_iter().flatten() {
+        let tx = tx.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut l = BufReader::new(out).lines();
+            while let Ok(Some(s)) = l.next_line().await {
+                let _ = tx.send(s);
+            }
+        });
+    }
+    drop(tx);
+    if step == "run" {
+        let (app2, pid2) = (app.clone(), pid.to_string());
+        let old = RUNNING.lock().unwrap().insert(pid.to_string(), child);
+        drop(old); // kill_on_drop stops the previous run
+        tauri::async_runtime::spawn(async move {
+            while let Some(s) = rx.recv().await {
+                emit(&app2, "build", json!({"pid": pid2, "step": "run", "line": s, "done": null}));
+            }
+        });
+        return (true, String::new());
+    }
+    let mut tail: VecDeque<String> = VecDeque::new();
+    while let Some(s) = rx.recv().await {
+        say(&s, None);
+        tail.push_back(s);
+        if tail.len() > 40 {
+            tail.pop_front();
+        }
+    }
+    let ok = child.wait().await.map(|s| s.success()).unwrap_or(false);
+    say(if ok { "✓ done" } else { "✗ failed" }, Some(ok));
+    (ok, tail.into_iter().collect::<Vec<_>>().join("\n"))
+}
+
+pub fn stop_run(pid: &str) -> bool {
+    RUNNING.lock().unwrap().remove(pid).is_some()
+}
+
+static RUNNING: std::sync::LazyLock<Mutex<HashMap<String, tokio::process::Child>>> =
+    std::sync::LazyLock::new(Default::default);
+
+// ---- history of a resumed session ------------------------------------------------------------------
+
+/// The visible part of a session's transcript (~/.claude/projects/*/<id>.jsonl), last 300 entries.
+pub fn history(session: &str) -> Vec<Value> {
+    let root = dirs::home_dir().unwrap_or_default().join(".claude/projects");
+    let file = std::fs::read_dir(root).into_iter().flatten().flatten()
+        .map(|d| d.path().join(format!("{session}.jsonl"))).find(|f| f.is_file());
+    let Some(file) = file else { return vec![] };
+    let mut out = vec![];
+    for l in std::fs::read_to_string(file).unwrap_or_default().lines() {
+        let Ok(m) = serde_json::from_str::<Value>(l) else { continue };
+        if m["isMeta"] == true || m["isSidechain"] == true {
+            continue;
+        }
+        let content = &m["message"]["content"];
+        match m["type"].as_str() {
+            Some("user") => {
+                if let Some(t) = content.as_str() {
+                    if !t.starts_with('<') {
+                        out.push(json!({"kind": "user", "text": t}));
+                    }
+                }
+            }
+            Some("assistant") => {
+                for b in content.as_array().into_iter().flatten() {
+                    match b["type"].as_str() {
+                        Some("text") => out.push(json!({"kind": "claude", "text": b["text"]})),
+                        Some("tool_use") if !b["name"].as_str().unwrap_or("").starts_with("mcp__clauracle__") => out.push(
+                            json!({"kind": "tool", "detail": b["input"], "text": format!("{}  {}", b["name"].as_str().unwrap_or(""), summary(&b["input"]))})),
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let skip = out.len().saturating_sub(300); // ponytail: the last 300 entries only
+    out.split_off(skip)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inbox_front_goes_first_in_order() {
+        let ib = Inbox::default();
+        ib.push(Input::Msg("queued".into()));
+        ib.front(vec![Input::Reconnect, Input::Msg("continue".into())]);
+        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let order: Vec<String> = (0..3).map(|_| match rt.block_on(ib.pop()) {
+            Input::Msg(m) => m,
+            Input::Rich(_) => "RICH".into(),
+            Input::Reconnect => "RECONNECT".into(),
+        }).collect();
+        assert_eq!(order, ["RECONNECT", "continue", "queued"]);
+    }
+
+    #[test]
+    fn answers_are_numbered_with_notes() {
+        let qs = vec![Question { id: "a".into(), question: "Which db?".into(), ..Default::default() },
+                      Question { id: "b".into(), question: "Name?".into(), ..Default::default() }];
+        let t = answers_text(&qs, &[json!({"id": "a", "choice": ["SQLite"], "note": "keep it local"}),
+                                   json!({"id": "b", "choice": ["Other"], "note": "Clauracle"})]);
+        assert_eq!(t, "Answers to your questions:\n1. Which db? → SQLite (note: keep it local)\n2. Name? → Other (note: Clauracle)");
+    }
+
+    #[test]
+    fn tool_summary() {
+        assert_eq!(summary(&json!({"command": "ls\n-la"})), "ls");
+        assert_eq!(summary(&json!({"file_path": "a.rs"})), "a.rs");
+    }
+}

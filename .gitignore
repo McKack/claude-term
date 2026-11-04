@@ -1,6 +1,7 @@
 __pycache__/
 build/
 dist/
-screenshot-*.svg
 *.spec
-srcdir.txt
+node_modules/
+src-tauri/target/
+src-tauri/gen/

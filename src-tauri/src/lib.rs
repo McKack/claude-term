@@ -1,0 +1,556 @@
+//! Clauracle: Tauri commands the page calls. The work lives in claude.rs (sessions) and store.rs (everything else).
+mod claude;
+mod store;
+
+use claude::{emit, session, Input, State};
+use serde_json::{json, Value};
+use std::sync::atomic::Ordering::SeqCst;
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Manager, State as S};
+
+type St<'a> = S<'a, Arc<State>>;
+type R<T> = Result<T, String>;
+
+pub static CHILDREN: std::sync::LazyLock<Mutex<Vec<u32>>> = std::sync::LazyLock::new(Default::default);
+
+#[tauri::command]
+fn state(st: St) -> Value {
+    let cfg = st.cfg.lock().unwrap();
+    let usage: serde_json::Map<String, Value> =
+        cfg.accounts.iter().map(|a| (a.id.clone(), json!(store::usage(&cfg, &a.id)))).collect();
+    let live = st.live.lock().unwrap();
+    let busy: Vec<&String> = live.iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k).collect();
+    json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "active": cfg.active, "busy": busy,
+           "default_account": cfg.default_account, "notify": cfg.notify,
+           "claude": store::which("claude").is_some(), "gh": store::which("gh").is_some()})
+}
+
+#[tauri::command]
+fn open_project(app: AppHandle, st: St, pid: String) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    {
+        let mut cfg = st.cfg.lock().unwrap();
+        cfg.active = Some(pid.clone());
+        if let Some(p) = cfg.projects.iter_mut().find(|p| p.id == pid) {
+            p.used = store::now();
+        }
+        store::save(&cfg);
+    }
+    let live = session(&app, &st, &pid);
+    let history = p.session.as_deref().map(claude::history).unwrap_or_default();
+    Ok(json!({"branch": store::git_branch(&p.path), "busy": live.busy.load(SeqCst), "history": history}))
+}
+
+/// Who should run the repo at `path` (store::suggest); None if it isn't on GitHub. gh calls, so off the main thread.
+async fn detect(st: &St<'_>, path: String) -> Option<store::Who> {
+    let cfg = st.cfg.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (owner, repo) = store::repo_of(&path)?;
+        Some(store::suggest(&cfg, &owner, &store::gh_accounts(), |u| store::can_push(u, &owner, &repo)))
+    }).await.ok().flatten()
+}
+
+/// A new project starts with the suggested GitHub + AI account (the repo owner's, if it's one of ours).
+#[tauri::command]
+async fn add_project(st: St<'_>, path: String) -> R<Value> {
+    let who = detect(&st, path.clone()).await;
+    let mut cfg = st.cfg.lock().unwrap();
+    let p = match &who {
+        Some(w) => store::new_project(&mut cfg, &path, Some(&w.account), Some(w.gh.as_str()).filter(|g| !g.is_empty())),
+        None => store::new_project(&mut cfg, &path, None, None),
+    };
+    let p = mark(&mut cfg, &p.id, who.as_ref());
+    store::save(&cfg);
+    Ok(json!(p))
+}
+
+fn mark(cfg: &mut store::Config, pid: &str, who: Option<&store::Who>) -> store::Project {
+    let p = cfg.projects.iter_mut().find(|p| p.id == pid).unwrap();
+    if let Some(w) = who {
+        (p.owner, p.shared) = (w.owner.clone(), w.shared);
+    }
+    p.clone()
+}
+
+/// After opening: refresh owner/shared, and say whether the suggestion differs from what the project uses.
+#[tauri::command]
+async fn who(st: St<'_>, pid: String) -> R<Value> {
+    let path = st.project(&pid).ok_or("no such project")?.path;
+    let Some(w) = detect(&st, path).await else { return Ok(Value::Null) };
+    let mut cfg = st.cfg.lock().unwrap();
+    let p = mark(&mut cfg, &pid, Some(&w));
+    store::save(&cfg);
+    let differs = !p.keep && !w.gh.is_empty() && (!w.gh.eq_ignore_ascii_case(&p.gh) || w.account != p.account);
+    Ok(json!({"who": w, "differs": differs}))
+}
+
+#[tauri::command]
+fn remove_project(st: St, pid: String) {
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.projects.retain(|p| p.id != pid);
+    store::save(&cfg);
+    if let Some(l) = st.live.lock().unwrap().remove(&pid) {
+        l.inbox.front(vec![Input::Reconnect]); // its loop sees the project gone and ends
+    }
+}
+
+/// Merge changed fields into the project; anything that shapes the claude process reconnects it (after the
+/// current reply, same session).
+#[tauri::command]
+fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Value> {
+    let quiet = ["name", "context_limit", "build", "keep"];
+    let p = st.with_project(&pid, |p| {
+        let mut v = json!(p);
+        for (k, val) in changes.as_object().cloned().unwrap_or_default() {
+            if !["id", "path", "session", "questions"].contains(&k.as_str()) {
+                v[k] = val;
+            }
+        }
+        if let Ok(n) = serde_json::from_value(v) {
+            *p = n;
+        }
+        p.clone()
+    }).ok_or("no such project")?;
+    if changes.as_object().map_or(false, |o| o.keys().any(|k| !quiet.contains(&k.as_str()))) {
+        if let Some(l) = st.live.lock().unwrap().get(&pid) {
+            l.inbox.front(vec![Input::Reconnect]);
+        }
+    }
+    emit(&app, "project", json!(p));
+    Ok(json!(p))
+}
+
+/// images: pasted ones as [{media_type, data(base64)}]; files: paths, mentioned so Claude reads only what it needs.
+#[tauri::command]
+fn send(app: AppHandle, st: St, pid: String, text: String, images: Option<Vec<Value>>, files: Option<Vec<String>>) {
+    let live = session(&app, &st, &pid);
+    let (images, files) = (images.unwrap_or_default(), files.unwrap_or_default());
+    if text.trim() == "/clear" && images.is_empty() && files.is_empty() {
+        return claude::fresh(&app, &st, &pid, &live, false);
+    }
+    let text = if files.is_empty() { text } else {
+        format!("{text}\n\nAttached files (read them as needed):\n{}", files.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n"))
+    };
+    if images.is_empty() {
+        return live.inbox.push(Input::Msg(text));
+    }
+    let mut blocks: Vec<Value> = images.iter().map(|i| json!({"type": "image", "source": {"type": "base64",
+        "media_type": i["media_type"], "data": i["data"]}})).collect();
+    blocks.push(json!({"type": "text", "text": if text.trim().is_empty() { "(see the image)".to_string() } else { text }}));
+    live.inbox.push(Input::Rich(json!(blocks)));
+}
+
+#[tauri::command]
+fn agents(st: St) -> Value {
+    json!(st.cfg.lock().unwrap().agents.clone().unwrap_or_else(store::default_agents))
+}
+
+/// Takes effect when a session next connects (new session / continue / settings change).
+#[tauri::command]
+fn set_agents(st: St, agents: Vec<store::Agent>) {
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.agents = Some(agents);
+    store::save(&cfg);
+    for l in st.live.lock().unwrap().values() {
+        l.inbox.front(vec![Input::Reconnect]);
+    }
+}
+
+#[tauri::command]
+async fn interrupt(st: St<'_>, pid: String) -> R<()> {
+    let conn = st.live.lock().unwrap().get(&pid).and_then(|l| l.conn.lock().unwrap().clone());
+    if let Some(c) = conn {
+        c.request(json!({"subtype": "interrupt"}), 10).await?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn new_session(app: AppHandle, st: St, pid: String) {
+    let live = session(&app, &st, &pid);
+    claude::fresh(&app, &st, &pid, &live, false);
+}
+
+/// The Continue button: clear the context and carry on from the handover (with any answers).
+#[tauri::command]
+fn continue_now(app: AppHandle, st: St, pid: String) {
+    let live = session(&app, &st, &pid);
+    let p = st.project(&pid).unwrap();
+    let over = store::over_limit(&st.cfg.lock().unwrap(), &p.account);
+    if over.is_some() {
+        if let Some(n) = store::pool_pick(&st.cfg.lock().unwrap(), &p.account) {
+            st.with_project(&pid, |p| p.account = n);
+        }
+    }
+    claude::fresh(&app, &st, &pid, &live, true);
+}
+
+/// Clear & continue on demand: Claude writes the handover first, then it's ready.
+#[tauri::command]
+fn prepare_handover(app: AppHandle, st: St, pid: String) {
+    let live = session(&app, &st, &pid);
+    claude::prepare(&app, &live, &pid, "");
+}
+
+#[tauri::command]
+fn answer_ask(st: St, id: String, answer: Value) {
+    if let Some(tx) = st.asks.lock().unwrap().remove(&id) {
+        let _ = tx.send(answer);
+    }
+}
+
+/// The question card's Confirm. Answers go into the next Continue, or straight to Claude when it's idle.
+#[tauri::command]
+fn answer_questions(app: AppHandle, st: St, pid: String, answers: Vec<Value>) {
+    let ids: Vec<&str> = answers.iter().filter_map(|a| a["id"].as_str()).collect();
+    let (text, send_now) = st.with_project(&pid, |p| {
+        let text = claude::answers_text(&p.questions, &answers);
+        p.questions.retain(|q| !ids.contains(&q.id.as_str()));
+        (text, p.cont == "off" && !p.ready)
+    }).unwrap_or_default();
+    let live = session(&app, &st, &pid);
+    if send_now && !live.busy.load(SeqCst) {
+        live.inbox.push(Input::Msg(text));
+    } else {
+        st.with_project(&pid, |p| p.answers = [p.answers.as_str(), text.as_str()].join("\n").trim().to_string());
+    }
+    emit(&app, "project", json!(st.project(&pid)));
+}
+
+// ---- settings ----
+
+#[tauri::command]
+async fn settings(st: St<'_>) -> R<Value> {
+    if st.cfg.lock().unwrap().catalog.is_empty() {
+        refresh_catalog(st.clone()).await?;
+    }
+    let gh = tauri::async_runtime::spawn_blocking(store::gh_accounts).await.map_err(|e| e.to_string())?;
+    let cfg = st.cfg.lock().unwrap();
+    Ok(json!({"catalog": cfg.catalog, "off": cfg.off, "gh_users": gh}))
+}
+
+#[tauri::command]
+async fn refresh_catalog(st: St<'_>) -> R<Value> {
+    let dir = st.plugin_dir.clone();
+    let items = tauri::async_runtime::spawn_blocking(move || store::catalog(&dir)).await.map_err(|e| e.to_string())?;
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.catalog = items;
+    store::save(&cfg);
+    Ok(json!(cfg.catalog))
+}
+
+/// scope: "global", an account id (defaults for new projects) or "project:<id>".
+#[tauri::command]
+fn set_off(st: St, item: String, off: bool, scope: String) {
+    let mut cfg = st.cfg.lock().unwrap();
+    let list = if scope == "global" {
+        Some(&mut cfg.off)
+    } else if let Some(pid) = scope.strip_prefix("project:") {
+        cfg.projects.iter_mut().find(|p| p.id == pid).map(|p| &mut p.off)
+    } else {
+        cfg.accounts.iter_mut().find(|a| a.id == scope).map(|a| &mut a.off)
+    };
+    if let Some(l) = list {
+        l.retain(|i| i != &item);
+        if off {
+            l.push(item);
+        }
+    }
+    store::save(&cfg);
+    let live = st.live.lock().unwrap();
+    for (pid, l) in live.iter() {
+        if scope == "global" || scope == format!("project:{pid}") {
+            l.inbox.front(vec![Input::Reconnect]);
+        }
+    }
+}
+
+#[tauri::command]
+fn update_account(st: St, id: String, changes: Value) {
+    let mut cfg = st.cfg.lock().unwrap();
+    if let Some(a) = cfg.accounts.iter_mut().find(|a| a.id == id) {
+        let mut v = json!(a);
+        for (k, val) in changes.as_object().cloned().unwrap_or_default() {
+            if ["nick", "gh", "limits", "pool"].contains(&k.as_str()) {
+                v[k] = val;
+            }
+        }
+        if let Ok(n) = serde_json::from_value(v) {
+            *a = n;
+        }
+    }
+    store::save(&cfg);
+}
+
+#[tauri::command]
+fn set_default_account(st: St, id: String) {
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.default_account = id;
+    store::save(&cfg);
+}
+
+#[tauri::command]
+async fn claude_login(app: AppHandle, st: St<'_>, nick: String) -> R<Value> {
+    let a2 = app.clone();
+    let token = tauri::async_runtime::spawn_blocking(move || {
+        store::setup_token(|url| emit(&a2, "login_url", json!({"url": url})))
+    }).await.map_err(|e| e.to_string())??;
+    claude_add_token(st, nick, token)
+}
+
+#[tauri::command]
+fn claude_add_token(st: St, nick: String, token: String) -> R<Value> {
+    if !store::token_ok(&token) {
+        return Err("That doesn't look like a token from `claude setup-token` (sk-ant-oat…).".into());
+    }
+    let mut cfg = st.cfg.lock().unwrap();
+    let a = store::add_account(&mut cfg, &nick, &token);
+    store::save(&cfg);
+    Ok(json!(a))
+}
+
+#[tauri::command]
+fn claude_remove(st: St, id: String) {
+    let mut cfg = st.cfg.lock().unwrap();
+    store::remove_account(&mut cfg, &id);
+    store::save(&cfg);
+}
+
+#[tauri::command]
+fn set_notify(st: St, notify: Value) {
+    let mut cfg = st.cfg.lock().unwrap();
+    if let Ok(n) = serde_json::from_value(notify) {
+        cfg.notify = n;
+    }
+    store::save(&cfg);
+}
+
+#[tauri::command]
+fn test_notify(app: AppHandle, st: St) {
+    claude::notify(&app, &st, "Clauracle", "Notifications work.");
+}
+
+#[tauri::command]
+async fn install(what: String) -> R<()> {
+    tauri::async_runtime::spawn_blocking(move || if what == "gh" { store::install_gh() } else { store::install_claude() })
+        .await.map_err(|e| e.to_string())?
+}
+
+// ---- GitHub ----
+
+#[tauri::command]
+async fn gh_login(app: AppHandle) -> R<bool> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::BufRead;
+        let gh = store::which("gh").ok_or("gh isn't installed")?;
+        let mut child = store::command(&gh)
+            .args(["auth", "login", "--web", "-h", "github.com", "-p", "https", "--skip-ssh-key"])
+            .env("GH_BROWSER", "echo").env("BROWSER", "echo")
+            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+            .spawn().map_err(|e| e.to_string())?;
+        // without a terminal gh prints the one-time code and polls
+        let re = regex::Regex::new(r"one-time code: (\w{4}-\w{4})").unwrap();
+        for out in [child.stderr.take().map(|o| Box::new(o) as Box<dyn std::io::Read + Send>),
+                    child.stdout.take().map(|o| Box::new(o) as Box<dyn std::io::Read + Send>)].into_iter().flatten() {
+            let (app, re) = (app.clone(), re.clone());
+            std::thread::spawn(move || {
+                for l in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                    if let Some(c) = re.captures(&l) {
+                        emit(&app, "gh_code", json!({"code": &c[1], "url": "https://github.com/login/device"}));
+                    }
+                }
+            });
+        }
+        Ok(child.wait().map(|s| s.success()).unwrap_or(false))
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn gh_logout(user: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || store::run("gh", &["auth", "logout", "-h", "github.com", "-u", &user], None, &[]).ok)
+        .await.unwrap_or(false)
+}
+
+#[tauri::command]
+async fn gh_info(st: St<'_>, pid: String) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let f = "number,title,url,author";
+        json!({"repo": store::gh_json(&["repo", "view", "--json", "nameWithOwner,url"], &p.gh, Some(&p.path)),
+               "prs": store::gh_json(&["pr", "list", "--json", f], &p.gh, Some(&p.path)),
+               "issues": store::gh_json(&["issue", "list", "--json", f], &p.gh, Some(&p.path))})
+    }).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn gh_repos(user: String) -> Value {
+    tauri::async_runtime::spawn_blocking(move || store::gh_json(&["repo", "list", "--limit", "300", "--json", "nameWithOwner,description"], &user, None))
+        .await.unwrap_or(Value::Null)
+}
+
+#[tauri::command]
+async fn clone_repo(st: St<'_>, user: String, repo: String, parent: String) -> R<Value> {
+    let dest = std::path::Path::new(&parent).join(repo.rsplit('/').next().unwrap_or(&repo)).to_string_lossy().to_string();
+    let (d, u) = (dest.clone(), user.clone());
+    let out = tauri::async_runtime::spawn_blocking(move || store::run("gh", &["repo", "clone", &repo, &d], None, &store::gh_env(&u)))
+        .await.map_err(|e| e.to_string())?;
+    if !out.ok {
+        return Err(out.stderr.trim().to_string());
+    }
+    let who = detect(&st, dest.clone()).await;
+    let mut cfg = st.cfg.lock().unwrap();
+    // the suggested gh if any (owner's), else the account that cloned it
+    let gh = who.as_ref().map(|w| w.gh.clone()).filter(|g| !g.is_empty()).unwrap_or(user);
+    let p = store::new_project(&mut cfg, &dest, who.as_ref().map(|w| w.account.as_str()), Some(&gh));
+    let p = mark(&mut cfg, &p.id, who.as_ref());
+    store::save(&cfg);
+    Ok(json!(p))
+}
+
+// ---- build ----
+
+#[tauri::command]
+async fn run_step(app: AppHandle, st: St<'_>, pid: String, step: String) -> R<bool> {
+    Ok(claude::run_step(&app, &st, &pid, &step).await.0)
+}
+
+#[tauri::command]
+fn stop_run(pid: String) -> bool {
+    claude::stop_run(&pid)
+}
+
+// ---- .env ----
+
+#[tauri::command]
+fn env_list(st: St, pid: String) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    Ok(json!(store::env_files(&p.path).iter().map(|f| {
+        let text = std::fs::read_to_string(std::path::Path::new(&p.path).join(f)).unwrap_or_default();
+        json!({"file": f, "ignored": store::git_ignored(&p.path, f), "keys": store::env_parse(&text)})
+    }).collect::<Vec<_>>()))
+}
+
+#[tauri::command]
+fn env_set(st: St, pid: String, file: String, key: String, value: Option<String>) -> R<()> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    if !(file == ".env" || file.starts_with(".env.")) || file.contains(['/', '\\']) {
+        return Err("only .env files in the project root".into());
+    }
+    if !regex::Regex::new(r"^[A-Za-z_][A-Za-z0-9_.]*$").unwrap().is_match(&key) {
+        return Err("keys are letters, digits and _".into());
+    }
+    let path = std::path::Path::new(&p.path).join(&file);
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    std::fs::write(&path, store::env_set(&text, &key, value.as_deref())).map_err(|e| e.to_string())
+}
+
+/// Add the file to .gitignore.
+#[tauri::command]
+fn env_ignore(st: St, pid: String, file: String) -> R<()> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let gi = std::path::Path::new(&p.path).join(".gitignore");
+    let mut text = std::fs::read_to_string(&gi).unwrap_or_default();
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text += &format!("{file}\n");
+    std::fs::write(gi, text).map_err(|e| e.to_string())
+}
+
+// ---- code view ----
+
+/// A path inside the project (no escaping it with ..).
+fn inside(root: &str, rel: &str) -> R<std::path::PathBuf> {
+    let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let p = std::fs::canonicalize(root.join(rel)).map_err(|e| e.to_string())?;
+    if p.starts_with(&root) { Ok(p) } else { Err("outside the project".into()) }
+}
+
+#[tauri::command]
+fn list_dir(st: St, pid: String, rel: String) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let dir = inside(&p.path, &rel)?;
+    let skip = [".git", "node_modules", "target", "dist", "build", "__pycache__", ".venv", ".next"];
+    let mut items: Vec<(bool, String)> = std::fs::read_dir(dir).map_err(|e| e.to_string())?.flatten()
+        .map(|e| (e.path().is_dir(), e.file_name().to_string_lossy().to_string()))
+        .filter(|(d, n)| !(*d && skip.contains(&n.as_str()))).collect();
+    items.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+    Ok(json!(items.iter().map(|(d, n)| json!({"name": n, "dir": d})).collect::<Vec<_>>()))
+}
+
+#[tauri::command]
+fn read_file(st: St, pid: String, rel: String) -> R<String> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let f = inside(&p.path, &rel)?;
+    let name = f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if p.hide_env && (name == ".env" || name.starts_with(".env.")) {
+        return Err("Open .env files in the .env tab.".into());
+    }
+    let bytes = std::fs::read(&f).map_err(|e| e.to_string())?;
+    if bytes.len() > 2_000_000 || bytes.iter().take(8000).any(|b| *b == 0) {
+        return Err("Binary or too large to show.".into());
+    }
+    Ok(String::from_utf8_lossy(&bytes).into())
+}
+
+// ---- browsers: open pages in a system browser profile (you stay logged in there) ----
+
+#[tauri::command]
+fn browsers() -> Value {
+    json!(store::browsers())
+}
+
+#[tauri::command]
+fn open_in_browser(exe: String, profile: String, url: String) -> R<()> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("http(s) links only".into());
+    }
+    let known = store::browsers().iter().any(|b| b["exe"] == exe.as_str());
+    if !known {
+        return Err("unknown browser".into());
+    }
+    let mut c = std::process::Command::new(&exe);
+    if !profile.is_empty() {
+        c.arg(format!("--profile-directory={profile}"));
+    }
+    c.arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+fn kill_tree(pid: u32) {
+    if cfg!(windows) {
+        let _ = store::command(std::path::Path::new("taskkill")).args(["/F", "/T", "/PID", &pid.to_string()]).output();
+    } else {
+        let _ = std::process::Command::new("kill").arg(pid.to_string()).output();
+    }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let plugin_dir = app.path().resource_dir().map(|d| d.join("plugin")).ok().filter(|d| d.exists())
+                .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugin")); // dev runs
+            app.manage(Arc::new(State { cfg: Mutex::new(store::load()), live: Default::default(),
+                                        asks: Default::default(), plugin_dir }));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            state, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
+            continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
+            update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
+            test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
+            env_list, env_set, env_ignore, list_dir, read_file, browsers, open_in_browser, agents, set_agents, who])
+        .build(tauri::generate_context!())
+        .expect("failed to start Clauracle");
+    app.run(|_, e| {
+        if let tauri::RunEvent::Exit = e {
+            // claude processes and run steps don't die with us on Windows: take their whole trees down
+            for pid in CHILDREN.lock().unwrap().drain(..) {
+                kill_tree(pid);
+            }
+        }
+    });
+}

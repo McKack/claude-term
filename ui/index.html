@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clauracle</title>
+<style>
+:root { --bg:#ffffff; --side:#f7f7f8; --card:#ffffff; --line:#ececee; --line2:#dcdce0; --text:#1d1d1f; --dim:#6e6e76; --faint:#a1a1a8;
+  --accent:#4f5bd5; --accent2:#3f4ac0; --soft:#eef0fd; --primary:#1d1d1f; --primary2:#3a3a3e; --ink:#fff; --hover:#f0f0f2; --code:#f6f6f7;
+  --err:#c4281c; --ok:#1f8a4c; --crab:#d77757; --shadow:0 1px 2px #0000000a, 0 2px 12px #00000008; color-scheme:light; }
+@media (prefers-color-scheme: dark) { :root { --bg:#161618; --side:#1c1c1f; --card:#232326; --line:#2c2c30; --line2:#3a3a3f; --text:#ededef;
+  --dim:#a0a0a8; --faint:#6c6c74; --accent:#8b93ff; --accent2:#a3a9ff; --soft:#262a4a; --primary:#ededef; --primary2:#ffffff; --ink:#161618;
+  --hover:#2a2a2e; --code:#1c1c1f; --err:#ff7b6e; --ok:#5fd08e; --shadow:0 1px 2px #00000040, 0 4px 16px #00000030; color-scheme:dark; } }
+* { box-sizing:border-box; } [hidden] { display:none !important; }
+html, body { height:100%; }
+body { margin:0; display:grid; grid-template-columns:252px minmax(0,1fr) auto; background:var(--bg); color:var(--text);
+  font:14px/1.55 system-ui,-apple-system,"Segoe UI Variable Text","Segoe UI",sans-serif; overflow:hidden; user-select:none; -webkit-font-smoothing:antialiased; }
+.sel, .msg, pre, input, textarea { user-select:text; }
+button, select, input, textarea { font:inherit; color:inherit; }
+svg.i { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.btn { display:inline-flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line2); border-radius:9px; padding:6px 12px; cursor:pointer; transition:background .12s, border-color .12s; }
+.btn:hover { background:var(--hover); } .btn:disabled { opacity:.45; cursor:default; }
+.btn.primary { background:var(--primary); border-color:var(--primary); color:var(--ink); } .btn.primary:hover { background:var(--primary2); }
+.btn.ghost { background:none; border-color:transparent; } .btn.ghost:hover { background:var(--hover); }
+.ib { display:inline-grid; place-items:center; width:30px; height:30px; border-radius:8px; border:0; background:none; color:var(--dim); cursor:pointer; transition:background .12s, color .12s; }
+.ib:hover { background:var(--hover); color:var(--text); } .ib.on { color:var(--accent); background:var(--soft); }
+input, select, textarea { background:var(--card); border:1px solid var(--line2); border-radius:9px; padding:6px 10px; outline:none; }
+input:focus, select:focus, textarea:focus { border-color:var(--accent); }
+input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
+.dim { color:var(--dim); } .faint { color:var(--faint); } .err { color:var(--err); } .ok { color:var(--ok); } small { font-size:12px; }
+.row { display:flex; gap:8px; align-items:center; } .wrap { flex-wrap:wrap; } .grow { flex:1; min-width:0; }
+.label { font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); }
+.pill { font-size:11.5px; padding:1px 8px; border-radius:99px; background:var(--soft); color:var(--accent); white-space:nowrap; }
+.mono { font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
+/* switch */
+.sw { position:relative; width:32px; height:18px; flex:none; } .sw input { opacity:0; position:absolute; inset:0; margin:0; cursor:pointer; }
+.sw i { position:absolute; inset:0; border-radius:99px; background:var(--line2); transition:.15s; pointer-events:none; }
+.sw i::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:.15s; }
+.sw input:checked + i { background:var(--accent); } .sw input:checked + i::after { left:16px; }
+.opt-row { display:flex; gap:12px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); } .opt-row:last-child { border:0; }
+
+/* sidebar */
+#side { background:var(--side); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+#brand { display:flex; align-items:center; gap:9px; padding:16px 14px 10px; font-weight:700; font-size:16px; }
+#brand img { width:22px; height:22px; } #brand b span { color:var(--crab); }
+.side-head { display:flex; align-items:center; padding:10px 10px 4px 16px; }
+#projects { flex:1; overflow:auto; padding:2px 8px; }
+.proj { display:flex; gap:10px; align-items:center; padding:7px 9px; border-radius:9px; cursor:pointer; transition:background .12s; }
+.proj:hover { background:var(--hover); } .proj.on { background:var(--card); box-shadow:var(--shadow); }
+.proj .name { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.proj .who { font-size:11.5px; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--line2); }
+.dot.busy { background:var(--accent); animation:pulse 1s infinite alternate; } .dot.ready { background:var(--ok); }
+@keyframes pulse { to { opacity:.25; } }
+.side-foot { display:flex; gap:4px; padding:10px; border-top:1px solid var(--line); }
+
+/* main */
+#main { display:flex; flex-direction:column; min-width:0; min-height:0; }
+#head { display:flex; align-items:center; gap:10px; padding:10px 16px; min-height:54px; }
+#head .title { font-weight:600; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#branch { font-size:12px; color:var(--dim); background:var(--side); border:1px solid var(--line); padding:1px 8px; border-radius:99px; white-space:nowrap; }
+.seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
+.seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
+.seg button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
+#log { flex:1; overflow:auto; padding:8px 24px 24px; }
+.col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
+.msg { max-width:100%; }
+.msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
+.msg.user .thumbs { display:flex; gap:6px; margin-bottom:6px; } .msg.user .thumbs img { height:64px; border-radius:8px; }
+.msg.claude p { margin:.35em 0; } .msg.claude :first-child { margin-top:0; }
+.msg.claude pre { background:var(--code); border:1px solid var(--line); padding:10px 12px; border-radius:10px; overflow:auto; }
+.msg code, pre { font:12.5px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; } .msg :not(pre)>code { background:var(--code); padding:1px 5px; border-radius:5px; }
+.msg.claude a { color:var(--accent); }
+.tools { display:flex; flex-direction:column; gap:2px; }
+.msg.tool { font:12px ui-monospace,"Cascadia Code",Consolas,monospace; color:var(--faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; gap:6px; align-items:center; }
+.msg.tool::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--line2); flex:none; }
+.msg.note { color:var(--dim); font-size:13px; text-align:center; } .msg.err { color:var(--err); font-size:13px; white-space:pre-wrap; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
+.card.qs { border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.card h4 { margin:0 0 4px; font-size:14px; }
+.q { padding:12px 0; border-top:1px solid var(--line); } .q:first-of-type { border-top:0; }
+.q .num { display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%; background:var(--soft); color:var(--accent); font-size:12px; font-weight:700; margin-right:8px; }
+.choice { display:flex; gap:10px; align-items:flex-start; padding:7px 10px; margin:4px 0 0 28px; border:1px solid var(--line); border-radius:10px; cursor:pointer; transition:.12s; }
+.choice:hover { border-color:var(--line2); background:var(--bg); } .choice:has(input:checked) { border-color:var(--accent); background:var(--soft); }
+.choice input { margin-top:3px; } .choice small { display:block; }
+.q input.note, .q input.other { width:calc(100% - 28px); margin:6px 0 0 28px; font-size:13px; }
+.card pre { background:var(--code); padding:10px; border-radius:9px; max-height:260px; overflow:auto; white-space:pre-wrap; margin:8px 0; }
+.btns { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+#empty { margin:12vh auto 0; text-align:center; color:var(--dim); max-width:460px; }
+.crab { color:var(--crab); font:20px/1.05 ui-monospace,"Cascadia Code",Consolas,monospace; margin:0 auto 14px; display:inline-block; text-align:left; }
+.recent { text-align:left; margin:22px auto 0; max-width:420px; }
+.recent .proj { border:1px solid var(--line); margin:6px 0; background:var(--card); }
+.side-sub { padding:12px 10px 4px 9px; font-size:11.5px; color:var(--faint); }
+/* terminal view: the raw stream, CLI style */
+#log.term { background:#151412; color:#d8d4cb; }
+#log.term .col { max-width:none; gap:4px; font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
+#log.term .msg { white-space:pre-wrap; align-self:stretch; background:none; border:0; padding:0; border-radius:0; max-width:none; }
+#log.term .msg.user { color:#fff; font-weight:600; } #log.term .msg.user::before { content:"› "; color:var(--accent); }
+#log.term .msg.tool { white-space:pre-wrap; color:#93c0e6; display:block; } #log.term .msg.tool::before { content:"● "; width:auto; height:auto; background:none; }
+#log.term .msg.out { color:#9f9a90; padding-left:2ch; border-left:2px solid #2f2d2a; max-height:320px; overflow:auto; }
+#log.term .msg.think { color:#857f75; font-style:italic; } #log.term .msg.think::before { content:"∴ "; }
+#log.term .msg.note { color:#c9a86a; text-align:left; } #log.term .card { color:var(--text); font:14px/1.55 system-ui,sans-serif; }
+#log.term .tools { gap:4px; }
+
+/* composer */
+#dock { padding:0 24px 14px; }
+#dock .col { gap:8px; }
+#ready, #suggest { display:flex; gap:12px; align-items:center; padding:9px 10px 9px 16px; border-radius:12px; background:var(--soft); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+#composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
+#composer:focus-within { border-color:color-mix(in srgb, var(--accent) 60%, var(--line2)); }
+#composer.drop { border-color:var(--accent); border-style:dashed; }
+#prompt { width:100%; border:0; padding:4px 0; resize:none; min-height:26px; max-height:260px; background:none; box-shadow:none; }
+#atts { display:flex; gap:8px; flex-wrap:wrap; padding:2px 0 8px; } #atts:empty { display:none; }
+.att { position:relative; display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--bg); font-size:12px; padding:4px 26px 4px 6px; max-width:220px; }
+.att img { width:44px; height:44px; object-fit:cover; border-radius:7px; } .att span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.att button { position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; border:0; background:var(--hover); color:var(--dim); cursor:pointer; display:grid; place-items:center; padding:0; }
+.att button svg { width:11px; height:11px; }
+.tb { display:flex; align-items:center; gap:2px; margin-top:4px; }
+#send { width:32px; height:32px; border-radius:50%; border:0; background:var(--primary); color:var(--ink); display:grid; place-items:center; cursor:pointer; }
+#send:hover { background:var(--primary2); } #send:disabled { opacity:.4; cursor:default; }
+#status { display:flex; flex-wrap:wrap; gap:4px 14px; align-items:center; font-size:12px; color:var(--faint); padding:0 6px; }
+#status button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:5px; align-items:center; padding:2px 4px; border-radius:6px; }
+#status button:hover { color:var(--text); background:var(--hover); } #status b { color:var(--dim); font-weight:500; }
+.bar { display:inline-block; width:34px; height:4px; border-radius:2px; background:var(--line2); overflow:hidden; vertical-align:middle; } .bar i { display:block; height:100%; background:var(--accent); }
+#working { display:inline-flex; gap:6px; align-items:center; color:var(--accent); }
+
+/* popover menu */
+.menu { position:fixed; z-index:50; min-width:200px; background:var(--card); border:1px solid var(--line2); border-radius:12px; box-shadow:0 8px 30px #0000002e; padding:5px; }
+.menu button { display:flex; width:100%; gap:9px; align-items:center; text-align:left; border:0; background:none; padding:7px 10px; border-radius:8px; cursor:pointer; }
+.menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); }
+.menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
+
+/* right panel */
+#right { width:360px; border-left:1px solid var(--line); background:var(--side); display:flex; flex-direction:column; min-height:0; }
+#right.wide { width:min(50vw, 860px); }
+#rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
+#rtabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; }
+#rtabs button:hover { background:var(--hover); } #rtabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
+#rbody { flex:1; overflow:auto; padding:12px 14px; }
+.item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.item a { color:var(--text); text-decoration:none; cursor:pointer; } .item a:hover { color:var(--accent); }
+.out { background:#151412; color:#d8d4cb; border-radius:10px; padding:10px; height:calc(100vh - 190px); overflow:auto; font:12px/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; margin-top:10px; user-select:text; }
+.envfile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:0 0 12px; }
+.kv { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 6px; padding:7px 0; border-top:1px solid var(--line); align-items:center; }
+.kv .k { font:600 12.5px ui-monospace,Consolas,monospace; overflow:hidden; text-overflow:ellipsis; }
+.kv .v { grid-column:1/-1; font:12px ui-monospace,Consolas,monospace; color:var(--dim); overflow-wrap:anywhere; }
+.crumbs { font-size:12.5px; margin-bottom:8px; } .crumbs a { cursor:pointer; color:var(--accent); }
+.tree div { padding:3px 8px; border-radius:6px; cursor:pointer; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; gap:6px; align-items:center; }
+.tree div:hover { background:var(--hover); } .tree svg { color:var(--faint); }
+.code { display:grid; grid-template-columns:auto 1fr; font:12.5px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); }
+.code .ln { color:var(--faint); text-align:right; padding:8px 8px 8px 10px; border-right:1px solid var(--line); white-space:pre; user-select:none; }
+.code pre { margin:0; padding:8px 12px; white-space:pre; }
+#web { width:100%; height:calc(100vh - 175px); border:1px solid var(--line); border-radius:10px; background:#fff; }
+
+/* dialogs */
+dialog { border:1px solid var(--line2); border-radius:16px; background:var(--card); color:var(--text); padding:0; box-shadow:0 20px 60px #0000004d; }
+dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
+.dlg { width:min(860px,94vw); height:min(640px,88vh); display:grid; grid-template-columns:200px 1fr; }
+.dlg nav { background:var(--side); border-right:1px solid var(--line); padding:14px 8px; display:flex; flex-direction:column; gap:2px; border-radius:16px 0 0 16px; }
+.dlg nav button { display:flex; gap:9px; align-items:center; border:0; background:none; text-align:left; padding:7px 10px; border-radius:8px; cursor:pointer; color:var(--dim); }
+.dlg nav button:hover { background:var(--hover); } .dlg nav button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
+.dlg nav h3 { margin:4px 10px 10px; font-size:15px; }
+.dlg .body { overflow:auto; padding:20px 24px; display:flex; flex-direction:column; }
+.dlg .body h2 { margin:0 0 4px; font-size:18px; } .dlg .body > p.dim:first-of-type { margin-top:0; }
+.small-dlg { width:min(520px,92vw); padding:20px; }
+.check { display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); } .check:last-child { border:0; }
+.box { border:1px solid var(--line); border-radius:12px; padding:4px 14px; margin:8px 0 14px; }
+.grid2 { display:grid; grid-template-columns:150px 1fr; gap:10px 14px; align-items:center; margin:8px 0 14px; }
+.acct { border:1px solid var(--line); border-radius:12px; margin:10px 0; } .acct > summary { padding:12px 14px; cursor:pointer; list-style:none; display:flex; gap:10px; align-items:center; }
+.acct > div { padding:0 14px 14px; } .acct[open] > summary { border-bottom:1px solid var(--line); margin-bottom:10px; }
+.agent { border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin:10px 0; display:grid; gap:8px; }
+.agent textarea { width:100%; min-height:54px; font-size:13px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <!-- ponytail: a handful of Lucide-style icons (ISC) inline; no icon font -->
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24"><path d="M9 19c-4 1.5-4-2-6-2.5m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+  <symbol id="i-feather" viewBox="0 0 24 24"><path d="M20.2 12.2A6 6 0 0 0 11.8 3.8L5 10.6V19h8.4zM16 8 2 22M17.5 15H9"/></symbol>
+  <symbol id="i-new" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="i-hammer" viewBox="0 0 24 24"><path d="m15 12-8.5 8.5a2.1 2.1 0 0 1-3-3L12 9M17.6 15 22 10.6M20.9 11.8l-4.3-4.3a5 5 0 0 0-3.5-1.5H10l1.9 1.9a2 2 0 0 1 .6 1.4V11l2 2h1.6a2 2 0 0 1 1.4.6l1.9 1.9"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M12 8V4M8 14h.01M16 14h.01"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9z"/></symbol>
+  <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1zM12 15l-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2z"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
+</svg>
+
+<aside id="side">
+  <div id="brand" onclick="goHome()" style="cursor:pointer" title="Home"><img src="icon.svg" alt=""><b>Claur<span>acle</span></b></div>
+  <div class="side-head"><span class="label grow">Projects</span>
+    <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
+    <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
+  <div id="projects"></div>
+  <div class="side-foot"><button class="btn ghost grow" onclick="openSettings()"><svg class="i"><use href="#i-gear"/></svg>Settings</button></div>
+</aside>
+
+<main id="main">
+  <div id="head" hidden>
+    <span class="title" id="pname"></span><span id="branch" hidden></span><span class="grow"></span>
+    <span class="seg"><button data-v="chat" onclick="setView('chat')"><svg class="i"><use href="#i-chat"/></svg>Chat</button><button data-v="term" onclick="setView('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button></span>
+    <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
+  </div>
+  <div id="log"><div class="col"></div></div>
+  <div id="dock" hidden><div class="col">
+    <div id="suggest" hidden></div>
+    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" onclick="cont_()">Continue</button></div>
+    <div id="composer">
+      <div id="atts"></div>
+      <textarea id="prompt" rows="1" placeholder="Message Claude…"></textarea>
+      <div class="tb">
+        <button class="ib" title="Attach files" onclick="pickFiles()"><svg class="i"><use href="#i-clip"/></svg></button>
+        <button class="ib" id="tPony" title="Ponytail: the simplest code that works" onclick="setP({ponytail:!P().ponytail})"><svg class="i"><use href="#i-feather"/></svg></button>
+        <button class="ib" id="tCont" title="Clear & continue mode" onclick="menuAt(this, contItems())"><svg class="i"><use href="#i-loop"/></svg></button>
+        <button class="ib" title="Clear & continue now: write the handover, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-sparkle"/></svg></button>
+        <button class="ib" title="New session" onclick="call('new_session', {pid:cur})"><svg class="i"><use href="#i-new"/></svg></button>
+        <span class="grow"></span>
+        <button id="send" onclick="busy[cur] && !hasInput() ? call('interrupt', {pid:cur}) : send()" title="Send (Enter)"><svg class="i"><use href="#i-up"/></svg></button>
+      </div>
+    </div>
+    <div id="status"></div>
+  </div></div>
+</main>
+
+<aside id="right" hidden>
+  <div id="rtabs">
+    <button data-t="gh" onclick="rightTab('gh')"><svg class="i"><use href="#i-gh"/></svg>GitHub</button>
+    <button data-t="build" onclick="rightTab('build')"><svg class="i"><use href="#i-hammer"/></svg>Build</button>
+    <button data-t="env" onclick="rightTab('env')"><svg class="i"><use href="#i-key"/></svg>.env</button>
+    <button data-t="code" onclick="rightTab('code')"><svg class="i"><use href="#i-code"/></svg>Code</button>
+    <button data-t="web" onclick="rightTab('web')"><svg class="i"><use href="#i-globe"/></svg>Browser</button>
+  </div>
+  <div id="rbody"></div>
+</aside>
+
+<dialog id="dlg"></dialog>
+
+<script>
+const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
+let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'gh', mp = null;
+const logs = {}, busy = {}, ctx = {}, live = {}, builds = {}, hiddenQs = {}, atts = {};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icon = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
+const P = (id = cur) => S.projects.find(p => p.id === id);
+const nick = id => (S.accounts.find(a => a.id === id) || {nick: id}).nick;
+const MODES = {off: ['Off', 'Plain chat; only the context limit hands over'], manual: ['Manual', 'Stops when a task is done; you press Continue'],
+  auto: ['Auto', 'Clears and continues by itself until a limit'], auto_answer: ['Auto + answers', 'Also answers what it can; holds only real decisions']};
+const MODELS = {'': 'Default model', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku'};
+const PERMS = {default: 'Ask first', acceptEdits: 'Accept edits', plan: 'Plan only', bypassPermissions: 'Bypass'};
+
+// ponytail: tiny markdown (fences, inline code, bold, headings, lists, links); a library when tables matter
+function md(src) {
+  return src.split(/```[^\n]*\n?/).map((part, i) => i % 2 ? `<pre><code>${esc(part)}</code></pre>` :
+    esc(part).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="#" data-url="$2">$1</a>')
+      .replace(/^#{1,4} (.*)$/gm, '<b>$1</b>').replace(/^\s*[-*] /gm, '• ')
+      .split(/\n{2,}/).map(p => p.trim() && `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')).join('');
+}
+document.addEventListener('click', e => { const u = e.target.closest('[data-url]')?.dataset.url; if (u) { e.preventDefault(); T.opener.openUrl(u); } });
+
+// ---- popover menus ----
+function menuAt(anchor, items) {
+  closeMenu();
+  const m = document.createElement('div'), r = anchor.getBoundingClientRect();
+  m.className = 'menu';
+  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : `<button data-i="${i}">${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
+    <span>${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span></button>`).join('');
+  document.body.appendChild(m);
+  const h = m.offsetHeight, w = m.offsetWidth;
+  m.style.left = Math.min(r.left, innerWidth - w - 8) + 'px';
+  m.style.top = (r.bottom + h + 8 > innerHeight ? r.top - h - 6 : r.bottom + 6) + 'px';
+  m.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { closeMenu(); items[b.dataset.i].run(); });
+  setTimeout(() => document.addEventListener('mousedown', outside), 0);
+}
+const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
+function closeMenu() { document.querySelector('.menu')?.remove(); document.removeEventListener('mousedown', outside); }
+const addItems = () => [{icon: 'folder', label: 'Open folder', run: addProject}, {icon: 'gh', label: 'Clone from GitHub', run: openClone}];
+const contItems = () => Object.entries(MODES).map(([k, [l, h]]) => ({check: P().cont === k, label: l, hint: h, run: () => setP({cont: k})}));
+
+async function refresh() {
+  S = await call('state');
+  for (const id of S.busy) busy[id] = true;
+  drawProjects();
+  if (P()) drawChrome(); else drawHome();
+}
+// Claude Code's crab, on the home screen and on every fresh chat
+const CRAB = `<pre class="crab"> ▐▛███▜▌
+▝▜█████▛▘
+  ▘▘ ▝▝</pre>`;
+const recent = () => [...S.projects].sort((a, b) => b.used - a.used);
+function drawHome() {
+  const box = $('log').querySelector('.col');
+  box.innerHTML = `<div id="empty">${CRAB}<h2 style="color:var(--text);margin:0 0 6px">Clauracle</h2>
+    <p>${S.projects.length ? 'Pick up where you left off, or start something new.' : 'Open a folder or clone a GitHub repo. Each project keeps its own GitHub account, AI account, connections, build and .env.'}</p>
+    <p class="row" style="justify-content:center"><button class="btn primary" onclick="addProject()">${icon('folder')}Open folder</button><button class="btn" onclick="openClone()">${icon('gh')}Clone from GitHub</button></p>
+    ${S.projects.length ? `<div class="recent"><div class="label">Recent</div>${recent().slice(0, 6).map(projRow).join('')}</div>` : ''}
+    <p id="missing"></p></div>`;
+  $('missing').innerHTML = [!S.claude && `Claude Code isn't installed. <button class="btn" onclick="install('claude', this)">Install Claude Code</button>`,
+    !S.gh && `GitHub features need the GitHub CLI. <button class="btn" onclick="install('gh', this)">Install gh</button>`].filter(Boolean).join('<br><br>');
+}
+function goHome() { cur = null; $('head').hidden = $('dock').hidden = $('right').hidden = true; drawProjects(); drawHome(); }
+async function install(what, btn) {
+  btn.disabled = true; btn.textContent = 'Installing…';
+  try { await call('install', {what}); } catch (e) { btn.textContent = 'Failed: ' + e; return; }
+  refresh();
+}
+
+const projRow = p => `<div class="proj ${p.id === cur ? 'on' : ''}" onclick="openProject('${p.id}')" title="${esc(p.path)}">
+    <span class="dot ${busy[p.id] ? 'busy' : p.ready ? 'ready' : ''}"></span><span class="grow" style="min-width:0"><div class="name">${esc(p.name)}</div>
+    <div class="who">${esc(nick(p.account))}${p.gh ? ' · @' + esc(p.gh) : ''}${p.shared ? ' · ' + esc(p.owner) + "'s" : ''}</div></span>
+    ${p.questions.length ? `<span class="pill">${p.questions.length}?</span>` : ''}</div>`;
+// yours first; repos owned by someone else (collaborations) in their own group
+function drawProjects() {
+  const mine = S.projects.filter(p => !p.shared), shared = S.projects.filter(p => p.shared);
+  $('projects').innerHTML = (mine.map(projRow).join('') || (shared.length ? '' : '<p class="faint" style="padding:4px 10px;font-size:13px">No projects yet.</p>'))
+    + (shared.length ? `<div class="side-sub" title="GitHub repos owned by someone else that you can push to">Collaborations</div>${shared.map(projRow).join('')}` : '');
+}
+
+// header, ready bar, toolbar toggles and the status row under the input
+function drawChrome() {
+  const p = P(), u = S.usage[p.account] || {};
+  $('pname').textContent = p.name;
+  $('tPony').classList.toggle('on', p.ponytail);
+  $('tCont').classList.toggle('on', p.cont !== 'off');
+  $('tCont').title = 'Clear & continue: ' + MODES[p.cont][0];
+  $('ready').hidden = !p.ready;
+  $('readytext').textContent = p.questions.length ? `Handover written. Answer the question${p.questions.length > 1 ? 's' : ''} above, then continue.`
+    : 'Handover written. Continue clears the context and carries on.';
+  const meter = (k, l) => u[k] == null ? '' : `<span title="${l} usage">${l} <span class="bar"><i style="width:${u[k]}%"></i></span> ${u[k]}%</span>`;
+  $('status').innerHTML = (busy[cur] ? `<span id="working">${icon('sparkle')}Working…</span>` : '')
+    + `<button onclick="menuAt(this, acctItems())" title="AI account">${icon('user')}<b>${esc(nick(p.account))}</b>${icon('down')}</button>`
+    + `<button onclick="menuAt(this, modelItems())" title="Model">${icon('bot')}${esc(MODELS[p.model] || p.model)}</button>`
+    + `<button onclick="menuAt(this, permItems())" title="Permissions">${icon('sliders')}${esc(PERMS[p.mode] || p.mode)}</button>`
+    + `<button onclick="menuAt(this, contItems())" title="Clear & continue mode">${icon('loop')}${esc(MODES[p.cont][0])}</button>`
+    + (ctx[cur] != null ? `<span title="Context window">context ${ctx[cur]}%</span>` : '') + meter('five_hour', '5h') + meter('seven_day', 'week')
+    + (p.questions.length ? `<button onclick="showQuestions(cur)" style="color:var(--accent)">${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting</button>` : '');
+  const sendBtn = $('send');
+  sendBtn.innerHTML = busy[cur] && !hasInput() ? icon('stop') : icon('up');
+  sendBtn.title = busy[cur] && !hasInput() ? 'Stop' : 'Send (Enter)';
+}
+const acctItems = () => [...S.accounts.map(a => ({check: P().account === a.id, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id})})), '-',
+  {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}];
+const modelItems = () => Object.entries(MODELS).map(([k, l]) => ({check: P().model === k, label: l, run: () => setP({model: k})}));
+const permItems = () => Object.entries(PERMS).map(([k, l]) => ({check: P().mode === k, label: l, run: () => setP({mode: k})}));
+const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
+
+async function openProject(pid) {
+  if (!P(pid)) return;
+  cur = pid;
+  $('head').hidden = $('dock').hidden = false; $('suggest').hidden = true;
+  drawProjects(); drawChrome(); drawAtts();
+  const info = await call('open_project', {pid});
+  if (!logs[pid]) logs[pid] = info.history.length ? [...info.history, {kind: 'note', text: 'Resumed session'}] : [];
+  busy[pid] = info.busy;
+  $('branch').hidden = !info.branch; $('branch').textContent = info.branch;
+  drawLog(); drawChrome(); drawRight(); $('prompt').focus();
+  suggest(pid);
+}
+// the repo's owner decides (by code): its gh account and the AI account tied to it, if they're set up here
+async function suggest(pid) {
+  const r = await call('who', {pid}).catch(() => null), box = $('suggest');
+  await refresh();
+  if (pid !== cur) return;
+  box.hidden = !r?.differs;
+  if (!r?.differs) return;
+  const w = r.who;
+  box.innerHTML = `${icon('gh')}<span class="grow">${w.shared ? `Shared repo owned by <b>${esc(w.owner)}</b>.` : `This repo belongs to <b>@${esc(w.owner)}</b>.`}
+    Suggested: GitHub <b>@${esc(w.gh)}</b> with AI account <b>${esc(nick(w.account))}</b>.</span>
+    <button class="btn ghost" onclick="setP({keep:true}); $('suggest').hidden=true">Keep current</button>
+    <button class="btn primary" onclick='setP({gh:${esc(JSON.stringify(w.gh))}, account:${esc(JSON.stringify(w.account))}}); $("suggest").hidden=true'>Use these</button>`;
+}
+const setP = changes => call('update_project', {pid: cur, changes});
+
+// ---- the log: chat or terminal ----
+let view = (() => { try { return localStorage.view || 'chat'; } catch { return 'chat'; } })();
+function setView(v) { view = v; try { localStorage.view = v; } catch {} applyView(); if (cur) drawLog(); }
+function applyView() { $('log').classList.toggle('term', view === 'term'); document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.v === view)); }
+function drawLog() {
+  const box = document.createElement('div'), l = logs[cur] || [];
+  box.className = 'col';
+  if (!l.length) box.innerHTML = `<div id="empty" style="margin-top:16vh">${CRAB}<p>What should we work on in <b>${esc(P().name)}</b>?</p></div>`;
+  l.forEach(e => put(box, e));
+  if (live[cur]) box.appendChild(liveEl(cur));
+  if (P().questions.length && !hiddenQs[cur] && (P().ready || P().cont === 'auto' || P().cont === 'off')) box.appendChild(questionCard(cur));
+  $('log').replaceChildren(box);
+  $('log').scrollTop = $('log').scrollHeight;
+}
+// consecutive tool lines share one compact group in chat view
+function put(box, e) {
+  const el = entry(e);
+  if (!el) return;
+  if (e.kind === 'tool' && view === 'chat') {
+    let g = box.lastElementChild;
+    if (!g || !g.classList.contains('tools')) { g = document.createElement('div'); g.className = 'tools'; box.appendChild(g); }
+    return g.appendChild(el);
+  }
+  const qs = box.querySelector('.qs');
+  qs ? box.insertBefore(el, qs) : box.appendChild(el);
+}
+function entry(e) {
+  if (e.kind === 'ask') return askCard(e);
+  if (view === 'chat' && (e.kind === 'out' || e.kind === 'think')) return null;
+  const d = document.createElement('div');
+  d.className = 'msg ' + e.kind;
+  if (view === 'term') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')' : e.text;
+  else if (e.kind === 'claude') d.innerHTML = md(e.text);
+  else if (e.kind === 'user' && e.images?.length) { d.innerHTML = `<div class="thumbs">${e.images.map(src => `<img src="${src}">`).join('')}</div>`; d.append(e.text); }
+  else d.textContent = e.text;
+  return d;
+}
+function liveEl(pid) { const d = document.createElement('div'); d.className = 'msg claude'; d.id = 'live'; d.innerHTML = md(live[pid]); return d; }
+function addEntry(pid, e) {
+  (logs[pid] ||= []).push(e);
+  if (pid !== cur) return;
+  const log = $('log'), box = log.querySelector('.col'), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+  box.querySelector('#empty')?.remove(); $('live')?.remove();
+  put(box, e);
+  if (live[pid]) box.appendChild(liveEl(pid));
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+
+// ---- composer: text, pasted images (previews), attached files ----
+const hasInput = () => $('prompt').value.trim() || (atts[cur] || []).length;
+function drawAtts() {
+  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}">` : icon('file')}<span>${esc(a.name)}</span>
+    <button onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button></div>`).join('');
+  if (cur) drawChrome();
+}
+function addImage(file) {
+  const r = new FileReader();
+  r.onload = () => { (atts[cur] ||= []).push({name: file.name || 'pasted image', url: r.result, media_type: file.type, data: r.result.split(',')[1]}); drawAtts(); };
+  r.readAsDataURL(file);
+}
+const addPaths = paths => { for (const p of paths) (atts[cur] ||= []).push({name: p.split(/[\\/]/).pop(), path: p}); drawAtts(); };
+async function pickFiles() { const f = await T.dialog.open({multiple: true}); if (f) addPaths([].concat(f)); }
+$('prompt').addEventListener('paste', e => {
+  const imgs = [...e.clipboardData.items].filter(i => i.type.startsWith('image/'));
+  if (!imgs.length) return;
+  e.preventDefault();
+  imgs.forEach(i => addImage(i.getAsFile()));
+});
+T.event.listen('tauri://drag-enter', () => $('composer').classList.add('drop'));
+T.event.listen('tauri://drag-leave', () => $('composer').classList.remove('drop'));
+T.event.listen('tauri://drag-drop', e => { $('composer').classList.remove('drop'); if (cur) addPaths(e.payload.paths || []); });
+
+function send() {
+  const t = $('prompt').value, a = atts[cur] || [];
+  if (!t.trim() && !a.length) return;
+  const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
+  $('prompt').value = ''; atts[cur] = []; grow(); drawAtts();
+  addEntry(cur, {kind: 'user', text: t + (files.length ? `\n📎 ${files.map(f => f.split(/[\\/]/).pop()).join(', ')}` : ''), images: images.map(x => x.url)});
+  call('send', {pid: cur, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files});
+}
+$('prompt').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
+$('prompt').addEventListener('input', () => { grow(); if (cur) drawChrome(); });
+function cont_() { hiddenQs[cur] = false; call('continue_now', {pid: cur}); }
+
+// ---- events from Rust ----
+T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
+  line: () => { if (d.kind === 'claude') live[d.pid] = ''; addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail}); },
+  delta: () => { live[d.pid] = (live[d.pid] || '') + d.text;
+    if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
+  status: () => { if ('busy' in d) busy[d.pid] = d.busy; if ('context' in d) ctx[d.pid] = d.context; if (d.busy === false) live[d.pid] = '';
+    drawProjects(); if (d.pid === cur) drawChrome(); },
+  cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; ctx[d.pid] = null; live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  ready: () => refresh().then(() => d.pid === cur && drawLog()),
+  project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
+  queued: () => refresh(),
+  questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
+  ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
+  usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },
+  build: () => { const b = builds[d.pid] ||= {out: ''}; b.out += d.line + '\n';
+    if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
+  login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
+  gh_code: () => { const m = $('ghMsg'); if (m) m.innerHTML = `Enter <b style="font-size:18px" class="sel mono">${esc(d.code)}</b> at <a href="#" data-url="${esc(d.url)}">github.com/login/device</a>`; T.opener.openUrl(d.url); },
+}[event] || (() => {}))());
+
+// ---- question card: numbered, choices (recommended pre-picked), Other with its own text, a note under each ----
+function questionCard(pid) {
+  const qs = P(pid).questions, d = document.createElement('div');
+  d.className = 'card qs';
+  d.innerHTML = `<h4>Claude has ${qs.length} question${qs.length > 1 ? 's' : ''}</h4><p class="dim" style="margin:0 0 4px;font-size:13px">Answers go along with the next message.</p>` + qs.map((q, i) => {
+    const type = q.multi ? 'checkbox' : 'radio', name = 'q' + i;
+    return `<div class="q" data-id="${esc(q.id)}"><div><span class="num">${i + 1}</span><b>${esc(q.question.replace(/^\s*\d+[.)]\s*/, ''))}</b>${q.blocking ? ' <span class="pill">needs you</span>' : ''}</div>
+      ${q.options.map(o => `<label class="choice"><input type="${type}" name="${name}" value="${esc(o.label)}" ${o.recommended ? 'checked' : ''}>
+        <span>${esc(o.label)}${o.recommended ? ' <span class="pill">recommended</span>' : ''}${o.description ? `<small class="dim">${esc(o.description)}</small>` : ''}</span></label>`).join('')}
+      <label class="choice"><input type="${type}" name="${name}" value="__other"><span>Other</span></label>
+      <input class="other" placeholder="Your own answer" oninput="this.previousElementSibling.querySelector('input').checked = !!this.value">
+      <input class="note" placeholder="Note (optional)"></div>`;
+  }).join('') + `<div class="btns"><button class="btn ghost" onclick="hiddenQs['${pid}']=true; drawLog()">Not now</button><button class="btn primary" onclick="confirmQs('${pid}', this.closest('.card'))">Confirm</button></div>`;
+  return d;
+}
+function confirmQs(pid, card) {
+  const answers = [...card.querySelectorAll('.q')].map(q => ({id: q.dataset.id,
+    choice: [...q.querySelectorAll('.choice input:checked')].map(i => i.value === '__other' ? 'Other: ' + q.querySelector('.other').value : i.value),
+    note: q.querySelector('.note').value}));
+  call('answer_questions', {pid, answers});
+}
+function showQuestions(pid) { hiddenQs[pid] = false; drawLog(); }
+
+// ---- permission / interactive question (inline, so other projects keep going) ----
+function askCard(e) {
+  const d = document.createElement('div'), i = e.input;
+  d.className = 'card';
+  if (e.done) { d.className = 'msg note'; d.textContent = `${e.tool}: ${e.done}`; return d; }
+  if (e.tool === 'AskUserQuestion') {
+    d.classList.add('qs');
+    d.innerHTML = `<h4>Claude asks</h4>` + (i.questions || []).map((q, n) => `<div class="q"><div><span class="num">${n + 1}</span><b>${esc(q.question)}</b></div>
+      ${(q.options || []).map(o => `<label class="choice"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="a${n}" value="${esc(o.label)}"><span>${esc(o.label)}<small class="dim">${esc(o.description || '')}</small></span></label>`).join('')}
+      <label class="choice"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="a${n}" value="__other"><span>Other</span></label>
+      <input class="other" placeholder="Your own answer" oninput="this.previousElementSibling.querySelector('input').checked = !!this.value"></div>`).join('')
+      + `<div class="btns"><button class="btn ghost" data-a="0">Dismiss</button><button class="btn primary" data-a="1">Answer</button></div>`;
+  } else {
+    const body = i.command || (i.file_path ? i.file_path + '\n\n' + (i.new_string || i.content || '') : JSON.stringify(i, null, 2));
+    d.innerHTML = `<h4>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
+      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn primary" data-a="1">Allow</button></div>`;
+  }
+  d.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+    const allow = b.dataset.a === '1', answers = {};
+    (i.questions || []).forEach((q, n) => answers[q.question] = [...d.querySelectorAll(`[name=a${n}]:checked`)]
+      .map(x => x.value === '__other' ? x.closest('.q').querySelector('.other').value : x.value).join(', '));
+    call('answer_ask', {id: e.id, answer: {allow, answers, note: d.querySelector('.deny')?.value || ''}});
+    e.done = allow ? 'allowed' : 'denied';
+    d.replaceWith(askCard(e));
+  });
+  return d;
+}
+
+// ---- projects ----
+async function addProject() {
+  const path = await T.dialog.open({directory: true});
+  if (!path) return;
+  const p = await call('add_project', {path}); await refresh(); openProject(p.id);
+}
+
+// ---- dialogs ----
+function dlg(html, cls = 'small-dlg') { const d = $('dlg'); d.innerHTML = `<div class="${cls}">${html}</div>`; if (!d.open) d.showModal(); }
+const closeDlg = () => $('dlg').close();
+const sw = (on, change) => `<label class="sw"><input type="checkbox" ${on ? 'checked' : ''} onchange="${change}"><i></i></label>`;
+const optRow = (title, hint, control) => `<div class="opt-row"><div class="grow"><div>${title}</div>${hint ? `<small class="dim">${hint}</small>` : ''}</div>${control}</div>`;
+const options = (map, val) => Object.entries(map).map(([k, l]) => `<option value="${esc(k)}" ${k === val ? 'selected' : ''}>${esc(l)}</option>`).join('');
+
+// Project manager: every project's own GitHub, connections, skills, build and token savers
+const setM = changes => call('update_project', {pid: mp, changes}).then(() => refresh()).then(() => openManager(mp, true));
+async function openManager(pid = mp && P(mp) ? mp : cur || S.projects[0]?.id, keepScroll) {
+  if (!pid) return dlg(`<h2>Project manager</h2><p class="dim">No projects yet: open a folder or clone a repo.</p><div class="btns"><button class="btn" onclick="closeDlg()">Close</button></div>`);
+  mp = pid;
+  if (!SET) SET = await call('settings');
+  const p = P(pid), scroll = $('dlg').querySelector('.body')?.scrollTop;
+  const items = kind => SET.catalog.filter(i => i.kind === kind && !SET.off.includes(i.id)).map(i =>
+    optRow(esc(i.label), esc(i.note), sw(!p.off.includes(i.id), `call('set_off', {item:'${esc(i.id)}', off:!this.checked, scope:'project:${p.id}'}).then(refresh)`))).join('') || '<p class="dim">None.</p>';
+  dlg(`<nav><h3>Projects</h3>${S.projects.map(x => `<button class="${x.id === pid ? 'on' : ''}" onclick="openManager('${x.id}')">${icon('folder')}<span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</span></button>`).join('')}
+    <span class="grow"></span><button onclick="closeDlg(); menuAt($('projects'), addItems())">${icon('plus')}Add project</button></nav>
+    <div class="body"><div class="row"><input value="${esc(p.name)}" onchange="setM({name:this.value})" style="font-size:17px;font-weight:600;border-color:transparent;padding-left:0" class="grow">
+      <button class="ib" onclick="closeDlg()">${icon('x')}</button></div>
+    <small class="dim sel mono">${esc(p.path)}</small>
+    <p class="dim">The project is the source of truth: these stay with it whichever AI account runs it.</p>
+    <div class="grid2">
+      <span>GitHub account</span><select onchange="setM({gh:this.value})">${options({'': 'None', ...Object.fromEntries(SET.gh_users.map(u => [u, '@' + u]))}, p.gh)}</select>
+      <span>AI account</span><select onchange="setM({account:this.value})">${options(Object.fromEntries(S.accounts.map(a => [a.id, a.nick])), p.account)}</select>
+      <span>Model</span><select onchange="setM({model:this.value})">${options(MODELS, p.model)}</select>
+      <span>Permissions</span><select onchange="setM({mode:this.value})">${options(PERMS, p.mode)}</select>
+      <span>Clear & continue</span><select onchange="setM({cont:this.value})">${options(Object.fromEntries(Object.entries(MODES).map(([k, v]) => [k, v[0]])), p.cont)}</select>
+      <span>Hand over at</span><span class="row"><input type="number" min="0" max="95" value="${p.context_limit}" style="width:76px" onchange="setM({context_limit:+this.value})"><small class="dim">% of the context window (0 = never)</small></span>
+    </div>
+    <div class="label">Token savers</div><div class="box">
+      ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
+      ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
+      ${optRow('Keep .env away from Claude', 'Claude can\'t read or edit .env files; manage them in the .env panel', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
+    </div>
+    <div class="label">Build</div>
+    <div class="grid2">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
+      <span>After each task</span><select onchange="setBuild('after', this.value)">${options({'': 'Nothing', build: 'Build', build_run: 'Build + run', build_deploy: 'Build + deploy'}, p.build.after)}</select>
+      <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Claude to fix</small></label></div>
+    <div class="label">Connections</div><div class="box">${items('mcp')}</div>
+    <div class="label">Skills</div><div class="box">${items('skill')}</div>
+    <div class="btns" style="justify-content:space-between"><button class="btn" onclick="removeProject()">Remove project</button><button class="btn primary" onclick="closeDlg()">Done</button></div></div>`, 'dlg');
+  if (keepScroll && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
+}
+const setBuild = (k, v) => setM({build: {...P(mp).build, [k]: v}});
+async function removeProject() {
+  if (!confirm(`Remove ${P(mp).name} from Clauracle? The folder stays on disk.`)) return;
+  await call('remove_project', {pid: mp}); closeDlg();
+  if (mp === cur) goHome();
+  mp = null; refresh();
+}
+
+// ---- right panel: GitHub · Build · .env · Code · Browser ----
+function toggleRight() { $('right').hidden = !$('right').hidden; drawRight(); }
+function rightTab(t) { tab = t; drawRight(); }
+async function drawRight() {
+  if ($('right').hidden || !cur) return;
+  document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+  $('right').classList.toggle('wide', tab === 'code' || tab === 'web');
+  const box = $('rbody'), p = P();
+  if (tab === 'code') return drawCode();
+  if (tab === 'web') return drawWeb();
+  if (tab === 'env') return drawEnv();
+  if (tab === 'build') {
+    box.innerHTML = `<div class="row wrap">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
+      <button class="btn ghost" onclick="call('stop_run', {pid:cur})">${icon('stop')}Stop</button></div>
+      ${p.build.build || p.build.run ? '' : `<p class="dim">Set the commands in the <a href="#" onclick="openManager(cur)">project manager</a>.</p>`}<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`;
+    return;
+  }
+  box.innerHTML = '<p class="dim">Loading…</p>';
+  const g = await call('gh_info', {pid: cur}), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
+    <div class="row dim" style="font-size:12px"><span class="grow">${esc(x.author?.login)}</span><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask Claude</button></div></div>`;
+  box.innerHTML = `<div class="label">Repository</div>` + (g.repo ? `<p><a href="#" data-url="${esc(g.repo.url)}" style="color:var(--accent)">${esc(g.repo.nameWithOwner)}</a> <small class="dim">as @${esc(p.gh)}</small></p>`
+    : `<p class="dim">No GitHub repo here${p.gh ? '' : ', or no GitHub account set in the project manager'}.</p>`)
+    + `<div class="label" style="margin-top:14px">Pull requests</div>` + ((g.prs || []).map(x => item(x, 'pr')).join('') || '<p class="dim">None open.</p>')
+    + `<div class="label" style="margin-top:14px">Issues</div>` + ((g.issues || []).map(x => item(x, 'issue')).join('') || '<p class="dim">None open.</p>')
+    + `<p><button class="btn ghost" onclick="drawRight()">Refresh</button></p>`;
+}
+function draft(kind, x) {
+  $('prompt').value = kind === 'pr' ? `Review PR #${x.number} "${x.title}" (${x.url}): read the diff and comments with gh, then list risks and suggested changes.`
+    : `Work on issue #${x.number} "${x.title}" (${x.url}): read it with gh, then fix it on a new branch.`;
+  grow(); $('prompt').focus();
+}
+
+// code view: browse and read the project's files
+const codeAt = {};
+async function drawCode(rel = codeAt[cur]?.dir ?? '', file = codeAt[cur]?.file) {
+  codeAt[cur] = {dir: rel, file};
+  const parts = rel ? rel.split('/') : [], box = $('rbody');
+  const crumbs = `<div class="crumbs"><a onclick="drawCode('')">${esc(P().name)}</a>${parts.map((x, i) => ` / <a onclick="drawCode('${esc(parts.slice(0, i + 1).join('/'))}')">${esc(x)}</a>`).join('')}${file ? ' / <b>' + esc(file.split('/').pop()) + '</b>' : ''}</div>`;
+  if (file) {
+    let text;
+    try { text = await call('read_file', {pid: cur, rel: file}); } catch (e) { box.innerHTML = crumbs + `<p class="dim">${esc(e)}</p>`; return; }
+    const lines = text.split('\n');
+    box.innerHTML = crumbs + `<div class="code"><div class="ln">${lines.map((_, i) => i + 1).join('\n')}</div><pre class="sel">${esc(text)}</pre></div>`;
+    return;
+  }
+  const items = await call('list_dir', {pid: cur, rel}).catch(() => []);
+  box.innerHTML = crumbs + `<div class="tree">${items.map(i => { const path = (rel ? rel + '/' : '') + i.name;
+    return `<div onclick="drawCode(${i.dir ? `'${esc(path)}'` : `'${esc(rel)}', '${esc(path)}'`})">${icon(i.dir ? 'folder' : 'file')}${esc(i.name)}</div>`; }).join('') || '<p class="dim">Empty.</p>'}</div>`;
+}
+
+// browser view: preview inside Clauracle, or open in a real browser profile (your logins live there)
+const webUrl = {};
+let BROWSERS = null;
+async function drawWeb() {
+  BROWSERS ||= await call('browsers');
+  const url = webUrl[cur] || (builds[cur]?.out.match(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?[^\s]*/g) || []).pop() || 'http://localhost:3000';
+  webUrl[cur] = url;
+  const opts = BROWSERS.flatMap(b => (b.profiles.length ? b.profiles : [{dir: '', name: 'default'}]).map(p =>
+    `<option value='${esc(JSON.stringify([b.exe, p.dir]))}'>${esc(b.name)} · ${esc(p.name)}${p.user ? ' (' + esc(p.user) + ')' : ''}</option>`)).join('');
+  $('rbody').innerHTML = `<div class="row" style="margin-bottom:8px"><input id="wurl" class="grow sel mono" value="${esc(url)}" onkeydown="if(event.key==='Enter'){webUrl[cur]=this.value; drawWeb()}">
+    <button class="ib" title="Reload" onclick="$('web').src=$('wurl').value">${icon('loop')}</button></div>
+    <iframe id="web" src="${esc(url)}"></iframe>
+    <div class="row" style="margin-top:8px"><small class="dim">Open in</small><select id="bsel" class="grow">${opts || '<option value="">no Chromium browser found</option>'}</select>
+      <button class="btn" onclick="openIn()">Open</button></div>`;
+}
+function openIn() {
+  const v = $('bsel').value; if (!v) return;
+  const [exe, profile] = JSON.parse(v);
+  call('open_in_browser', {exe, profile, url: $('wurl').value}).catch(alert);
+}
+
+// .env: keys shown, values masked until revealed
+const PRESETS = {
+  'Google OAuth': ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'],
+  'Apple Sign in': ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY'],
+  'GitHub OAuth': ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
+  'Stripe': ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY', 'STRIPE_WEBHOOK_SECRET'],
+  'Database': ['DATABASE_URL'],
+};
+const shown = {};
+async function drawEnv() {
+  const files = await call('env_list', {pid: cur}), box = $('rbody');
+  box.innerHTML = `<p class="dim" style="margin-top:0;font-size:13px">Values stay hidden until you show them${P().hide_env ? '. Claude can\'t read these files' : ''}.</p>`
+    + files.map(f => `<div class="envfile"><div class="row"><b class="grow mono">${esc(f.file)}</b>
+      ${f.ignored === false ? `<span class="pill" style="color:var(--err)">not git-ignored</span><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="call('env_ignore', {pid:cur, file:'${esc(f.file)}'}).then(drawEnv)">Ignore it</button>` : f.ignored ? '<small class="ok">git-ignored</small>' : ''}</div>
+      ${f.keys.map(([k, v]) => { const id = f.file + ':' + k; return `<div class="kv"><span class="k sel">${esc(k)}</span>
+        <span class="row" style="gap:0"><button class="ib" title="${shown[id] ? 'Hide' : 'Show'}" onclick="shown['${esc(id)}']=!shown['${esc(id)}']; drawEnv()">${icon('key')}</button><button class="ib" title="Copy" onclick='navigator.clipboard.writeText(${esc(JSON.stringify(v))})'>${icon('file')}</button><button class="ib" title="Edit" onclick="editKey('${esc(f.file)}', '${esc(k)}')">${icon('new')}</button><button class="ib" title="Delete" onclick="setKey('${esc(f.file)}', '${esc(k)}', null)">${icon('x')}</button></span>
+        <span class="v sel">${v ? (shown[id] ? esc(v) : '•'.repeat(Math.min(24, v.length))) : '<i>empty</i>'}</span></div>`; }).join('')}
+      <div class="row" style="margin-top:8px"><input class="grow mono" placeholder="NEW_KEY" id="nk-${esc(f.file)}"><button class="btn" onclick="editKey('${esc(f.file)}', $('nk-${esc(f.file)}').value)">Add</button>
+      <select onchange="preset('${esc(f.file)}', this.value); this.value=''"><option value="">Preset…</option>${Object.keys(PRESETS).map(k => `<option>${k}</option>`).join('')}</select></div></div>`).join('')
+    + `<div class="row"><input id="newEnv" class="mono" value="${files.length ? '.env.local' : '.env'}" style="width:130px"><button class="btn" onclick="setKey($('newEnv').value, 'EXAMPLE_KEY', '')">New file</button></div>`;
+}
+async function setKey(file, key, value) {
+  try { await call('env_set', {pid: cur, file, key, value}); } catch (e) { alert(e); }
+  drawEnv();
+}
+function editKey(file, key) {
+  if (!key) return;
+  dlg(`<h2 class="mono" style="font-size:16px">${esc(key)} <small class="dim">${esc(file)}</small></h2><textarea id="ev" rows="4" style="width:100%" class="mono" placeholder="Value (paste multi-line keys as they are)"></textarea>
+    <div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button><button class="btn primary" onclick="setKey('${esc(file)}', '${esc(key)}', $('ev').value); closeDlg()">Save</button></div>`);
+}
+async function preset(file, name) {
+  if (!name) return;
+  const have = (await call('env_list', {pid: cur})).find(f => f.file === file)?.keys.map(k => k[0]) || [];
+  for (const k of PRESETS[name]) if (!have.includes(k)) await call('env_set', {pid: cur, file, key: k, value: ''});
+  drawEnv();
+}
+
+// ---- settings: GitHub · Connections & Skills · Agents · AI accounts · Notifications ----
+const PAGES = {gh: ['gh', 'GitHub'], cx: ['plug', 'Connections & Skills'], agents: ['bot', 'Agents'], ai: ['user', 'AI accounts'], notify: ['bell', 'Notifications']};
+let AGENTS = null;
+async function openSettings(p) {
+  if (p) page = p;
+  if (!$('dlg').open) dlg('<p class="dim" style="padding:20px">Loading… (the first time asks Claude Code which connections it has)</p>', 'dlg');
+  [SET, , AGENTS] = await Promise.all([call('settings'), refresh(), call('agents')]); ghUsers = SET.gh_users;
+  const scroll = $('dlg').querySelector('.body')?.scrollTop;
+  dlg(`<nav><h3>Settings</h3>${Object.entries(PAGES).map(([k, [ic, l]]) => `<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}</nav>
+    <div class="body"><div class="row"><h2 class="grow">${PAGES[page][1]}</h2><button class="ib" onclick="closeDlg()">${icon('x')}</button></div>
+    ${{gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'dlg');
+  if (scroll) $('dlg').querySelector('.body').scrollTop = scroll;
+}
+function ghPage() {
+  return `<p class="dim">GitHub accounts live in the GitHub CLI. Each project gets its own account's token, so any number can be signed in at once.</p>
+    <div class="box">${ghUsers.map(u => optRow('@' + esc(u), '', `<button class="btn ghost" onclick="rmGh('${esc(u)}')">Log out</button>`)).join('') || '<p class="dim">None yet.</p>'}</div>
+    <p>${S.gh ? `<button class="btn primary" onclick="addGh()">${icon('plus')}Add GitHub account</button>` : `<button class="btn primary" onclick="install('gh', this).then(() => openSettings())">Install the GitHub CLI</button>`}</p><p id="ghMsg" class="dim"></p>`;
+}
+const cxList = (kind, off, scope, under = []) => SET.catalog.filter(i => i.kind === kind && !under.includes(i.id)).map(i =>
+  optRow(esc(i.label), esc(i.note), sw(!off.includes(i.id), `call('set_off', {item:'${esc(i.id)}', off:!this.checked, scope:'${esc(scope)}'})`))).join('') || '<p class="dim">None.</p>';
+function cxPage() {
+  return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
+    <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => openSettings())">${icon('loop')}Rescan</button></p>
+    <div class="label">Connections</div><div class="box">${cxList('mcp', SET.off, 'global')}</div>
+    <div class="label">Skills</div><div class="box">${cxList('skill', SET.off, 'global')}</div>`;
+}
+function agentsPage() {
+  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.</p>`
+    + AGENTS.map((a, i) => `<div class="agent"><div class="row">${sw(a.on, `agentSet(${i}, 'on', this.checked)`)}<input class="mono" value="${esc(a.name)}" style="width:160px" onchange="agentSet(${i}, 'name', this.value.trim())">
+        <select onchange="agentSet(${i}, 'model', this.value)">${options({haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus', inherit: 'Same as session'}, a.model || 'inherit')}</select>
+        <span class="grow"></span><button class="ib" title="Remove" onclick="AGENTS.splice(${i},1); saveAgents()">${icon('x')}</button></div>
+      <input value="${esc(a.description)}" placeholder="When Claude should use it" onchange="agentSet(${i}, 'description', this.value)">
+      <textarea placeholder="Its instructions" onchange="agentSet(${i}, 'prompt', this.value)">${esc(a.prompt)}</textarea></div>`).join('')
+    + `<p class="row"><button class="btn" onclick="AGENTS.push({name:'helper', model:'haiku', description:'', prompt:'', on:true}); saveAgents()">${icon('plus')}Add agent</button></p>`;
+}
+const agentSet = (i, k, v) => { AGENTS[i][k] = v; saveAgents(); };
+const saveAgents = () => call('set_agents', {agents: AGENTS}).then(() => openSettings());
+function aiPage() {
+  const pools = [...new Set(S.accounts.map(a => a.pool).filter(Boolean))];
+  const meter = (v, l) => v == null ? '' : `<small class="dim">${l} <span class="bar"><i style="width:${v}%"></i></span> ${v}%</small>`;
+  return `<p class="dim">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>
+    <datalist id="pools">${pools.map(p => `<option value="${esc(p)}">`).join('')}</datalist>`
+    + S.accounts.map(a => { const u = S.usage[a.id] || {}; return `<details class="acct" ${a.id === S.default_account ? 'open' : ''}><summary>
+      ${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : 'setup-token'}</small>
+      ${a.pool ? `<span class="pill">${esc(a.pool)}</span>` : ''}${a.id === S.default_account ? '<span class="pill">default</span>' : ''}<span class="grow"></span>${meter(u.five_hour, '5h')} ${meter(u.seven_day, 'week')}</summary>
+      <div><div class="grid2">
+        <span>Limits</span><span class="row wrap">5-hour <input type="number" min="1" max="100" value="${a.limits.five_hour}" style="width:70px" onchange="acct('${esc(a.id)}', {limits:{...limitsOf('${esc(a.id)}'), five_hour:+this.value}})">%
+          weekly <input type="number" min="1" max="100" value="${a.limits.seven_day}" style="width:70px" onchange="acct('${esc(a.id)}', {limits:{...limitsOf('${esc(a.id)}'), seven_day:+this.value}})">%</span>
+        <span></span><small class="dim" style="margin-top:-6px">Auto mode switches account or pauses here; held questions show then.</small>
+        <span>Pool</span><input list="pools" value="${esc(a.pool)}" placeholder="None" onchange="acct('${esc(a.id)}', {pool:this.value.trim()})">
+        <span>GitHub for new projects</span><select onchange="acct('${esc(a.id)}', {gh:this.value})">${options({'': 'None', ...Object.fromEntries(ghUsers.map(g => [g, '@' + g]))}, a.gh)}</select>
+      </div>
+      <div class="label">Connections for new projects</div><div class="box">${cxList('mcp', a.off, a.id, SET.off)}</div>
+      <div class="label">Skills for new projects</div><div class="box">${cxList('skill', a.off, a.id, SET.off)}</div>
+      <div class="btns">${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
+        ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
+    + `<div class="label" style="margin-top:10px">Add an account</div><div class="row" style="margin-top:8px"><input id="nick" class="grow" placeholder="Name, e.g. Work"><button class="btn primary" onclick="addClaude()">Sign in with Claude</button></div>
+    <details style="margin-top:8px"><summary class="dim" style="cursor:pointer">Or paste a token from <code>claude setup-token</code></summary><div class="row" style="margin-top:6px"><input id="token" class="grow mono" placeholder="sk-ant-oat01-…"><button class="btn" onclick="pasteClaude()">Add</button></div></details>
+    <p id="loginMsg" class="dim"></p>`;
+}
+const limitsOf = id => S.accounts.find(a => a.id === id).limits;
+const acct = (id, changes) => call('update_account', {id, changes}).then(() => openSettings());
+function notifyPage() {
+  const n = S.notify;
+  return `<p class="dim">When questions need you in auto mode, or the loop pauses at a limit.</p>
+    <div class="box">${optRow('Desktop notifications', '', sw(n.desktop, 'saveNotify({desktop:this.checked})'))}</div>
+    <div class="label">Phone</div><p class="dim">Install the free <a href="#" data-url="https://ntfy.sh" style="color:var(--accent)">ntfy</a> app and subscribe to this topic. Anyone who knows the topic can read the pushes, so keep it random.</p>
+    <div class="row"><input id="topic" class="grow sel mono" value="${esc(n.ntfy)}" placeholder="Off" onchange="saveNotify({ntfy:this.value.trim()})">
+      <button class="btn" onclick="$('topic').value='clauracle-'+crypto.randomUUID().slice(0,13); saveNotify({ntfy:$('topic').value})">Generate</button></div>
+    <p><button class="btn" onclick="call('test_notify')">${icon('bell')}Send a test</button></p>`;
+}
+const saveNotify = c => call('set_notify', {notify: {...S.notify, ...c}}).then(refresh);
+async function addClaude() {
+  $('loginMsg').textContent = 'Starting claude setup-token…';
+  try { await call('claude_login', {nick: $('nick').value}); openSettings(); } catch (e) { $('loginMsg').textContent = e; }
+}
+async function pasteClaude() {
+  try { await call('claude_add_token', {nick: $('nick').value, token: $('token').value}); openSettings(); } catch (e) { $('loginMsg').textContent = e; }
+}
+async function rmClaude(id) { if (confirm('Remove this account? Its projects fall back to Main.')) { await call('claude_remove', {id}); openSettings(); } }
+async function addGh() { $('ghMsg').textContent = 'Waiting for gh…'; const ok = await call('gh_login').catch(e => ($('ghMsg').textContent = e, false)); if (ok) openSettings(); }
+async function rmGh(u) { if (confirm(`Log @${u} out of gh?`)) { await call('gh_logout', {user: u}); openSettings(); } }
+
+// ---- clone ----
+async function openClone() {
+  ghUsers = (await call('settings')).gh_users;
+  dlg(`<div class="row"><h2 class="grow">Clone from GitHub</h2><button class="ib" onclick="closeDlg()">${icon('x')}</button></div>${ghUsers.length ? `<div class="row"><select id="cloneUser">${ghUsers.map(u => `<option>${esc(u)}</option>`).join('')}</select>
+    <input id="cloneFilter" class="grow" placeholder="Filter, or owner/repo"></div><div id="repoList" class="dim" style="height:340px;overflow:auto;margin-top:8px">Loading…</div>`
+    : '<p class="dim">Add a GitHub account first (Settings › GitHub).</p>'}`);
+  if (!ghUsers.length) return;
+  let repos = [];
+  const draw = () => { const f = $('cloneFilter').value.trim(), fl = f.toLowerCase();
+    const list = repos.filter(r => r.nameWithOwner.toLowerCase().includes(fl)).slice(0, 100);
+    if (f.includes('/') && !list.some(r => r.nameWithOwner.toLowerCase() === fl)) list.unshift({nameWithOwner: f});
+    $('repoList').innerHTML = list.map(r => `<div class="item"><a onclick="clone('${esc(r.nameWithOwner)}')">${esc(r.nameWithOwner)}</a><div class="dim" style="font-size:12px">${esc(r.description)}</div></div>`).join('') || 'No repos.'; };
+  const load = async () => { $('repoList').textContent = 'Loading…'; repos = await call('gh_repos', {user: $('cloneUser').value}) || []; draw(); };
+  $('cloneUser').onchange = load; $('cloneFilter').oninput = draw; load();
+}
+async function clone(repo) {
+  const parent = await T.dialog.open({directory: true, title: 'Clone into…'});
+  if (!parent) return;
+  $('repoList').textContent = `Cloning ${repo}…`;
+  try { const p = await call('clone_repo', {user: $('cloneUser').value, repo, parent}); closeDlg(); await refresh(); openProject(p.id); }
+  catch (e) { $('repoList').textContent = e; }
+}
+
+applyView();
+refresh().then(() => S.active && openProject(S.active));
+</script>
+</body>
+</html>

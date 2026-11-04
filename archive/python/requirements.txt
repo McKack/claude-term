@@ -1,0 +1,4 @@
+claude-agent-sdk>=0.2.166
+pywebview>=6.2
+keyring>=25
+pywinpty>=2; sys_platform == "win32"
