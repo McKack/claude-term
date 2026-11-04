@@ -588,9 +588,9 @@ const ghKnown = () => [...new Set([...ghUsers, ...S.projects.map(p => p.gh)].fil
 function drawAcct() {
   const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0];
   if (!a) return $('acctBtn').innerHTML = `${icon('user')}<span class="nm">Sign in</span>`;
-  const gh = p?.gh, others = [...S.accounts.filter(x => x !== a).map(x => avAI(x)), ...ghKnown().filter(u => u !== gh).map(u => avGh(u))];
-  // stack: AI account mark, the GitHub picture overlapping it, then the others (+N)
-  $('acctBtn').innerHTML = `<span class="stack">${avAI(a)}${gh ? avGh(gh) : ''}${others.slice(0, 3).join('')}${others.length > 3 ? `<span class="av more">+${others.length - 3}</span>` : ''}</span>
+  const gh = p?.gh;
+  // stack: only what this project uses (AI mark + its GitHub picture); other accounts live in the card, so none look active here
+  $('acctBtn').innerHTML = `<span class="stack">${avAI(a)}${gh ? avGh(gh) : ''}</span>
     <span class="nm grow">${esc(a.nick)}<small>${gh ? '@' + esc(gh) : 'no GitHub account'}</small></span>`;
 }
 function acctCard(btn) {
@@ -601,7 +601,8 @@ function acctCard(btn) {
     <div class="who">${p?.gh ? avGh(p.gh, 'lg') : avAI(a, 'lg')}<span class="grow" style="min-width:0"><b>${esc(a.nick)}</b><small class="dim">${p?.gh ? '@' + esc(p.gh) + ' on GitHub' : 'No GitHub account'}${p ? ' · ' + esc(p.name) : ''}</small></span></div>
     ${bar(u.five_hour, '5-hour', 'clock')}${bar(u.seven_day, 'Weekly', 'cal')}
     ${p ? `<h5>AI account for ${esc(p.name)}</h5>${S.accounts.map(x => `<button class="pick ${x === a ? 'on' : ''}" data-acct="${esc(x.id)}">${avAI(x)}<span class="grow">${esc(x.nick)}${x === a ? '' : `<small class="dim" style="display:block">${esc(usageText(x.id))}</small>`}</span></button>`).join('')}` : ''}
-    ${ghKnown().length ? `<h5>GitHub</h5><div class="row wrap" style="gap:4px">${ghKnown().map(g => `<span class="pill" style="display:inline-flex;gap:5px;align-items:center;padding:2px 8px 2px 2px">${avGh(g)}@${esc(g)}</span>`).join('')}</div>` : ''}
+    ${p?.gh ? `<h5>GitHub for ${esc(p.name)}</h5><div class="pick on">${avGh(p.gh)}<span class="grow">@${esc(p.gh)}</span></div>` : ''}
+    ${ghKnown().filter(g => g !== p?.gh).length ? `<h5>Signed in, not used here</h5><div class="row wrap" style="gap:4px;opacity:.6">${ghKnown().filter(g => g !== p?.gh).map(g => `<span class="pill" style="display:inline-flex;gap:5px;align-items:center;padding:2px 8px 2px 2px">${avGh(g)}@${esc(g)}</span>`).join('')}</div>` : ''}
     <div class="btnrow"><button class="btn" data-go="ai">${icon('user')}AI accounts</button><button class="btn" data-go="gh">${icon('gh')}GitHub</button></div>`;
   card.innerHTML += `<hr style="border:0;border-top:1px solid var(--line);margin:0">
     <button class="pick" data-go="">${icon('gear')}<span class="grow">Settings</span></button>
