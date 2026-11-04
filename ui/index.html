@@ -121,6 +121,17 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #readytext b { font-weight:600; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .btn.sm { padding:2px 8px; font-size:12px; }
 .warn { background:color-mix(in srgb, var(--err) 12%, transparent); color:var(--err); border-radius:10px; padding:8px 10px; font-size:12.5px; margin:6px 0; }
+.sec { margin:0 0 18px; } .sh { display:flex; align-items:center; gap:6px; min-height:26px; margin:0 2px 6px; } .sh .label { flex:1; }
+.sh .ib { width:26px; height:26px; } .sh .pill { margin-right:2px; }
+.sc { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+.sc > p, .sc > ol, .sc .warn { margin:0; } .sc p.dim { font-size:13px; }
+.list > .item { padding:0 0 10px; margin-bottom:10px; } .list > .item:last-child { border:0; padding:0; margin:0; }
+.fl { display:flex; flex-direction:column; gap:4px; font-size:12.5px; color:var(--dim); } .fl > input, .fl > select, .fl > textarea { width:100%; color:var(--text); font-size:14px; }
+.btn.block { width:100%; justify-content:center; } .chk { display:flex; gap:8px; align-items:center; font-size:13.5px; }
+.empty { text-align:center; color:var(--faint); font-size:13px; margin:0; padding:4px 0; }
+.btnrow { display:grid; grid-template-columns:repeat(auto-fit, minmax(84px, 1fr)); gap:8px; } .btnrow .btn { justify-content:center; padding:6px 8px; }
+.keys > div { display:flex; justify-content:space-between; gap:8px; font:12.5px ui-monospace,Consolas,monospace; padding:2px 0; } .keys span:first-child { overflow:hidden; text-overflow:ellipsis; }
+.steps { padding-left:20px; font-size:13px; color:var(--dim); } .steps li { margin:3px 0; }
 .warn a { color:inherit; text-decoration:underline; cursor:pointer; }
 #ready, #suggest { display:flex; gap:12px; align-items:center; padding:9px 10px 9px 16px; border-radius:12px; background:var(--soft); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
@@ -253,6 +264,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9z"/></symbol>
   <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1zM12 15l-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2z"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/></symbol>
   <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
 </svg>
@@ -303,7 +315,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button data-t="gh" onclick="rightTab('gh')" title="GitHub"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
     <button data-t="build" onclick="rightTab('build')" title="Build"><svg class="i"><use href="#i-hammer"/></svg><span>Build</span></button>
     <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
-    <button data-t="cloud" onclick="rightTab('cloud')" title="Cloud"><svg class="i"><use href="#i-cloud"/></svg><span>Cloud</span></button>
+    <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
     <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
     <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
   </div>
@@ -662,6 +674,9 @@ function dlg(html, cls = 'small-dlg') { const d = $('dlg'); d.className = 'glass
 const closeDlg = () => $('dlg').close();
 const sw = (on, change) => `<label class="sw"><input type="checkbox" ${on ? 'checked' : ''} onchange="${change}"><i></i></label>`;
 const optRow = (title, hint, control) => `<div class="opt-row"><div class="grow"><div>${title}</div>${hint ? `<small class="dim">${hint}</small>` : ''}</div>${control}</div>`;
+const sec = (title, body, actions = '') => `<section class="sec"><div class="sh"><span class="label">${title}</span>${actions}</div><div class="sc">${body}</div></section>`;
+const field = (label, control) => `<label class="fl"><span>${label}</span>${control}</label>`;
+const empty = t => `<p class="empty">${t}</p>`;
 const options = (map, val) => Object.entries(map).map(([k, l]) => `<option value="${esc(k)}" ${k === val ? 'selected' : ''}>${esc(l)}</option>`).join('');
 
 // Project manager: every project's own GitHub, connections, skills, build and token savers
@@ -727,22 +742,24 @@ async function drawRight() {
   if (tab === 'code') return drawCode();
   if (tab === 'web') return drawWeb();
   if (tab === 'env') return drawEnv();
-  if (tab === 'cloud') return drawCloud();
+  if (tab === 'svc') return drawServices();
   if (tab === 'build') {
-    box.innerHTML = `<div class="row wrap">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
-      <button class="btn ghost" onclick="call('stop_run', {pid:cur})">${icon('stop')}Stop</button></div>
-      ${p.build.build || p.build.run ? '' : `<p class="dim">Set the commands in the <a href="#" onclick="openManager(cur)">project manager</a>.</p>`}<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`;
+    const has = p.build.build || p.build.run || p.build.deploy;
+    box.innerHTML = sec('Commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
+        <button class="btn ghost" onclick="call('stop_run', {pid:cur})">${icon('stop')}Stop</button></div>`
+        : `<button class="btn primary block" onclick="openManager(cur)">${icon('hammer')}Set build and run commands</button>`, `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
+      + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
     return;
   }
   box.innerHTML = '<p class="dim">Loading…</p>';
   const g = await call('gh_info', {pid: cur}), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
-    <div class="row dim" style="font-size:12px"><span class="grow">${esc(x.author?.login)}</span><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask Claude</button></div></div>`;
-  box.innerHTML = `<div id="tasksBox">${tasksHtml()}</div><div class="label">Repository</div>` + (g.repo ? `<p><a href="#" data-url="${esc(g.repo.url)}" style="color:var(--accent)">${esc(g.repo.nameWithOwner)}</a> <small class="dim">as @${esc(p.gh)}</small></p>`
-    : g.remote ? `<p class="dim">Can't read the GitHub repo${p.gh ? ` as @${esc(p.gh)}` : ': set a GitHub account in the project manager'}.</p>`
-    : publishForm(p, g.users || []))
-    + `<div class="label" style="margin-top:14px">Pull requests</div>` + ((g.prs || []).map(x => item(x, 'pr')).join('') || '<p class="dim">None open.</p>')
-    + `<div class="label" style="margin-top:14px">Issues</div>` + ((g.issues || []).map(x => item(x, 'issue')).join('') || '<p class="dim">None open.</p>')
-    + `<p><button class="btn ghost" onclick="drawRight()">Refresh</button></p>`;
+    <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask Claude</button></div></div>`;
+  const list = (xs, kind) => xs?.length ? `<div class="list">${xs.map(x => item(x, kind)).join('')}</div>` : empty('None open');
+  box.innerHTML = `<div id="tasksBox">${tasksHtml()}</div>`
+    + sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
+      : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
+      : publishForm(p, g.users || []), `<button class="ib" title="Refresh" onclick="drawRight()">${icon('loop')}</button>`)
+    + sec('Pull requests', list(g.prs, 'pr')) + sec('Issues', list(g.issues, 'issue'));
 }
 // ---- team tasks: open GitHub issues labelled `clauracle`; taken = assignee + `in progress` ----
 // ponytail: polled every 60s for the open project (live push needs webhooks and a server)
@@ -763,14 +780,16 @@ function tasksHtml() {
   const t = team[cur];
   if (!t?.repo) return '';
   const me = (t.me || '').toLowerCase();
+  // one row per task: title on the left, who / what you can do on the right
   const row = x => { const who = x.assignees.map(a => a.login), mine = who.some(l => l.toLowerCase() === me);
-    return `<div class="item"><div class="row"><a class="grow" data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>${isDoing(x) ? `<span class="pill">${esc(who.join(', ') || 'in progress')}</span>` : ''}</div>
-      <div class="row" style="justify-content:flex-end;gap:4px;margin-top:4px">${mine ? `<button class="btn ghost sm" onclick="taskDo('release', ${x.number})">Release</button><button class="btn ghost sm" onclick="taskDo('done', ${x.number})">Done</button>`
-        : isDoing(x) ? '' : `<button class="btn ghost sm" onclick="taskStart(${x.number})">Start</button>`}</div></div>`; };
-  return `<div class="label">Team tasks</div>`
-    + (t.conflicts || []).map(c => `<div class="warn">@${esc(c.author)}'s PR <a data-url="${esc(c.url)}">#${c.number}</a> also changes ${c.files.map(f => `<code>${esc(f)}</code>`).join(', ')}</div>`).join('')
-    + (teamTasks(cur).map(row).join('') || '<p class="dim" style="font-size:13px">No open tasks.</p>')
-    + `<div class="row" style="margin:8px 0 18px"><input id="newTask" class="grow" placeholder="New task for the team" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="btn" onclick="taskDo('new', $('newTask').value)">Add</button></div>`;
+    return `<div class="item row"><a class="grow" data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
+      ${mine ? `<button class="btn ghost sm" onclick="taskDo('release', ${x.number})">Release</button><button class="btn sm" onclick="taskDo('done', ${x.number})">Done</button>`
+        : isDoing(x) ? `<span class="pill">${esc(who.join(', ') || 'in progress')}</span>` : `<button class="btn sm" onclick="taskStart(${x.number})">Start</button>`}</div>`; };
+  const ts = teamTasks(cur), doing = ts.filter(isDoing).length;
+  return sec('Team tasks', (t.conflicts || []).map(c => `<div class="warn">@${esc(c.author)}'s PR <a data-url="${esc(c.url)}">#${c.number}</a> also changes ${c.files.map(f => `<code>${esc(f)}</code>`).join(', ')}</div>`).join('')
+    + (ts.length ? `<div class="list">${ts.map(row).join('')}</div>` : empty('No open tasks'))
+    + `<div class="row"><input id="newTask" class="grow" placeholder="New task for the team" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add task" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`,
+    ts.length ? `<span class="pill">${doing}/${ts.length}</span>` : '');
 }
 async function taskDo(action, arg) {
   if (!String(arg).trim()) return;
@@ -787,14 +806,13 @@ async function taskStart(n) {
 
 // local-only project → its own GitHub repo; defaults to the project's (or its AI account's) GitHub account
 function publishForm(p, users) {
-  if (!users.length) return `<p class="dim">Only on this computer. Add a GitHub account to publish it.</p><p><button class="btn primary" onclick="addGh()">${icon('plus')}Add GitHub account</button></p>`;
+  if (!users.length) return `<p class="dim">Only on this computer. Add a GitHub account to publish it.</p><button class="btn primary block" onclick="addGh()">${icon('plus')}Add GitHub account</button>`;
   const def = p.gh || S.accounts.find(a => a.id === p.account)?.gh || users[0];
-  return `<p class="dim" style="font-size:13px">Only on this computer so far. Publish it to start syncing with GitHub.
-    .env files are git-ignored first; if there's no commit yet, everything else goes into a first one.</p>
-    <div class="grid2" style="grid-template-columns:80px 1fr"><span>Account</span><select id="pubUser">${users.map(u => `<option ${u === def ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select>
-    <span>Name</span><input id="pubName" value="${esc(p.name)}" placeholder="name or org/name">
-    <span></span><label class="row"><input type="checkbox" id="pubPrivate" checked> Private</label></div>
-    <button class="btn primary" onclick="publish(this)">${icon('gh')}Publish to GitHub</button><p id="pubMsg" class="dim"></p>`;
+  return `<p class="dim">Only on this computer so far. Publishing git-ignores .env files first, and makes a first commit if there isn't one.</p>
+    ${field('Account', `<select id="pubUser">${users.map(u => `<option ${u === def ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select>`)}
+    ${field('Name', `<input id="pubName" value="${esc(p.name)}" placeholder="name or org/name">`)}
+    <label class="chk"><input type="checkbox" id="pubPrivate" checked> Private repository</label>
+    <button class="btn primary block" onclick="publish(this)">${icon('gh')}Publish to GitHub</button><p id="pubMsg" class="dim" style="margin:0;font-size:13px"></p>`;
 }
 async function publish(btn) {
   btn.disabled = true; $('pubMsg').textContent = 'Publishing…';
@@ -872,13 +890,88 @@ const APIS = {'run.googleapis.com': 'Cloud Run', 'cloudbuild.googleapis.com': 'C
   'storage.googleapis.com': 'Cloud Storage', 'firestore.googleapis.com': 'Firestore', 'firebase.googleapis.com': 'Firebase',
   'maps-backend.googleapis.com': 'Maps JavaScript', 'places-backend.googleapis.com': 'Places', 'people.googleapis.com': 'People (profile)',
   'gmail.googleapis.com': 'Gmail', 'drive.googleapis.com': 'Drive', 'calendar-json.googleapis.com': 'Calendar'};
+// ---- Services: what a project signs in with, takes payments through, ships to. Links, steps and its .env keys in one place ----
+// ponytail: a static list, no AI. Add one = an entry here
+const SERVICES = {
+  google: {name: 'Google', note: 'Cloud project, APIs, billing, Sign in with Google', keys: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']},
+  apple: {name: 'Sign in with Apple', note: 'Apple Developer account', keys: ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY'],
+    steps: ['Make an App ID with Sign in with Apple ticked', 'Make a Services ID with your web domain and return URL: that ID is the client ID', 'Make a key with Sign in with Apple and download the .p8 (only once)'],
+    links: [['App IDs', 'https://developer.apple.com/account/resources/identifiers/list'], ['Services IDs', 'https://developer.apple.com/account/resources/identifiers/list/serviceId'], ['Keys', 'https://developer.apple.com/account/resources/authkeys/list']]},
+  github: {name: 'Sign in with GitHub', note: 'OAuth app', keys: ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
+    steps: ['New OAuth App, with your callback URL', 'Generate a client secret'], links: [['OAuth apps', 'https://github.com/settings/developers']]},
+  microsoft: {name: 'Sign in with Microsoft', note: 'Entra app registration', keys: ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET', 'MICROSOFT_TENANT_ID'],
+    steps: ['New registration, with a Web redirect URI', 'Certificates & secrets: new client secret'], links: [['App registrations', 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade']]},
+  discord: {name: 'Sign in with Discord', note: 'Discord application', keys: ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET'],
+    steps: ['New Application', 'OAuth2: add a redirect, copy the client ID and secret'], links: [['Applications', 'https://discord.com/developers/applications']]},
+  auth0: {name: 'Auth0', note: 'Hosted sign-in', keys: ['AUTH0_DOMAIN', 'AUTH0_CLIENT_ID', 'AUTH0_CLIENT_SECRET'], links: [['Dashboard', 'https://manage.auth0.com/']]},
+  clerk: {name: 'Clerk', note: 'Hosted sign-in', keys: ['CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY'], links: [['Dashboard', 'https://dashboard.clerk.com/']]},
+  supabase: {name: 'Supabase', note: 'Database, auth, storage', keys: ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'],
+    steps: ['Make a project', 'API settings: copy the URL and keys'], links: [['Projects', 'https://supabase.com/dashboard/projects'], ['API keys', 'https://supabase.com/dashboard/project/_/settings/api']]},
+  firebase: {name: 'Firebase', note: 'Auth, Firestore, hosting', keys: ['FIREBASE_API_KEY', 'FIREBASE_AUTH_DOMAIN', 'FIREBASE_PROJECT_ID', 'FIREBASE_APP_ID'],
+    steps: ['Add a project (or pick your Google Cloud one)', 'Project settings: add a web app and copy its config'], links: [['Console', 'https://console.firebase.google.com/']]},
+  stripe: {name: 'Stripe', note: 'Payments', keys: ['STRIPE_PUBLISHABLE_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'],
+    steps: ['Copy the API keys (test mode first)', 'Add a webhook endpoint and copy its signing secret'], links: [['API keys', 'https://dashboard.stripe.com/apikeys'], ['Webhooks', 'https://dashboard.stripe.com/webhooks']]},
+  resend: {name: 'Resend', note: 'Email', keys: ['RESEND_API_KEY'], steps: ['Verify your domain', 'Make an API key'], links: [['Domains', 'https://resend.com/domains'], ['API keys', 'https://resend.com/api-keys']]},
+  sentry: {name: 'Sentry', note: 'Error tracking', keys: ['SENTRY_DSN'], links: [['Projects', 'https://sentry.io/organizations/']]},
+  vercel: {name: 'Vercel', note: 'Hosting', keys: ['VERCEL_TOKEN'], links: [['Tokens', 'https://vercel.com/account/tokens'], ['Dashboard', 'https://vercel.com/dashboard']]},
+  appstore: {name: 'App Store Connect', note: 'iOS / macOS releases', keys: ['ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_PRIVATE_KEY'],
+    steps: ['Make the app record', 'Integrations: make an API key (for uploads from CI)'], links: [['Apps', 'https://appstoreconnect.apple.com/apps'], ['API keys', 'https://appstoreconnect.apple.com/access/integrations/api']]},
+  play: {name: 'Google Play', note: 'Android releases', keys: ['PLAY_SERVICE_ACCOUNT_JSON'],
+    steps: ['Make the app', 'Make a service account in Google Cloud, invite it in Play Console under Users and permissions'], links: [['Play Console', 'https://play.google.com/console']]},
+  steam: {name: 'Steam', note: 'Game releases', keys: ['STEAM_APP_ID', 'STEAM_WEB_API_KEY'],
+    steps: ['Pay the app fee and make the app in Steamworks', 'Get a Web API key'], links: [['Steamworks', 'https://partner.steamgames.com/apps'], ['Web API key', 'https://steamcommunity.com/dev/apikey']]},
+};
+const svcOf = p => [...new Set([...(p.gcp ? ['google'] : []), ...(p.services || [])])].filter(id => SERVICES[id]);
+async function svcAdd(id) { await setP({services: [...svcOf(P()), id]}); await refresh(); drawRight(); }
+async function svcRemove(id) { await setP({services: svcOf(P()).filter(x => x !== id)}); await refresh(); drawRight(); }
+const svcMenu = el => menuAt(el, Object.entries(SERVICES).filter(([id]) => !svcOf(P()).includes(id)).map(([id, x]) => ({label: x.name, hint: x.note, run: () => svcAdd(id)})));
+let envKeys = {files: [], have: new Set()};
+async function drawServices() {
+  const box = $('rbody'), p = P(), ids = svcOf(p);
+  const files = await call('env_list', {pid: cur}).catch(() => []);
+  envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))};
+  if (tab !== 'svc') return;
+  const add = `<button class="ib" title="Add a service" onclick="svcMenu(this)">${icon('plus')}</button>`;
+  if (!ids.length) {
+    box.innerHTML = sec('Services', `<p class="dim">What this project signs in with, takes payments through or ships to. Each one keeps its links, steps and keys together, and fills .env for you.</p>
+      <button class="btn primary block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`, add);
+    return;
+  }
+  box.innerHTML = ids.map(id => { const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k));
+    return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px"><p class="dim">Asking gcloud…</p></div>' : '')
+      + (x.steps ? `<ol class="steps">${x.steps.map(t => `<li>${esc(t)}</li>`).join('')}</ol>` : '')
+      + (x.links ? `<div class="btnrow">${x.links.map(([l, u]) => `<button class="btn sm" data-url="${esc(u)}">${esc(l)}</button>`).join('')}</div>` : '')
+      + `<div class="keys">${x.keys.map(k => `<div><span>${k}</span>${envKeys.have.has(k) ? '<small class="ok">set</small>' : '<small class="faint">missing</small>'}</div>`).join('')}</div>`
+      + (miss.length ? `<button class="btn primary block" onclick="fillKeys('${id}')">${icon('key')}Fill in ${miss.length} key${miss.length > 1 ? 's' : ''}</button>` : ''),
+      `<span class="pill" ${miss.length ? 'style="background:var(--hover);color:var(--dim)"' : ''}>${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`
+      + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
+    + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`;
+  if (ids.includes('google')) drawCloud();
+}
+// every missing key of a service in one dialog, written into the project's .env (values never go through Claude)
+function fillKeys(id) {
+  const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k)), files = envKeys.files.map(f => f.file);
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(x.name)} keys</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Saved in the project's .env file, hidden from Claude. Leave a field empty to skip it.</p>
+    <div class="sc" style="border:0;padding:0;background:none">${miss.map(k => field(`<span class="mono">${k}</span>`, /KEY$|JSON/.test(k) && /PRIVATE|JSON/.test(k)
+      ? `<textarea data-k="${k}" rows="3" class="mono"></textarea>` : `<input data-k="${k}" class="mono">`)).join('')}
+    ${field('File', `<select id="fkFile">${options(Object.fromEntries((files.length ? files : ['.env']).map(f => [f, f])), files[0] || '.env')}</select>`)}</div>
+    <p id="fkMsg" class="err" style="font-size:13px"></p>
+    <div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button><button class="btn primary" onclick="saveKeys()">Save</button></div>`);
+  $('dlg').querySelector('[data-k]')?.focus();
+}
+async function saveKeys() {
+  const file = $('fkFile').value;
+  try { for (const el of $('dlg').querySelectorAll('[data-k]')) if (el.value.trim()) await call('env_set', {pid: cur, file, key: el.dataset.k, value: el.value.trim()}); }
+  catch (e) { $('fkMsg').textContent = e; return; }
+  closeDlg(); drawRight();
+}
 async function drawCloud() {
-  const box = $('rbody'), p = P();
-  box.innerHTML = '<p class="dim">Asking gcloud…</p>';
+  const box = $('gcloud'), p = P();
+  if (!box) return;
   const g = await call('gcloud_info', {pid: cur}).catch(e => ({installed: true, error: String(e)}));
-  if (tab !== 'cloud') return;
+  if (!$('gcloud')) return;
   if (!g.installed) {
-    box.innerHTML = `<p class="dim">Google Cloud setup goes through Google's own gcloud CLI.</p><button class="btn primary" onclick="install('gcloud', this).then(ok => ok && drawCloud())">${icon('cloud')}Install gcloud</button>`;
+    box.innerHTML = `<p class="dim">Cloud projects, APIs and billing go through Google's own gcloud CLI.</p><button class="btn primary block" onclick="install('gcloud', this).then(ok => ok && drawCloud())">${icon('cloud')}Install gcloud</button>`;
     return;
   }
   const list = x => Array.isArray(x) ? x : [], err = g.error || [g.accounts, g.projects].find(x => x?.error)?.error;
@@ -886,28 +979,22 @@ async function drawCloud() {
   const on = new Set(list(g.apis).map(a => a.config?.name || a.name?.split('/').pop()));
   const id = p.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^[^a-z]+/, '').slice(0, 23) + '-' + Math.random().toString(36).slice(2, 6);
   const con = path => `https://console.cloud.google.com/${path}?project=${encodeURIComponent(p.gcp)}`;
-  box.innerHTML = `<div class="label">Google account</div>
-    <div class="row" style="margin:6px 0 14px"><select class="grow" onchange="setP({gaccount:this.value}).then(drawCloud)">${options({'': 'gcloud default', ...Object.fromEntries(accts.map(a => [a, a]))}, p.gaccount)}</select>
-      <button class="btn" onclick="gLogin(this)">${icon('plus')}Add</button></div>
-    <div class="label">Cloud project</div>
-    <select style="width:100%;margin:6px 0" onchange="setP({gcp:this.value}).then(drawCloud)">${options({'': 'None', ...Object.fromEntries(projs.map(x => [x.projectId, `${x.name} (${x.projectId})`]))}, p.gcp)}</select>
-    <div class="row" style="margin-bottom:14px"><input id="gNew" class="grow mono" value="${esc(id)}" title="6-30 characters: lowercase letters, digits, hyphens"><button class="btn" onclick="gDo('create', $('gNew').value.trim())">Create</button></div>
-    ${p.gcp ? `<div class="label">Billing</div>
-    <select style="width:100%;margin:6px 0 14px" onchange="gDo('billing', this.value)">${options({'': g.linked?.billingEnabled ? 'Linked' : 'Not linked',
-      ...Object.fromEntries(list(g.billing).filter(b => b.open).map(b => [b.name.split('/').pop(), b.displayName]))}, (g.linked?.billingAccountName || '').split('/').pop())}</select>
-    <div class="label">APIs</div><div class="box">${Object.entries(APIS).map(([api, l]) => optRow(esc(l), `<span class="mono">${api}</span>`,
-      sw(on.has(api), `gDo('api', '${api}', this.checked, this)`))).join('')}</div>
-    <div class="label">Sign in with Google</div>
-    <p class="dim" style="font-size:13px">Google has no CLI for OAuth clients: set up the consent screen and a client in the console, then paste the ID and secret into .env.</p>
-    <p class="row wrap"><button class="btn" data-url="${con('auth/overview')}">Consent screen</button><button class="btn" data-url="${con('auth/clients')}">Clients</button>
-      <button class="btn" onclick="tab='env'; drawRight()">${icon('key')}Add keys to .env</button></p>
-    <p><a href="#" data-url="${con('home/dashboard')}" style="color:var(--accent)">Open ${esc(p.gcp)} in the console</a></p>` : ''}
-    <p id="gMsg" class="${err ? 'err' : 'dim'}" style="font-size:13px">${esc(err || '')}</p>`;
+  box.innerHTML = field('Google account', `<div class="row"><select class="grow" onchange="setP({gaccount:this.value}).then(drawCloud)">${options({'': 'gcloud default', ...Object.fromEntries(accts.map(a => [a, a]))}, p.gaccount)}</select>
+      <button class="ib" title="Add a Google account" onclick="gLogin(this)">${icon('plus')}</button></div>`)
+    + field('Cloud project', `<select onchange="setP({gcp:this.value}).then(refresh).then(drawRight)">${options({'': 'None', ...Object.fromEntries(projs.map(x => [x.projectId, `${x.name} (${x.projectId})`]))}, p.gcp)}</select>`)
+    + `<div class="row"><input id="gNew" class="grow mono" value="${esc(id)}" title="6-30 characters: lowercase letters, digits, hyphens"><button class="btn" onclick="gDo('create', $('gNew').value.trim())">Create</button></div>`
+    + (p.gcp ? field('Billing', `<select onchange="gDo('billing', this.value)">${options({'': g.linked?.billingEnabled ? 'Linked' : 'Not linked',
+      ...Object.fromEntries(list(g.billing).filter(b => b.open).map(b => [b.name.split('/').pop(), b.displayName]))}, (g.linked?.billingAccountName || '').split('/').pop())}</select>`)
+    + `<div class="fl"><span>APIs</span><div class="box" style="margin:0">${Object.entries(APIS).map(([api, l]) => optRow(esc(l), `<span class="mono">${api}</span>`,
+      sw(on.has(api), `gDo('api', '${api}', this.checked, this)`))).join('')}</div></div>
+    <div class="fl"><span>Sign in with Google</span><span class="dim" style="font-size:13px">Google has no CLI for OAuth clients: set up the consent screen and a client, then fill in the keys below.</span></div>
+    <div class="btnrow"><button class="btn sm" data-url="${con('auth/overview')}">Consent screen</button><button class="btn sm" data-url="${con('auth/clients')}">Clients</button><button class="btn sm" data-url="${con('home/dashboard')}">Console</button></div>` : '')
+    + `<p id="gMsg" class="${err ? 'err' : 'dim'}" style="font-size:13px;margin:0">${esc(err || '')}</p>`;
 }
 async function gDo(action, arg, on, el) {
   if (!arg) return;
   $('gMsg').className = 'dim'; $('gMsg').textContent = 'Working…';
-  try { await call('gcloud_do', {pid: cur, action, arg, on}); if (action === 'create') await setP({gcp: arg}); drawCloud(); }
+  try { await call('gcloud_do', {pid: cur, action, arg, on}); if (action === 'create') { await setP({gcp: arg}); await refresh(); return drawRight(); } drawCloud(); }
   catch (e) { $('gMsg').className = 'err'; $('gMsg').textContent = e; if (el) el.checked = !on; }
 }
 async function gLogin(btn) {
@@ -939,7 +1026,7 @@ async function drawEnv() {
 }
 async function setKey(file, key, value) {
   try { await call('env_set', {pid: cur, file, key, value}); } catch (e) { alert(e); }
-  drawEnv();
+  tab === 'env' ? drawEnv() : drawRight();
 }
 function editKey(file, key) {
   if (!key) return;
@@ -1205,8 +1292,8 @@ function drawRRail() {
     + (team[cur]?.conflicts?.length ? stat(team[cur].conflicts.length, 'overlap', team[cur].conflicts.map(c => `@${c.author} #${c.number}: ${c.files.join(', ')}`).join('\n'), `onclick="expandRight('gh')" style="cursor:pointer;color:var(--err)"`) : '')
     + (ctx[cur] != null ? stat(ctx[cur] + '%', 'context', 'Context window used') : '')
     + (u.five_hour != null ? stat(u.five_hour + '%', '5h', '5-hour usage') : '')
-    + (u.seven_day != null ? stat(u.seven_day + '%', 'week', 'Weekly usage') : '')
-    + '<hr>' + [['gh', 'gh', 'GitHub'], ['build', 'hammer', 'Build'], ['env', 'key', '.env'], ['cloud', 'cloud', 'Cloud'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
+    + (u.seven_day != null ? stat(u.seven_day + '%', '7d', 'Weekly usage') : '')
+    + '<hr>' + [['gh', 'gh', 'GitHub'], ['build', 'hammer', 'Build'], ['env', 'key', '.env'], ['svc', 'layers', 'Services'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
       .map(([k, i, l]) => `<button class="ib" title="${l}" onclick="expandRight('${k}')">${icon(i)}</button>`).join('');
 }
 function expandRight(t) { tab = t; UI.rc = false; layout(); drawRight(); }
