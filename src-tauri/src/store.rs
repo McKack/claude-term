@@ -203,7 +203,8 @@ pub fn load() -> Config {
         }
     };
     if !cfg.accounts.iter().any(|a| a.id == MAIN) {
-        cfg.accounts.insert(0, Account { id: MAIN.into(), nick: "Main".into(), ..Default::default() });
+        let nick = default_nick(&cfg, "claude");
+        cfg.accounts.insert(0, Account { id: MAIN.into(), nick, ..Default::default() });
     }
     for a in cfg.accounts.iter_mut() {
         if a.provider.is_empty() {
@@ -305,13 +306,22 @@ pub fn account_env(id: &str) -> Vec<(String, String)> {
         .map(|t| vec![("CLAUDE_CODE_OAUTH_TOKEN".into(), t)]).unwrap_or_default()
 }
 
+/// "Claude 2": the AI's name plus the next number not taken by an account already named that way.
+pub fn default_nick(cfg: &Config, provider: &str) -> String {
+    let ai = match provider { _ => "Claude" }; // ponytail: one provider; a match arm per new AI
+    let n = (1..).find(|i| !cfg.accounts.iter().any(|a| a.nick.eq_ignore_ascii_case(&format!("{ai} {i}")))).unwrap();
+    format!("{ai} {n}")
+}
+
 pub fn add_account(cfg: &mut Config, nick: &str, token: &str) -> Account {
+    let nick = if nick.trim().is_empty() { default_nick(cfg, "claude") } else { nick.trim().to_string() };
+    let nick = nick.as_str();
     let base: String = Regex::new(r"\W+").unwrap().replace_all(nick.trim(), "-").trim_matches('-').to_string();
     let base = if base.is_empty() { "account".to_string() } else { base };
     let id = (0..1000).map(|i| if i == 0 { base.clone() } else { format!("{base}-{i}") })
         .find(|c| !cfg.accounts.iter().any(|a| &a.id == c)).unwrap();
     set_token(&id, token);
-    let a = Account { id, nick: if nick.trim().is_empty() { "Account".into() } else { nick.trim().into() },
+    let a = Account { id, nick: nick.into(),
                       provider: "claude".into(), on: Some(vec![]), ..Default::default() };
     cfg.accounts.push(a.clone());
     a
@@ -936,6 +946,15 @@ pub fn push_phone(topic: &str, title: &str, body: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn default_nicks_count_up() {
+        let mut cfg = Config::default();
+        assert_eq!(super::default_nick(&cfg, "claude"), "Claude 1");
+        cfg.accounts.push(Account { id: "a".into(), nick: "Claude 1".into(), ..Default::default() });
+        cfg.accounts.push(Account { id: "b".into(), nick: "Claude 3".into(), ..Default::default() });
+        assert_eq!(super::default_nick(&cfg, "claude"), "Claude 2");
+    }
+
     use super::*;
 
     #[test]

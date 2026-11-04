@@ -137,6 +137,8 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #send:hover { background:var(--primary2); } #send:disabled { opacity:.4; cursor:default; }
 #status { display:flex; flex-wrap:wrap; gap:4px 14px; align-items:center; font-size:12px; color:var(--faint); padding:0 6px; }
 #status button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:5px; align-items:center; padding:2px 4px; border-radius:6px; }
+#status { container-type:inline-size; } #status .ab { display:none; }
+@container (max-width:560px) { #status .lb, #status .bar, #status button > svg:last-child:not(:first-child) { display:none; } #status .ab { display:inline; } }
 #status button:hover { color:var(--text); background:var(--hover); } #status b { color:var(--dim); font-weight:500; }
 .bar { display:inline-block; width:34px; height:4px; border-radius:2px; background:var(--line2); overflow:hidden; vertical-align:middle; } .bar i { display:block; height:100%; background:var(--accent); }
 #working { display:inline-flex; gap:6px; align-items:center; color:var(--accent); }
@@ -314,7 +316,9 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <script>
 const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
 let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'gh', mp = null;
-const hand = {}, team = {}, logs = {}, busy = {}, ctx = {}, live = {}, builds = {}, hiddenQs = {}, atts = {}, texts = {};
+const ctx = (() => { try { return JSON.parse(localStorage.ctx || '{}'); } catch { return {}; } })();
+const saveCtx = () => { try { localStorage.ctx = JSON.stringify(ctx); } catch {} };
+const hand = {}, team = {}, logs = {}, busy = {}, live = {}, builds = {}, hiddenQs = {}, atts = {}, texts = {};
 let draftsLoaded = false;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -432,11 +436,11 @@ function drawChrome() {
   $('handpill').hidden = !(busy[cur] && hand[cur]);
   const meter = (k, l) => u[k] == null ? '' : `<span title="${l} usage">${l} <span class="bar"><i style="width:${u[k]}%"></i></span> ${u[k]}%</span>`;
   $('status').innerHTML = (busy[cur] ? `<span id="working">${icon('sparkle')}Working…</span>` : '')
-    + `<button onclick="menuAt(this, acctItems())" title="AI account">${icon('user')}<b>${esc(nick(p.account))}</b>${icon('down')}</button>`
-    + `<button onclick="menuAt(this, modelItems())" title="Model">${icon('bot')}${esc(MODELS[p.model] || p.model)}</button>`
-    + `<button onclick="menuAt(this, permItems())" title="Permissions">${icon('sliders')}${esc(PERMS[p.mode] || p.mode)}</button>`
-    + `<button onclick="menuAt(this, contItems())" title="Clear & continue mode">${icon('loop')}${esc(MODES[p.cont][0])}</button>`
-    + (ctx[cur] != null ? `<span title="Context window">context ${ctx[cur]}%</span>` : '') + meter('five_hour', '5h') + meter('seven_day', 'week')
+    + `<button onclick="menuAt(this, acctItems())" title="AI account">${icon('user')}<b class="lb">${esc(nick(p.account))}</b>${icon('down')}</button>`
+    + `<button onclick="menuAt(this, modelItems())" title="Model">${icon('bot')}<span class="lb">${esc(MODELS[p.model] || p.model)}</span></button>`
+    + `<button onclick="menuAt(this, permItems())" title="Permissions">${icon('sliders')}<span class="lb">${esc(PERMS[p.mode] || p.mode)}</span></button>`
+    + `<button onclick="menuAt(this, contItems())" title="Clear & continue mode">${icon('loop')}<span class="lb">${esc(MODES[p.cont][0])}</span></button>`
+    + (ctx[cur] != null ? `<span title="Context window used (last seen)"><span class="lb">context</span><span class="ab">ctx</span> ${ctx[cur]}%</span>` : '') + meter('five_hour', '5h') + meter('seven_day', '7d')
     + (p.questions.length ? `<button onclick="showQuestions(cur)" style="color:var(--accent)">${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting</button>` : '');
   const sendBtn = $('send');
   sendBtn.innerHTML = busy[cur] && !hasInput() ? icon('stop') : icon('up');
@@ -579,10 +583,10 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   line: () => { if (d.kind === 'claude') live[d.pid] = ''; addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail}); },
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
-  status: () => { if ('busy' in d) busy[d.pid] = d.busy; if ('context' in d) ctx[d.pid] = d.context; if (d.busy === false) live[d.pid] = '';
+  status: () => { if ('busy' in d) busy[d.pid] = d.busy; if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); } if (d.busy === false) live[d.pid] = '';
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
-  cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; ctx[d.pid] = null; live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   ready: () => refresh().then(() => d.pid === cur && drawLog()),
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
   queued: () => refresh(),
@@ -1044,6 +1048,7 @@ function aiPage() {
       ${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : 'setup-token'}</small>
       ${a.pool ? `<span class="pill">${esc(a.pool)}</span>` : ''}${a.id === S.default_account ? '<span class="pill">default</span>' : ''}<span class="grow"></span>${meter(u.five_hour, '5h')} ${meter(u.seven_day, 'week')}</summary>
       <div><div class="grid2">
+        <span>Name</span><input value="${esc(a.nick)}" onchange="this.value.trim() && acct('${esc(a.id)}', {nick:this.value.trim()})">
         <span>Limits</span><span class="row wrap">5-hour <input type="number" min="1" max="100" value="${a.limits.five_hour}" style="width:70px" onchange="acct('${esc(a.id)}', {limits:{...limitsOf('${esc(a.id)}'), five_hour:+this.value}})">%
           weekly <input type="number" min="1" max="100" value="${a.limits.seven_day}" style="width:70px" onchange="acct('${esc(a.id)}', {limits:{...limitsOf('${esc(a.id)}'), seven_day:+this.value}})">%</span>
         <span></span><small class="dim" style="margin-top:-6px">Auto mode switches account or pauses here; held questions show then.</small>
@@ -1054,7 +1059,7 @@ function aiPage() {
       <div class="label">Skills for new projects</div><div class="box">${cxList('skill', a.id, a)}</div>
       <div class="btns">${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
-    + `<div class="label" style="margin-top:10px">Add an account</div><div class="row" style="margin-top:8px"><input id="nick" class="grow" placeholder="Name, e.g. Work"><button class="btn primary" onclick="addClaude()">Sign in with Claude</button></div>
+    + `<div class="label" style="margin-top:10px">Add an account</div><div class="row" style="margin-top:8px"><input id="nick" class="grow" placeholder="Name (optional), e.g. Work"><button class="btn primary" onclick="addClaude()">Sign in with Claude</button></div>
     <details style="margin-top:8px"><summary class="dim" style="cursor:pointer">Or paste a token from <code>claude setup-token</code></summary><div class="row" style="margin-top:6px"><input id="token" class="grow mono" placeholder="sk-ant-oat01-…"><button class="btn" onclick="pasteClaude()">Add</button></div></details>
     <p id="loginMsg" class="dim"></p>`;
 }
