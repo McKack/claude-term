@@ -124,6 +124,15 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .varrow.l { left:14px; } .varrow.l svg { rotate:180deg; } .varrow.r { right:14px; }
 .ednote { position:absolute; width:220px; font-size:12.5px; padding:4px 8px; border:2px solid; border-radius:8px; background:var(--card); }
 .thumbs img { cursor:zoom-in; }
+/* shell commands in chat: a little dark terminal window, same in both themes */
+.termcard { background:#161514; border:1px solid #2e2c2a; border-radius:10px; overflow:hidden; box-shadow:var(--shadow); margin:3px 0; max-width:100%; }
+.termcard .tbar { display:flex; align-items:center; gap:6px; padding:6px 8px 6px 10px; background:#201f1d; color:#8c877e; font-size:11.5px; }
+.termcard .tbar i { width:10px; height:10px; border-radius:50%; background:#ff5f57; flex:none; } .termcard .tbar i:nth-child(2) { background:#febc2e; } .termcard .tbar i:nth-child(3) { background:#28c840; }
+.termcard .tbar span { flex:1; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.termcard .cp { border:0; border-radius:6px; background:#2e2c2a; color:#d8d4cb; font-size:11px; padding:2px 8px; cursor:pointer; } .termcard .cp:hover { background:#3a3835; }
+.termcard pre { margin:0; padding:9px 12px; color:#d8d4cb; font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:9em; overflow:auto; cursor:pointer; }
+.sh-p { color:#8c877e; } .sh-c { color:#f0c674; font-weight:600; } .sh-s { color:#a8d982; } .sh-v { color:#8fb8ff; } .sh-f { color:#c49cf0; } .sh-o { color:#f28b82; } .sh-m { color:#7a756c; font-style:italic; }
+pre.termout { background:#161514; color:#d8d4cb; padding:8px 12px; } pre.errout { color:var(--err); }
 .small-dlg.wide { width:min(820px,94vw); }
 pre.diff { margin:0; padding:8px 0; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; white-space:pre; }
 pre.diff span { display:block; padding:0 10px; } pre.diff .del { background:color-mix(in srgb, var(--err) 14%, transparent); }
@@ -776,6 +785,8 @@ function put(box, e) {
   if (e.kind === 'tool' && view === 'chat') {
     let g = box.lastElementChild;
     if (!g || !g.classList.contains('tools')) { g = document.createElement('div'); g.className = 'tools'; box.appendChild(g); }
+    // shell commands: a small terminal window each (title bar, prompt, colours, Copy); click → details + output
+    if (/^(Bash|PowerShell)\b/.test(e.text) && typeof e.detail?.command === 'string') return g.appendChild(termCard(e));
     // one line per file (else per identical call) in this run of tool lines; touched again → moves to the bottom
     const d = e.detail || {}, f = d.file_path || d.notebook_path || d.path, key = f ? 'f:' + f : 't:' + e.text;
     let line = [...g.children].find(x => x.dataset.k === key);
@@ -833,6 +844,29 @@ function chatRow(kind, inner, ts) {
   w.querySelector('.cb').append(inner);
   return w;
 }
+// ponytail: shell colouring by regex (strings, $vars, -flags, | ; && operators, # comments, command words); not a parser
+function shHi(src) {
+  const re = /("(?:[^"\\]|\\.)*"?|'[^']*'?)|(\$\{[^}]*\}|\$[\w:]+)|((?<=\s)--?[A-Za-z][\w-]*)|(\|\||&&|[|;])|((?:^|(?<=\s))#[^\n]*)/g;
+  let out = '', i = 0, cmd = true; // cmd: the next bare word starts a command
+  const plain = t => { const m = cmd && /^(\s*)(\S+)/.exec(t);
+    if (!m) return esc(t); cmd = false; return esc(m[1]) + `<span class="sh-c">${esc(m[2])}</span>` + esc(t.slice(m[0].length)); };
+  for (const m of src.matchAll(re)) {
+    out += plain(src.slice(i, m.index)); i = m.index + m[0].length;
+    const k = m[1] ? 's' : m[2] ? 'v' : m[3] ? 'f' : m[4] ? 'o' : 'm';
+    out += `<span class="sh-${k}">${esc(m[0])}</span>`;
+    if (k === 'o') cmd = true; else if (k !== 'm') cmd = false;
+  }
+  return out + plain(src.slice(i));
+}
+function termCard(e) {
+  const shell = e.text.replace(/^↳ /, '').split(' ')[0], d = e.detail, el = document.createElement('div');
+  el.className = 'termcard';
+  el.innerHTML = `<div class="tbar"><i></i><i></i><i></i><span>${esc(shell)}${d.description ? ' — ' + esc(d.description) : ''}</span><button class="cp" title="Copy the command">Copy</button></div>
+    <pre title="Show details and output"><span class="sh-p">${shell === 'PowerShell' ? 'PS&gt;' : '$'}</span> ${shHi(d.command)}</pre>`;
+  el.querySelector('.cp').onclick = ev => { ev.stopPropagation(); navigator.clipboard.writeText(d.command); ev.target.textContent = 'Copied'; setTimeout(() => ev.target.textContent = 'Copy', 1200); };
+  el.querySelector('pre').onclick = () => toolDlg([e], shell);
+  return el;
+}
 // ponytail: diff = common head/tail lines as context, the middle as -/+ blocks (no LCS); enough for Edit's small hunks
 function diff(a = '', b = '') {
   const x = a ? a.split('\n') : [], y = b ? b.split('\n') : [];
@@ -849,7 +883,10 @@ function toolDlg(es, title = es[0].text) {
     if ('old_string' in d) return diff(d.old_string, d.new_string);
     if (Array.isArray(d.edits)) return d.edits.map(x => diff(x.old_string, x.new_string)).join('');
     if (typeof d.content === 'string') return diff('', d.content);
-    return `<pre class="diff">${esc(d.command ?? JSON.stringify(d, null, 2))}</pre>`; })(e.detail || {})).join('');
+    // a command: coloured, then its output (the tool result paired by id, live sessions only)
+    const out = e.id && (logs[cur] || []).find(x => x.result_of === e.id);
+    if (typeof d.command === 'string') return `<pre class="diff termout">${shHi(d.command)}</pre>` + (out ? `<pre class="diff ${out.kind === 'err' ? 'errout' : ''}">${esc(out.text)}</pre>` : '');
+    return `<pre class="diff">${esc(JSON.stringify(d, null, 2))}</pre>`; })(e.detail || {})).join('');
   dlg(`<h2 class="mono" style="margin:0 0 10px;font-size:14px;overflow-wrap:anywhere">${esc(title)}${es.length > 1 ? ` <span class="pill">×${es.length}</span>` : ''}</h2>
     <div style="max-height:65vh;overflow:auto;display:grid;gap:8px">${body}</div>
     <div class="btns"><button class="btn primary" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');
