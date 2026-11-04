@@ -212,6 +212,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 .fold > summary { list-style:none; cursor:pointer; user-select:none; } .fold > summary::-webkit-details-marker { display:none; }
 .fold > summary > .i { width:14px; height:14px; color:var(--faint); transition:rotate .15s; } .fold[open] > summary > .i { rotate:90deg; }
 .fold > summary:hover .label { color:var(--dim); } .fold:not([open]) { margin-bottom:8px; } .sh .pill { margin-right:2px; }
+.prefs .fold { margin:16px 0 0; } .prefs .fold > .sc { background:none; border:0; padding:0; display:block; } /* settings: body keeps its own box */
 .sc { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:10px; min-width:0; }
 .sc > p, .sc > ol, .sc .warn { margin:0; } .sc p.dim { font-size:13px; }
 .list > .item { padding:0 0 10px; margin-bottom:10px; } .list > .item:last-child { border:0; padding:0; margin:0; }
@@ -1268,20 +1269,19 @@ function projectsPage() {
       <span>Clear & continue</span><select onchange="setM({cont:this.value})">${options(Object.fromEntries(Object.entries(MODES).map(([k, v]) => [k, v[0]])), p.cont)}</select>
       <span>Hand over at</span><span class="row"><input type="number" min="0" max="95" value="${p.context_limit}" style="width:76px" onchange="setM({context_limit:+this.value})"><small class="dim">% of the context window (0 = never)</small></span>
     </div>
-    <div class="label">Token savers</div><div class="box">
+    ${fold('p-save', 'Options', `<div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
       ${(p.allow || []).length ? optRow('Always allowed', 'Tools this project runs without asking', `<span class="row wrap" style="gap:4px">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t)} ✕</span>`).join('')}</span>`) : ''}
       ${optRow('Credit Claude in commits', 'Off: no Co-Authored-By or "Generated with" lines; Claude never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
       ${p.gh ? optRow('Prompts become team tasks', 'Each task you give Claude is filed as a GitHub issue (Team tasks), claimed while it works and closed when done', sw(p.team_auto, 'setM({team_auto:this.checked})')) : ''}
       ${optRow('Keep .env away from Claude', 'Claude can\'t read or edit .env files; manage them in the .env panel', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
-    </div>
-    <div class="label">Build</div>
-    <div class="grid2">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
+    </div>`, [p.ponytail, p.terse, p.ai_credit, p.gh && p.team_auto, p.hide_env].filter(Boolean).length + ' on')}
+    ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
       <span>After each task</span><select onchange="setBuild('after', this.value)">${options({'': 'Nothing', build: 'Build', build_run: 'Build + run', build_deploy: 'Build + deploy'}, p.build.after)}</select>
-      <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Claude to fix</small></label></div>
-    <div class="label">Connections</div><div class="box">${items('mcp')}</div>
-    <div class="label">Skills</div><div class="box">${items('skill')}</div>
+      <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Claude to fix</small></label></div>`,
+      ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3')}
+    ${cxFold('p-mcp', 'Connections', 'mcp', 'project:' + p.id, p)}${cxFold('p-skill', 'Skills', 'skill', 'project:' + p.id, p)}
     <div class="btns" style="justify-content:space-between"><button class="btn" onclick="removeProject()">Remove project</button><button class="btn primary" onclick="closeDlg()">Done</button></div></div></div>`;
 }
 const setBuild = (k, v) => setM({build: {...P(mp).build, [k]: v}});
@@ -1679,7 +1679,12 @@ const builtin = id => /^skill:(clauracle|ponytail):/.test(id);
 // what a project/account has on; one from before allow-lists (`on` null) has everything but its `off`
 const onOf = x => x.on ?? SET.catalog.map(i => i.id).filter(id => !x.off.includes(id));
 // global rows switch an item off everywhere; scoped rows (account id | project:<id>) pick it for that one
-const cxList = (kind, scope, x) => SET.catalog.filter(i => i.kind === kind && (scope === 'global' || (!SET.off.includes(i.id) && !builtin(i.id)))).map(i =>
+const cxItems = (kind, scope) => SET.catalog.filter(i => i.kind === kind && (scope === 'global' || (!SET.off.includes(i.id) && !builtin(i.id))));
+const cxCount = (kind, scope, x) => { const xs = cxItems(kind, scope);
+  return `${xs.filter(i => scope === 'global' ? !SET.off.includes(i.id) : onOf(x).includes(i.id)).length}/${xs.length}`; };
+// settings section that folds; title + "on/total" pill; key unique per page/scope
+const cxFold = (key, title, kind, scope, x) => fold(key, title, `<div class="box">${cxList(kind, scope, x)}</div>`, cxCount(kind, scope, x));
+const cxList = (kind, scope, x) => cxItems(kind, scope).map(i =>
   optRow(esc(i.label), esc(i.note), scope === 'global' ? sw(!SET.off.includes(i.id), `setGlobalOff('${esc(i.id)}', !this.checked)`)
     : sw(onOf(x).includes(i.id), `toggleOn('${esc(scope)}', '${esc(i.id)}', this.checked)`))).join('') || '<p class="dim">None.</p>';
 function setGlobalOff(id, off) {
@@ -1728,8 +1733,7 @@ async function askLegacy(pid) {
 function cxPage() {
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
     <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => reloadSettings())">${icon('loop')}Rescan</button></p>
-    <div class="label">Connections</div><div class="box">${cxList('mcp', 'global')}</div>
-    <div class="label">Skills</div><div class="box">${cxList('skill', 'global')}</div>`;
+    ${cxFold('g-mcp', 'Connections', 'mcp', 'global')}${cxFold('g-skill', 'Skills', 'skill', 'global')}`;
 }
 function agentsPage() {
   return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to Claude until you switch them on (top right).'}</p>`
@@ -1758,8 +1762,7 @@ function aiPage() {
         <span>Pool</span><input list="pools" value="${esc(a.pool)}" placeholder="None" onchange="acct('${esc(a.id)}', {pool:this.value.trim()})">
         <span>GitHub for new projects</span><select onchange="acct('${esc(a.id)}', {gh:this.value})">${options({'': 'None', ...Object.fromEntries(ghUsers.map(g => [g, '@' + g]))}, a.gh)}</select>
       </div>
-      <div class="label">Connections for new projects</div><div class="box">${cxList('mcp', a.id, a)}</div>
-      <div class="label">Skills for new projects</div><div class="box">${cxList('skill', a.id, a)}</div>
+      ${cxFold('a-mcp', 'Connections for new projects', 'mcp', a.id, a)}${cxFold('a-skill', 'Skills for new projects', 'skill', a.id, a)}
       <div class="btns">${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
     + `<div class="label" style="margin-top:10px">Add an account</div><div class="row" style="margin-top:8px"><input id="nick" class="grow" placeholder="Name (optional), e.g. Work"><button class="btn primary" onclick="addClaude()">Sign in with Claude</button></div>
