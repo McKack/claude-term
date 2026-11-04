@@ -157,14 +157,18 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 #dock { padding:40px 24px 14px; margin-top:-40px; position:relative; z-index:2; pointer-events:none;
   background:linear-gradient(to bottom, transparent, var(--bg) 40px); }
 #dock .col > * { pointer-events:auto; }
-#workpill, #handpill, #ready, #suggest, .qmsg { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:48px; }
+#workpill, #handpill, #ready, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:48px; }
 #log.term + #dock { background:linear-gradient(to bottom, transparent, #151412 40px); }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
   color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
 #dock .col { gap:8px; }
-#queue { display:flex; flex-direction:column; gap:4px; } #queue:empty { display:none; }
-.qmsg { display:flex; gap:8px; align-items:center; padding:4px 6px 4px 10px; border:1px dashed var(--line2); border-radius:12px; font-size:13px; background:var(--card); }
-.qmsg .grow { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; } .qmsg .ib { width:26px; height:26px; }
+#queue { display:flex; gap:4px; align-items:center; } #queue .qnav { display:none; width:26px; height:26px; flex:none; } #queue.over .qnav { display:grid; }
+#queue .qnav.l svg { rotate:180deg; }
+#qrow { display:flex; gap:6px; overflow:hidden; flex:1; min-width:0; scroll-behavior:smooth; }
+.qp { display:inline-flex; gap:2px; align-items:center; flex:none; max-width:300px; padding:2px 2px 2px 3px; border:1px dashed var(--line2); border-radius:99px; font-size:12.5px; background:var(--card); cursor:pointer; }
+.qp:hover { border-color:var(--accent); } .qp .ib { width:22px; height:22px; } .qp .ib svg { width:13px; height:13px; }
+.qp .qi { display:inline-grid; place-items:center; width:24px; height:20px; border-radius:99px; background:var(--soft); color:var(--accent); flex:none; } .qp .qi svg { width:12px; height:12px; }
+.qp .qt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; padding:0 4px; }
 #workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; }
 #workpill[hidden], #handpill[hidden] { display:none; }
 #handpill, #workpill { align-self:center; font-size:12.5px; color:var(--dim); padding:5px 16px; border-radius:99px; border:1px solid var(--line);
@@ -359,7 +363,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="dock" hidden><div class="col">
     <div id="handpill" hidden>Preparing handover…</div>
     <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Working…</span></div>
-    <div id="queue"></div>
+    <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" onclick="cont_()">Continue</button></div>
     <div id="composer">
@@ -367,6 +371,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
       <div id="atts"></div>
       <textarea id="prompt" rows="1" placeholder="Message Claude…"></textarea>
       <div class="tb">
+        <button class="btn ghost sm" id="cancelEdit" hidden title="Put the queued message back, unchanged, in its place" onclick="cancelEdit()"><svg class="i"><use href="#i-x"/></svg>Cancel edit</button>
         <button class="ib" title="Attach files" onclick="pickFiles()"><svg class="i"><use href="#i-clip"/></svg></button>
         <button class="ib" id="tPony" title="Ponytail: the simplest code that works" onclick="setP({ponytail:!P().ponytail})"><svg class="i"><use href="#i-feather"/></svg></button>
         <button class="ib" id="tCont" title="Clear & continue mode" onclick="menuAt(this, contItems())"><svg class="i"><use href="#i-loop"/></svg></button>
@@ -642,7 +647,7 @@ async function openProject(pid) {
   cur = pid;
   $('prompt').value = texts[pid] || '';
   $('head').hidden = $('dock').hidden = $('right').hidden = false; $('suggest').hidden = true; grow(); // measure once visible
-  drawProjects(); drawChrome(); drawAtts(); drawQueue();
+  drawProjects(); drawChrome(); drawAtts(); drawQueue(); drawEditBar();
   const info = await call('open_project', {pid});
   if (!logs[pid]) logs[pid] = info.history.length ? [...info.history, {kind: 'note', text: 'Resumed session'}] : [];
   busy[pid] = info.busy;
@@ -911,27 +916,49 @@ T.event.listen('tauri://drag-drop', e => { $('composer').classList.remove('drop'
 function send() {
   const t = $('prompt').value, a = atts[cur] || [];
   if (!t.trim() && !a.length) return;
-  $('prompt').value = ''; atts[cur] = []; grow(); drawAtts();
-  if (busy[cur]) { (queue[cur] ||= []).push({text: t, atts: a}); drawQueue(); keepDraft(); }
+  const ed = editing[cur]; delete editing[cur];
+  $('prompt').value = ed ? ed.prev.text : ''; atts[cur] = ed ? ed.prev.atts : []; grow(); drawAtts(); drawEditBar();
+  const q = queue[cur] ||= [];
+  if (busy[cur]) q.splice(ed ? ed.i : q.length, 0, {text: t, atts: a}); // an edited one goes back to its place
   else sendNow(cur, {text: t, atts: a});
+  drawQueue(); keepDraft();
+}
+// a queued message being edited holds the queue (nothing auto-sends) until it's sent or the edit is cancelled
+const editing = {}; // pid → {i: its place, m: the original, prev: what the composer held before}
+function cancelEdit() {
+  const e = editing[cur]; if (!e) return;
+  delete editing[cur]; queue[cur].splice(e.i, 0, e.m);
+  $('prompt').value = e.prev.text; atts[cur] = e.prev.atts;
+  drawQueue(); drawAtts(); grow(); drawEditBar(); keepDraft(); flushQueue(cur);
+}
+const drawEditBar = () => { $('cancelEdit').hidden = !editing[cur]; };
+function flushQueue(pid) {
+  if (busy[pid] || editing[pid] || !queue[pid]?.length) return;
+  sendNow(pid, queue[pid].shift()); if (pid === cur) drawQueue(); keepDraft(pid);
 }
 function sendNow(pid, {text: t, atts: a}) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
   addEntry(pid, {kind: 'user', text: t + (files.length ? `\n📎 ${files.map(f => f.split(/[\\/]/).pop()).join(', ')}` : ''), images: images.map(x => ({url: x.url, name: x.name}))});
   call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files});
 }
+// one row of pills (first words; click = edit), ‹ › scroll it when it overflows
 function drawQueue() {
-  const q = queue[cur] || [];
-  $('queue').innerHTML = q.map((m, i) => `<div class="qmsg"><span class="pill">Queued</span><span class="grow" title="${esc(m.text)}">${esc(m.text || m.atts.map(x => x.name).join(', '))}</span>
-    <button class="ib" title="Edit (↑ in an empty box)" onclick="editQueued(${i})">${icon('new')}</button>
-    <button class="ib" title="Send now (joins the running turn's inbox)" onclick="sendNow(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft()">${icon('up')}</button>
-    <button class="ib" title="Remove" onclick="queue[cur].splice(${i},1); drawQueue(); keepDraft()">${icon('x')}</button></div>`).join('');
+  const q = queue[cur] || [], words = m => (m.text.trim().split(/\s+/).slice(0, 5).join(' ') || m.atts.map(x => x.name).join(', ')) + (m.text.trim().split(/\s+/).length > 5 ? '…' : '');
+  $('queue').hidden = !q.length;
+  $('qrow').innerHTML = q.map((m, i) => `<span class="qp" title="${esc(m.text)}" onclick="editQueued(${i})"><span class="qi">${icon('clock')}</span><span class="qt">${esc(words(m))}</span>
+    <button class="ib" title="Edit (↑ in an empty box)" onclick="event.stopPropagation(); editQueued(${i})">${icon('new')}</button>
+    <button class="ib" title="Send now (joins the running turn's inbox)" onclick="event.stopPropagation(); sendNow(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft()">${icon('up')}</button>
+    <button class="ib" title="Remove" onclick="event.stopPropagation(); queue[cur].splice(${i},1); drawQueue(); keepDraft()">${icon('x')}</button></span>`).join('');
+  requestAnimationFrame(() => { const r = $('qrow'); $('queue').classList.toggle('over', r.scrollWidth > r.clientWidth + 1); });
 }
-// back into the composer (what was typed there stays, after it)
+const qscroll = d => $('qrow').scrollBy({left: d * $('qrow').clientWidth * .8, behavior: 'smooth'});
+// into the composer; what was there comes back after send/cancel
 function editQueued(i) {
+  if (editing[cur]) cancelEdit();
   const [m] = queue[cur].splice(i, 1), p = $('prompt');
-  p.value = m.text + (p.value ? '\n' + p.value : ''); atts[cur] = [...m.atts, ...(atts[cur] || [])];
-  drawQueue(); drawAtts(); grow(); p.focus();
+  editing[cur] = {i, m, prev: {text: p.value, atts: atts[cur] || []}};
+  p.value = m.text; atts[cur] = [...m.atts];
+  drawQueue(); drawAtts(); grow(); drawEditBar(); p.focus();
 }
 // /commands: list from the session's initialize answer; typing "/x" filters, ↑↓ moves, Tab/Enter fills in, Esc hides
 const cmds = {}; let slashSel = 0;
@@ -966,7 +993,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
   status: () => { if ('busy' in d) busy[d.pid] = d.busy;
-    if (d.busy === false && queue[d.pid]?.length) { sendNow(d.pid, queue[d.pid].shift()); if (d.pid === cur) drawQueue(); keepDraft(d.pid); } if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); } if (d.busy === false) live[d.pid] = '';
+    if (d.busy === false) flushQueue(d.pid); if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); } if (d.busy === false) live[d.pid] = '';
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
