@@ -857,6 +857,16 @@ fn ships_mac(st: St, pid: String) -> R<bool> {
         .any(|e| std::fs::read_to_string(e.path()).is_ok_and(|t| t.to_lowercase().contains("macos"))))
 }
 
+/// Bundle ID (= Apple App ID) from the project's config: Tauri `identifier`, Capacitor `appId`, Expo ios.bundleIdentifier.
+#[tauri::command]
+fn bundle_id(st: St, pid: String) -> R<Option<String>> {
+    let root = std::path::PathBuf::from(st.project(&pid).ok_or("no such project")?.path);
+    let j = |f: &str| std::fs::read_to_string(root.join(f)).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).unwrap_or_default();
+    // ponytail: JSON configs only; Xcode pbxproj / Info.plist / Gradle when a project needs them
+    Ok([j("src-tauri/tauri.conf.json")["identifier"].clone(), j("capacitor.config.json")["appId"].clone(), j("app.json")["expo"]["ios"]["bundleIdentifier"].clone()]
+        .into_iter().find_map(|v| v.as_str().map(String::from)))
+}
+
 /// Names of the repo's GitHub Actions secrets.
 #[tauri::command]
 fn gh_secrets(st: St, pid: String) -> R<Vec<String>> {
@@ -1174,7 +1184,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, apple_csr, apple_p12, ships_mac, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_p12, ships_mac, bundle_id, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

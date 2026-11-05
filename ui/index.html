@@ -1887,10 +1887,14 @@ const SERVICES = {
   macsign: {name: 'Mac signing', note: 'Developer ID: Mac builds open without the "unidentified developer" block', gh: true,
     keys: ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_TEAM_ID', 'APPLE_ID', 'APPLE_PASSWORD'],
     steps: ['Make signing request (below): it opens the folder with devid.csr', 'Certificates › + › Developer ID Application (G2 Sub-CA), upload devid.csr, download the .cer',
-      'Load the .cer (below): fills the first four keys', 'Make an app-specific password, then fill APPLE_ID (your Apple account email) and APPLE_PASSWORD', 'Send to GitHub: CI then signs and notarizes Mac builds'],
-    links: [['Certificates', 'https://developer.apple.com/account/resources/certificates/add'], ['App-specific password', 'https://account.apple.com/account/manage']]},
+      'Load the .cer (below): fills the first four keys', 'Make an app-specific password, then fill APPLE_ID (your Apple account email) and APPLE_PASSWORD', 'Send to GitHub: CI then signs and notarizes Mac builds',
+      'Optional: register the App ID (Bundle ID below) only if the app uses capabilities like iCloud or push'],
+    links: [['Certificates', 'https://developer.apple.com/account/resources/certificates/add'], ['App-specific password', 'https://account.apple.com/account/manage'], ['Register App ID', 'https://developer.apple.com/account/resources/identifiers/add/bundleId']]},
   appstore: {name: 'App Store Connect', note: 'iOS / macOS releases', keys: ['ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_PRIVATE_KEY'],
-    steps: ['Make the app record', 'Integrations: make an API key (for uploads from CI)'], links: [['Apps', 'https://appstoreconnect.apple.com/apps'], ['API keys', 'https://appstoreconnect.apple.com/access/integrations/api']]},
+    steps: ['Identifiers › + › App IDs › App: Explicit, paste the Bundle ID below, tick the capabilities the app uses', 'Certificates › + › Apple Distribution (iOS) or Mac App Distribution + Mac Installer Distribution (macOS)',
+      'Profiles › + › App Store Connect: pick the App ID and certificate, download the profile', 'Make the app record with the same Bundle ID', 'Integrations: make an API key (for uploads from CI)'],
+    links: [['Register App ID', 'https://developer.apple.com/account/resources/identifiers/add/bundleId'], ['Certificates', 'https://developer.apple.com/account/resources/certificates/add'], ['Profiles', 'https://developer.apple.com/account/resources/profiles/add'],
+      ['Apps', 'https://appstoreconnect.apple.com/apps'], ['API keys', 'https://appstoreconnect.apple.com/access/integrations/api']]},
   play: {name: 'Google Play', note: 'Android releases', keys: ['PLAY_SERVICE_ACCOUNT_JSON'],
     steps: ['Make the app', 'Make a service account in Google Cloud, invite it in Play Console under Users and permissions'], links: [['Play Console', 'https://play.google.com/console']]},
   steam: {name: 'Steam', note: 'Game releases', keys: ['STEAM_APP_ID', 'STEAM_WEB_API_KEY'],
@@ -1901,10 +1905,12 @@ async function svcAdd(id) { await setP({services: [...svcOf(P()), id]}); await r
 async function svcRemove(id) { await setP({services: svcOf(P()).filter(x => x !== id)}); await refresh(); drawRight(); }
 const svcMenu = el => menuAt(el, Object.entries(SERVICES).filter(([id]) => !svcOf(P()).includes(id)).map(([id, x]) => ({label: x.name, hint: x.note, run: () => svcAdd(id)})));
 let envKeys = {files: [], have: new Set()};
+const BUNDLE = {}; // pid → bundle ID, cached per app run ∵ file reads; restart after editing the config
 async function drawServices() {
   const box = $('rbody'), p = P(), ids = svcOf(p);
   const files = await call('env_list', {pid: cur}).catch(() => []);
   envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))};
+  if ((ids.includes('macsign') || ids.includes('appstore')) && !(cur in BUNDLE)) BUNDLE[cur] = await call('bundle_id', {pid: cur}).catch(() => null);
   if (tab !== 'svc') return;
   const add = `<button class="ib" title="Add a service" onclick="svcMenu(this)">${icon('plus')}</button>`;
   if (!ids.length) {
@@ -1916,6 +1922,7 @@ async function drawServices() {
     return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px"><p class="dim">Asking gcloud…</p></div>' : '')
       + (x.steps ? `<ol class="steps">${x.steps.map(t => `<li>${esc(t)}</li>`).join('')}</ol>` : '')
       + (x.links ? `<div class="btnrow">${x.links.map(([l, u]) => `<button class="btn sm" data-url="${esc(u)}">${esc(l)}</button>`).join('')}</div>` : '')
+      + (id === 'macsign' || id === 'appstore' ? `<div class="keys"><div><span>Bundle ID</span><small class="${BUNDLE[cur] ? '' : 'faint'}">${BUNDLE[cur] ? `<a href="#" title="Copy" onclick="copy(BUNDLE[cur]);return false">${esc(BUNDLE[cur])}</a>` : 'not found (set identifier in tauri.conf.json)'}</small></div></div>` : '')
       + `<div class="keys">${x.keys.map(k => `<div><span>${k}</span>${envKeys.have.has(k) ? '<small class="ok">set</small>' : '<small class="faint">missing</small>'}</div>`).join('')}</div>`
       + (id === 'macsign' ? `<div class="btnrow"><button class="btn sm" onclick="appleCsr()">Make signing request</button><button class="btn sm" onclick="appleCer()">Load .cer…</button></div>` : '')
       + (miss.length ? `<button class="btn primary block" onclick="fillKeys('${id}')">${icon('key')}Fill in ${miss.length} key${miss.length > 1 ? 's' : ''}</button>` : '')
