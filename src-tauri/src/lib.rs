@@ -977,6 +977,37 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
     }).await.map_err(|e| e.to_string())
 }
 
+/// Release panel "Set version": swaps the version in every version file that exists (first `version` key/line only,
+/// formatting kept). Cargo.lock follows on the next cargo build.
+#[tauri::command(async)]
+fn version_set(st: St, pid: String, v: String) -> R<Vec<String>> {
+    if v.is_empty() || !v.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c)) { return Err("bad version".into()); }
+    let root = std::path::PathBuf::from(&st.project(&pid).ok_or("no such project")?.path);
+    let mut done = vec![];
+    for f in ["src-tauri/tauri.conf.json", "package.json", "Cargo.toml", "src-tauri/Cargo.toml", "pyproject.toml"] {
+        let Ok(t) = std::fs::read_to_string(root.join(f)) else { continue };
+        if let Some(n) = swap_version(&t, &v) { std::fs::write(root.join(f), n).map_err(|e| e.to_string())?; done.push(f.to_string()); }
+    }
+    if done.is_empty() { Err("no version found (tauri.conf.json / package.json / Cargo.toml / pyproject.toml)".into()) } else { Ok(done) }
+}
+/// json: first `"version": "x"`; toml: first line `version = "x"` (= [package] in practice). None = no version there.
+fn swap_version(t: &str, v: &str) -> Option<String> {
+    let at = t.find("\"version\"").or_else(|| t.lines().scan(0, |o, l| { let s = *o; *o += l.len() + 1; Some((s, l)) })
+        .find(|(_, l)| l.starts_with("version") && l[7..].trim_start().starts_with('=')).map(|(s, _)| s))?;
+    let q1 = at + t[at..].find(['=', ':'])? + 1;
+    let q1 = q1 + t[q1..].find('"')? + 1;
+    let q2 = q1 + t[q1..].find('"')?;
+    Some(format!("{}{v}{}", &t[..q1], &t[q2..]))
+}
+#[cfg(test)]
+#[test]
+fn swap_version_works() {
+    assert_eq!(swap_version("{\n  \"name\": \"a\",\n  \"version\": \"0.1.0\"\n}", "0.1.1").unwrap(), "{\n  \"name\": \"a\",\n  \"version\": \"0.1.1\"\n}");
+    assert_eq!(swap_version("[package]\nname = \"x\"\nversion = \"0.1.0\"\n[dependencies]\nfoo = { version = \"1\" }", "0.2.0").unwrap(),
+               "[package]\nname = \"x\"\nversion = \"0.2.0\"\n[dependencies]\nfoo = { version = \"1\" }");
+    assert!(swap_version("[workspace]\nmembers = []", "1.0.0").is_none());
+}
+
 /// Writes a new bundle ID into the config file it was found in (string swap keeps formatting).
 #[tauri::command(async)]
 fn bundle_id_set(st: St, pid: String, id: String) -> R<()> {
@@ -1340,7 +1371,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

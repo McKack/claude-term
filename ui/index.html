@@ -1818,21 +1818,43 @@ async function commitPush() {
 // Publish only with at least one file. Tag suggested as the last one +1 patch.
 const ago = s => { const m = (Date.now() / 1000 - s) / 60; return m < 60 ? `${Math.max(1, m | 0)} min ago` : m < 1440 ? `${m / 60 | 0} h ago` : `${m / 1440 | 0} d ago`; };
 const mb = n => n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.ceil(n / 1e3) + ' kB';
+// version in a file name (Clauracle_0.1.0_x64-setup.exe → 0.1.0); a tag's version = tag minus leading v
+const fver = n => n.match(/\d+\.\d+\.\d+/)?.[0] || '', tver = t => t.replace(/^v/i, '');
+const vgt = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
 function releaseSec(r, builds = []) {
-  const last = r?.tagName || '', next = last ? last.replace(/(\d+)(?!.*\d)/, n => +n + 1) : 'v0.1.0';
+  // tag default: project version (release_check, if cached) when ahead of the last tag, else last +1 patch
+  const last = r?.tagName || '', pv = RELC[cur]?.c?.version || '',
+    next = pv && (!last || vgt(pv, fver(last))) ? 'v' + pv : last ? last.replace(/(\d+)(?!.*\d)/, n => +n + 1) : 'v0.1.0';
+  // tick newest build per file type whose version matches the tag (or carries none); builds come newest first
+  const seen = new Set(), tick = b => { const x = b.name.replace(/^[^.]*/, ''), v = fver(b.name); if (seen.has(x) || (v && v !== tver(next))) return false; seen.add(x); return true; };
   const row = (b, on) => `<label class="check" title="${esc(b.path)}"><input type="checkbox" value="${esc(b.path)}" ${on ? 'checked' : ''} onchange="relReady()">
     <span class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(b.name)}<small class="dim" style="display:block">${b.mtime ? ago(b.mtime) + ' · ' : ''}${b.size ? mb(b.size) : 'added'}</small></span></label>`;
   return fold('release', 'Release', `${last ? `<p class="dim">Latest: <a data-url="${esc(r.url)}" style="cursor:pointer;color:var(--accent)">${esc(last)}</a></p>` : '<p class="dim">No releases yet.</p>'}
     <label class="fl">Version tag<input id="relTag" value="${esc(next)}" oninput="relReady()"></label>
     <div class="label" style="margin:0">Files</div>
-    <div id="relBox">${builds.map((b, k) => row(b, k === 0)).join('') + relFiles.map(f => row({path: f, name: f.split(/[\\/]/).pop()}, true)).join('')
+    <div id="relBox">${builds.map(b => row(b, tick(b))).join('') + relFiles.map(f => row({path: f, name: f.split(/[\\/]/).pop()}, true)).join('')
       || `<p class="dim" style="margin:0;font-size:13px">No recent builds found. ${P().build.build ? `<a style="cursor:pointer;color:var(--accent)" onclick="call('run_step', {pid:cur, step:'build'})">Build now</a>` : `<a style="cursor:pointer;color:var(--accent)" onclick="openManager(cur)">Set a build command</a>`}, or add files.</p>`}</div>
+    <p id="relWarn" class="dim" style="font-size:13px;margin:0"></p>
     <div class="btnrow"><button class="btn" onclick="pickRelFiles()">${icon('clip')}Add files</button><button class="btn primary" id="relGo" onclick="makeRelease(this)">${icon('rocket')}Publish</button></div>
     <p id="relErr" class="err" style="font-size:12.5px;margin:0"></p>`, builds.length);
 }
 let relFiles = [];
 const relPicked = () => [...document.querySelectorAll('#relBox input:checked')].map(c => c.value);
-const relReady = () => { if ($('relGo')) $('relGo').disabled = !relPicked().length || !$('relTag').value.trim(); };
+// Publish needs files + tag, and every picked file's version (if it has one) = the tag's: else warn + offer set-version-and-build
+function relReady() {
+  if (!$('relGo')) return;
+  const v = tver($('relTag').value.trim()), odd = relPicked().map(f => fver(f.split(/[\\/]/).pop())).filter(x => x && x !== v);
+  const none = ![...document.querySelectorAll('#relBox input')].some(c => fver(c.value.split(/[\\/]/).pop()) === v);
+  $('relGo').disabled = !relPicked().length || !v || odd.length > 0;
+  $('relWarn').innerHTML = odd.length || (none && /^\d+\.\d+\.\d+$/.test(v))
+    ? `${odd.length ? `Picked files are v${esc([...new Set(odd)].join(', v'))}, the tag is v${esc(v)}. ` : `No build of v${esc(v)} yet. `}${/^\d+\.\d+\.\d+$/.test(v) && P().build.build
+      ? `<a style="cursor:pointer;color:var(--accent)" onclick="relBump('${esc(v)}')">Set version to ${esc(v)} and build</a>` : 'Build that version first.'}` : '';
+}
+async function relBump(v) {
+  if (!await sure(`Set version to ${v} and build?\n\nWrites ${v} into the project's version files, then runs the build command.`, 'Set and build')) return;
+  try { const f = await call('version_set', {pid: cur, v}); addEntry(cur, {kind: 'note', text: `Version ${v} set in ${f.join(', ')}`}); delete RELC[cur]; call('run_step', {pid: cur, step: 'build'}); }
+  catch (e) { $('relErr').textContent = e; }
+}
 async function pickRelFiles() {
   const f = await T.dialog.open({multiple: true, defaultPath: P().path}); if (!f) return;
   relFiles = [...new Set(relFiles.concat(f))]; drawRight();
