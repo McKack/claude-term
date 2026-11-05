@@ -829,7 +829,7 @@ async function checkUpdate() {
 // yours first; repos owned by someone else (collaborations) in their own group
 function drawProjects() {
   const mine = S.projects.filter(p => !p.shared), shared = S.projects.filter(p => p.shared);
-  $('projects').innerHTML = (mine.map(projRow).join('') || (shared.length ? '' : '<p class="faint" style="padding:4px 10px;font-size:13px">No projects yet.</p>'))
+  $('projects').innerHTML = (mine.map(projRow).join('') || (shared.length ? '' : empty('No projects yet', startProj)))
     + (shared.length ? `<div class="side-sub" title="GitHub repos owned by someone else that you can push to">Collaborations</div>${shared.map(projRow).join('')}` : '');
   drawAcct();
 }
@@ -1575,7 +1575,10 @@ const fold = (key, title, body, count = 0, actions = '') => `<details class="sec
   ${count ? `<span class="pill">${count}</span>` : ''}<span onclick="event.preventDefault()">${actions}</span></summary><div class="sc">${body}</div></details>`;
 const sec = (title, body, actions = '') => `<section class="sec"><div class="sh"><span class="label">${title}</span>${actions}</div><div class="sc">${body}</div></section>`;
 const field = (label, control) => `<label class="fl"><span>${label}</span>${control}</label>`;
-const empty = t => `<p class="empty">${t}</p>`;
+// empty state + its next step (CLAUDE.md: never dead-end); act = button html
+const empty = (t, act = '') => `<p class="empty">${t}</p>${act ? `<div class="btnrow" style="justify-content:center">${act}</div>` : ''}`;
+const startProj = `<button class="btn sm" onclick="addProject()">${icon('folder')}Open folder</button><button class="btn sm" onclick="openClone()">${icon('gh')}Clone</button>`;
+const agentsOn = async () => { AGENTS ||= await call('agents'); await call('set_agents', {agents: AGENTS, on: true}); refresh(); };
 const options = (map, val) => Object.entries(map).map(([k, l]) => `<option value="${esc(k)}" ${k === val ? 'selected' : ''}>${esc(l)}</option>`).join('');
 
 // Project manager: every project's own GitHub, connections, skills, build and token savers
@@ -1593,7 +1596,7 @@ function projectsPage() {
   const root = `<div class="grid2" style="grid-template-columns:120px 1fr;margin-top:0"><span>Projects folder</span><span class="row">
       <input class="grow mono" value="${esc(S.projects_dir)}" onchange="call('set_projects_dir', {dir:this.value.trim()}).then(refresh)"><button class="btn" onclick="pickRoot()">Choose…</button></span>
       <span></span><small class="dim" style="margin-top:-6px">Clones go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> in here (others' repos under their owner), new projects to <span class="mono">local/</span>.</small></div>`;
-  if (!mp) return root + `<p class="dim">No projects yet: open a folder or clone a repo.</p>`;
+  if (!mp) return root + empty('No projects yet', startProj);
   const p = P(mp);
   const items = kind => cxList(kind, 'project:' + p.id, p);
   return root + `<div class="split"><div class="plist">${recent().map(x => `<button class="${x.id === mp ? 'on' : ''}" onclick="openManager('${x.id}')">${icon(x.shared ? 'gh' : 'folder')}<span>${esc(x.name)}</span></button>`).join('')}
@@ -1739,7 +1742,7 @@ function releaseSec(r, builds = []) {
     <label class="fl">Version tag<input id="relTag" value="${esc(next)}" oninput="relReady()"></label>
     <div class="label" style="margin:0">Files</div>
     <div id="relBox">${builds.map((b, k) => row(b, k === 0)).join('') + relFiles.map(f => row({path: f, name: f.split(/[\\/]/).pop()}, true)).join('')
-      || '<p class="dim" style="margin:0;font-size:13px">No recent builds found. Run Build first, or add files.</p>'}</div>
+      || `<p class="dim" style="margin:0;font-size:13px">No recent builds found. ${P().build.build ? `<a style="cursor:pointer;color:var(--accent)" onclick="call('run_step', {pid:cur, step:'build'})">Build now</a>` : `<a style="cursor:pointer;color:var(--accent)" onclick="openManager(cur)">Set a build command</a>`}, or add files.</p>`}</div>
     <div class="btnrow"><button class="btn" onclick="pickRelFiles()">${icon('clip')}Add files</button><button class="btn primary" id="relGo" onclick="makeRelease(this)">${icon('rocket')}Publish</button></div>
     <p id="relErr" class="err" style="font-size:12.5px;margin:0"></p>`, builds.length);
 }
@@ -2510,7 +2513,7 @@ async function openClone() {
   const draw = () => { const f = $('cloneFilter').value.trim(), fl = f.toLowerCase();
     const list = repos.filter(r => r.nameWithOwner.toLowerCase().includes(fl)).slice(0, 100);
     if (f.includes('/') && !list.some(r => r.nameWithOwner.toLowerCase() === fl)) list.unshift({nameWithOwner: f});
-    $('repoList').innerHTML = list.map(r => `<div class="item"><a onclick="pickRepo('${esc(r.nameWithOwner)}', '${esc(r.branch || '')}')">${esc(r.nameWithOwner)}</a><div class="dim" style="font-size:12px">${esc(r.description)}</div></div>`).join('') || 'No repos.'; };
+    $('repoList').innerHTML = list.map(r => `<div class="item"><a onclick="pickRepo('${esc(r.nameWithOwner)}', '${esc(r.branch || '')}')">${esc(r.nameWithOwner)}</a><div class="dim" style="font-size:12px">${esc(r.description)}</div></div>`).join('') || 'No repos here. Type owner/repo to clone any repo.'; };
   const load = async () => { const u = $('cloneUser').value; $('repoList').textContent = 'Loading…'; repos = REPOS[u] ||= await call('gh_repos', {user: u}) || []; draw(); };
   $('cloneUser').onchange = load; $('cloneFilter').oninput = draw; cloneBack = draw; load();
 }
@@ -2639,11 +2642,12 @@ function drawAtp() {
         + L(q.map((x, i) => tli(esc(x), {on: `planCheck(${i}, this)`, ...(!i && busy[cur] ? {cls: 'working', end: `<small class="tw">${icon('sparkle')}<span>${workAgo()}</span></small>`} : {})})))
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
-    || empty("Your AI's task list and PLAN.md's queue show here");
+    || empty("Your AI's task list and PLAN.md's queue show here", `<button class="btn sm" onclick="$('prompt').value = 'Plan this in PLAN.md: '; $('prompt').focus(); grow()">${icon('list')}Plan with your AI</button>`);
   const agents = ag.length ? [...run, ...ag.filter(a => !a.running).slice(-4).reverse()].map(a =>
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
-    : empty('No helper agents started in this session');
+    : S.agents_on ? empty('No helper agents started in this session', `<button class="btn ghost sm" onclick="openSettings('agents')">${icon('bot')}Agent settings</button>`)
+    : empty('Helper agents are off', `<button class="btn sm" onclick="agentsOn()">${icon('bot')}Switch on</button><button class="btn ghost sm" onclick="openSettings('agents')">Settings</button>`);
   const cnt = open.length ? open.length : q.length;
   el.innerHTML = `<div class="atgrip" title="Drag to resize"></div><div class="athead">${tabbed ? icon('list')
       : `<button class="ib tog" title="${atpMin ? 'Expand' : 'Collapse'}" onclick="atpMinT()">${icon('list')}</button>`}<span class="ptabs">
