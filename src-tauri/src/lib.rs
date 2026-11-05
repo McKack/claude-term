@@ -340,13 +340,14 @@ fn answer_ask(st: St, id: String, answer: Value) {
 }
 
 /// The question card's Confirm. Answers go into the next Continue, or straight to Claude when it's idle.
-#[tauri::command]
+#[tauri::command(async)] // async ∵ resume → continue_now → cont_text (gh)
 fn answer_questions(app: AppHandle, st: St, pid: String, answers: Vec<Value>) {
     let ids: Vec<&str> = answers.iter().filter_map(|a| a["id"].as_str()).collect();
-    let (text, send_now) = st.with_project(&pid, |p| {
+    let (text, send_now, resume) = st.with_project(&pid, |p| {
         let text = claude::answers_text(&p.questions, &answers);
         p.questions.retain(|q| !ids.contains(&q.id.as_str()));
-        (text, p.cont == "off" && !p.ready)
+        // #9: run paused on a blocking question (claude::auto_continue) → last one answered resumes it
+        (text, p.cont == "off" && !p.ready, p.cont == "auto" && p.ready && !p.questions.iter().any(|q| q.blocking))
     }).unwrap_or_default();
     let live = session(&app, &st, &pid);
     if send_now && !live.busy.load(SeqCst) {
@@ -355,6 +356,11 @@ fn answer_questions(app: AppHandle, st: St, pid: String, answers: Vec<Value>) {
         st.with_project(&pid, |p| p.answers = [p.answers.as_str(), text.as_str()].join("\n").trim().to_string());
     }
     emit(&app, "project", json!(st.project(&pid)));
+    let acct = st.project(&pid).map(|p| p.account).unwrap_or_default();
+    let room = store::over_limit(&st.cfg.lock().unwrap(), &acct).is_none(); // limit pause stays a limit pause
+    if resume && room && !live.busy.load(SeqCst) {
+        continue_now(app, st, pid, None);
+    }
 }
 
 // ---- settings ----

@@ -192,7 +192,9 @@ pre.diff .ctx { color:var(--faint); }
 .msg.err .et .dim { font-weight:400; margin-left:6px; }
 .card.perm { border-color:color-mix(in srgb, var(--err) 35%, transparent); }
 .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
-.card.qs { border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.card.qs { border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); padding:12px 14px; }
+.card.qs .q { padding:8px 0; } .card.qs.done { box-shadow:none; border-color:var(--line); }
+.q .ans { margin:4px 0 0 28px; white-space:pre-wrap; } .q .ans.dim { font-size:13px; }
 .card h4 { margin:0 0 4px; font-size:14px; }
 .q { padding:12px 0; border-top:1px solid var(--line); } .q:first-of-type { border-top:0; }
 .q .num { display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%; background:var(--soft); color:var(--accent); font-size:12px; font-weight:700; margin-right:8px; }
@@ -1120,6 +1122,7 @@ const shortPath = f => { const r = (P()?.path || '').replace(/[\\/]+$/, ''); ret
 const isProcess = e => e.kind === 'tool' && (/^mcp__clauracle__/.test(e.text) || /(^|[\\/])(HANDOVER|CHANGES|PLAN)\.md$/i.test(e.detail?.file_path || ''));
 function entry(e) {
   if (e.kind === 'ask') return askCard(e);
+  if (e.kind === 'answered') return answeredCard(e);
   if (isProcess(e)) return null;
   if (e.kind === 'claude' && /^No response requested\.?$/.test(e.text.trim())) return null; // Claude's filler after a restart call
   if (view === 'chat' && (e.kind === 'out' || e.kind === 'think')) return null;
@@ -1237,7 +1240,7 @@ function toolDlg(es, title = es[0].text) {
 function liveEl(pid) { const d = document.createElement('div'); d.className = 'msg claude'; d.id = 'live'; d.innerHTML = md(live[pid]);
   return view === 'chat' ? chatRow('claude', d, new Date().toISOString()) : d; }
 function addEntry(pid, e) {
-  if (hand[pid] === true && e.kind !== 'err' && e.kind !== 'ask') return; // a handover turn: only the pill shows
+  if (hand[pid] === true && !['err', 'ask', 'answered'].includes(e.kind)) return; // a handover turn: only the pill shows
   // writing plan/handover/changes = wrapping up → "Preparing plan…"; reading them (every fresh start) ≠ that, and real work after ends it
   const wrap = isProcess(e) && (/^mcp__clauracle__/.test(e.text) || /^(Edit|MultiEdit|Write)\b/.test(toolName(e)));
   if (busy[pid] && (wrap ? !hand[pid] : e.kind === 'tool' && !isProcess(e) && hand[pid] === 'soft')) { hand[pid] = wrap ? 'soft' : false; if (pid === cur) drawChrome(); }
@@ -1537,7 +1540,16 @@ function confirmQs(pid, card) {
   const answers = [...card.querySelectorAll('.q')].map(q => { const t = q.querySelector('.note').value, other = q.querySelector('[value=__other]').checked;
     return {id: q.dataset.id, choice: [...q.querySelectorAll('.choice input:checked')].map(i => i.value === '__other' ? 'Other: ' + t : i.value),
       note: other ? '' : t}; });
+  const qs = P(pid).questions; // #9: card stays in the chat, read-only
+  addEntry(pid, {kind: 'answered', qa: answers.map(a => [qs.find(q => q.id === a.id)?.question || '', a.choice.join(', ').replace(/^Other: /, ''), a.note])});
   call('answer_questions', {pid, answers});
+}
+// answered question card (#9): filled answers as plain text, empty ones dropped; qa = [[question, answer, note]]
+function answeredCard(e) {
+  const d = document.createElement('div'); d.className = 'card qs done';
+  d.innerHTML = `<h4>You answered</h4>` + e.qa.map(([q, a, n], i) => `<div class="q"><div><span class="num">${i + 1}</span><b>${esc(q.replace(/^\s*\d+[.)]\s*/, ''))}</b></div>
+    ${a.trim() ? `<div class="ans sel">${esc(a)}</div>` : ''}${n?.trim() ? `<div class="ans sel dim">${esc(n)}</div>` : ''}</div>`).join('');
+  return d;
 }
 function showQuestions(pid) { hiddenQs[pid] = false; qsOpen[pid] = true; drawLog(); }
 
@@ -1587,6 +1599,7 @@ function askCard(e) {
     (i.questions || []).forEach((q, n) => answers[q.question] = [...d.querySelectorAll(`[name=a${n}]:checked`)]
       .map(x => x.value === '__other' ? x.closest('.q').querySelector('.other').value : x.value).join(', '));
     call('answer_ask', {id: e.id, answer: {allow, answers, session: a === '3', rule, note: d.querySelector('.deny')?.value || ''}});
+    if (i.questions && allow) { e.kind = 'answered'; e.qa = i.questions.map(q => [q.question, answers[q.question], '']); d.replaceWith(answeredCard(e)); return; } // #9
     e.done = allow ? 'allowed' : 'denied';
     d.replaceWith(askCard(e));
   }

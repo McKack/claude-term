@@ -577,6 +577,12 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
             }
         }
     }
+    // #9: a pending blocking question pauses the run (auto only; auto_answer holds them by design) → answer resumes it
+    if p.cont == "auto" && p.questions.iter().any(|q| q.blocking) {
+        line(app, pid, "note", "Paused: a question needs you. Answering it carries on.");
+        emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
+        return; // ready stays: answer_questions → continue_now
+    }
     let msg = cont_text(&p); // ponytail: blocking gh call on a runtime worker (~1s, once per session)
     if msg.is_none() && p.answers.is_empty() {
         // empty Queue = done: no fresh "continue" turn ∵ it would only find nothing and stop (or invent work)
