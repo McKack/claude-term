@@ -1517,7 +1517,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
-    if (d.step === 'build' && d.done != null) { delete GHI[d.pid]; const rn = RELNEXT[d.pid]; delete RELNEXT[d.pid]; (d.done && (P(d.pid)?.rel_auto || rn) ? relAuto(d.pid) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → Release list refetch */
+    if (d.step === 'build' && d.done != null) { delete GHI[d.pid]; delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
   gh_code: () => { const m = $('ghMsg'); if (m) m.innerHTML = `Enter <b style="font-size:18px" class="sel mono">${esc(d.code)}</b> at <a href="#" data-url="${esc(d.url)}">github.com/login/device</a>`; T.opener.openUrl(d.url); },
@@ -1735,22 +1735,27 @@ const RELAI = { // fix prompts: Claude writes/judges, never template
 };
 function relItems(c, p) {
   const v = (c.version || '').replace(/^v/, ''), tv = (c.tag || '').replace(/^v/, ''), ci = c.ci;
-  const sign = SECRETS[cur]?.includes('APPLE_CERTIFICATE');
+  const sign = SECRETS[cur]?.includes('APPLE_CERTIFICATE'), files = relFilesFor(cur, v);
+  // array order = display order (filter keeps it) → Build stays last whatever the stage
   return [
     {s: 0, id: 'readme', t: 'README written', ok: c.readme >= 10, d: c.readme ? `${c.readme} lines` : 'none'},
     {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` : 'not found'},
-    {s: 0, id: 'clean', t: 'Everything committed', ok: c.clean, go: `relCommit(this)`},
+    {s: 0, id: 'bump', t: 'Version bumped since last tag', ok: !tv || (v && v !== tv), d: tv ? `last tag ${c.tag}` : 'first release', go: SEMV.test(v) ? 'relBumpPatch(this)' : '', gl: 'Bump'},
+    {s: 0, id: 'clean', t: 'Everything committed', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
     {s: 1, id: 'license', t: 'Licence', ok: c.license},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
-    {s: 1, id: 'bump', t: 'Version bumped since last tag', ok: !tv || (v && v !== tv), d: tv ? `last tag ${c.tag}` : 'first release'},
     {s: 1, id: 'ci', t: 'CI green', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}` : 'no workflow runs',
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.url},
     {s: 2, id: 'icon', t: 'App icon', ok: c.icon},
     ...(MAC[cur] ? [{s: 2, id: 'sign', t: 'Mac signing secrets on GitHub', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
     {s: 2, id: 'review', t: 'Release review by AI', ai: true},
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
+    {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0, d: files.length ? files.map(f => f.name).join(', ') : v ? `no build of v${v} yet` : '',
+      go: p.build.build ? 'relBuild(this)' : 'openManager(cur)', gl: p.build.build ? 'Build' : 'Set up'},
   ];
 }
+// release files for version v: newest build per file type named with v (versionless could be stale); builds via gh_info (GHI)
+const relFilesFor = (pid, v) => v ? relPick(GHI[pid]?.g?.builds || [], v).filter(b => fver(b.name) === v) : [];
 async function relWizard(p, force, cached) { // cached → draw RELC as is (caller ensures it exists)
   const pid = cur, k = p.stage ? SK.indexOf(p.stage) : -1, to = RELTO[pid] ?? Math.max(k, 0);
   if (!cached && (force || !RELC[pid] || Date.now() - RELC[pid].t > 60e3)) {
@@ -1759,34 +1764,49 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
     if (MAC[pid] && c.remote && !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
   }
   const c = RELC[pid].c, re = `<button class="ib" title="Check again" onclick="relRefresh()">${icon('loop')}</button>`;
-  const ask = `<button class="btn${k < 0 ? ' primary' : ''}" onclick="relAsk('summary')">${icon('claude')}What's missing for MVP?</button>`;
+  const ask = `<button class="btn${k < 0 ? ' primary' : ''}" onclick="relAsk('summary')">${icon('sparkle')}What's missing for MVP?</button>`;
   if (c.err) return sec('Release', `<p class="err">${esc(c.err)}</p>`, re);
   if (k < 0 && RELTO[pid] == null) return sec('Release', `<p class="dim" style="margin:0 0 8px">Walk this project to a release: alpha → beta → release candidate → published. Each stage has its own checklist, stricter going up.</p>
     <div class="btnrow col">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`, re);
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
-  const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${x.ai ? '•' : x.ok ? '✓' : '✗'}</span>
+  const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;display:inline-flex;padding-top:2px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${icon(x.ai ? 'sparkle' : x.ok ? 'check' : 'x')}</span>
     <span class="grow">${esc(x.t)}${x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
-    ${x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">Fix</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with AI'}</button>` : ''}</div>`;
+    ${x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with AI'}</button>` : ''}</div>`;
   const seg = `<span class="seg" style="margin-bottom:8px">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
-  const up = to > k; // moving up (or starting) → mark when the list is green; same stage → light update path
-  const act = up ? `<button class="btn primary" ${left ? `title="${left} check${left > 1 ? 's' : ''} open"` : ''} onclick="relMark(${to}, ${left})">${icon('rocket')}Mark as ${STAGES[SK[to]]}</button>`
-    : `<button class="btn primary" onclick="relGoTo()">${icon('rocket')}Release ${STAGES[SK[k]]} update</button>`;
-  return sec('Release', `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}</p>${seg}
+  const up = to > k, gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, ''); // up: moving a stage (or starting)
+  const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : '';
+  // Release = publish v<version> (that version's build files) on GitHub + set the stage; grayed out till every check is green
+  const act = `<button class="btn primary" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this)">${icon('rocket')}Release v${esc(v)} as ${STAGES[SK[to]]}</button>`;
+  return sec('Release', `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}${gi?.release?.tagName ? ` · latest <a data-url="${esc(gi.release.url)}" style="cursor:pointer;color:var(--accent)">${esc(gi.release.tagName)}</a>` : ''}</p>${seg}
     <div>${items.map(row).join('')}</div><div class="btnrow col">${act}${ask}</div>`, (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re);
 }
-const relRefresh = () => { delete RELC[cur]; delete SECRETS[cur]; drawRight(); };
-// Release panel sits below the wizard (Build tab): open its fold + scroll to it
-const relGoTo = () => { const t = $('relTag'), d = t?.closest('details'); if (!d) return say('No GitHub release panel: this project has no GitHub remote yet (GitHub tab › publish).'); d.open = true; d.scrollIntoView({behavior: 'smooth', block: 'start'}); t.focus(); };
+const relRefresh = () => { delete RELC[cur]; delete SECRETS[cur]; delete GHI[cur]; drawRight(); };
 async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
   const text = id === 'summary' ? `Release prep: in a few lines, what this project is and does, then what's missing for an MVP release (open checks: ${open || 'none'}). Plan only, don't change files.` : RELAI[id];
   if (!await sure(`Ask Claude?\n\n${text}\n${estTok()}`)) return;
   sendNow(cur, {text, atts: []});
 }
-async function relMark(i, left) {
-  if (left && !await sure(`${left} check${left > 1 ? 's are' : ' is'} still open.\n\nMark the project as ${STAGES[SK[i]]} anyway?`, 'Mark anyway')) return;
-  await call('update_project', {pid: cur, changes: {stage: SK[i]}}); delete RELTO[cur]; await refresh(); drawRight();
+async function relRelease(to, btn) {
+  const v = (RELC[cur]?.c?.version || '').replace(/^v/, ''), files = relFilesFor(cur, v), st = STAGES[SK[to]];
+  if (!await sure(`Publish v${v} on GitHub as ${st}?\n\n${files.map(f => f.name).join('\n')}\n\nReleases are public on public repos.`, 'Release')) return;
+  btn.disabled = true;
+  try {
+    addEntry(cur, {kind: 'note', text: 'Released: ' + await call('release', {pid: cur, tag: 'v' + v, files: files.map(f => f.path)})});
+    if (P().stage !== SK[to]) await call('update_project', {pid: cur, changes: {stage: SK[to]}});
+    delete RELTO[cur]; delete RELC[cur]; delete GHI[cur]; await refresh(); drawRight(true);
+  } catch (e) { addEntry(cur, {kind: 'note', text: `Release failed: ${e}`}); btn.disabled = false; }
 }
+// Bump: next patch in every config file that carries the version
+async function relBumpPatch(btn) {
+  btn.disabled = true;
+  const v = (RELC[cur].c.version || '').replace(/^v/, '').replace(/^(\d+\.\d+\.)(\d+).*$/, (_, a, n) => a + (+n + 1));
+  try { const f = await call('version_set', {pid: cur, v}); addEntry(cur, {kind: 'note', text: `Version ${v} set in ${f.join(', ')}`}); delete RELC[cur]; drawRight(); }
+  catch (e) { addEntry(cur, {kind: 'note', text: `Bump failed: ${e}`}); btn.disabled = false; }
+}
+// Build from the wizard: on success the build event commits + pushes what it changed (Cargo.lock…) ∵ else "Everything committed" flips red again
+const RELB = {};
+const relBuild = btn => { btn.disabled = true; RELB[cur] = 1; call('run_step', {pid: cur, step: 'build'}); };
 // Build tab body. live=false → cache only (no git/gh calls), live=true → refetch what's stale (force → all)
 async function buildHtml(p, has, live, force) {
   const pid0 = cur, wait = t => sec(t, '<p class="dim" style="margin:0">Checking…</p>');
@@ -1802,8 +1822,6 @@ async function buildHtml(p, has, live, force) {
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
           <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
       + (live || RELC[pid0] ? await relWizard(p, live && force === true, !live) : wait('Release'))
-      // Release (GitHub) right below the wizard: Build → Run → Release; gh_info shared with GitHub tab via GHI (30s)
-      + (c?.g?.remote ? releaseSec(c.g.release, c.g.builds) : '')
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
 }
 async function drawRight(force) {
@@ -1823,12 +1841,11 @@ async function drawRight(force) {
     const old = (o, ms) => !o || Date.now() - o.t > ms;
     const stale = force === true || (!has && !GUESS[pid0]) || MAC[pid0] === undefined || old(RELC[pid0], 60e3) || old(GHI[pid0], 30e3);
     box.innerHTML = await buildHtml(p, has, false);
-    relReady();
     if (!stale) return;
     const before = formVals(box), h = await buildHtml(p, has, true, force);
     if (!ok()) return; // awaits above (release_check: git+gh) → user may have switched tab/project
     const mine = formVals(box), focus = document.activeElement?.id;
-    box.innerHTML = h; relReady();
+    box.innerHTML = h;
     for (const [k, v] of Object.entries(mine)) if (v !== before[k]) { const el = formEl(box, k); if (el) el.type === 'checkbox' ? el.checked = v : el.value = v; }
     if (focus && $(focus)) $(focus).focus();
     return;
@@ -1845,7 +1862,6 @@ async function drawRight(force) {
   drawGh(g, false);
   if (mine) for (const [k, v] of Object.entries(mine)) if (v !== before[k]) { const el = formEl(box, k); if (el) el.type === 'checkbox' ? el.checked = v : el.value = v; }
   if (focus && $(focus)) $(focus).focus();
-  relReady();
 }
 const GHI = {};
 // form state in the panel: id → value, unnamed checkboxes keyed by their value
@@ -1862,7 +1878,7 @@ function drawGh(g, busy) {
     + `<div id="tasksBox">${tasksHtml()}</div>`
     + (g.remote ? changesSec(g.git || {}) : '')
     + fold('prs', 'Pull requests', list(g.prs, 'pr'), g.prs?.length || 0) + (g.issues?.length ? fold('issues', 'Other issues', list(g.issues, 'issue'), g.issues.length) : ''); // non-clauracle only (gh_info)
-  drawAtp(); relReady();
+  drawAtp();
 }
 // info only (user: no chores): uncommitted files listed; Claude commits, claude::after_turn pushes (store::auto_push)
 function changesSec(s) {
@@ -1872,96 +1888,16 @@ function changesSec(s) {
     + (s.ahead ? `<p class="faint" style="margin:0;font-size:12.5px">${s.ahead} commit${s.ahead > 1 ? 's' : ''} not on GitHub yet: pushed when the turn ends.</p>` : ''),
     f.length || (s.ahead ? `${s.ahead}↑` : 0));
 }
-// a GitHub release of picked builds: recent outputs found in the project (newest ticked) + any added by hand;
-// Publish only with at least one file. Tag suggested as the last one +1 patch.
-const ago = s => { const m = (Date.now() / 1000 - s) / 60; return m < 60 ? `${Math.max(1, m | 0)} min ago` : m < 1440 ? `${m / 60 | 0} h ago` : `${m / 1440 | 0} d ago`; };
 const mb = n => n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.ceil(n / 1e3) + ' kB';
-// version in a file name (Clauracle_0.1.0_x64-setup.exe → 0.1.0); a tag's version = tag minus leading v
-// pre-release kept (0.2.0-beta.1) ∵ else a beta tag never matches its files; vgt ignores the suffix (parseInt)
-const fver = n => n.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.\d+)*)?/)?.[0] || '', tver = t => t.replace(/^v/i, ''), SEMV = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
-const vgt = (a, b) => { const x = a.split('.').map(n => parseInt(n, 10)), y = b.split('.').map(n => parseInt(n, 10)); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
-function releaseSec(r, builds = []) {
-  // tag default: project version (release_check, if cached) when ahead of the last tag, else last +1 patch
-  const last = r?.tagName || '', pv = RELC[cur]?.c?.version || '',
-    next = pv && (!last || vgt(pv, fver(last))) ? 'v' + pv : last ? last.replace(/(\d+)(?!.*\d)/, n => +n + 1) : 'v0.1.0';
-  // tick newest build per file type whose version matches the tag (or carries none); builds come newest first
-  // only the newest version's builds (+ versionless) listed: old versions are never released again
-  const vmax = builds.map(b => fver(b.name)).filter(Boolean).reduce((m, v) => !m || vgt(v, m) ? v : m, '');
-  builds = builds.filter(b => !fver(b.name) || fver(b.name) === vmax);
-  const pick = new Set(relPick(builds, tver(next))), tick = b => pick.has(b);
-  const row = (b, on) => `<label class="check" title="${esc(b.path)}"><input type="checkbox" value="${esc(b.path)}" ${on ? 'checked' : ''} onchange="relReady()">
-    <span class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(b.name)}<small class="dim" style="display:block">${b.mtime ? ago(b.mtime) + ' · ' : ''}${b.size ? mb(b.size) : 'added'}</small></span></label>`;
-  return fold('release', 'Release', `${last ? `<p class="dim">Latest: <a data-url="${esc(r.url)}" style="cursor:pointer;color:var(--accent)">${esc(last)}</a></p>` : '<p class="dim">No releases yet.</p>'}
-    <label class="fl">Version tag<input id="relTag" value="${esc(next)}" oninput="relReady()"></label>
-    <div class="label" style="margin:0">Files</div>
-    <div id="relBox">${builds.map(b => row(b, tick(b))).join('') + relFiles.map(f => row({path: f, name: f.split(/[\\/]/).pop()}, true)).join('')
-      || `<p class="dim" style="margin:0;font-size:13px">No recent builds found. ${P().build.build ? `<a style="cursor:pointer;color:var(--accent)" onclick="call('run_step', {pid:cur, step:'build'})">Build now</a>` : `<a style="cursor:pointer;color:var(--accent)" onclick="openManager(cur)">Set a build command</a>`}, or add files.</p>`}</div>
-    <p id="relWarn" class="dim" style="font-size:13px;margin:0"></p>
-    <div class="btnrow col"><button class="btn" onclick="pickRelFiles()">${icon('clip')}Add files</button><button class="btn primary" id="relGo" onclick="makeRelease(this)">${icon('rocket')}Publish</button></div>
-    <p id="relErr" class="err" style="font-size:12.5px;margin:0"></p>
-    <label class="check" title="After each successful build: if the project version is ahead of the latest release, publish v&lt;version&gt; with that version's newest build per file type"><input type="checkbox" ${P().rel_auto ? 'checked' : ''} onchange="relAutoSet(this)"><span class="grow">Release after build</span></label>`, builds.length);
-}
+// version in a file name (Clauracle_0.1.0_x64-setup.exe → 0.1.0); pre-release kept (0.2.0-beta.1) ∵ else a beta never matches its files
+const fver = n => n.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.\d+)*)?/)?.[0] || '', SEMV = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 // newest build per file type whose version = v (or carries none); builds come newest first
 const relPick = (builds, v) => { const seen = new Set(); return builds.filter(b => { const x = b.name.replace(/^[^.]*/, ''), bv = fver(b.name); if (seen.has(x) || (bv && bv !== v)) return false; seen.add(x); return true; }); };
-async function relAutoSet(el) {
-  if (el.checked && !await sure('Release after every build?\n\nWhen a build succeeds and the project version is ahead of the latest release, Clauracle publishes a GitHub release with those files. Releases are public on public repos.', 'Turn on')) return el.checked = false;
-  await call('update_project', {pid: cur, changes: {rel_auto: el.checked}}); await refresh();
-}
-// build done ok + rel_auto → release v<version> if ahead of the last tag; only files that carry that version (versionless could be stale); never re-tags
-async function relAuto(pid) {
-  const note = t => addEntry(pid, {kind: 'note', text: 'Release after build: ' + t});
-  delete RELC[pid];
-  const [g, c] = await Promise.all([call('gh_info', {pid}).catch(() => null), call('release_check', {pid}).catch(() => null)]);
-  if (g) GHI[pid] = {g, t: Date.now()};
-  if (c) RELC[pid] = {c, t: Date.now()};
-  if (!g?.remote) return note('skipped, no GitHub remote');
-  const v = c?.version || '', last = g.release?.tagName || '';
-  if (!SEMV.test(v)) return note('skipped, no project version found');
-  if (last && !vgt(v, fver(last))) return note(`skipped, v${v} isn't ahead of ${last}`);
-  const files = relPick(g.builds || [], v).filter(b => fver(b.name) === v).map(b => b.path);
-  if (!files.length) return note(`skipped, no build files named with v${v}`);
-  try { note('published ' + await call('release', {pid, tag: 'v' + v, files})); delete GHI[pid]; }
-  catch (e) { note('failed: ' + e); }
-}
-let relFiles = [];
-const relPicked = () => [...document.querySelectorAll('#relBox input:checked')].map(c => c.value);
-// Publish needs files + tag, and every picked file's version (if it has one) = the tag's: else warn + offer set-version-and-build
-// no build of the tag's version + a build command → Publish = set version → build → publish (relBump; build event → relAuto)
-function relReady() {
-  if (!$('relGo')) return;
-  const v = tver($('relTag').value.trim()), odd = relPicked().map(f => fver(f.split(/[\\/]/).pop())).filter(x => x && x !== v);
-  const none = ![...document.querySelectorAll('#relBox input')].some(c => fver(c.value.split(/[\\/]/).pop()) === v);
-  const bump = none && SEMV.test(v) && !!P().build.build && !relFiles.length;
-  $('relGo').dataset.bump = bump ? v : '';
-  $('relGo').innerHTML = icon('rocket') + (bump ? `Build and publish v${esc(v)}` : 'Publish');
-  $('relGo').disabled = !bump && (!relPicked().length || !v || odd.length > 0);
-  $('relWarn').innerHTML = bump ? `No build of v${esc(v)} yet: Publish sets the version, builds, then releases it.`
-    : odd.length ? `Picked files are v${esc([...new Set(odd)].join(', v'))}, the tag is v${esc(v)}.${P().build.build ? '' : ' Build that version first.'}` : '';
-}
-const RELNEXT = {}; // pid → version: publish once its build succeeds
-async function relBump(v, btn) {
-  btn.disabled = true;
-  try {
-    const f = await call('version_set', {pid: cur, v}); addEntry(cur, {kind: 'note', text: `Version ${v} set in ${f.join(', ')}: building, then publishing v${v}`});
-    delete RELC[cur]; RELNEXT[cur] = v; call('run_step', {pid: cur, step: 'build'});
-  } catch (e) { $('relErr').textContent = e; btn.disabled = false; }
-}
 // "Everything committed" Fix: commit all + push (git_do commit) ∵ GitHub tab has no manual commit/push anymore
 async function relCommit(btn) {
   btn.disabled = true;
   try { await call('git_do', {pid: cur, action: 'commit', arg: 'Prepare release'}); addEntry(cur, {kind: 'note', text: 'Committed and pushed'}); delete RELC[cur]; drawRight(); }
   catch (e) { addEntry(cur, {kind: 'note', text: `Commit failed: ${e}`}); btn.disabled = false; }
-}
-async function pickRelFiles() {
-  const f = await T.dialog.open({multiple: true, defaultPath: P().path}); if (!f) return;
-  relFiles = [...new Set(relFiles.concat(f))]; drawRight();
-}
-async function makeRelease(btn) {
-  if (btn.dataset.bump) return relBump(btn.dataset.bump, btn);
-  const files = relPicked(); if (!files.length) return;
-  btn.disabled = true;
-  try { const url = await call('release', {pid: cur, tag: $('relTag').value.trim(), files}); relFiles = []; addEntry(cur, {kind: 'note', text: 'Released: ' + url}); drawRight(true); }
-  catch (e) { $('relErr').textContent = e; btn.disabled = false; }
 }
 // ---- team tasks: open GitHub issues labelled `clauracle`; taken = assignee + `in progress` ----
 // ponytail: polled every 60s for the open project (live push needs webhooks and a server)
