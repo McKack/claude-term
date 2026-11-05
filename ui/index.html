@@ -2214,7 +2214,20 @@ const cxItems = (kind, scope) => SET.catalog.filter(i => i.kind === kind && (sco
 const cxCount = (kind, scope, x) => { const xs = cxItems(kind, scope);
   return `${xs.filter(i => scope === 'global' ? !SET.off.includes(i.id) : onOf(x).includes(i.id)).length}/${xs.length}`; };
 // settings section that folds; title + "on/total" pill; key unique per page/scope
-const cxFold = (key, title, kind, scope, x) => fold(key, title, `<div class="box">${cxList(kind, scope, x)}</div>`, cxCount(kind, scope, x));
+const cxFold = (key, title, kind, scope, x) => fold(key, title, `<div class="box">${cxList(kind, scope, x)}</div>`, cxCount(kind, scope, x),
+  cxItems(kind, scope).length > 1 ? ['All', 'None'].map(l => `<button class="btn ghost sm" onclick="cxAll(this, '${kind}', '${esc(scope)}', ${l === 'All'})">${l}</button>`).join('') : '');
+// fold pill = on/total of its switches, redrawn in place (toggles don't re-render the page)
+const cxLive = el => { const d = el.closest('details.fold'), xs = [...d.querySelectorAll('.sc .sw input')], p = d.querySelector(':scope > summary .pill');
+  if (p) p.textContent = `${xs.filter(c => c.checked).length}/${xs.length}`; };
+async function cxAll(el, kind, scope, on) {
+  const ids = cxItems(kind, scope).map(i => i.id);
+  if (scope === 'global') { for (const id of ids) if (SET.off.includes(id) === on) await setGlobalOff(id, !on); }
+  else {
+    const x = scope.startsWith('project:') ? P(scope.slice(8)) : S.accounts.find(a => a.id === scope);
+    await call('set_items', {scope, items: onOf(x).filter(i => !ids.includes(i)).concat(on ? ids : [])}); await refresh();
+  }
+  const d = el.closest('details.fold'); d.querySelectorAll('.sc .sw input').forEach(c => c.checked = on); cxLive(d);
+}
 // MCP status from `claude mcp list` (note); not connected → how to fix: claude.ai connectors sign in on claude.ai
 // (CLI can't run their OAuth headless), others via /mcp in an interactive CLI. Rescan after.
 const cxBad = i => i.kind === 'mcp' && !/^connected$/i.test(i.note);
@@ -2222,8 +2235,8 @@ const cxNote = i => esc(i.note) + (!cxBad(i) ? '' : /^claude\.ai /.test(i.label)
   ? ` · <a href="#" data-url="https://claude.ai/settings/connectors">Authenticate</a>, then Rescan` : ' · run /mcp in the Terminal tab, then Rescan');
 const cxList = (kind, scope, x) => (scope.startsWith('project:') && kind === 'mcp' && cxItems(kind, scope).some(i => cxBad(i) && onOf(x).includes(i.id))
   ? `<p class="dim" style="margin:4px 0 8px">${icon('info')} Some picked connections aren't connected: your AI can't use them until they are.</p>` : '') + cxItems(kind, scope).map(i =>
-  optRow(esc(i.label), cxNote(i), scope === 'global' ? sw(!SET.off.includes(i.id), `setGlobalOff('${esc(i.id)}', !this.checked)`)
-    : sw(onOf(x).includes(i.id), `toggleOn('${esc(scope)}', '${esc(i.id)}', this.checked)`))).join('') || '<p class="dim">None.</p>';
+  optRow(esc(i.label), cxNote(i), scope === 'global' ? sw(!SET.off.includes(i.id), `cxLive(this); setGlobalOff('${esc(i.id)}', !this.checked)`)
+    : sw(onOf(x).includes(i.id), `cxLive(this); toggleOn('${esc(scope)}', '${esc(i.id)}', this.checked)`))).join('') || '<p class="dim">None.</p>';
 function setGlobalOff(id, off) {
   SET.off = SET.off.filter(i => i !== id).concat(off ? [id] : []);
   return call('set_off', {item: id, off, scope: 'global'});
@@ -2287,8 +2300,7 @@ function aiPage() {
   const pools = [...new Set(S.accounts.map(a => a.pool).filter(Boolean))];
   const meter = (v, l) => v == null ? '' : `<small class="dim">${l} <span class="bar"><i style="width:${v}%"></i></span> ${v}%</small>`;
   return `<div class="row" style="align-items:flex-start;gap:12px"><p class="dim grow" style="margin-top:0">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>
-    <button class="btn primary" onclick="addAcctDlg()">${icon('plus')}Add account</button></div>
-    <datalist id="pools">${pools.map(p => `<option value="${esc(p)}">`).join('')}</datalist>`
+    <button class="btn primary" onclick="addAcctDlg()">${icon('plus')}Add account</button></div>`
     + S.accounts.map(a => { const u = S.usage[a.id] || {}; return `<details class="acct"><summary>
       <span class="chev">${icon('chev')}</span>${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : 'setup-token'}</small>
       ${a.pool ? `<span class="pill">${esc(a.pool)}</span>` : ''}${a.id === S.default_account ? '<span class="pill">default</span>' : ''}<span class="grow"></span>${meter(u.five_hour, '5h')} ${meter(u.seven_day, 'week')}</summary>
@@ -2297,7 +2309,8 @@ function aiPage() {
         <span>Limits</span><span class="row wrap">5-hour <input type="number" min="1" max="100" value="${a.limits.five_hour}" style="width:70px" onchange="acct('${esc(a.id)}', {limits:{...limitsOf('${esc(a.id)}'), five_hour:+this.value}})">%
           weekly <input type="number" min="1" max="100" value="${a.limits.seven_day}" style="width:70px" onchange="acct('${esc(a.id)}', {limits:{...limitsOf('${esc(a.id)}'), seven_day:+this.value}})">%</span>
         <span></span><small class="dim" style="margin-top:-6px">Auto mode switches account or pauses here; held questions show then.</small>
-        <span>Pool</span><input list="pools" value="${esc(a.pool)}" placeholder="None" onchange="acct('${esc(a.id)}', {pool:this.value.trim()})">
+        <span>Pool</span><span class="row"><input class="grow" value="${esc(a.pool)}" placeholder="None (type a new pool name)" onchange="acct('${esc(a.id)}', {pool:this.value.trim()})">
+          ${pools.length ? `<button class="ib" title="Pick a pool" onclick="poolMenu(this, '${esc(a.id)}')">${icon('chev')}</button>` : ''}</span>
         <span>GitHub for new projects</span><select onchange="acct('${esc(a.id)}', {gh:this.value})">${options({'': 'None', ...Object.fromEntries(ghUsers.map(g => [g, '@' + g]))}, a.gh)}</select>
       </div>
       ${cxFold('a-mcp', 'Connections for new projects', 'mcp', a.id, a)}${cxFold('a-skill', 'Skills for new projects', 'skill', a.id, a)}${cxFold('a-plugin', 'Plugins & mods for new projects', 'plugin', a.id, a)}
@@ -2309,6 +2322,9 @@ function aiPage() {
       onchange="call('set_lessons', {lessons: this.value.split('\\n')}).then(refresh)">${esc((S.lessons || []).join('\n'))}</textarea>`;
 }
 const limitsOf = id => S.accounts.find(a => a.id === id).limits;
+// own dropdown ∵ native <datalist> popup = off-style WebView box; typing a new name stays in the input
+const poolMenu = (el, id) => { const cur = S.accounts.find(a => a.id === id).pool || '';
+  menuAt(el, ['', ...new Set(S.accounts.map(a => a.pool).filter(Boolean))].map(p => ({label: p || 'None', check: p === cur, run: () => acct(id, {pool: p})}))); };
 const acct = (id, changes) => call('update_account', {id, changes}).then(() => openSettings());
 // Appearance: per computer (localStorage), applied before anything draws
 const ACCENTS = {Mono: ['#000000', '#ffffff'], Indigo:['#4f5bd5', '#8b93ff'], Blue: ['#2563eb', '#6ea8fe'], Teal: ['#0f8b80', '#3cc9b9'], Green: ['#2b8a3e', '#69db7c'],
