@@ -583,6 +583,33 @@ function buildMenu(items, r, side, level = 0) {
 }
 const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
 function closeMenu() { document.querySelectorAll('.menu').forEach(x => x.remove()); document.removeEventListener('mousedown', outside); }
+// right-click: own menu on chat msgs, tool rows, Files tree, projects; WebView default only in inputs / over a selection
+const copy = t => navigator.clipboard.writeText(t);
+const absOf = rel => { const b = P().path.replace(/[\\/]+$/, ''), s = b.includes('\\') ? '\\' : '/'; return b + s + rel.replace(/\//g, s); };
+function quote(t) { const ta = $('prompt'); ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/, '\n\n') : '') + t.trim().replace(/^/gm, '> ') + '\n\n';
+  ta.dispatchEvent(new Event('input')); ta.focus(); }
+document.addEventListener('contextmenu', e => {
+  const t = e.target, sel = String(getSelection()).trim();
+  if (t.closest('input, textarea, [contenteditable]')) return;
+  let items;
+  const msg = t.closest('.msg'), tool = t.closest('.tl > div'), file = t.closest('#files .tree > div[data-p]'), proj = t.closest('.proj[data-id]');
+  if (tool?._es) { const d = tool._es[0].detail || {}, f = d.file_path || d.notebook_path || d.path;
+    items = [typeof d.command === 'string' && {icon: 'doc', label: 'Copy command', run: () => copy(d.command)},
+      f && {icon: 'doc', label: 'Copy path', run: () => copy(f)}, f && {icon: 'file', label: 'Open file', run: () => openFile(f)},
+      {icon: 'term', label: 'Details', run: () => tool.click()}].filter(Boolean); }
+  else if (msg) { const txt = sel || msg.innerText;
+    items = [{icon: 'doc', label: sel ? 'Copy selection' : 'Copy message', run: () => copy(txt)}, {icon: 'reply', label: 'Quote in prompt', run: () => quote(txt)}]; }
+  else if (file) { const p = file.dataset.p, dir = /^filesGo/.test(file.getAttribute('onclick'));
+    items = [{icon: dir ? 'folder' : 'file', label: 'Open', run: () => file.click()}, {icon: 'folder', label: 'Show in folder', run: () => T.opener.revealItemInDir(absOf(p)).catch(alert)},
+      {icon: 'doc', label: 'Copy path', run: () => copy(absOf(p))}, {icon: 'doc', label: 'Copy relative path', run: () => copy(p)}]; }
+  else if (proj) { const id = proj.dataset.id;
+    items = [{icon: 'folder', label: 'Open', run: () => openProject(id)}, {icon: 'gear', label: 'Settings', run: () => openManager(id)},
+      {icon: 'folder', label: 'Show in folder', run: () => T.opener.revealItemInDir(P(id).path).catch(alert)}, '-',
+      {icon: 'x', label: 'Remove from Clauracle', run: () => { mp = id; removeProject(); }}]; }
+  if (sel && !items) return; // plain selection: keep the WebView's Copy
+  e.preventDefault();
+  if (items) { menuAt({getBoundingClientRect: () => ({left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY, height: 0})}, items); }
+});
 const addItems = () => [{icon: 'plus', label: 'New project', hint: 'Local for now; publish to GitHub later', run: newLocal},
   {icon: 'folder', label: 'Open folder', run: addProject}, {icon: 'gh', label: 'Clone from GitHub', run: openClone}];
 function newLocal() {
@@ -644,7 +671,7 @@ async function install(what, btn) {
   return true;
 }
 
-const projRow = p => `<div class="proj ${p.id === cur ? 'on' : ''}" onclick="openProject('${p.id}')" title="${esc(p.path)}">
+const projRow = p => `<div class="proj ${p.id === cur ? 'on' : ''}" data-id="${p.id}" onclick="openProject('${p.id}')" title="${esc(p.path)}">
     <span class="dot ${busy[p.id] ? 'busy' : p.ready ? 'ready' : ''}"></span><span class="grow" style="min-width:0"><div class="name">${esc(p.name)}</div>
     <div class="who">${esc(nick(p.account))}${p.gh ? ' · @' + esc(p.gh) : ''}${p.shared ? ' · ' + esc(p.owner) + "'s" : ''}</div></span>
     ${p.questions.length ? `<span class="pill">${p.questions.length}?</span>` : ''}</div>`;
@@ -1086,7 +1113,7 @@ function drawAct(g) {
     ${g._on === 'sh' ? '<button class="cp" title="Copy the last command">Copy</button>' : ''}</div>
     <div class="tl">${runs.map((es, i) => `<div data-i="${i}" title="${esc(es[0].detail?.description || 'Details')}">${runLine(es)}</div>`).join('')}</div>`;
   g.querySelectorAll('.ttabs button').forEach(b => b.onclick = () => { g._on = b.dataset.k; g._pin = true; drawAct(g); });
-  g.querySelectorAll('.tl > div').forEach(r => r.onclick = () => toolDlg(runs[+r.dataset.i], on.title));
+  g.querySelectorAll('.tl > div').forEach(r => { r._es = runs[+r.dataset.i]; r.onclick = () => toolDlg(r._es, on.title); }); // _es: right-click menu
   const cp = g.querySelector('.cp');
   if (cp) cp.onclick = () => { navigator.clipboard.writeText(last.detail.command); cp.textContent = 'Copied'; setTimeout(() => cp.textContent = 'Copy', 1200); };
   const tl = g.querySelector('.tl'); tl.scrollTop = tl.scrollHeight;
