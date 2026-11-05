@@ -305,6 +305,7 @@ pre.diff .ctx { color:var(--faint); }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
 .menu .mcap { font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; padding:6px 10px 2px; }
 .menu .mact { display:inline-grid; place-items:center; width:24px; height:22px; border-radius:6px; color:var(--dim); } .menu .mact:hover { background:var(--soft); color:var(--accent); } .menu .mact svg { width:14px; height:14px; }
+.menu .mact.lab { display:inline-flex; gap:4px; width:auto; min-width:92px; padding:0 6px; margin-left:4px; border:1px solid var(--line2); font-size:12px; } .menu .mact.lab svg:last-child { width:10px; height:10px; margin-left:auto; }
 .menu .mchev { color:var(--faint); display:inline-flex; } .menu .mchev svg { width:14px; height:14px; } .menu .grow { flex:1; }
 
 /* right panel */
@@ -621,7 +622,7 @@ function buildMenu(items, r, side, level = 0) {
   const m = document.createElement('div');
   m.className = 'menu glass'; m.dataset.level = level; m.popover = 'manual'; // top layer, opened last → over Settings/dialogs
   m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
-    <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
+    <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact${a.label ? ' lab' : ''}" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}${a.label ? `${esc(a.label)}${icon('down')}` : ''}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
   (document.querySelector('dialog:modal') || document.body).appendChild(m); m.showPopover(); // inside a modal: else inert
   m.style.maxHeight = innerHeight - 16 + 'px'; m.style.overflowY = 'auto';
   const h = m.offsetHeight, w = m.offsetWidth;
@@ -637,10 +638,11 @@ function buildMenu(items, r, side, level = 0) {
     m.style.top = (below ? r.bottom + 6 : r.top - h - 6) + 'px';
   }
   m.querySelectorAll('[data-i]').forEach(b => { const it = items[b.dataset.i];
-    b.onmouseenter = () => it.items ? buildMenu(it.items, b.getBoundingClientRect(), true, level + 1) : document.querySelectorAll('.menu').forEach(x => +x.dataset.level > level && x.remove());
-    b.onclick = e => { const a = e.target.closest('.mact'); if (a) return buildMenu(it.acts[a.dataset.a].items, a.getBoundingClientRect(), true, level + 1);
-      if (it.run) { closeMenu(); it.run(); } else if (it.items) buildMenu(it.items, b.getBoundingClientRect(), true, level + 1); };
-    b.querySelectorAll('.mact').forEach(a => a.onmouseenter = () => buildMenu(it.acts[a.dataset.a].items, a.getBoundingClientRect(), true, level + 1)); });
+    b.onmouseenter = () => it.items ? buildMenu(it.items, b.getBoundingClientRect(), true, level + 1) : document.querySelectorAll('.menu').forEach(x => +x.dataset.level > level && !x.dataset.click && x.remove()); // click-opened: stays till a click/another submenu
+    // acts = click-only dropdowns (hover ones overlapped each other); labelled act → opens below it like a select
+    b.onclick = e => { const a = e.target.closest('.mact'); if (a) return buildMenu(it.acts[a.dataset.a].items, a.getBoundingClientRect(), !it.acts[a.dataset.a].label, level + 1).dataset.click = 1;
+      if (it.run) { closeMenu(); it.run(); } else if (it.items) buildMenu(it.items, b.getBoundingClientRect(), true, level + 1); }; });
+  return m;
 }
 const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
 function closeMenu() { document.querySelectorAll('.menu').forEach(x => x.remove()); document.removeEventListener('mousedown', outside); }
@@ -945,13 +947,14 @@ document.addEventListener('mouseover', e => {
   }, 450);
 });
 ['mousedown', 'wheel', 'keydown'].forEach(t => document.addEventListener(t, hideTip, true));
-// accounts; each row has two icons → submenus: model (sparkle), effort (brain); picking one also picks that account
-const acctItems = () => [...S.accounts.map(a => { const on = P().account === a.id;
+// accounts; each row has two labelled click dropdowns: model (sparkle), effort (brain); picking one also picks that account.
+// model/effort are project-level (kept on account switch) → every row shows the project's current values
+const acctItems = () => [...S.accounts.map(a => { const on = P().account === a.id, m = P().model || '', ef = P().effort || '';
   return {check: on, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id}), acts: [
-    {icon: 'sparkle', tip: 'Model' + (on ? ': ' + MODELS[P().model] : ''), items: [{title: 'Model'},
-      ...Object.entries(MODELS).map(([k, l]) => ({check: on && P().model === k, label: l, run: () => setP({account: a.id, model: k})}))]},
-    {icon: 'brain', tip: 'Effort' + (on ? ': ' + EFFORTS[P().effort || ''] : ''), items: [{title: 'Effort'},
-      ...Object.entries(EFFORTS).map(([k, l]) => ({check: on && (P().effort || '') === k, label: l, run: () => setP({account: a.id, effort: k})}))]}]}; }), '-',
+    {icon: 'sparkle', label: MODELS[m] || m, tip: 'Model', items: [{title: 'Model'},
+      ...Object.entries(MODELS).map(([k, l]) => ({check: m === k, label: l, run: () => setP({account: a.id, model: k})}))]},
+    {icon: 'brain', label: EFFORTS[ef] || ef, tip: 'Effort', items: [{title: 'Effort'},
+      ...Object.entries(EFFORTS).map(([k, l]) => ({check: ef === k, label: l, run: () => setP({account: a.id, effort: k})}))]}]}; }), '-',
   {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}];
 const permItems = () => [{title: 'Permissions (level)'}, ...Object.entries(PERMS).map(([k, l], i) => ({check: P().mode === k, label: `${i + 1}  ${l}`, run: () => setP({mode: k})}))];
 const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
