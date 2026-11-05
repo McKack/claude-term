@@ -268,7 +268,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 /* popover menu */
 .glass { background:color-mix(in srgb, var(--card) 76%, transparent); backdrop-filter:blur(28px) saturate(170%); -webkit-backdrop-filter:blur(28px) saturate(170%);
   border:1px solid color-mix(in srgb, #fff 10%, var(--line2)); box-shadow:inset 0 1px 0 #ffffff12, 0 18px 50px #00000040; }
-.menu { position:fixed; z-index:50; min-width:200px; border-radius:14px; padding:5px; }
+.menu { position:fixed; inset:auto; margin:0; color:var(--text); min-width:200px; border-radius:14px; padding:5px; } /* a manual popover: top layer, above dialogs */
 .menu button { display:flex; width:100%; gap:9px; align-items:center; text-align:left; border:0; background:none; padding:7px 10px; border-radius:8px; cursor:pointer; }
 .menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
@@ -515,10 +515,10 @@ function menuAt(anchor, items) {
 function buildMenu(items, r, side, level = 0) {
   document.querySelectorAll('.menu').forEach(x => +x.dataset.level >= level && x.remove());
   const m = document.createElement('div');
-  m.className = 'menu glass'; m.dataset.level = level;
+  m.className = 'menu glass'; m.dataset.level = level; m.popover = 'manual'; // top layer, opened last → over Settings/dialogs
   m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
     <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
-  document.body.appendChild(m);
+  (document.querySelector('dialog:modal') || document.body).appendChild(m); m.showPopover(); // inside a modal: else inert
   m.style.maxHeight = innerHeight - 16 + 'px'; m.style.overflowY = 'auto';
   const h = m.offsetHeight, w = m.offsetWidth;
   // below the anchor, else above; neither fits → beside it (left when the anchor is in the right half, else right),
