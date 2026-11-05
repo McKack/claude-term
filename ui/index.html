@@ -1143,7 +1143,9 @@ function liveEl(pid) { const d = document.createElement('div'); d.className = 'm
   return view === 'chat' ? chatRow('claude', d, new Date().toISOString()) : d; }
 function addEntry(pid, e) {
   if (hand[pid] === true && e.kind !== 'err' && e.kind !== 'ask') return; // a handover turn: only the pill shows
-  if (isProcess(e) && busy[pid]) { hand[pid] = hand[pid] || 'soft'; if (pid === cur) drawChrome(); }
+  // writing plan/handover/changes = wrapping up → "Preparing plan…"; reading them (every fresh start) ≠ that, and real work after ends it
+  const wrap = isProcess(e) && (/^mcp__clauracle__/.test(e.text) || /^(Edit|MultiEdit|Write)\b/.test(toolName(e)));
+  if (busy[pid] && (wrap ? !hand[pid] : e.kind === 'tool' && !isProcess(e) && hand[pid] === 'soft')) { hand[pid] = wrap ? 'soft' : false; if (pid === cur) drawChrome(); }
   if (!e.ts && (e.kind === 'user' || e.kind === 'claude')) e.ts = new Date().toISOString();
   (logs[pid] ||= []).push(e);
   if (e.kind === 'tool' && /^(Edit|MultiEdit|Write|NotebookEdit)\b/.test(toolName(e)) && (e.detail?.file_path || e.detail?.notebook_path)) {
