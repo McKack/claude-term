@@ -1168,18 +1168,26 @@ pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf, args: &[String]) {
     }
     if c.spawn().is_ok() {
         app.exit(0);
+        // app.exit can hang (seen 2026-11-05: old instance stayed → helper timed out → 2 Clauracles) → hard exit
+        std::thread::spawn(|| { std::thread::sleep(std::time::Duration::from_secs(3)); std::process::exit(0) });
     }
 }
 
 /// Swap helper (a new build started with `--swap-into <installed exe>`): copy itself next to the target, rename it
 /// over the target once the old app has exited (rename fails while Windows holds the exe), start it, exit.
-/// ponytail: ~30s retry, then starts whatever is there (old build) so the app always comes back.
+/// Still locked after ~8s → an instance didn't exit: kill every other clauracle.exe (never this helper), retry ~8s.
+/// No /T ∵ helper = child of the old instance; its leftover claude.exe → startup orphan check offers to end them.
+/// Then starts whatever is there (old build if all failed) so the app always comes back — as the ONLY instance.
 fn swap_into(dest: &std::path::Path) {
     let tmp = dest.with_extension("new");
     if let Ok(me) = std::env::current_exe() {
         if std::fs::copy(&me, &tmp).is_ok() {
-            for _ in 0..150 {
+            for i in 0..80 {
                 if std::fs::rename(&tmp, dest).is_ok() { break; }
+                if i == 40 && cfg!(windows) {
+                    let (img, me_pid) = (dest.file_name().unwrap_or_default().to_string_lossy().into_owned(), std::process::id());
+                    let _ = store::command(std::path::Path::new("taskkill")).args(["/F", "/FI", &format!("IMAGENAME eq {img}"), "/FI", &format!("PID ne {me_pid}")]).output();
+                }
                 std::thread::sleep(std::time::Duration::from_millis(200));
             }
             let _ = std::fs::remove_file(&tmp);
