@@ -186,6 +186,10 @@ pre.diff .ctx { color:var(--faint); }
   background:color-mix(in srgb, var(--err) 9%, transparent); border:1px solid color-mix(in srgb, var(--err) 35%, transparent); border-radius:12px; padding:8px 12px; }
 .msg.err .et { display:block; font:600 12px system-ui,sans-serif; margin-bottom:4px; opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #log.term .msg.err { border:0; background:none; padding:0; }
+/* HAL nod (#8): glowing red eye on error + permission cards */
+.i.hal { width:16px; height:16px; vertical-align:-3px; margin-right:6px; filter:drop-shadow(0 0 3px #f22) drop-shadow(0 0 6px #f228); }
+.msg.err .et .dim { font-weight:400; margin-left:6px; }
+.card.perm { border-color:color-mix(in srgb, var(--err) 35%, transparent); }
 .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
 .card.qs { border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .card h4 { margin:0 0 4px; font-size:14px; }
@@ -437,7 +441,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
-  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-hal" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".5"/><circle cx="12" cy="12" r="6.5" fill="#300"/><circle cx="12" cy="12" r="3.2" fill="#f22"/><circle cx="12" cy="12" r="1.2" fill="#fd6"/></symbol>
+  <symbol id="i-stop"viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
   <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
@@ -566,6 +571,11 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
 const P = (id = cur) => S.projects.find(p => p.id === id);
+// HAL nod (#8): name = AI account nick, else its gh login; blocked by permission/safety rules → the full line
+const BLOCKED = /permission|denied|not allowed|blocked|refus/i;
+const HALI = '<svg class="i hal"><use href="#i-hal"/></svg>';
+const hal = can => { const a = S.accounts.find(x => x.id === (P()?.account || S.default_account)) || S.accounts[0] || {};
+  return `${HALI}I'm sorry, ${esc(a.nick || a.gh || 'Dave')}.${can ? " I'm afraid I can't do that." : ''}`; };
 const nick = id => (S.accounts.find(a => a.id === id) || {nick: id}).nick;
 const MODES = {off: ['Off', 'Plain chat; only the context limit hands over'], manual: ['Manual', 'Stops when a task is done; you press Continue'],
   auto: ['Auto', 'Clears and continues by itself until a limit'], auto_answer: ['Auto + answers', 'Also answers what it can; holds only real decisions']};
@@ -1061,9 +1071,9 @@ function put(box, e) {
     if (name === 'Read' && /\.(png|jpe?g|gif|webp|bmp)$/i.test(f || '')) (box._shots ||= []).includes(f) || box._shots.push(f);
     return drawAct(g);
   }
-  if (e.kind === 'err' && view === 'chat') { // title: the most recent tool call (what failed), else "Error"
+  if (e.kind === 'err' && view === 'chat') { // HAL title + what failed (most recent tool call), else "Error"
     const g = box.lastElementChild?.classList.contains('tools') && box.lastElementChild, t = g && g._tabs.get(g._last);
-    el.innerHTML = `<span class="et">${t ? esc(t.title) + ' · ' + esc(toolName(t.es.at(-1))) + ' failed' : 'Error'}</span>`;
+    el.innerHTML = `<span class="et">${hal(BLOCKED.test(e.text || ''))}<span class="dim">${t ? esc(t.title) + ' · ' + esc(toolName(t.es.at(-1))) + ' failed' : 'Error'}</span></span>`;
     el.append(e.text);
   }
   if (e.kind === 'claude' && box._shots?.length) { // images Claude read since its last message → thumbs on this one
@@ -1557,7 +1567,8 @@ function askCard(e) {
       return [ws.map(w => `${e.tool}(${w.join(' ')}:*)`), `${e.tool} ${ls.slice(0, 4).join(' + ')}${ls.length > 4 ? ` +${ls.length - 4} more` : ''}`]; };
     rules = [[[e.tool], e.tool === 'Bash' ? 'Bash (any command)' : e.tool], ...(parts.length ? [lvl(1)] : []), ...(parts.some(w => w.length > 1) ? [lvl(2)] : [])];
     rule = rules[Math.min(1, rules.length - 1)][0];
-    d.innerHTML = `<h4>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
+    d.classList.add('perm');
+    d.innerHTML = `<h4>${HALI}Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
       <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-m>Allow…</button><button class="btn primary" data-a="1">Allow now</button></div>`;
     // Allow… = dropdown: duration → (Bash only) what to allow, as a hover submenu
     const pick = (a, r) => () => { rule = r; answer(a); };
