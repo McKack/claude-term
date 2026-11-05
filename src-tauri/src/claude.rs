@@ -1017,6 +1017,52 @@ pub fn queue_move(dir: &str, from: usize, to: Option<usize>) -> Result<(), Strin
     std::fs::write(&path, out.join(nl) + if text.ends_with('\n') { nl } else { "" }).map_err(|e| e.to_string())
 }
 
+/// Section after the heading `head`: (first line, end without trailing blanks, top-level item line indexes).
+fn sect(lines: &[String], head: fn(&str) -> bool) -> Option<(usize, usize, Vec<usize>)> {
+    let s = lines.iter().position(|l| head(l))? + 1;
+    let mut e = lines[s..].iter().position(|l| l.starts_with('#')).map_or(lines.len(), |i| s + i);
+    while e > s && lines[e - 1].trim().is_empty() { e -= 1; }
+    let item = regex::Regex::new(r"^(?:\d+[.)]|[-*])\s").unwrap();
+    Some((s, e, (s..e).filter(|&i| item.is_match(&lines[i])).collect()))
+}
+fn wait_head(l: &str) -> bool { l.starts_with('#') && l.trim_start_matches('#').trim().to_ascii_lowercase().starts_with("waiting") }
+fn queue_head(l: &str) -> bool { l.starts_with('#') && l.trim_start_matches('#').trim().eq_ignore_ascii_case("queue") }
+const MARK: &str = r"^(?:\d+[.)]|[-*])\s+(?:\[ \]\s*)?";
+fn plan_lines(dir: &str) -> (std::path::PathBuf, String, Vec<String>) {
+    let path = std::path::Path::new(dir).join(primary(dir));
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let lines = text.lines().map(String::from).collect();
+    (path, text, lines)
+}
+
+/// "## Waiting on the user" items of the primary plan (Plan tab suggestions): one string per top-level block.
+pub fn waiting(dir: &str) -> Vec<String> {
+    let (_, _, lines) = plan_lines(dir);
+    let Some((_, e, st)) = sect(&lines, wait_head) else { return vec![] };
+    let mark = regex::Regex::new(MARK).unwrap();
+    st.iter().enumerate().map(|(k, &b)| {
+        let t = lines[b..st.get(k + 1).copied().unwrap_or(e)].iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+        mark.replace(&t, "").replace("**", "")
+    }).collect()
+}
+
+/// Suggestion i out of "Waiting on the user": accept → appended to the Queue (numbered if the Queue is), else dropped.
+pub fn wait_take(dir: &str, i: usize, accept: bool) -> Result<(), String> {
+    let (path, text, mut lines) = plan_lines(dir);
+    let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let (_, e, st) = sect(&lines, wait_head).ok_or("no Waiting section")?;
+    let b = *st.get(i).ok_or("item not found")?;
+    let mut blk: Vec<String> = lines.drain(b..st.get(i + 1).copied().unwrap_or(e)).collect();
+    if accept {
+        let (_, e, qs) = sect(&lines, queue_head).ok_or("no ## Queue section")?;
+        let num = regex::Regex::new(r"^(\d+)[.)]\s").unwrap();
+        let m = qs.last().and_then(|&l| num.captures(&lines[l]).and_then(|c| c[1].parse::<usize>().ok())).map_or("- ".into(), |n| format!("{}. ", n + 1));
+        blk[0] = format!("{m}{}", regex::Regex::new(MARK).unwrap().replace(&blk[0], ""));
+        lines.splice(e..e, blk);
+    }
+    std::fs::write(&path, lines.join(nl) + if text.ends_with('\n') { nl } else { "" }).map_err(|e| e.to_string())
+}
+
 /// Every plan file with open tasks, primary first: [{file, items}] (Tasks tab ⓘ, merge into PLAN.md).
 pub fn plans(dir: &str) -> Vec<Value> {
     let p = primary(dir);
@@ -1099,6 +1145,21 @@ mod tests {
         assert_eq!(queue(dir), ["A first A wrap", "B", "C"]);
         queue_move(dir, 0, None).unwrap(); // tick = done → block gone, renumbered
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "# Plan\n\n## Queue\n0. B\n- [x] gone\n1. C\n\n## Waiting\n- W\n");
+    }
+
+    #[test]
+    fn waiting_accept_and_dismiss() {
+        let d = std::env::temp_dir().join("clauracle-wait-test");
+        let _ = std::fs::create_dir_all(&d);
+        let p = d.join("PLAN.md");
+        std::fs::write(&p, "## Queue\n1. A\n\n## Waiting on the user (yes first)\n- **W1** first\n  wrap\n- W2\n").unwrap();
+        let dir = d.to_str().unwrap();
+        assert_eq!(waiting(dir), ["W1 first wrap", "W2"]);
+        wait_take(dir, 0, true).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "## Queue\n1. A\n2. **W1** first\n  wrap\n\n## Waiting on the user (yes first)\n- W2\n");
+        wait_take(dir, 0, false).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "## Queue\n1. A\n2. **W1** first\n  wrap\n\n## Waiting on the user (yes first)\n");
+        assert!(waiting(dir).is_empty());
     }
 
     #[test]

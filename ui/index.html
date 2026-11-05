@@ -350,6 +350,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti:hover > .qdrag, .ti.drag > .qdrag { opacity:1; } .ti.drag { opacity:.75; background:color-mix(in srgb, var(--accent) 10%, transparent); } .ti.drag .qdrag { cursor:grabbing; }
 .ti.working { flex-wrap:wrap; border:1px solid var(--line) !important; border-radius:4px 16px 16px 16px; padding:7px 12px; margin:2px 0; box-shadow:0 0 12px -4px var(--accent);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
+.ti.sug > input { display:none; } .ti.sug > .ib { flex:none; padding:0 2px; }
 .ti.working .tt { color:var(--accent); } .ti.working + .ti { border-top:0; }
 .tw { flex-basis:100%; display:flex; gap:5px; align-items:center; padding-left:21px; color:var(--accent); font-size:11.5px; font-variant-numeric:tabular-nums; } .tw svg { width:12px; height:12px; }
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
@@ -2718,7 +2719,10 @@ function drawAtp() {
   const ag = agentsOf(cur), t = todos(cur), run = ag.filter(a => a.running), q = S.queues?.[cur] || [], dn = S.done?.[cur] || [], pl = S.plans?.[cur] || [];
   const open = t.filter(x => x.status !== 'completed'), fin = t.filter(x => x.status === 'completed');
   const L = a => `<div class="tlist">${a.join('')}</div>`;
-  const tasks = ((t.length ? `<div class="label">Now</div>` + L([...open.map(x => tli(esc(x.status === 'in_progress' && x.activeForm || x.content), {cls: x.status})),
+  const wt = S.waits?.[cur] || [];
+  const tasks = ((wt.length ? `<div class="label" title="PLAN.md › Waiting on the user: your AI noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
+        end: `<button class="ib" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: remove from PLAN.md" onclick="planWait(${i}, false)">${icon('x')}</button>`}))) : '')
+    + (t.length ? `<div class="label">Now</div>` + L([...open.map(x => tli(esc(x.status === 'in_progress' && x.activeForm || x.content), {cls: x.status})),
         ...fin.slice(-3).map(x => tli(esc(x.content), {done: 1, cls: 'completed', tip: x.content}))]) : '')
     + (pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...S.plans[cur].map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
@@ -2787,6 +2791,12 @@ async function planCheck(i, box) {
   if (!await sure('Mark this task done?', 'Done, remove it', 'Cancel', `These highlighted items are planned to be worked on:\n\n<span style="color:var(--primary)">${hl(t)}</span>`)) return;
   S.queues[cur].splice(i, 1); drawAtp();
   try { await call('plan_move', {pid: cur, from: i, to: null}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Remove failed: ' + er}); } refresh();
+}
+// Plan tab suggestion (PLAN.md Waiting on the user) → accept = to the Queue's end, dismiss = removed; plain file edit, no AI
+async function planWait(i, accept) {
+  const w = S.waits?.[cur]; if (!w?.[i]) return;
+  const [t] = w.splice(i, 1); if (accept) (S.queues[cur] ||= []).push(t); drawAtp();
+  try { await call('plan_wait', {pid: cur, i, accept}); } catch (er) { addEntry(cur, {kind: 'err', text: (accept ? 'Accept' : 'Dismiss') + ' failed: ' + er}); } refresh();
 }
 async function queueToTeam(btn) {
   const have = new Set(teamTasks(cur).map(x => x.title.trim().toLowerCase()));
