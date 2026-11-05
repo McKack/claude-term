@@ -261,6 +261,7 @@ pre.diff .ctx { color:var(--faint); }
 .btn.block { width:100%; justify-content:center; } .chk { display:flex; gap:8px; align-items:center; font-size:13.5px; }
 .empty { text-align:center; color:var(--faint); font-size:13px; margin:0; padding:4px 0; }
 .btnrow { display:grid; grid-template-columns:repeat(auto-fit, minmax(84px, 1fr)); gap:8px; } .btnrow .btn { justify-content:center; padding:6px 8px; }
+.btnrow.b3 { grid-template-columns:repeat(3, 1fr); } .btnrow.b3 .btn { white-space:nowrap; } .btnrow.col { grid-template-columns:1fr; } /* b3 = Build/Run|Stop/Deploy; col = stacked */
 .keys > div { display:flex; justify-content:space-between; gap:8px; font:12.5px ui-monospace,Consolas,monospace; padding:2px 0; } .keys span:first-child { overflow:hidden; text-overflow:ellipsis; }
 .stepper { list-style:none; padding:0; margin:4px 0; counter-reset:st; font-size:13px; color:var(--dim); }
 .stepper li { position:relative; padding:3px 0 16px 40px; counter-increment:st; }
@@ -1485,7 +1486,8 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
   usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },
   commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
-  build: () => { const b = builds[d.pid] ||= {out: ''}; b.out += d.line + '\n';
+  build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
+    if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
   gh_code: () => { const m = $('ghMsg'); if (m) m.innerHTML = `Enter <b style="font-size:18px" class="sel mono">${esc(d.code)}</b> at <a href="#" data-url="${esc(d.url)}">github.com/login/device</a>`; T.opener.openUrl(d.url); },
@@ -1720,7 +1722,7 @@ async function relWizard(p, force) {
   const ask = `<button class="btn${k < 0 ? ' primary' : ''}" onclick="relAsk('summary')">${icon('claude')}What's missing for MVP?</button>`;
   if (c.err) return sec('Release', `<p class="err">${esc(c.err)}</p>`, re);
   if (k < 0 && RELTO[pid] == null) return sec('Release', `<p class="dim" style="margin:0 0 8px">Walk this project to a release: alpha → beta → release candidate → published. Each stage has its own checklist, stricter going up.</p>
-    <div class="btnrow">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`, re);
+    <div class="btnrow col">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`, re);
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
   const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${x.ai ? '•' : x.ok ? '✓' : '✗'}</span>
     <span class="grow">${esc(x.t)}${x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
@@ -1730,7 +1732,7 @@ async function relWizard(p, force) {
   const act = up ? `<button class="btn primary" ${left ? `title="${left} check${left > 1 ? 's' : ''} open"` : ''} onclick="relMark(${to}, ${left})">${icon('rocket')}Mark as ${STAGES[SK[to]]}</button>`
     : `<button class="btn primary" onclick="rightTab('gh')">${icon('rocket')}Release ${STAGES[SK[k]]} update</button>`;
   return sec('Release', `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}</p>${seg}
-    <div>${items.map(row).join('')}</div><div class="btnrow">${act}${ask}</div>`, (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re);
+    <div>${items.map(row).join('')}</div><div class="btnrow col">${act}${ask}</div>`, (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re);
 }
 const relRefresh = () => { delete RELC[cur]; delete SECRETS[cur]; drawRight(); };
 async function relAsk(id) {
@@ -1755,8 +1757,9 @@ async function drawRight(force) {
   if (tab === 'svc') return drawServices();
   if (tab === 'build') {
     const has = p.build.build || p.build.run || p.build.deploy;
-    box.innerHTML = sec('Commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
-        <button class="btn ghost" onclick="call('stop_run', {pid:cur})">${icon('stop')}Stop</button></div>`
+    box.innerHTML = sec('Commands', has ? `<div class="btnrow b3">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+          ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
+          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>`
         : await guessHtml(), `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
       + (!svcOf(p).includes('macsign') && (MAC[cur] ??= await call('ships_mac', {pid: cur}).catch(() => false))
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>

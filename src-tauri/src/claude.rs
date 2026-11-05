@@ -919,6 +919,8 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
             while let Some(s) = rx.recv().await {
                 emit(&app2, "build", json!({"pid": pid2, "step": "run", "line": s, "done": null}));
             }
+            // output closed = app exited (or stopped) → UI swaps Stop back to Run
+            emit(&app2, "build", json!({"pid": pid2, "step": "run", "line": null, "done": true}));
         });
         return (true, String::new());
     }
