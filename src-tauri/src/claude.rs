@@ -498,7 +498,7 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
     }
     if let Ok(r) = conn.request(json!({"subtype": "get_context_usage"}), 15).await {
         let pct = r["percentage"].as_f64().unwrap_or(0.0);
-        emit(app, "status", json!({"pid": pid, "context": pct.round()}));
+        emit(app, "status", json!({"pid": pid, "context": pct.round(), "tokens": r["totalTokens"]}));
         if p.context_limit > 0.0 && pct >= p.context_limit && !live.first_turn.load(SeqCst) {
             prepare(app, live, pid, &format!(": the context window is at {}%", pct.round()));
         }

@@ -546,7 +546,14 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
 let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'gh', mp = null;
 const ctx = (() => { try { return JSON.parse(localStorage.ctx || '{}'); } catch { return {}; } })();
-const saveCtx = () => { try { localStorage.ctx = JSON.stringify(ctx); } catch {} };
+const saveCtx = () => { try { localStorage.ctx = JSON.stringify(ctx); localStorage.tok = JSON.stringify(TOK); } catch {} };
+// token estimates per pid: now = context tokens (get_context_usage), drop = Σ context cleared by clear-continue,
+// saved += drop per finished turn (without the clears each turn would re-read it). ponytail: per turn, not per API call → low-ball
+const TOK = (() => { try { return JSON.parse(localStorage.tok || '{}'); } catch { return {}; } })();
+const tk = pid => TOK[pid] ||= {now: 0, drop: 0, saved: 0};
+const kt = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : Math.round(n / 1e3) + 'k';
+// AI-button cost: one read of the current context + the prompt (chars/4); tool calls repeat it → "+"
+const estTok = (txt = '') => `≈ ${kt(tk(cur).now + txt.length / 4 + 2e3)}+ tokens (current context + prompt)`;
 const hand = {}, team = {}, logs = {}, busy = {}, live = {}, builds = {}, hiddenQs = {}, qsOpen = {}, atts = {}, texts = {}, queue = {};
 let draftsLoaded = false;
 const $ = id => document.getElementById(id);
@@ -800,6 +807,8 @@ function statsCard(btn) {
   const bar = (v, l, ic, k) => useRow(v, l, ic, k ? resetIn(p.account, k) : '');
   card.innerHTML = `<h5>Context</h5>${bar(ctx[cur], 'Used', 'doc')}
     <label class="row" style="font-size:12px;gap:6px">${icon('loop')}<span class="grow">Hand over at</span><input id="scLim" type="number" min="0" max="95" value="${p.context_limit}" style="width:64px">%</label>
+    ${tk(cur).now ? `<div class="row" style="font-size:12px;gap:6px">${icon('doc')}<span class="grow">In context now</span>${kt(tk(cur).now)} tokens</div>` : ''}
+    ${tk(cur).saved ? `<div class="row" style="font-size:12px;gap:6px" title="Clear-continue: each turn after a clear would otherwise re-read the cleared context. Counted once per turn (tool calls re-read it too), so the real saving is higher.">${icon('loop')}<span class="grow">Saved by clearing (est.)</span>${kt(tk(cur).saved)} tokens</div>` : ''}
     <h5>Usage · ${esc(nick(p.account))}</h5>${bar(u.five_hour, '5-hour', 'clock', 'five_hour')}${bar(u.seven_day, 'Weekly', 'cal', 'seven_day')}
     <h5>This session <span class="faint">since ${esc(tm(new Date(x.start).toISOString()))}</span></h5>
     <div class="row" style="font-size:12px;gap:6px">${icon('timer')}<span class="grow">You, active</span>${dur(x.you)}</div>
@@ -1465,11 +1474,11 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) { setDoing(d.pid, 'Thinking'); busyT[d.pid] = Date.now(); } const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; if (!cur) drawHome(); else if (flip && d.pid === cur) drawAtp(); /* Plan row 0 Working look on/off */ }
     if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid]; delete triaging[d.pid];
       refresh().then(() => { if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) contGo(d.pid); else flushQueue(d.pid); }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
-    if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }
+    if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
-  cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session'}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session'}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
   queued: () => refresh(),
@@ -2641,8 +2650,8 @@ function drawAtp() {
         ...fin.slice(-3).map(x => tli(esc(x.content), {done: 1, cls: 'completed', tip: x.content}))]) : '')
     + (pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...S.plans[cur].map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
-        ${pl.length > 1 || pl[0].file !== 'PLAN.md' ? `<button class="ib" title="Merge every plan file into PLAN.md" onclick="mergePlans()">${icon('brush')}</button>` : ''}
-        ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
+        ${pl.length > 1 || pl[0].file !== 'PLAN.md' ? `<button class="ib" title="Merge every plan file into PLAN.md\n${estTok()}" onclick="mergePlans()">${icon('brush')}</button>` : ''}
+        ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
         ${P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
         + L(q.map((x, i) => { const g = `<button class="qdrag" title="Drag to reorder (writes PLAN.md)" onpointerdown="qDrag(event, ${i})">⠿</button>`;
             return tli(esc(x), {on: `planCheck(${i}, this)`, ...(!i && busy[cur] ? {cls: 'working', end: `<small class="tw">${icon('sparkle')}<span>${workAgo()}</span></small>` + g} : {end: g})}); }))
@@ -2675,13 +2684,13 @@ function drawAtp() {
 async function mergePlans() {
   const pl = S.plans?.[cur] || [], from = pl.filter(o => o.file !== 'PLAN.md' && o.items.length);
   if (!from.length && pl[0]?.file === 'PLAN.md') return;
-  if (!await sure(`Merge into PLAN.md?\n\n${from.map(o => `${o.file}: ${o.items.length} task${o.items.length === 1 ? '' : 's'}`).join('\n') || 'Creates PLAN.md'}\n\nClaude moves them into PLAN.md's Queue (by priority, duplicates merged) and removes them from those files.`)) return;
+  if (!await sure(`Merge into PLAN.md?\n\n${from.map(o => `${o.file}: ${o.items.length} task${o.items.length === 1 ? '' : 's'}`).join('\n') || 'Creates PLAN.md'}\n\nClaude moves them into PLAN.md's Queue (by priority, duplicates merged) and removes them from those files.\n${estTok()}`)) return;
   sendNow(cur, {text: `Merge the open tasks of ${from.map(o => o.file).join(', ') || 'HANDOVER.md'} into PLAN.md's "## Queue" (by priority, merge duplicates; things needing the user's yes under "## Waiting on the user"), then remove them from those files (in HANDOVER.md drop its Queue section). Don't start any task.`, atts: []});
 }
 // cleanup: Claude proposes a tidier Queue (merge/drop/reorder vs project state) → user confirms in chat before it writes
 async function cleanPlan() {
   const n = (S.queues?.[cur] || []).length;
-  if (!await sure(`Clean up the plan?\n\nClaude reviews the ${n} queued tasks against the project's current state: merges related ones, drops stale or already-done ones, re-orders by priority.\n\nIt shows the proposed Queue first and only writes PLAN.md after you say yes.`)) return;
+  if (!await sure(`Clean up the plan?\n\nClaude reviews the ${n} queued tasks against the project's current state: merges related ones, drops stale or already-done ones, re-orders by priority.\n\nIt shows the proposed Queue first and only writes PLAN.md after you say yes.\n${estTok()}`)) return;
   sendNow(cur, {text: `Clean up PLAN.md's "## Queue": check each task against the code/git state; merge related tasks, drop stale or already-done ones, re-order by priority (needs-the-user's-yes → "## Waiting on the user"). Show the proposed new Queue plus one line per merge/drop with why, then STOP: don't edit PLAN.md or start any task until I confirm.`, atts: []});
 }
 // Plan tab: drag a Queue row by its grip (pointer events ∵ Tauri's file-drop handler eats HTML5 DnD) → row moves live
