@@ -334,6 +334,12 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .atrow { display:flex; gap:8px; align-items:baseline; font-size:13px; } .atrow small { display:block; color:var(--faint); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .atrow .dot { flex:none; translate:0 -1px; } .atrow .tk { width:14px; flex:none; color:var(--faint); } .atrow.in_progress { color:var(--accent); } .atrow.completed { color:var(--faint); text-decoration:line-through; opacity:.7; }
 .atrow.completed .grow { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } /* done = one line; full text in the tooltip */
+/* unified task list (tli): dashed dividers, 2-line clamp, click → .open = full text; checkbox read-only except Plan › Tasks */
+.tlist { display:flex; flex-direction:column; margin:2px 0; } .ti { display:flex; gap:8px; align-items:flex-start; padding:5px 0; border-top:1px dashed var(--line2); cursor:pointer; font-size:13px; }
+.tlist > .ti:first-child { border-top:0; } .ti > input { flex:none; margin:3px 0 0; accent-color:var(--accent); } .ti > input:disabled { opacity:.55; cursor:default; }
+.ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
+.ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
+.msg .tlist .ti { font-size:inherit; }
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .item a { color:var(--text); text-decoration:none; cursor:pointer; } .item a:hover { color:var(--accent); }
 .out { background:#151412; color:#d8d4cb; border-radius:10px; padding:10px; height:calc(100vh - 190px); overflow:auto; font:12px/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; margin-top:10px; user-select:text; }
@@ -552,9 +558,13 @@ function md(src) {
   return src.split(/```[^\n]*\n?/).map((part, i) => i % 2 ? `<pre><code>${esc(part)}</code></pre>` :
     esc(part).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
       .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="#" data-url="$2">$1</a>')
-      .replace(/^#{1,4} (.*)$/gm, '<b>$1</b>').replace(/^\s*[-*] /gm, '• ')
-      .split(/\n{2,}/).map(p => p.trim() && `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')).join('');
+      .replace(/^#{1,4} (.*)$/gm, '<b>$1</b>')
+      .replace(/(?:^[ \t]*(?:[-*]|\d+[.)]) .*(?:\n|$))+/gm, l => `<div class="tlist">${l.trim().split('\n').map(x => tli(x.replace(/^\s*(?:[-*]|\d+[.)]) /, ''))).join('')}</div>\n`)
+      .split(/\n{2,}/).map(p => p.trim() && (p.startsWith('<div class="tlist"') ? p : `<p>${p.trim().replace(/\n/g, '<br>')}</p>`)).join('')).join('');
 }
+// one task row everywhere (chat lists, Plan tab, Next pill, team tasks): h = HTML; checkable only when `on` (onchange code)
+const tli = (h, {done, on, cls = '', tip, end = ''} = {}) => `<div class="ti ${cls}"${tip ? ` title="${esc(tip)}"` : ''}><input type="checkbox"${done ? ' checked' : ''}${on ? ` onchange="${on}"` : ' disabled'}><span class="tt">${h}</span>${end}</div>`; // end: unclamped tail (buttons)
+document.addEventListener('click', e => { const r = e.target.closest('.ti'); if (r && !e.target.closest('input,a,button') && !getSelection().toString()) r.classList.toggle('open'); });
 document.addEventListener('click', e => { const u = e.target.closest('[data-url]')?.dataset.url; if (u) { e.preventDefault(); T.opener.openUrl(u); } });
 
 // ---- popover menus ----
@@ -810,7 +820,7 @@ function drawChrome() {
   $('contBtn').hidden = !p.ready && !next.length && !triaging[cur];
   $('contBtn').disabled = !!triaging[cur]; $('contBtn').textContent = triaging[cur] ? 'Wait…' : 'Continue'; // plan being re-sorted
   // questions never block a Continue: they open in the fresh session (qsOpen), the bar keeps showing the next task
-  $('readytext').innerHTML = next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
+  $('readytext').innerHTML = next.length ? `<input type="checkbox" disabled style="vertical-align:-2px;margin:0 6px 0 0;opacity:.55">Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
     : p.ready ? 'Plan written. Continue clears the context and carries on.'
     : `All tasks done! What should we look at next? ${NEXT_IDEAS.map(([l], i) => `<button class="btn ghost" onclick="askNext(${i})">${l}</button>`).join('')}`;
   $('ready').title = ''; $('readytext').title = next.length ? 'Click to show the whole task' : ''; // hover = nothing extra; click toggles .full
@@ -1731,12 +1741,12 @@ function tasksHtml() {
   const me = (t.me || '').toLowerCase();
   // one row per task: title on the left, who / what you can do on the right
   const row = x => { const who = x.assignees.map(a => a.login), mine = who.some(l => l.toLowerCase() === me);
-    return `<div class="item row"><a class="grow" data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
-      ${mine ? `<button class="btn ghost sm" onclick="taskDo('release', ${x.number})">Release</button><button class="btn sm" onclick="taskDo('done', ${x.number})">Done</button>`
-        : isDoing(x) ? `<span class="pill">${esc(who.join(', ') || 'in progress')}</span>` : `<button class="btn sm" onclick="taskStart(${x.number})">Start</button>`}</div>`; };
+    return tli(`<a data-url="${esc(x.url)}">#${x.number}</a> ${esc(x.title)}`, {cls: isDoing(x) ? 'in_progress' : '', end:
+      mine ? `<button class="btn ghost sm" onclick="taskDo('release', ${x.number})">Release</button><button class="btn sm" onclick="taskDo('done', ${x.number})">Done</button>`
+        : isDoing(x) ? `<span class="pill">${esc(who.join(', ') || 'in progress')}</span>` : `<button class="btn sm" onclick="taskStart(${x.number})">Start</button>`}); };
   const ts = teamTasks(cur), doing = ts.filter(isDoing).length;
   return fold('tasks', 'Team tasks', (t.conflicts || []).map(c => `<div class="warn">@${esc(c.author)}'s PR <a data-url="${esc(c.url)}">#${c.number}</a> also changes ${c.files.map(f => `<code>${esc(f)}</code>`).join(', ')}</div>`).join('')
-    + (ts.length ? `<div class="list">${ts.map(row).join('')}</div>` : empty('No open tasks'))
+    + (ts.length ? `<div class="tlist">${ts.map(row).join('')}</div>` : empty('No open tasks'))
     + `<div class="row"><input id="newTask" class="grow" placeholder="New task for the team" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add task" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`,
     ts.length ? `${doing}/${ts.length}` : (t.conflicts || []).length);
 }
@@ -2515,16 +2525,16 @@ function drawAtp() {
   if (!el.style.height) try { if (localStorage.atpH) el.style.height = localStorage.atpH; } catch {}
   const ag = agentsOf(cur), t = todos(cur), run = ag.filter(a => a.running), q = S.queues?.[cur] || [], dn = S.done?.[cur] || [], pl = S.plans?.[cur] || [];
   const open = t.filter(x => x.status !== 'completed'), fin = t.filter(x => x.status === 'completed');
-  const row = (mark, text, cls = '') => `<div class="atrow ${esc(cls)}" title="${esc(text)}"><span class="tk">${mark}</span><span class="grow" style="min-width:0">${esc(text)}</span></div>`;
-  const tasks = ((t.length ? `<div class="label">Now</div>` + open.map(x => row(x.status === 'in_progress' ? '▸' : '○', x.status === 'in_progress' && x.activeForm || x.content, x.status)).join('')
-        + fin.slice(-3).map(x => row('✓', x.content, 'completed')).join('') : '')
+  const L = a => `<div class="tlist">${a.join('')}</div>`;
+  const tasks = ((t.length ? `<div class="label">Now</div>` + L([...open.map(x => tli(esc(x.status === 'in_progress' && x.activeForm || x.content), {cls: x.status})),
+        ...fin.slice(-3).map(x => tli(esc(x.content), {done: 1, cls: 'completed', tip: x.content}))]) : '')
     + (pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...S.plans[cur].map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
         ${pl.length > 1 || pl[0].file !== 'PLAN.md' ? `<button class="ib" title="Merge every plan file into PLAN.md" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
-        + q.map((x, i) => row(i + 1 + '.', x)).join('')
-        + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}</div>` + o.items.map(x => row('○', x)).join('')).join('') : '')
-    + (dn.length ? `<div class="label">Done lately</div>` + dn.map(x => row('✓', x, 'completed')).join('') : ''))
+        + L(q.map((x, i) => tli(esc(x), {on: `planCheck(${i}, this)`})))
+        + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
+    + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
     || empty("Your AI's task list and PLAN.md's queue show here");
   const agents = ag.length ? [...run, ...ag.filter(a => !a.running).slice(-4).reverse()].map(a =>
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
@@ -2554,6 +2564,8 @@ function mergePlans() {
   if (!confirm(`Merge into PLAN.md?\n\n${from.map(o => `${o.file}: ${o.items.length} task${o.items.length === 1 ? '' : 's'}`).join('\n') || 'Creates PLAN.md'}\n\nClaude moves them into PLAN.md's Queue (by priority, duplicates merged) and removes them from those files.`)) return;
   sendNow(cur, {text: `Merge the open tasks of ${from.map(o => o.file).join(', ') || 'HANDOVER.md'} into PLAN.md's "## Queue" (by priority, merge duplicates; things needing the user's yes under "## Waiting on the user"), then remove them from those files (in HANDOVER.md drop its Queue section). Don't start any task.`, atts: []});
 }
+// ponytail: placeholder; PLAN.md Queue item i checked → confirm dialog + action land with Queue task "Plan tab tasks (a)"
+function planCheck(i, box) { box.checked = false; }
 async function queueToTeam(btn) {
   const have = new Set(teamTasks(cur).map(x => x.title.trim().toLowerCase()));
   const todo = (S.queues?.[cur] || []).map(x => x.length > 120 ? x.slice(0, 117) + '…' : x).filter(t => !have.has(t.toLowerCase()));
