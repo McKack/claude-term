@@ -495,10 +495,32 @@ pub fn gh_env(user: &str) -> Vec<(String, String)> {
     if tok.is_empty() {
         return vec![];
     }
-    [("GH_TOKEN", tok.as_str()), ("GIT_CONFIG_COUNT", "2"),
+    let mut env: Vec<(String, String)> = [("GH_TOKEN", tok.as_str()), ("GIT_CONFIG_COUNT", "2"),
      ("GIT_CONFIG_KEY_0", "credential.https://github.com.helper"), ("GIT_CONFIG_VALUE_0", ""),
      ("GIT_CONFIG_KEY_1", "credential.https://github.com.helper"), ("GIT_CONFIG_VALUE_1", "!gh auth git-credential")]
-        .iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        .iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    // commit identity = this account (env beats .git/config user.email, which GitHub may map to another account)
+    if let Some(email) = gh_noreply(user, &env) {
+        for k in ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"] { env.push((k.into(), user.into())); }
+        for k in ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"] { env.push((k.into(), email.clone())); }
+    }
+    env
+}
+
+static GH_NOREPLY: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+
+/// `{id}+{login}@users.noreply.github.com`: GitHub always attributes it to exactly this account. Cached per login.
+fn gh_noreply(user: &str, env: &[(String, String)]) -> Option<String> {
+    if let Some((_, e)) = GH_NOREPLY.lock().unwrap().iter().find(|(u, _)| u == user) {
+        return Some(e.clone());
+    }
+    let id = run("gh", &["api", "user", "--jq", ".id"], None, env).stdout.trim().to_string();
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let e = format!("{id}+{user}@users.noreply.github.com");
+    GH_NOREPLY.lock().unwrap().push((user.into(), e.clone()));
+    Some(e)
 }
 
 pub fn gh_json(args: &[&str], user: &str, cwd: Option<&str>) -> serde_json::Value {

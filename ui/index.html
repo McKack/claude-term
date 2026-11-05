@@ -201,7 +201,8 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 #workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; white-space:nowrap; overflow:hidden; transition:width .4s ease; }
 #worktext { transition:opacity .35s ease; }
 #workpill[hidden], #handpill[hidden] { display:none; }
-#handpill, #workpill { align-self:center; font-size:12.5px; color:var(--dim); padding:5px 16px; border-radius:99px; border:1px solid var(--line);
+#skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skel .av, #log.term #skel .cm { display:none; }
+#handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:4px 16px 16px 16px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
 #readytext b { font-weight:600; } #readytext:has(.btn) { white-space:normal; line-height:2.2; } #readytext .btn { margin-left:6px; padding:2px 10px; font-size:12.5px; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -413,10 +414,11 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <span class="seg"><button data-v="chat" onclick="setView('chat')"><svg class="i"><use href="#i-chat"/></svg>Chat</button><button data-v="term" onclick="setView('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button></span>
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
-  <div id="log"><div class="col"></div></div>
+  <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
+    <div class="col" id="skel" hidden><div class="crow claude"><img class="av" src="icon.svg" alt=""><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div>
+      <div id="handpill" hidden>Preparing handover…</div>
+      <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Working…</span></div></div></div></div></div>
   <div id="dock" hidden><div class="col">
-    <div id="handpill" hidden>Preparing handover…</div>
-    <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Working…</span></div>
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" id="contBtn" onclick="P().ready ? cont_() : sendNow(cur, {text: (S.queues?.[cur]?.length ? 'Carry on with the next task in HANDOVER.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(cur)[0], atts: []})">Continue</button></div>
@@ -683,6 +685,10 @@ function drawChrome() {
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
   $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
+  const sk = $('skel'), skOn = !$('workpill').hidden || !$('handpill').hidden;
+  if (sk.hidden && skOn) { $('skelts').textContent = tm(new Date().toISOString()); const l = $('log'), stick = l.scrollHeight - l.scrollTop - l.clientHeight < 120;
+    sk.hidden = false; if (stick) l.scrollTop = l.scrollHeight; }
+  sk.hidden = !skOn;
   workTick();
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
   $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? '·' + esc(EFF_S[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
@@ -841,7 +847,7 @@ function drawLog() {
   l.forEach(e => put(box, e));
   if (live[cur]) box.appendChild(liveEl(cur));
   if (P().questions.length && !hiddenQs[cur] && (P().ready || P().cont === 'auto' || P().cont === 'off')) box.appendChild(questionCard(cur));
-  $('log').replaceChildren(box);
+  $('log').replaceChildren(box, $('skel'));
   $('log').scrollTop = $('log').scrollHeight;
 }
 // consecutive tool lines share one compact group in chat view; the same call again bumps "×N" on its line; click → what it did
