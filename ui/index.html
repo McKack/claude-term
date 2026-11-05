@@ -2775,7 +2775,7 @@ const atpPlaceItems = () => [{title: 'Show as'},
   {label: 'Right', check: ATW.startsWith('right'), run: () => atpPlace('right-' + ATW.split('-')[1])},
   {label: 'Left', check: ATW.startsWith('left'), run: () => atpPlace('left-' + ATW.split('-')[1])}];
 function drawAtp() {
-  const el = $('atp'); if (!el || !cur || qDragging) return; // mid-drag redraw would drop the row
+  const el = $('atp'); if (!el || !cur) return;
   const [side, mode] = ATW.split('-'), tabbed = mode === 'tab', host = $(side === 'left' ? 'side' : 'right'), rail = $(side === 'left' ? 'lrail' : 'rrail');
   if (el.nextElementSibling !== rail) host.insertBefore(el, rail);
   const rt = ATW !== 'right-tab', st = ATW !== 'left-tab'; // Tasks tab shown/hidden → tab bars' min widths change
@@ -2813,6 +2813,8 @@ function drawAtp() {
       <button class="${atpTab === 'agents' ? 'on' : ''}" onclick="atpSet('agents')">Agents${run.length ? ` <span class="pill">${run.length}</span>` : ''}</button></span><span class="grow"></span>
       <button class="ib" title="Where this panel shows" onclick="menuAt(this, atpPlaceItems())">${icon('more')}</button></div>
     <div class="atbody">${atpTab === 'agents' ? agents : tasks}</div>`;
+  // mid-drag: skip only the rebuild (would drop the row); placement/visibility above still apply ∵ a stuck drag flag once froze the panel
+  if (qDragging) return;
   if (el._h === h) return; // drawChrome → drawRails → here on every keystroke: same HTML → keep DOM (open rows, animations)
   el.innerHTML = el._h = h;
   if ($('qlist')) qSortable($('qlist'));
@@ -2841,7 +2843,7 @@ async function cleanPlan() {
 }
 // Plan tab: Queue rows reorder by grip via SortableJS (ui/sortable.min.js, MIT 1.15.6); forceFallback ∵ Tauri's file-drop
 // handler eats HTML5 DnD. Drop = plan_move rewrites PLAN.md's Queue (blocks whole, renumbered); optimistic S.queues splice
-let qDragging = false;
+var qDragging = false; // var, not let: drawAtp may run before this line (TDZ)
 function qSortable(list) {
   if (!window.Sortable) return; // ponytail: vendored file missing → no reorder, list still renders
   Sortable.create(list, {handle: '.qdrag', draggable: '.ti', forceFallback: true, animation: 150, ghostClass: 'qghost',
