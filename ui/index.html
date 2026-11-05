@@ -261,7 +261,11 @@ pre.diff .ctx { color:var(--faint); }
 .empty { text-align:center; color:var(--faint); font-size:13px; margin:0; padding:4px 0; }
 .btnrow { display:grid; grid-template-columns:repeat(auto-fit, minmax(84px, 1fr)); gap:8px; } .btnrow .btn { justify-content:center; padding:6px 8px; }
 .keys > div { display:flex; justify-content:space-between; gap:8px; font:12.5px ui-monospace,Consolas,monospace; padding:2px 0; } .keys span:first-child { overflow:hidden; text-overflow:ellipsis; }
-.steps { padding-left:20px; font-size:13px; color:var(--dim); } .steps li { margin:3px 0; }
+.stepper { list-style:none; padding:0; margin:4px 0; counter-reset:st; font-size:13px; color:var(--dim); }
+.stepper li { position:relative; padding:3px 0 16px 40px; counter-increment:st; }
+.stepper li::before { content:counter(st); position:absolute; left:0; top:0; width:28px; height:28px; border-radius:50%; background:var(--soft); color:var(--accent); font-weight:600; display:grid; place-items:center; }
+.stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
+.stepper b { color:var(--text); font-weight:600; } .stepper .btnrow { margin-top:8px; align-items:center; } .stepper .keys { margin-top:8px; }
 .warn a { color:inherit; text-decoration:underline; cursor:pointer; }
 #ready, #suggest { display:flex; gap:12px; align-items:center; padding:9px 10px 9px 16px; border-radius:12px; background:var(--soft); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
@@ -1938,12 +1942,16 @@ const SERVICES = {
   resend: {name: 'Resend', note: 'Email', keys: ['RESEND_API_KEY'], steps: ['Verify your domain', 'Make an API key'], links: [['Domains', 'https://resend.com/domains'], ['API keys', 'https://resend.com/api-keys']]},
   sentry: {name: 'Sentry', note: 'Error tracking', keys: ['SENTRY_DSN'], links: [['Projects', 'https://sentry.io/organizations/']]},
   vercel: {name: 'Vercel', note: 'Hosting', keys: ['VERCEL_TOKEN'], links: [['Tokens', 'https://vercel.com/account/tokens'], ['Dashboard', 'https://vercel.com/dashboard']]},
-  macsign: {name: 'Mac signing', note: 'Developer ID: Mac builds open without the "unidentified developer" block', gh: true,
+  // steps: string | {t, a: () => action html}; **x** = UI name on the other site (bold); gh:'step' = Send button lives in a step
+  macsign: {name: 'Mac signing', note: 'Developer ID: Mac builds open without the "unidentified developer" block', gh: 'step',
     keys: ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_TEAM_ID', 'APPLE_ID', 'APPLE_PASSWORD'],
-    steps: ['Make signing request (below): it opens the folder with devid.csr', 'Certificates › + › Developer ID Application (G2 Sub-CA), upload devid.csr, download the .cer',
-      'Load the .cer (below): fills the first four keys', 'Make an app-specific password, then fill APPLE_ID (your Apple account email) and APPLE_PASSWORD', 'Send to GitHub: CI then signs and notarizes Mac builds',
-      'Optional: register the App ID (Bundle ID below) only if the app uses capabilities like iCloud or push'],
-    links: [['Certificates', 'https://developer.apple.com/account/resources/certificates/add'], ['App-specific password', 'https://account.apple.com/account/manage'], ['Register App ID', 'https://developer.apple.com/account/resources/identifiers/add/bundleId']]},
+    steps: [{t: 'Make the signing request: **devid.csr** lands in your **Downloads** and Apple\'s page opens', a: () => `<button class="btn sm primary" onclick="appleCsr()">Make signing request</button><small class="dim" id="csrMsg"></small>`},
+      {t: 'At Apple pick **Developer ID Application**, then **G2 Sub-CA** › **Continue**, choose **devid.csr** › **Continue** › **Download**', a: () => `<button class="btn sm" data-url="${APPLE_CERTS}">Certificates</button>`},
+      {t: 'Clauracle picks the downloaded **.cer** up from **Downloads** by itself and fills the first four keys', a: () => `<button class="btn sm" onclick="appleCer()">Load .cer…</button><small class="dim" id="cerWait"></small>`},
+      {t: 'Make an **App-Specific Password** (under **Sign-In and Security**), then fill **APPLE_ID** (your Apple account email) and **APPLE_PASSWORD**',
+        a: () => `<button class="btn sm" data-url="https://account.apple.com/account/manage">App-specific password</button><button class="btn sm" onclick="fillKeys('macsign', ['APPLE_ID', 'APPLE_PASSWORD'])">${icon('key')}Fill in</button>`},
+      {t: 'Send to GitHub: CI then signs and notarizes Mac builds', a: () => `<button class="btn sm" onclick="toSecrets('macsign', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-macsign"></small></button><p class="err" id="secErr-macsign" style="font-size:13px"></p>`},
+      {t: 'Optional: register the **App ID** only if the app uses capabilities like iCloud or push', a: () => bundleRow() + `<div class="btnrow"><button class="btn sm" data-url="https://developer.apple.com/account/resources/identifiers/add/bundleId">Register App ID</button></div>`}]},
   appstore: {name: 'App Store Connect', note: 'iOS / macOS releases', keys: ['ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_PRIVATE_KEY'],
     steps: ['Identifiers › + › App IDs › App: Explicit, paste the Bundle ID below, tick the capabilities the app uses', 'Certificates › + › Apple Distribution (iOS) or Mac App Distribution + Mac Installer Distribution (macOS)',
       'Profiles › + › App Store Connect: pick the App ID and certificate, download the profile', 'Make the app record with the same Bundle ID', 'Integrations: make an API key (for uploads from CI)'],
@@ -1974,18 +1982,56 @@ async function drawServices() {
   }
   box.innerHTML = ids.map(id => { const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k));
     return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px"><p class="dim">Asking gcloud…</p></div>' : '')
-      + (x.steps ? `<ol class="steps">${x.steps.map(t => `<li>${esc(t)}</li>`).join('')}</ol>` : '')
+      + (x.steps ? `<ol class="stepper">${x.steps.map(s => `<li>${esc(s.t || s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}${s.a ? `<div class="btnrow">${s.a()}</div>` : ''}</li>`).join('')}</ol>` : '')
       + (x.links ? `<div class="btnrow">${x.links.map(([l, u]) => `<button class="btn sm" data-url="${esc(u)}">${esc(l)}</button>`).join('')}</div>` : '')
-      + (id === 'macsign' || id === 'appstore' ? `<div class="keys"><div><span>Bundle ID</span><small class="${BUNDLE[cur] ? '' : 'faint'}">${BUNDLE[cur] ? `<a href="#" title="Copy" onclick="copy(BUNDLE[cur]);return false">${esc(BUNDLE[cur])}</a>` : 'not found (set identifier in tauri.conf.json)'}</small></div></div>` : '')
+      + (id === 'appstore' ? bundleRow() : '')
       + `<div class="keys">${x.keys.map(k => `<div><span>${k}</span>${envKeys.have.has(k) ? '<small class="ok">set</small>' : '<small class="faint">missing</small>'}</div>`).join('')}</div>`
-      + (id === 'macsign' ? `<div class="btnrow"><button class="btn sm" onclick="appleCsr()">Make signing request</button><button class="btn sm" onclick="appleCer()">Load .cer…</button></div>` : '')
       + (miss.length ? `<button class="btn primary block" onclick="fillKeys('${id}')">${icon('key')}Fill in ${miss.length} key${miss.length > 1 ? 's' : ''}</button>` : '')
-      + (x.gh ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
+      + (x.gh === true ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
       `<span class="pill" ${miss.length ? 'style="background:var(--hover);color:var(--dim)"' : ''}>${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`;
   if (ids.includes('google')) drawCloud();
   ids.filter(id => SERVICES[id].gh).forEach(id => secCount(id));
+  if (ids.includes('macsign') && !envKeys.have.has('APPLE_CERTIFICATE') && !cerT) cerWatch();
+}
+// Bundle ID row: current value (copy) + Change (edit dialog w/ live check, suggestion = com.<gh owner>.<app>)
+function bundleRow() {
+  const b = BUNDLE[cur] || {};
+  return `<div class="keys"><div><span>Bundle ID</span><small>${b.id ? `<a href="#" title="Copy" onclick="copy(BUNDLE[cur].id);return false">${esc(b.id)}</a>` : '<span class="faint">not set</span>'}
+    ${b.file || b.suggest ? ` <a href="#" onclick="bundleEdit();return false">Change</a>` : ''}</small></div></div>`;
+}
+const BID_OK = s => /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(s);
+function bundleEdit() {
+  const b = BUNDLE[cur] || {}, v = b.id || b.suggest || '';
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">Bundle ID</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Your app's ID at Apple, reversed domain you own or your GitHub name. Set it before the first release: changing it later makes it a different app (fresh settings, separate App ID).</p>
+    ${field('ID', `<input id="bidIn" class="mono" value="${esc(v)}" oninput="bidPrev()">`)}
+    ${b.suggest && b.suggest !== v ? `<div class="btnrow"><button class="btn sm ghost" onclick="$('bidIn').value='${esc(b.suggest)}';bidPrev()">Use ${esc(b.suggest)}</button></div>` : ''}
+    <p id="bidMsg" class="dim" style="font-size:13px"></p>
+    <div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button><button class="btn primary" id="bidSave" onclick="bundleSave()">Save</button></div>`);
+  bidPrev(); $('bidIn').focus();
+}
+function bidPrev() {
+  const v = $('bidIn').value.trim(), ok = BID_OK(v), b = BUNDLE[cur] || {};
+  $('bidMsg').className = ok ? 'dim' : 'err';
+  $('bidMsg').innerHTML = ok ? `Apple App ID <b>${esc(v)}</b> · written to <span class="mono">${esc(b.file || '(no config found)')}</span>` : 'Use letters, digits and -, split by dots, like com.you.app';
+  $('bidSave').disabled = !ok || !b.file;
+}
+async function bundleSave() {
+  try { await call('bundle_id_set', {pid: cur, id: $('bidIn').value.trim()}); delete BUNDLE[cur]; closeDlg(); drawServices(); }
+  catch (e) { $('bidMsg').className = 'err'; $('bidMsg').textContent = e; }
+}
+const APPLE_CERTS = 'https://developer.apple.com/account/resources/certificates/add';
+let cerT = 0; // Downloads poll for Apple's .cer: 3s, stops on find / project switch / 20 min
+function cerWatch() {
+  clearInterval(cerT); const pid = cur, t0 = Date.now();
+  cerT = setInterval(async () => {
+    const stop = () => { clearInterval(cerT); cerT = 0; };
+    if (cur !== pid || Date.now() - t0 > 20 * 60e3) return stop();
+    const f = await call('apple_cer_find', {pid}).catch(() => null);
+    if (f && cerT) { stop(); appleLoad(f); }
+  }, 3000);
+  const el = $('cerWait'); if (el) el.textContent = ' Watching Downloads…';
 }
 // repo secret names cached per project ∵ gh round trip; refreshed after a send
 const SECRETS = {};
@@ -2001,16 +2047,21 @@ async function toSecrets(id, btn) {
   btn.disabled = false;
 }
 async function appleCsr() {
-  const email = prompt('Your Apple Developer account email'); if (!email) return;
-  try { T.opener.revealItemInDir(await call('apple_csr', {pid: cur, email})); } catch (e) { alert(e); }
+  try { const f = await call('apple_csr', {pid: cur}); T.opener.openUrl(APPLE_CERTS); const m = $('csrMsg'); if (m) m.textContent = ' Saved: ' + f; cerWatch(); }
+  catch (e) { alert(e); }
 }
 async function appleCer() {
-  const cer = await T.dialog.open({filters: [{name: 'Certificate', extensions: ['cer', 'pem', 'crt']}]}); if (!cer) return;
+  const cer = await call('apple_cer_find', {pid: cur}).catch(() => null)
+    || await T.dialog.open({filters: [{name: 'Certificate', extensions: ['cer', 'pem', 'crt']}]});
+  if (cer) appleLoad(cer);
+}
+async function appleLoad(cer) {
   try { const who = await call('apple_p12', {pid: cur, cer}); addEntry(cur, {kind: 'note', text: 'Mac signing: ' + who}); drawServices(); } catch (e) { alert(e); }
 }
-// every missing key of a service in one dialog, written into the project's .env (values never go through Claude)
-function fillKeys(id) {
-  const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k)), files = envKeys.files.map(f => f.file);
+// every missing key of a service (or just `only`) in one dialog, written into the project's .env (values never go through Claude)
+function fillKeys(id, only) {
+  const x = SERVICES[id], miss = (only || x.keys).filter(k => !envKeys.have.has(k)), files = envKeys.files.map(f => f.file);
+  if (!miss.length) return toast('Already set');
   dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(x.name)} keys</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Saved in the project's .env file, hidden from the AI. Leave a field empty to skip it.</p>
     <div class="sc" style="border:0;padding:0;background:none">${miss.map(k => field(`<span class="mono">${k}</span>`, /KEY$|JSON/.test(k) && /PRIVATE|JSON/.test(k)
       ? `<textarea data-k="${k}" rows="3" class="mono"></textarea>` : `<input data-k="${k}" class="mono">`)).join('')}

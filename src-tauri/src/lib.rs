@@ -848,15 +848,33 @@ fn ssl(args: &[&str]) -> R<String> {
 }
 
 /// Signing request; reuses an existing key (a new key would orphan a cert already made from the old one).
+/// Email = project's git email (Apple rewrites the subject anyway → no prompt). Copied to Downloads so Apple's upload
+/// dialog finds it at once; returns that copy's path.
 #[tauri::command]
-fn apple_csr(pid: String, email: String) -> R<String> {
+fn apple_csr(st: St, pid: String) -> R<String> {
+    let p = st.project(&pid).ok_or("no such project")?;
     let d = apple_dir(&pid)?;
     let (key, csr) = (d.join("devid.key"), d.join("devid.csr"));
     if !key.is_file() || !csr.is_file() {
+        let email = store::run("git", &["config", "user.email"], Some(&p.path), &[]).stdout.trim().replace(['/', '='], "");
+        let email = if email.is_empty() { "dev@example.com".into() } else { email };
         ssl(&["req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", &key.to_string_lossy(), "-out", &csr.to_string_lossy(),
-              "-subj", &format!("/emailAddress={}/CN=Developer ID", email.replace(['/', '='], ""))])?;
+              "-subj", &format!("/emailAddress={email}/CN=Developer ID")])?;
     }
-    Ok(csr.to_string_lossy().into())
+    let Some(dl) = dirs::download_dir() else { return Ok(csr.to_string_lossy().into()) };
+    let out = dl.join("devid.csr");
+    std::fs::copy(&csr, &out).map_err(|e| e.to_string())?;
+    Ok(out.to_string_lossy().into())
+}
+
+/// Newest .cer in Downloads made after our key (= the one Apple just gave for our CSR), if any. UI polls this.
+#[tauri::command]
+fn apple_cer_find(pid: String) -> Option<String> {
+    let since = std::fs::metadata(apple_dir(&pid).ok()?.join("devid.key")).ok()?.modified().ok()?;
+    std::fs::read_dir(dirs::download_dir()?).ok()?.flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("cer")))
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .filter(|(t, _)| *t > since).max().map(|(_, p)| p.to_string_lossy().into())
 }
 
 /// Apple's .cer + our key → .p12 → .env (APPLE_CERTIFICATE base64, password, signing identity, team id). Returns the identity.
@@ -900,13 +918,36 @@ fn ships_mac(st: St, pid: String) -> R<bool> {
 }
 
 /// Bundle ID (= Apple App ID) from the project's config: Tauri `identifier`, Capacitor `appId`, Expo ios.bundleIdentifier.
+/// {id, file, suggest}: suggest = com.<repo owner>.<repo name> (never from the email domain), for the user to accept/edit.
 #[tauri::command]
-fn bundle_id(st: St, pid: String) -> R<Option<String>> {
-    let root = std::path::PathBuf::from(st.project(&pid).ok_or("no such project")?.path);
+fn bundle_id(st: St, pid: String) -> R<serde_json::Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let root = std::path::PathBuf::from(&p.path);
     let j = |f: &str| std::fs::read_to_string(root.join(f)).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).unwrap_or_default();
     // ponytail: JSON configs only; Xcode pbxproj / Info.plist / Gradle when a project needs them
-    Ok([j("src-tauri/tauri.conf.json")["identifier"].clone(), j("capacitor.config.json")["appId"].clone(), j("app.json")["expo"]["ios"]["bundleIdentifier"].clone()]
-        .into_iter().find_map(|v| v.as_str().map(String::from)))
+    let found = [("src-tauri/tauri.conf.json", j("src-tauri/tauri.conf.json")["identifier"].clone()), ("capacitor.config.json", j("capacitor.config.json")["appId"].clone()),
+        ("app.json", j("app.json")["expo"]["ios"]["bundleIdentifier"].clone())].into_iter().find_map(|(f, v)| v.as_str().map(|s| (f, s.to_string())));
+    let url = store::run("git", &["remote", "get-url", "origin"], Some(&p.path), &[]).stdout;
+    let seg = |s: &str| s.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect::<String>();
+    let mut parts = url.trim().trim_end_matches(".git").rsplit(['/', ':']);
+    let (name, owner) = (parts.next().map(seg).unwrap_or_default(), parts.next().map(seg).unwrap_or_default());
+    // app name: last part of the current ID (keeps "clauracle" over repo "claude-term") → repo name → folder
+    let name = found.as_ref().and_then(|f| f.1.rsplit('.').next().map(seg)).filter(|s| !s.is_empty())
+        .unwrap_or(if name.is_empty() { seg(&root.file_name().unwrap_or_default().to_string_lossy()) } else { name });
+    let suggest = if owner.is_empty() { format!("com.example.{name}") } else { format!("com.{owner}.{name}") };
+    Ok(serde_json::json!({"id": found.as_ref().map(|f| &f.1), "file": found.as_ref().map(|f| f.0), "suggest": suggest}))
+}
+
+/// Writes a new bundle ID into the config file it was found in (string swap keeps formatting).
+#[tauri::command]
+fn bundle_id_set(st: St, pid: String, id: String) -> R<()> {
+    let ok = id.split('.').count() >= 2 && id.split('.').all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+    if !ok { return Err("use reverse-domain form: letters, digits, - and dots, like com.you.app".into()); }
+    let cur = bundle_id(st.clone(), pid.clone())?;
+    let (Some(old), Some(file)) = (cur["id"].as_str(), cur["file"].as_str()) else { return Err("no config with a bundle ID (tauri.conf.json identifier / capacitor appId / app.json)".into()) };
+    let path = std::path::Path::new(&st.project(&pid).ok_or("no such project")?.path).join(file);
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text.replacen(&format!("\"{old}\""), &format!("\"{id}\""), 1)).map_err(|e| e.to_string())
 }
 
 /// Names of the repo's GitHub Actions secrets.
@@ -1226,7 +1267,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, apple_csr, apple_p12, ships_mac, bundle_id, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {
