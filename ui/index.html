@@ -1160,6 +1160,11 @@ function send() {
   const ed = editing[cur]; delete editing[cur];
   $('prompt').value = ed ? ed.prev.text : ''; atts[cur] = ed ? ed.prev.atts : []; grow(); drawAtts(); drawEditBar();
   const q = queue[cur] ||= [];
+  // Continue waiting (handover written): a typed prompt becomes the Queue's last task, and the waiting one runs
+  if (P().ready && !busy[cur] && !RESTARTING && !ed && !a.length) {
+    const pid = cur; return call('queue_add', {pid, text: t}).then(() => { keepDraft(pid, true); cont_(); addEntry(pid, {kind: 'note', text: 'Added to the task queue: ' + t.trim().split('\n')[0]}); },
+      e => { $('prompt').value = t; grow(); addEntry(pid, {kind: 'err', text: 'Couldn\'t add the task: ' + e}); });
+  }
   if (busy[cur] || RESTARTING) q.splice(ed ? ed.i : q.length, 0, {text: t, atts: a}); // an edited one goes back to its place
   else sendNow(cur, {text: t, atts: a});
   drawQueue(); keepDraft(cur, true);

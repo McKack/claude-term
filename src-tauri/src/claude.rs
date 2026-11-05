@@ -847,6 +847,24 @@ pub fn queue(dir: &str) -> Vec<String> {
     out
 }
 
+/// Appends a task to the end of HANDOVER.md's Queue (section/file created if missing); extra lines indented under it.
+pub fn queue_add(dir: &str, task: &str) -> std::io::Result<()> {
+    let f = std::path::Path::new(dir).join("HANDOVER.md");
+    let text = std::fs::read_to_string(&f).unwrap_or_else(|_| "# Handover\n".into());
+    let item = format!("- {}", task.trim().lines().collect::<Vec<_>>().join("\n  "));
+    let mut lines: Vec<String> = text.lines().map(String::from).collect();
+    match lines.iter().position(|l| l.starts_with('#') && l.to_lowercase().contains("queue")) {
+        Some(h) => {
+            let end = lines[h + 1..].iter().position(|l| l.starts_with('#')).map_or(lines.len(), |i| h + 1 + i);
+            let mut at = end; // after the section's last non-blank line
+            while at > h + 1 && lines[at - 1].trim().is_empty() { at -= 1; }
+            lines.insert(at, item);
+        }
+        None => lines.extend(["".into(), "## Queue".into(), item]),
+    }
+    std::fs::write(f, lines.join("\n") + "\n")
+}
+
 /// The newest `n` entries of CHANGES.md (newest first, one bullet per change): what was done lately.
 pub fn done(dir: &str, n: usize) -> Vec<String> {
     let text = std::fs::read_to_string(std::path::Path::new(dir).join("CHANGES.md")).unwrap_or_default();
@@ -920,6 +938,9 @@ mod tests {
         std::fs::write(d.join("HANDOVER.md"), "# Handover\n## Where\n- not this\n## Queue\n1. **Add** login\n2) Tests\n   detail line\n- Docs\n## Gotchas\n- no\n").unwrap();
         assert_eq!(queue(d.to_str().unwrap()), ["Add login", "Tests", "Docs"]);
         assert!(queue("/nope").is_empty());
+        queue_add(d.to_str().unwrap(), "New one\nmore").unwrap();
+        assert_eq!(queue(d.to_str().unwrap()), ["Add login", "Tests", "Docs", "New one"]);
+        assert!(std::fs::read_to_string(d.join("HANDOVER.md")).unwrap().contains("- New one\n  more\n## Gotchas"));
     }
 
     #[test]
