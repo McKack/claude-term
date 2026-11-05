@@ -532,7 +532,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="rrail" class="railbox"></div><div class="grip" data-side="r" title="Drag to resize, double-click to collapse"></div>
 </aside>
 
-<dialog id="dlg"></dialog><dialog id="dlg2" class="glass"></dialog><!-- dlg2: a small window over Settings -->
+<dialog id="dlg"></dialog><dialog id="dlg2" class="glass"></dialog><!-- dlg2: a small window over Settings --><dialog id="dlgc" class="glass"></dialog><!-- dlgc: sure()/say(), replaces native confirm/alert -->
 
 
 <script>
@@ -569,6 +569,15 @@ function md(src) {
 // one task row everywhere (chat lists, Plan tab, Next pill, team tasks): h = HTML; checkable only when `on` (onchange code)
 const tli = (h, {done, on, cls = '', tip, end = ''} = {}) => `<div class="ti ${cls}"${tip ? ` title="${esc(tip)}"` : ''}><input type="checkbox"${done ? ' checked' : ''}${on ? ` onchange="${on}"` : ' disabled'}><span class="tt">${h}</span>${end}</div>`; // end: unclamped tail (buttons)
 document.addEventListener('click', e => { const r = e.target.closest('.ti'); if (r && !e.target.closest('input,a,button') && !getSelection().toString()) r.classList.toggle('open'); });
+// app dialogs instead of WebView2's Win7-looking confirm()/alert(); opened last → on top of dlg/dlg2. Esc = cancel.
+function sure(text, ok = 'OK', cancel = 'Cancel') {
+  const d = $('dlgc'), [head, ...rest] = String(text).split('\n\n');
+  d.innerHTML = `<div class="small-dlg"><h2 style="margin:0 0 8px;font-size:17px;white-space:pre-wrap">${esc(head)}</h2>${rest.length ? `<p class="dim" style="margin:0;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto">${esc(rest.join('\n\n'))}</p>` : ''}
+    <div class="btns">${cancel ? `<button class="btn ghost" value="">${esc(cancel)}</button>` : ''}<button class="btn primary" value="1">${esc(ok)}</button></div></div>`;
+  return new Promise(res => { d.onclose = () => res(d.returnValue === '1'); d.returnValue = '';
+    d.querySelectorAll('button').forEach(b => b.onclick = () => d.close(b.value)); d.showModal(); d.querySelector('.primary').focus(); });
+}
+const say = text => sure(String(text), 'OK', '');
 document.addEventListener('click', e => { const u = e.target.closest('[data-url]')?.dataset.url; if (u) { e.preventDefault(); T.opener.openUrl(u); } });
 
 // ---- popover menus ----
@@ -1607,7 +1616,7 @@ async function cleanDisk(dirs) {
   await drawDisk(); $('diskBox').insertAdjacentHTML('afterbegin', `<p class="dim" style="margin:0 0 6px">Freed ${mb(n)}.</p>`);
 }
 async function removeProject() {
-  if (!confirm(`Remove ${P(mp).name} from Clauracle? The folder stays on disk.`)) return;
+  if (!await sure(`Remove ${P(mp).name} from Clauracle? The folder stays on disk.`)) return;
   await call('remove_project', {pid: mp}); closeDlg();
   if (mp === cur) goHome();
   mp = null; refresh();
@@ -2051,7 +2060,7 @@ async function toSecrets(id, btn) {
 }
 async function appleCsr() {
   try { const f = await call('apple_csr', {pid: cur}); T.opener.openUrl(APPLE_CERTS); const m = $('csrMsg'); if (m) m.textContent = ' Saved: ' + f; cerWatch(); }
-  catch (e) { alert(e); }
+  catch (e) { say(e); }
 }
 async function appleCer() {
   const cer = await call('apple_cer_find', {pid: cur}).catch(() => null)
@@ -2059,7 +2068,7 @@ async function appleCer() {
   if (cer) appleLoad(cer);
 }
 async function appleLoad(cer) {
-  try { const who = await call('apple_p12', {pid: cur, cer}); addEntry(cur, {kind: 'note', text: 'Mac signing: ' + who}); drawServices(); } catch (e) { alert(e); }
+  try { const who = await call('apple_p12', {pid: cur, cer}); addEntry(cur, {kind: 'note', text: 'Mac signing: ' + who}); drawServices(); } catch (e) { say(e); }
 }
 // every missing key of a service (or just `only`) in one dialog, written into the project's .env (values never go through Claude)
 function fillKeys(id, only) {
@@ -2139,7 +2148,7 @@ async function drawEnv() {
     if (el) { el.scrollIntoView({block: 'start'}); el.style.borderColor = 'var(--accent)'; } envAt = null; }
 }
 async function setKey(file, key, value) {
-  try { await call('env_set', {pid: cur, file, key, value}); } catch (e) { alert(e); }
+  try { await call('env_set', {pid: cur, file, key, value}); } catch (e) { say(e); }
   tab === 'env' ? drawEnv() : drawRight();
 }
 function editKey(file, key) {
@@ -2445,9 +2454,9 @@ async function askNewAccount() {
   if (a) await pickItems(a.id, `What should ${a.nick}'s new projects get?`, []);
   openSettings('ai');
 }
-async function rmClaude(id) { if (confirm('Remove this account? Its projects fall back to Main.')) { await call('claude_remove', {id}); openSettings(); } }
+async function rmClaude(id) { if (await sure('Remove this account? Its projects fall back to Main.')) { await call('claude_remove', {id}); openSettings(); } }
 async function addGh() { $('ghMsg').textContent = 'Waiting for gh…'; const ok = await call('gh_login').catch(e => ($('ghMsg').textContent = e, false)); if (ok) reloadSettings(); }
-async function rmGh(u) { if (confirm(`Log @${u} out of gh?`)) { await call('gh_logout', {user: u}); reloadSettings(); } }
+async function rmGh(u) { if (await sure(`Log @${u} out of gh?`)) { await call('gh_logout', {user: u}); reloadSettings(); } }
 
 // ---- clone ----
 async function openClone() {
@@ -2612,10 +2621,10 @@ function drawAtp() {
   };
 }
 // sweep: Claude merges every plan file's open tasks into PLAN.md (confirmed first, showing what moves)
-function mergePlans() {
+async function mergePlans() {
   const pl = S.plans?.[cur] || [], from = pl.filter(o => o.file !== 'PLAN.md' && o.items.length);
   if (!from.length && pl[0]?.file === 'PLAN.md') return;
-  if (!confirm(`Merge into PLAN.md?\n\n${from.map(o => `${o.file}: ${o.items.length} task${o.items.length === 1 ? '' : 's'}`).join('\n') || 'Creates PLAN.md'}\n\nClaude moves them into PLAN.md's Queue (by priority, duplicates merged) and removes them from those files.`)) return;
+  if (!await sure(`Merge into PLAN.md?\n\n${from.map(o => `${o.file}: ${o.items.length} task${o.items.length === 1 ? '' : 's'}`).join('\n') || 'Creates PLAN.md'}\n\nClaude moves them into PLAN.md's Queue (by priority, duplicates merged) and removes them from those files.`)) return;
   sendNow(cur, {text: `Merge the open tasks of ${from.map(o => o.file).join(', ') || 'HANDOVER.md'} into PLAN.md's "## Queue" (by priority, merge duplicates; things needing the user's yes under "## Waiting on the user"), then remove them from those files (in HANDOVER.md drop its Queue section). Don't start any task.`, atts: []});
 }
 // ponytail: placeholder; PLAN.md Queue item i checked → confirm dialog + action land with Queue task "Plan tab tasks (a)"
@@ -2624,7 +2633,7 @@ async function queueToTeam(btn) {
   const have = new Set(teamTasks(cur).map(x => x.title.trim().toLowerCase()));
   const todo = (S.queues?.[cur] || []).map(x => x.length > 120 ? x.slice(0, 117) + '…' : x).filter(t => !have.has(t.toLowerCase()));
   if (!todo.length) return addEntry(cur, {kind: 'note', text: 'Every queued task is already a team task'});
-  if (!confirm(`File ${todo.length} task${todo.length === 1 ? '' : 's'} as GitHub issues (Team tasks), in this order?\n\n${todo.map((t, i) => `${i + 1}. ${t}`).join('\n')}`)) return;
+  if (!await sure(`File ${todo.length} task${todo.length === 1 ? '' : 's'} as GitHub issues (Team tasks), in this order?\n\n${todo.map((t, i) => `${i + 1}. ${t}`).join('\n')}`)) return;
   btn.disabled = true;
   let n = 0;
   for (const title of todo) { // one by one, so issue numbers follow the queue's order
@@ -2675,7 +2684,7 @@ drawSide();
 applyView();
 refresh().then(() => S.active && openProject(S.active));
 /* processes a crashed earlier run left behind: ask, never kill unasked */
-call('orphans', {kill: false}).then(o => o?.length && setTimeout(() => confirm(`A previous Clauracle run left ${o.length} process${o.length === 1 ? '' : 'es'} running:\n\n${o.map(x => `${x.name} (pid ${x.pid})`).join('\n')}\n\nEnd ${o.length === 1 ? 'it' : 'them'}?`) && call('orphans', {kill: true}).then(() => toast('Ended')), 1500));
+call('orphans', {kill: false}).then(o => o?.length && setTimeout(() => sure(`A previous Clauracle run left ${o.length} process${o.length === 1 ? '' : 'es'} running:\n\n${o.map(x => `${x.name} (pid ${x.pid})`).join('\n')}\n\nEnd ${o.length === 1 ? 'it' : 'them'}?`, 'End').then(y => y && call('orphans', {kill: true}).then(() => toast('Ended'))), 1500));
 // dock grows (input lines, pills, queue) → the log shrinks; if it was at the bottom, glide up by the same amount
 let dockH = 0;
 new ResizeObserver(() => {
