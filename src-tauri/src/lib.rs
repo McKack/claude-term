@@ -266,6 +266,26 @@ fn qr(text: String) -> R<String> {
     Ok(c.render::<qrcode::render::svg::Color>().module_dimensions(2, 2).quiet_zone(false).build())
 }
 
+/// GitHub avatar bytes, disk-cached 1 day in ~/.clauracle/avatars ∵ webview re-fetched github.com/x.png on every
+/// card open for some users (redirect not cached). UI turns bytes → blob URL once per run.
+#[tauri::command]
+async fn avatar(login: String) -> R<tauri::ipc::Response> {
+    if login.is_empty() || !login.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '[' || c == ']') { return Err("bad login".into()); }
+    let f = store::home().join("avatars").join(format!("{login}.png"));
+    let fresh = std::fs::metadata(&f).and_then(|m| m.modified()).ok()
+        .and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 86400);
+    if !fresh {
+        let got = ureq::get(&format!("https://github.com/{login}.png?size=88")).set("User-Agent", "Clauracle").call()
+            .map_err(|e| e.to_string()).and_then(|r| { let mut b = vec![]; std::io::Read::read_to_end(&mut r.into_reader(), &mut b).map_err(|e| e.to_string())?; Ok(b) });
+        match got {
+            Ok(b) => { let _ = std::fs::create_dir_all(f.parent().unwrap()); let _ = std::fs::write(&f, &b); return Ok(tauri::ipc::Response::new(b)); }
+            Err(e) if !f.exists() => return Err(e),
+            Err(_) => {} // offline → stale copy
+        }
+    }
+    std::fs::read(&f).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+}
+
 /// This machine's LAN address (the route a phone on the same Wi-Fi would use); UDP connect sends nothing.
 #[tauri::command]
 fn lan_ip() -> String {
@@ -1203,7 +1223,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
-            continue_now, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
+            continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
             env_list, env_set, env_ignore, apple_csr, apple_p12, ships_mac, bundle_id, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])

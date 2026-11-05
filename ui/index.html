@@ -77,7 +77,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .proj .who { font-size:11.5px; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--line2); }
 .dot.busy { background:var(--accent); animation:pulse 1s infinite alternate; } .dot.ready { background:var(--ok); }
-@keyframes pulse { to { opacity:.25; } }
+@keyframes pulse { to { opacity:.25; } } .ib.upd { animation:pulse .7s ease-in-out infinite alternate; }
 .side-foot { display:flex; gap:4px; padding:10px; border-top:1px solid var(--line); align-items:center; }
 #acctBtn { justify-content:flex-start; gap:8px; min-width:0; padding-left:6px; } #acctBtn .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; text-align:left; line-height:1.2; }
 #acctBtn .nm small { display:block; color:var(--faint); font-size:11px; }
@@ -680,8 +680,14 @@ const AVC = ['#7c83ff', '#d97757', '#3fbf9f', '#c9a86a', '#b67be0'];
 // AI accounts: the service's mark (all Claude for now) in its brand colour
 const avAI = (a, cls = '') => `<span class="av ai ${cls}" title="${esc(a.nick)}"><svg><use href="#i-claude"/></svg></span>`;
 // avatars: one preloaded Image per user, kept alive → the page's image cache draws re-rendered cards instantly (no reload flash)
-const AVIMG = new Map(), avUrl = u => { const s = `https://github.com/${encodeURIComponent(u)}.png?size=88`; if (!AVIMG.has(u)) AVIMG.set(u, Object.assign(new Image(), {src: s})); return s; };
-const avGh = (u, cls = '') => `<img class="av ${cls}" src="${avUrl(u)}" alt="" title="@${esc(u)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av ${cls}',textContent:'${esc(u[0] || '?').toUpperCase()}',style:'background:#555'}))">`;
+/* avatars: Rust `avatar` (disk cache 1d) → blob URL once per run; imgs drawn before it lands get data-av and are filled in.
+   fail → plain github URL (onerror → letter) */
+const AVIMG = new Map(), avUrl = u => {
+  if (!AVIMG.has(u)) AVIMG.set(u, call('avatar', {login: u}).then(b => URL.createObjectURL(new Blob([b], {type: 'image/png'})), () => `https://github.com/${encodeURIComponent(u)}.png?size=88`)
+    .then(s => { AVIMG.set(u, s); document.querySelectorAll('img[data-av]').forEach(i => { if (i.dataset.av === u) i.src = s; }); return s; }));
+  const s = AVIMG.get(u); return typeof s === 'string' ? s : '';
+};
+const avGh = (u, cls = '') => `<img class="av ${cls}" data-av="${esc(u)}" src="${avUrl(u) || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'}" alt="" title="@${esc(u)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av ${cls}',textContent:'${esc(u[0] || '?').toUpperCase()}',style:'background:#555'}))">`;
 const ghKnown = () => [...new Set([...ghUsers, ...S.projects.map(p => p.gh)].filter(Boolean))];
 function drawAcct() {
   const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0];
@@ -1590,7 +1596,7 @@ async function guessHtml() {
     <div class="btnrow"><button class="btn primary" onclick="useGuess()">${icon('hammer')}Use these</button><button class="btn" onclick="openManager(cur)">Edit</button></div>` : set;
 }
 const useGuess = () => call('update_project', {pid: cur, changes: {build: {...P().build, ...Object.fromEntries(Object.entries(GUESS[cur]).filter(([k, v]) => v && k !== 'after' && k !== 'fix'))}}}).then(refresh).then(drawRight);
-async function drawRight() {
+async function drawRight(force) {
   if ($('right').hidden || !cur) return;
   if (UI.rc) return drawRRail();
   document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
@@ -1611,13 +1617,31 @@ async function drawRight() {
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
     return;
   }
-  box.innerHTML = '<p class="dim">Loading…</p>';
-  const g = await call('gh_info', {pid: cur}), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
+  /* GHI cache: last gh_info per project → drawn at once, refetch only if >30s old or forced (Refresh/actions).
+     While fetching: refresh icon pulses; inputs the user changed meanwhile are re-applied onto the fresh render (same → drop). */
+  const pid = cur, c = GHI[pid], stale = force === true || !c || Date.now() - c.t > 30000;
+  if (c) drawGh(c.g, stale); else box.innerHTML = '<p class="dim">Loading…</p>';
+  if (!stale) return;
+  const before = c && formVals(box), g = await call('gh_info', {pid}).catch(e => c?.g || {err: String(e)});
+  GHI[pid] = {g, t: Date.now()};
+  if (pid !== cur || tab !== 'gh' || $('right').hidden || UI.rc) return;
+  const mine = before && formVals(box), focus = document.activeElement?.id;
+  drawGh(g, false);
+  if (mine) for (const [k, v] of Object.entries(mine)) if (v !== before[k]) { const el = formEl(box, k); if (el) el.type === 'checkbox' ? el.checked = v : el.value = v; }
+  if (focus && $(focus)) $(focus).focus();
+  relReady();
+}
+const GHI = {};
+// form state in the panel: id → value, unnamed checkboxes keyed by their value
+const formVals = box => Object.fromEntries([...box.querySelectorAll('input, select, textarea')].map(e => [e.id || 'v:' + e.value, e.type === 'checkbox' ? e.checked : e.value]));
+const formEl = (box, k) => k.startsWith('v:') ? [...box.querySelectorAll('input[type=checkbox]')].find(e => !e.id && e.value === k.slice(2)) : box.querySelector('#' + CSS.escape(k));
+function drawGh(g, busy) {
+  const box = $('rbody'), p = P(), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
     <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask your AI</button></div></div>`;
   const list = (xs, kind) => xs?.length ? `<div class="list">${xs.map(x => item(x, kind)).join('')}</div>` : empty('None open');
   box.innerHTML = sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
       : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
-      : publishForm(p, g.users || []), `<button class="ib" title="Refresh" onclick="drawRight()">${icon('loop')}</button>`)
+      : g.err ? `<p class="err">${esc(g.err)}</p>` : publishForm(p, g.users || []), `<button class="ib${busy ? ' upd' : ''}" title="${busy ? 'Updating…' : 'Refresh'}" onclick="drawRight(true)">${icon('loop')}</button>`)
     + `<div id="tasksBox">${tasksHtml()}</div>`
     + (g.remote ? changesSec(g.git || {}) + releaseSec(g.release, g.builds) : '')
     + fold('prs', 'Pull requests', list(g.prs, 'pr'), g.prs?.length || 0) + fold('issues', 'Issues', list(g.issues, 'issue'), g.issues?.length || 0);
@@ -1630,13 +1654,13 @@ function changesSec(s) {
   return fold('changes', 'Changes', (f.length ? `<div class="keys">${f.slice(0, 8).map(x => `<div><span>${esc(x)}</span></div>`).join('')}${f.length > 8 ? `<div class="faint">+${f.length - 8} more</div>` : ''}</div>
       <input id="cmMsg" placeholder="What changed (commit message)" onkeydown="if(event.key==='Enter')commitPush()">
       <button class="btn primary block" onclick="commitPush()">${icon('up')}Commit ${f.length} file${f.length > 1 ? 's' : ''} and push</button>`
-    : `<button class="btn primary block" onclick="gitDo('push', '').then(drawRight)">${icon('up')}Push ${s.ahead} commit${s.ahead > 1 ? 's' : ''}</button>`) + '<p id="cmErr" class="err" style="font-size:12.5px;margin:0"></p>',
+    : `<button class="btn primary block" onclick="gitDo('push', '').then(() => drawRight(true))">${icon('up')}Push ${s.ahead} commit${s.ahead > 1 ? 's' : ''}</button>`) + '<p id="cmErr" class="err" style="font-size:12.5px;margin:0"></p>',
     f.length || (s.ahead ? `${s.ahead}↑` : 0));
 }
 async function commitPush() {
   const m = $('cmMsg').value.trim();
   if (!m) return $('cmMsg').focus();
-  try { await call('git_do', {pid: cur, action: 'commit', arg: m}); addEntry(cur, {kind: 'note', text: `Committed and pushed: ${m}`}); drawRight(); }
+  try { await call('git_do', {pid: cur, action: 'commit', arg: m}); addEntry(cur, {kind: 'note', text: `Committed and pushed: ${m}`}); drawRight(true); }
   catch (e) { $('cmErr').textContent = e; }
 }
 // a GitHub release of picked builds: recent outputs found in the project (newest ticked) + any added by hand;
@@ -1665,7 +1689,7 @@ async function pickRelFiles() {
 async function makeRelease(btn) {
   const files = relPicked(); if (!files.length) return;
   btn.disabled = true;
-  try { const url = await call('release', {pid: cur, tag: $('relTag').value.trim(), files}); relFiles = []; addEntry(cur, {kind: 'note', text: 'Released: ' + url}); drawRight(); }
+  try { const url = await call('release', {pid: cur, tag: $('relTag').value.trim(), files}); relFiles = []; addEntry(cur, {kind: 'note', text: 'Released: ' + url}); drawRight(true); }
   catch (e) { $('relErr').textContent = e; btn.disabled = false; }
 }
 // ---- team tasks: open GitHub issues labelled `clauracle`; taken = assignee + `in progress` ----
@@ -1730,7 +1754,7 @@ async function publish(btn) {
   btn.disabled = true; $('pubMsg').textContent = 'Publishing…';
   try {
     await call('publish_repo', {pid: cur, user: $('pubUser').value, name: $('pubName').value.trim(), private: $('pubPrivate').checked});
-    await refresh(); drawRight();
+    await refresh(); drawRight(true);
   } catch (e) { $('pubMsg').textContent = e; btn.disabled = false; }
 }
 function draft(kind, x) {
