@@ -1487,6 +1487,15 @@ async function removeProject() {
 // ---- right panel: GitHub · Build · .env · Code · Browser ----
 function toggleRight() { UI.rc = !UI.rc; layout(); drawRight(); }
 function rightTab(t) { tab = t; drawRight(); }
+// Build auto-setup: commands guessed from project files (Rust build_guess, no tokens) → confirm; cached per project
+const GUESS = {};
+async function guessHtml() {
+  const g = GUESS[cur] ??= await call('build_guess', {pid: cur}).catch(() => ({}));
+  const ks = ['build', 'run', 'deploy'].filter(k => g[k]), set = `<button class="btn${ks.length ? '' : ' primary'} block" onclick="openManager(cur)">${icon('hammer')}Set build and run commands</button>`;
+  return ks.length ? `<p class="dim" style="margin:0 0 6px">Found in this project:</p><div class="grid2" style="margin-top:0">${ks.map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><span class="mono">${esc(g[k])}</span>`).join('')}</div>
+    <div class="btnrow"><button class="btn primary" onclick="useGuess()">${icon('hammer')}Use these</button><button class="btn" onclick="openManager(cur)">Edit</button></div>` : set;
+}
+const useGuess = () => call('update_project', {pid: cur, changes: {build: {...P().build, ...Object.fromEntries(Object.entries(GUESS[cur]).filter(([k, v]) => v && k !== 'after' && k !== 'fix'))}}}).then(refresh).then(drawRight);
 async function drawRight() {
   if ($('right').hidden || !cur) return;
   if (UI.rc) return drawRRail();
@@ -1501,7 +1510,7 @@ async function drawRight() {
     const has = p.build.build || p.build.run || p.build.deploy;
     box.innerHTML = sec('Commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
         <button class="btn ghost" onclick="call('stop_run', {pid:cur})">${icon('stop')}Stop</button></div>`
-        : `<button class="btn primary block" onclick="openManager(cur)">${icon('hammer')}Set build and run commands</button>`, `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
+        : await guessHtml(), `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
     return;
   }

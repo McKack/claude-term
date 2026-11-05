@@ -690,6 +690,11 @@ async fn run_step(app: AppHandle, st: St<'_>, pid: String, step: String) -> R<bo
 }
 
 #[tauri::command]
+fn build_guess(st: St, pid: String) -> R<store::Build> {
+    Ok(store::guess_build(&st.project(&pid).ok_or("no such project")?.path))
+}
+
+#[tauri::command]
 fn stop_run(pid: String) -> bool {
     claude::stop_run(&pid)
 }
@@ -909,7 +914,7 @@ pub fn run() {
             state, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
             continue_now, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
-            test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
+            test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, build_guess, stop_run,
             env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");

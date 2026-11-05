@@ -938,6 +938,38 @@ fn dir_size(p: &Path) -> u64 {
     }).sum()
 }
 
+/// Build tab auto-setup: guess build/run/deploy from project files, no tokens. Most specific first (tauri > npm > cargo…);
+/// a field stays empty when nothing fits. ponytail: root files only; monorepos/subfolders → user edits or asks Claude.
+pub fn guess_build(dir: &str) -> Build {
+    let p = Path::new(dir);
+    let read = |f: &str| std::fs::read_to_string(p.join(f)).unwrap_or_default();
+    let has = |f: &str| p.join(f).exists();
+    let mut b = Build::default();
+    let mut set = |b: &mut Build, build: &str, run: &str, deploy: &str| {
+        for (slot, v) in [(&mut b.build, build), (&mut b.run, run), (&mut b.deploy, deploy)] {
+            if slot.is_empty() { *slot = v.to_string(); }
+        }
+    };
+    if has("src-tauri/tauri.conf.json") { set(&mut b, "npx tauri build", "npx tauri dev", ""); }
+    if let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&read("package.json")) {
+        let pm = if has("pnpm-lock.yaml") { "pnpm" } else if has("yarn.lock") { "yarn" }
+            else if has("bun.lockb") || has("bun.lock") { "bun" } else { "npm" };
+        let s = |k: &str| pkg["scripts"].get(k).map(|_| format!("{pm} run {k}")).unwrap_or_default();
+        let run = ["dev", "start", "serve"].iter().map(|k| s(k)).find(|c| !c.is_empty()).unwrap_or_default();
+        set(&mut b, &s("build"), &run, &s("deploy"));
+    }
+    if has("Cargo.toml") { set(&mut b, "cargo build --release", "cargo run", ""); }
+    if has("go.mod") { set(&mut b, "go build ./...", "go run .", ""); }
+    if has("project.godot") { set(&mut b, "", "godot --path .", ""); }
+    if let Some(f) = ["main.py", "app.py"].into_iter().find(|f| has(f)) { set(&mut b, "", &format!("python {f}"), ""); }
+    let mk = read("Makefile");
+    let target = |t: &str| mk.lines().any(|l| l.starts_with(&format!("{t}:")));
+    if !mk.is_empty() {
+        set(&mut b, "make", if target("run") { "make run" } else { "" }, if target("deploy") { "make deploy" } else { "" });
+    }
+    b
+}
+
 /// (folder relative to the project, bytes) for each cache folder present and git-ignored.
 pub fn caches(dir: &str) -> Vec<(String, u64)> {
     CACHE_DIRS.iter().filter(|d| Path::new(dir).join(d).symlink_metadata().map_or(false, |m| m.is_dir()))
@@ -1081,6 +1113,22 @@ pub fn push_phone(topic: &str, title: &str, body: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn guess_build_picks_most_specific() {
+        let d = std::env::temp_dir().join("clauracle-guess-test");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("package.json"), r#"{"scripts":{"build":"x","start":"y","deploy":"z"}}"#).unwrap();
+        std::fs::write(d.join("yarn.lock"), "").unwrap();
+        std::fs::write(d.join("Cargo.toml"), "").unwrap();
+        let b = super::guess_build(&d.to_string_lossy());
+        assert_eq!((b.build.as_str(), b.run.as_str(), b.deploy.as_str()), ("yarn run build", "yarn run start", "yarn run deploy"));
+        std::fs::remove_file(d.join("package.json")).unwrap();
+        std::fs::write(d.join("Makefile"), "run:\n\tx\ndeploy: a\n").unwrap();
+        let b = super::guess_build(&d.to_string_lossy()); // cargo wins build/run, make fills deploy
+        assert_eq!((b.build.as_str(), b.run.as_str(), b.deploy.as_str()), ("cargo build --release", "cargo run", "make deploy"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
     #[test]
     fn clean_only_touches_ignored_caches() {
         let d = std::env::temp_dir().join("clauracle-clean-test");
