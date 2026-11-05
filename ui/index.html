@@ -11,6 +11,12 @@
 :root[data-theme=dark] { --bg:#161618; --side:#1c1c1f; --card:#232326; --line:#2c2c30; --line2:#3a3a3f; --text:#ededef;
   --dim:#a0a0a8; --faint:#6c6c74; --accent:#8b93ff; --accent2:#a3a9ff; --soft:#262a4a; --primary:#ededef; --primary2:#ffffff; --ink:#161618;
   --hover:#2a2a2e; --code:#1c1c1f; --err:#ff7b6e; --ok:#5fd08e; --shadow:0 1px 2px #00000040, 0 4px 16px #00000030; color-scheme:dark; }
+/* Mono accent: pure black/white, high contrast, square corners (utilitarian); keep surfaces in sync with MONO in JS */
+:root.mono { --bg:#fff; --side:#fff; --card:#fff; --line:#bbb; --line2:#000; --text:#000; --dim:#222; --faint:#555; --hover:#e8e8e8; --code:#f2f2f2;
+  --primary:#000; --primary2:#333; --ink:#fff; --shadow:none; }
+:root.mono[data-theme=dark] { --bg:#000; --side:#000; --card:#000; --line:#444; --line2:#fff; --text:#fff; --dim:#ddd; --faint:#aaa; --hover:#1c1c1c;
+  --code:#0d0d0d; --primary:#fff; --primary2:#ccc; --ink:#000; }
+:root.mono *:not(.av):not(.swatch):not(img):not(input[type=range]) { border-radius:0 !important; }
 /* Appearance: no frosted glass (cheaper to draw), no motion */
 .noglass .glass { background:var(--card); backdrop-filter:none; -webkit-backdrop-filter:none; } .noglass dialog::backdrop { backdrop-filter:none; }
 .nomotion *, .nomotion *::before, .nomotion *::after { animation:none !important; transition:none !important; }
@@ -1887,12 +1893,38 @@ function aiPage() {
 const limitsOf = id => S.accounts.find(a => a.id === id).limits;
 const acct = (id, changes) => call('update_account', {id, changes}).then(() => openSettings());
 // Appearance: per computer (localStorage), applied before anything draws
-const ACCENTS = {Indigo: ['#4f5bd5', '#8b93ff'], Blue: ['#2563eb', '#6ea8fe'], Teal: ['#0f8b80', '#3cc9b9'], Green: ['#2b8a3e', '#69db7c'],
+const ACCENTS = {Mono: ['#000000', '#ffffff'], Indigo:['#4f5bd5', '#8b93ff'], Blue: ['#2563eb', '#6ea8fe'], Teal: ['#0f8b80', '#3cc9b9'], Green: ['#2b8a3e', '#69db7c'],
   Orange: ['#c8613f', '#e8916f'], Pink: ['#c2255c', '#f783ac'], Graphite: ['#4a4a50', '#b8b8c0']};
 let LOOK = {theme: 'system', accent: 'Indigo', tint: '', tintPct: 30, scale: 110, glass: true, motion: true};
 // the stylesheet's surface colours per theme (light, dark), the base the tint mixes into; keep in sync with :root
 const SURF = [{'--bg': '#ffffff', '--side': '#f7f7f8', '--card': '#ffffff', '--line': '#ececee', '--line2': '#dcdce0', '--hover': '#f0f0f2', '--code': '#f6f6f7'},
   {'--bg': '#161618', '--side': '#1c1c1f', '--card': '#232326', '--line': '#2c2c30', '--line2': '#3a3a3f', '--hover': '#2a2a2e', '--code': '#1c1c1f'}];
+const MONO = [{'--bg': '#fff', '--side': '#fff', '--card': '#fff', '--line': '#bbb', '--line2': '#000', '--hover': '#e8e8e8', '--code': '#f2f2f2'},
+  {'--bg': '#000', '--side': '#000', '--card': '#000', '--line': '#444', '--line2': '#fff', '--hover': '#1c1c1c', '--code': '#0d0d0d'}];
+// presets (LOOKS) = theme + accent + tint only (scale/glass/motion stay per computer); user's own in localStorage.presets
+const PRESET_KEYS = ['theme', 'accent', 'tint', 'tintPct'];
+const LOOKS = {Default: {theme: 'system', accent: 'Indigo', tint: '', tintPct: 30}, 'The Matrix': {theme: 'dark', accent: 'Mono', tint: 'Green', tintPct: 100},
+  Paper: {theme: 'light', accent: 'Mono', tint: '', tintPct: 30}, Midnight: {theme: 'dark', accent: 'Indigo', tint: 'Indigo', tintPct: 60},
+  Synthwave: {theme: 'dark', accent: 'Pink', tint: 'Indigo', tintPct: 80}, Ember: {theme: 'dark', accent: 'Orange', tint: 'Orange', tintPct: 45},
+  Seaside: {theme: 'light', accent: 'Teal', tint: 'Blue', tintPct: 35}};
+let MYPRE = {}; try { MYPRE = JSON.parse(localStorage.presets || '{}'); } catch {}
+const savePre = () => { try { localStorage.presets = JSON.stringify(MYPRE); } catch {} };
+const preMatch = () => Object.entries({...LOOKS, ...MYPRE}).find(([, v]) => PRESET_KEYS.every(k => (k === 'tintPct' && !v.tint) || (v[k] ?? '') === (LOOK[k] ?? '')))?.[0]; // no tint → amount irrelevant
+function presetItems() {
+  const m = preMatch(), item = ([n, v]) => ({check: m === n, label: n, run: () => setLook({...v, preset: n})});
+  const mine = Object.entries(MYPRE).map(([n, v]) => ({...item([n, v]), acts: [{icon: 'x', tip: 'Delete', items: [{label: `Delete ${n}`, run: () => { delete MYPRE[n]; savePre(); openSettings('look'); }}]}]}));
+  return [{title: 'Presets'}, ...Object.entries(LOOKS).map(item), ...(mine.length ? ['-', {title: 'Yours'}, ...mine] : []),
+    ...(!m && MYPRE[LOOK.preset] ? ['-', {icon: 'plus', label: 'Save as new preset…', run: presetSave}] : [])];
+}
+function presetSave(name) {
+  if (typeof name === 'string') { MYPRE[name] = Object.fromEntries(PRESET_KEYS.map(k => [k, LOOK[k]])); savePre(); return setLook({preset: name}); }
+  dlg(`<h2 style="margin:0 0 10px;font-size:17px">Save preset</h2><input id="preName" style="width:100%" placeholder="Name" onkeydown="if(event.key==='Enter')preOk()">
+    <p id="preMsg" class="err" style="font-size:13px"></p><div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button><button class="btn primary" onclick="preOk()">Save</button></div>`);
+  $('preName').focus();
+}
+function preOk() { const n = $('preName').value.trim();
+  if (!n || LOOKS[n]) return $('preMsg').textContent = n ? 'That name is a built-in preset' : 'Give it a name';
+  closeDlg(); presetSave(n); }
 const TINT_MAX = 40; // ponytail: 40% real mix at the slider's 100%; raise if people want louder tints
 try { Object.assign(LOOK, JSON.parse(localStorage.look || '{}')); } catch {}
 const darkMq = matchMedia('(prefers-color-scheme: dark)');
@@ -1903,9 +1935,10 @@ function applyLook() {
   for (const [k, v] of Object.entries(LOOK.accent === 'Indigo' || !a ? {} : {'--accent': a, '--accent2': `color-mix(in srgb, ${a} 85%, ${dark ? '#fff' : '#000'})`,
     '--soft': `color-mix(in srgb, ${a} ${dark ? 22 : 10}%, var(--bg))`})) h.style.setProperty(k, v);
   if (LOOK.accent === 'Indigo') ['--accent', '--accent2', '--soft'].forEach(k => h.style.removeProperty(k));
+  const mono = LOOK.accent === 'Mono'; h.classList.toggle('mono', mono);
   // theme tint: surfaces mixed with a colour; slider 100% = TINT_MAX real mix, so text stays readable
   const t = ACCENTS[LOOK.tint]?.[dark ? 1 : 0], m = (LOOK.tintPct ?? 30) * TINT_MAX / 100;
-  for (const [k, base] of Object.entries(SURF[dark ? 1 : 0])) t && m ? h.style.setProperty(k, `color-mix(in srgb, ${t} ${m}%, ${base})`) : h.style.removeProperty(k);
+  for (const [k, base] of Object.entries((mono ? MONO : SURF)[dark ? 1 : 0])) t && m ? h.style.setProperty(k, `color-mix(in srgb, ${t} ${m}%, ${base})`) : h.style.removeProperty(k);
   h.classList.toggle('noglass', !LOOK.glass); h.classList.toggle('nomotion', !LOOK.motion);
   zoom(LOOK.scale);
 }
@@ -1915,11 +1948,14 @@ function setLook(c) { Object.assign(LOOK, c); try { localStorage.look = JSON.str
 darkMq.addEventListener('change', applyLook);
 const choice = (key, opts) => `<span class="seg">${opts.map(o => `<button class="${LOOK[key] === o ? 'on' : ''}" onclick="setLook({${key}:'${o}'})">${o[0].toUpperCase() + o.slice(1)}</button>`).join('')}</span>`;
 function lookPage() {
+  const dk = document.documentElement.dataset.theme === 'dark' ? 1 : 0, pm = preMatch(), mine = !pm && MYPRE[LOOK.preset];
   return `<div class="box">${optRow('Theme', '', choice('theme', ['system', 'light', 'dark']))}
-    ${optRow('Accent', '', `<span class="row" style="gap:8px">${Object.entries(ACCENTS).map(([n, c]) => `<button class="swatch ${LOOK.accent === n ? 'on' : ''}" title="${n}" style="background:${c[document.documentElement.dataset.theme === 'dark' ? 1 : 0]}" onclick="setLook({accent:'${n}'})"></button>`).join('')}</span>`)}
-    ${optRow('Theme tint', 'Colours the whole app a little', `<span class="row wrap" style="gap:8px"><button class="swatch ${!LOOK.tint ? 'on' : ''}" title="None" style="background:var(--bg);display:grid;place-items:center;color:var(--faint)" onclick="setLook({tint:''})">✕</button>${Object.entries(ACCENTS).map(([n, c]) => `<button class="swatch ${LOOK.tint === n ? 'on' : ''}" title="${n}" style="background:${c[document.documentElement.dataset.theme === 'dark' ? 1 : 0]}" onclick="setLook({tint:'${n}'})"></button>`).join('')}
-      ${LOOK.tint ? `<input type="range" min="5" max="100" step="5" value="${LOOK.tintPct}" style="width:120px;padding:0;border:0;background:none" title="Amount"
-        oninput="LOOK.tintPct=+this.value; this.nextElementSibling.textContent=this.value+'%'; applyLook()" onchange="setLook({tintPct:+this.value})"><b style="width:40px">${LOOK.tintPct}%</b>` : ''}</span>`)}
+    ${optRow('Preset', 'Theme, accent and tint together', `<span class="row" style="gap:6px">${pm ? '' : `<button class="btn sm" onclick="presetSave(${mine ? 'LOOK.preset' : ''})">${mine ? `Update ${esc(LOOK.preset)}` : 'Save as preset'}</button>`}
+      <button class="btn sm" onclick="menuAt(this, presetItems())">${esc(pm || 'Custom')}${icon('down')}</button></span>`)}
+    ${optRow('Accent', 'Mono: pure black and white, high contrast', `<span class="row" style="gap:8px">${Object.entries(ACCENTS).map(([n, c]) => `<button class="swatch ${LOOK.accent === n ? 'on' : ''}" title="${n}" style="background:${c[dk]}" onclick="setLook({accent:'${n}'})"></button>`).join('')}</span>`)}
+    ${optRow('Theme tint', 'Colours the whole app a little', `<span style="display:flex;flex-direction:column;gap:8px"><span class="row" style="gap:8px"><button class="swatch ${!LOOK.tint ? 'on' : ''}" title="None" style="background:var(--bg);display:grid;place-items:center;color:var(--faint)" onclick="setLook({tint:''})">✕</button>${Object.entries(ACCENTS).filter(([n]) => n !== 'Mono').map(([n, c]) => `<button class="swatch ${LOOK.tint === n ? 'on' : ''}" title="${n}" style="background:${c[dk]}" onclick="setLook({tint:'${n}'})"></button>`).join('')}</span>
+      ${LOOK.tint ? `<span class="row" style="gap:8px"><input type="range" min="5" max="100" step="5" value="${LOOK.tintPct}" style="flex:1;padding:0;border:0;background:none" title="Amount"
+        oninput="LOOK.tintPct=+this.value; this.nextElementSibling.textContent=this.value+'%'; applyLook()" onchange="setLook({tintPct:+this.value})"><b style="width:40px;text-align:right">${LOOK.tintPct}%</b></span>` : ''}</span>`)}
     ${optRow('UI scale', 'Text and everything else, together. Same proportions on any screen: it adds to Windows display scaling',
       `<span class="row" style="gap:10px"><input type="range" min="80" max="150" step="5" value="${LOOK.scale}" style="width:160px;padding:0;border:0;background:none"
         oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="setLook({scale:+this.value})"><b style="width:40px">${LOOK.scale}%</b>
