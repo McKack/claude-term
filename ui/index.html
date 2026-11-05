@@ -577,11 +577,11 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
 const P = (id = cur) => S.projects.find(p => p.id === id);
-// HAL nod (#8): name = AI account nick, else its gh login; blocked by permission/safety rules → the full line
+// HAL nod (#8): name = OS login (#21, capitalised), none → plain line; blocked by permission/safety rules → the full line
 const BLOCKED = /permission|denied|not allowed|blocked|refus/i;
 const HALI = '<svg class="i hal"><use href="#i-hal"/></svg>';
-const hal = can => { const a = S.accounts.find(x => x.id === (P()?.account || S.default_account)) || S.accounts[0] || {};
-  return `${HALI}I'm sorry, ${esc(a.nick || a.gh || 'Dave')}.${can ? " I'm afraid I can't do that." : ''}`; };
+const hal = can => { const u = S.os_user || '';
+  return `${HALI}I'm sorry${u ? ', ' + esc(u[0].toUpperCase() + u.slice(1)) : ''}.${can ? " I'm afraid I can't do that." : ''}`; };
 const nick = id => (S.accounts.find(a => a.id === id) || {nick: id}).nick;
 const MODES = {off: ['Off', 'Plain chat; only the context limit hands over'], manual: ['Manual', 'Stops when a task is done; you press Continue'],
   auto: ['Auto', 'Clears and continues by itself until a limit'], auto_answer: ['Auto + answers', 'Also answers what it can; holds only real decisions']};
@@ -1751,9 +1751,9 @@ function relItems(c, p) {
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
   ];
 }
-async function relWizard(p, force) {
+async function relWizard(p, force, cached) { // cached → draw RELC as is (caller ensures it exists)
   const pid = cur, k = p.stage ? SK.indexOf(p.stage) : -1, to = RELTO[pid] ?? Math.max(k, 0);
-  if (force || !RELC[pid] || Date.now() - RELC[pid].t > 60e3) {
+  if (!cached && (force || !RELC[pid] || Date.now() - RELC[pid].t > 60e3)) {
     const c = await call('release_check', {pid}).catch(e => ({err: String(e)}));
     RELC[pid] = {c, t: Date.now()};
     if (MAC[pid] && c.remote && !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
@@ -1787,6 +1787,25 @@ async function relMark(i, left) {
   if (left && !await sure(`${left} check${left > 1 ? 's are' : ' is'} still open.\n\nMark the project as ${STAGES[SK[i]]} anyway?`, 'Mark anyway')) return;
   await call('update_project', {pid: cur, changes: {stage: SK[i]}}); delete RELTO[cur]; await refresh(); drawRight();
 }
+// Build tab body. live=false → cache only (no git/gh calls), live=true → refetch what's stale (force → all)
+async function buildHtml(p, has, live, force) {
+  const pid0 = cur, wait = t => sec(t, '<p class="dim" style="margin:0">Checking…</p>');
+  let mac = MAC[pid0];
+  if (live && mac === undefined) mac = MAC[pid0] = await call('ships_mac', {pid: pid0}).catch(() => false);
+  let c = GHI[pid0];
+  if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) GHI[pid0] = c = {g, t: Date.now()}; }
+  return sec('Commands', has ? `<div class="btnrow b3">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+          ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
+          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>`
+        : live || GUESS[pid0] ? await guessHtml() : '<p class="dim" style="margin:0">Checking…</p>', `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
+      + (!svcOf(p).includes('macsign') && mac
+        ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
+          <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
+      + (live || RELC[pid0] ? await relWizard(p, live && force === true, !live) : wait('Release'))
+      // Release (GitHub) right below the wizard: Build → Run → Release; gh_info shared with GitHub tab via GHI (30s)
+      + (c?.g?.remote ? releaseSec(c.g.release, c.g.builds) : '')
+      + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
+}
 async function drawRight(force) {
   if ($('right').hidden || !cur) return;
   if (UI.rc) return drawRRail();
@@ -1798,21 +1817,20 @@ async function drawRight(force) {
   if (tab === 'env') return drawEnv();
   if (tab === 'svc') return drawServices();
   if (tab === 'build') {
-    const has = p.build.build || p.build.run || p.build.deploy, pid0 = cur;
-    const h = sec('Commands', has ? `<div class="btnrow b3">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => s === 'run' && builds[cur]?.live
-          ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
-          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>`
-        : await guessHtml(), `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
-      + (!svcOf(p).includes('macsign') && (MAC[cur] ??= await call('ships_mac', {pid: cur}).catch(() => false))
-        ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
-          <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
-      + await relWizard(p)
-      + await (async () => { // Release (GitHub) right below the wizard: Build → Run → Release; gh_info shared with GitHub tab via GHI (30s)
-        let c = GHI[pid0];
-        if (force === true || !c || Date.now() - c.t > 30000) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) GHI[pid0] = c = {g, t: Date.now()}; }
-        return c?.g?.remote ? releaseSec(c.g.release, c.g.builds) : ''; })()
-      + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
-    if (cur === pid0 && tab === 'build') { box.innerHTML = h; relReady(); } // awaits above (release_check: git+gh) → user may have switched tab/project
+    /* 2 passes like GHI: cached-only render at once (stale ok, missing → "Checking…"), then fetch what's stale
+       (build_guess/ships_mac/release_check 60s/gh_info 30s) + re-render, keeping inputs the user changed meanwhile */
+    const has = p.build.build || p.build.run || p.build.deploy, pid0 = cur, ok = () => cur === pid0 && tab === 'build' && !$('right').hidden && !UI.rc;
+    const old = (o, ms) => !o || Date.now() - o.t > ms;
+    const stale = force === true || (!has && !GUESS[pid0]) || MAC[pid0] === undefined || old(RELC[pid0], 60e3) || old(GHI[pid0], 30e3);
+    box.innerHTML = await buildHtml(p, has, false);
+    relReady();
+    if (!stale) return;
+    const before = formVals(box), h = await buildHtml(p, has, true, force);
+    if (!ok()) return; // awaits above (release_check: git+gh) → user may have switched tab/project
+    const mine = formVals(box), focus = document.activeElement?.id;
+    box.innerHTML = h; relReady();
+    for (const [k, v] of Object.entries(mine)) if (v !== before[k]) { const el = formEl(box, k); if (el) el.type === 'checkbox' ? el.checked = v : el.value = v; }
+    if (focus && $(focus)) $(focus).focus();
     return;
   }
   /* GHI cache: last gh_info per project → drawn at once, refetch only if >30s old or forced (Refresh/actions).
