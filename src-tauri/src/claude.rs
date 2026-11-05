@@ -909,15 +909,22 @@ fn items(dir: &str, file: &str) -> Vec<String> {
         return vec![];
     }
     let mut on = !has_q;
-    let mut out = vec![];
+    let mut out: Vec<String> = vec![];
+    let mut last = false; // previous line was a kept item → indented lines continue it
     for l in text.lines() {
         if l.starts_with('#') {
+            last = false;
             if has_q { on = l.trim_start_matches('#').trim().eq_ignore_ascii_case("queue"); } // exact: "## Waiting (not queue items)" ≠ queue
         } else if on {
             match item.captures(l) {
                 Some(c) if (has_q || c[1].is_empty()) && !c[2].starts_with("[x]") && !c[2].starts_with("[X]") =>
-                    out.push(c[2].replace("**", "").trim().to_string()),
-                _ => {}
+                    { out.push(c[2].replace("**", "").trim().to_string()); last = true; }
+                Some(_) => last = false,
+                // indented wrap line of the item above → same task (was dropped → tasks cut mid-sentence)
+                None if last && l.starts_with([' ', '\t']) && !l.trim().is_empty() => {
+                    let t = out.last_mut().unwrap(); t.push(' '); t.push_str(l.trim().replace("**", "").as_str());
+                }
+                None => last = false,
             }
         }
     }
@@ -1015,7 +1022,7 @@ mod tests {
         let d = std::env::temp_dir().join("clauracle-queue-test");
         std::fs::create_dir_all(&d).unwrap();
         std::fs::write(d.join("HANDOVER.md"), "# Handover\n## Where\n- not this\n## Queue\n1. **Add** login\n2) Tests\n   detail line\n- Docs\n## Gotchas\n- no\n").unwrap();
-        assert_eq!(queue(d.to_str().unwrap()), ["Add login", "Tests", "Docs"]);
+        assert_eq!(queue(d.to_str().unwrap()), ["Add login", "Tests detail line", "Docs"]);
         assert!(queue("/nope").is_empty());
         std::fs::write(d.join("HANDOVER.md"), "## Queue\n- A\n## Waiting on the user (not queue items)\n- B\n").unwrap();
         assert_eq!(queue(d.to_str().unwrap()), ["A"]);
