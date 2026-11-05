@@ -1450,7 +1450,9 @@ function askCard(e) {
     const body = i.command || (i.file_path ? i.file_path + '\n\n' + (i.new_string || i.content || '') : JSON.stringify(i, null, 2));
     // depth ("What?"): Bash grep -c → Bash | Bash grep | Bash grep -c; rules "Bash(grep:*)" (CLI syntax), medium default
     const w = e.tool === 'Bash' ? (i.command || '').trim().split(/\s+/).filter(Boolean).slice(0, 2) : [];
-    rules = [[e.tool, e.tool], ...w.map((_, n) => [`${e.tool}(${w.slice(0, n + 1).join(' ')}:*)`, `${e.tool} ${w.slice(0, n + 1).join(' ')}`])];
+    // label only: long paths → …/last folder (rule keeps the full path)
+    const short = s => s.length > 24 && /[\\/]/.test(s) ? '…/' + s.replace(/["']/g, '').split(/[\\/]/).filter(Boolean).pop() : s;
+    rules = [[e.tool, e.tool], ...w.map((_, n) => [`${e.tool}(${w.slice(0, n + 1).join(' ')}:*)`, `${e.tool} ${w.slice(0, n + 1).map(short).join(' ')}`])];
     rule = rules[Math.min(1, rules.length - 1)][0];
     d.innerHTML = `<h4>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
       <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-m>Allow…</button><button class="btn primary" data-a="1">Allow now</button></div>`;
