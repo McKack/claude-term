@@ -1489,10 +1489,13 @@ function askCard(e) {
   } else {
     const body = i.command || (i.file_path ? i.file_path + '\n\n' + (i.new_string || i.content || '') : JSON.stringify(i, null, 2));
     // depth ("What?"): Bash grep -c → Bash | Bash grep | Bash grep -c; rules "Bash(grep:*)" (CLI syntax), medium default
-    const w = e.tool === 'Bash' ? (i.command || '').trim().split(/\s+/).filter(Boolean).slice(0, 2) : [];
+    // compound cmd (cd x; git y | grep z) → one rule per part, all needed (claude::allowed splits the same way)
+    const parts = e.tool === 'Bash' ? (i.command || '').split(/&&|\|\||[;|\n]/).map(s => s.trim().split(/\s+/).filter(Boolean).slice(0, 2)).filter(w => w.length) : [];
     // label only: long paths → …/last folder (rule keeps the full path)
     const short = s => s.length > 24 && /[\\/]/.test(s) ? '…/' + s.replace(/["']/g, '').split(/[\\/]/).filter(Boolean).pop() : s;
-    rules = [[e.tool, e.tool], ...w.map((_, n) => [`${e.tool}(${w.slice(0, n + 1).join(' ')}:*)`, `${e.tool} ${w.slice(0, n + 1).map(short).join(' ')}`])];
+    const lvl = n => { const ws = [...new Map(parts.map(w => [w.slice(0, n).join(' '), w.slice(0, n)])).values()];
+      return [ws.map(w => `${e.tool}(${w.join(' ')}:*)`), `${e.tool} ${ws.map(w => w.map(short).join(' ')).join(' + ')}`]; };
+    rules = [[[e.tool], e.tool], ...(parts.length ? [lvl(1)] : []), ...(parts.some(w => w.length > 1) ? [lvl(2)] : [])];
     rule = rules[Math.min(1, rules.length - 1)][0];
     d.innerHTML = `<h4>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
       <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-m>Allow…</button><button class="btn primary" data-a="1">Allow now</button></div>`;
@@ -1507,8 +1510,8 @@ function askCard(e) {
   function answer(a) {
     const allow = a !== '0', answers = {};
     // 2 = always, 5 = 24 h ("rule@unix secs", claude::rule_hit): this project's allow list
-    if (a === '2' || a === '5') { const p = P(e.pid) || P(), r = a === '5' ? `${rule}@${Math.floor(Date.now() / 1000) + 86400}` : rule;
-      call('update_project', {pid: p.id, changes: {allow: [...new Set([...(p.allow || []), r])]}}).then(refresh); }
+    if (a === '2' || a === '5') { const p = P(e.pid) || P(), r = rule.map(x => a === '5' ? `${x}@${Math.floor(Date.now() / 1000) + 86400}` : x);
+      call('update_project', {pid: p.id, changes: {allow: [...new Set([...(p.allow || []), ...r])]}}).then(refresh); }
     (i.questions || []).forEach((q, n) => answers[q.question] = [...d.querySelectorAll(`[name=a${n}]:checked`)]
       .map(x => x.value === '__other' ? x.closest('.q').querySelector('.other').value : x.value).join(', '));
     call('answer_ask', {id: e.id, answer: {allow, answers, session: a === '3', rule, note: d.querySelector('.deny')?.value || ''}});

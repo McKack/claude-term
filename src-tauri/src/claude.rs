@@ -614,7 +614,7 @@ async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) ->
         return json!({"behavior": "allow", "updatedInput": input});
     }
     let (cont, mode, allow) = st.project(pid).map(|p| (p.cont, p.mode, p.allow)).unwrap_or_default();
-    if tool != "AskUserQuestion" && allow.iter().any(|r| rule_hit(r, tool, &input, store::now() as u64)) {
+    if tool != "AskUserQuestion" && allowed(&allow, tool, &input, store::now() as u64) {
         return json!({"behavior": "allow", "updatedInput": input});
     }
     // the project's mode as set now: a switch mid-turn only reaches the CLI on reconnect, and CLI acceptEdits
@@ -641,10 +641,13 @@ async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) ->
         input["answers"] = a["answers"].clone();
     }
     if a["session"] == true { // "This session": CLI-side rule, gone when the CLI process ends (reconnect/clear)
-        let mut r = json!({"toolName": tool}); // rule "Bash(grep:*)" → ruleContent "grep:*"
-        if let Some(c) = a["rule"].as_str().and_then(|s| s.strip_prefix(tool)?.strip_prefix('(')?.strip_suffix(')')) { r["ruleContent"] = json!(c); }
+        // rule(s) "Bash(grep:*)" → ruleContent "grep:*"; array = one per part of a compound command
+        let list: Vec<&str> = a["rule"].as_array().map(|v| v.iter().filter_map(|x| x.as_str()).collect()).unwrap_or_else(|| a["rule"].as_str().into_iter().collect());
+        let rules: Vec<Value> = list.iter().map(|s| { let mut r = json!({"toolName": tool});
+            if let Some(c) = s.strip_prefix(tool).and_then(|s| s.strip_prefix('(')?.strip_suffix(')')) { r["ruleContent"] = json!(c); } r }).collect();
+        let rules = if rules.is_empty() { vec![json!({"toolName": tool})] } else { rules };
         return json!({"behavior": "allow", "updatedInput": input, "updatedPermissions": [{"type": "addRules",
-            "rules": [r], "behavior": "allow", "destination": "session"}]});
+            "rules": rules, "behavior": "allow", "destination": "session"}]});
     }
     json!({"behavior": "allow", "updatedInput": input})
 }
@@ -661,8 +664,21 @@ fn rule_hit(rule: &str, tool: &str, input: &Value, now: u64) -> bool {
     }
 }
 
+/// Any rule allows it; Bash compound (&& || ; | newline) → every part must hit some rule ("cd x; git y" = cd + git rules).
+/// Parts with $ ` > < & (substitution/redirect/background) still never match a prefix rule (rule_hit).
+fn allowed(allow: &[String], tool: &str, input: &Value, now: u64) -> bool {
+    let hit = |inp: &Value| allow.iter().any(|r| rule_hit(r, tool, inp, now));
+    if hit(input) { return true; }
+    let Some(c) = input["command"].as_str().filter(|_| tool == "Bash") else { return false };
+    let parts: Vec<&str> = c.split("&&").flat_map(|s| s.split("||")).flat_map(|s| s.split([';', '|', '\n'])).map(str::trim).filter(|s| !s.is_empty()).collect();
+    parts.len() > 1 && parts.iter().all(|p| hit(&json!({"command": p})))
+}
+
 #[test]
 fn rule_hit_works() {
+    let a = |r: &[&str], c: &str| allowed(&r.iter().map(|s| s.to_string()).collect::<Vec<_>>(), "Bash", &json!({"command": c}), 0);
+    assert!(a(&["Bash(cd:*)", "Bash(git:*)"], "cd D:/x; git status && git log | git y") && !a(&["Bash(cd:*)"], "cd x; rm -rf /"));
+    assert!(!a(&["Bash(cd:*)", "Bash(git:*)"], "cd x; git $(rm y)") && !a(&["Bash(cd:*)"], "cd x & rm y"));
     let i = json!({"command": "grep -c foo x.txt"});
     assert!(rule_hit("Bash", "Bash", &i, 0) && rule_hit("Bash(grep:*)", "Bash", &i, 0) && rule_hit("Bash(grep -c:*)", "Bash", &i, 0));
     assert!(!rule_hit("Bash(grep -v:*)", "Bash", &i, 0) && !rule_hit("Bash(gre:*)", "Bash", &i, 0) && !rule_hit("Edit", "Bash", &i, 0));
