@@ -1631,7 +1631,7 @@ async function drawRight(force) {
   if (UI.rc) return drawRRail();
   document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
   const box = $('rbody'), p = P();
-  box.hidden = tab === 'tasks'; if (tab === 'tasks') return drawAtp();
+  box.hidden = tab === 'tasks'; if (tab === 'tasks' || ATW === 'right-tab') drawAtp(); if (tab === 'tasks') return; // leaving the Plan tab must re-hide #atp
   if (tab === 'code') return drawCode();
   if (tab === 'web') return drawWeb();
   if (tab === 'env') return drawEnv();
