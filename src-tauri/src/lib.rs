@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, State as S};
 
 type St<'a> = S<'a, Arc<State>>;
+// Sync commands run on the window's main thread: anything that spawns (git/gh/openssl), hits the network/keychain or
+// creates a webview (WebView2 deadlock) is #[tauri::command(async)], else the whole window freezes while it waits.
 type R<T> = Result<T, String>;
 
 /// Windows: claude sessions and run steps go into one kill-on-close job → the OS ends their whole trees when Clauracle
@@ -107,7 +109,7 @@ fn state(st: St) -> Value {
            "claude": store::which("claude").is_some(), "gh": store::which("gh").is_some()})
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_project(app: AppHandle, st: St, pid: String) -> R<Value> {
     let p = st.project(&pid).ok_or("no such project")?;
     {
@@ -287,7 +289,7 @@ async fn avatar(login: String) -> R<tauri::ipc::Response> {
 }
 
 /// This machine's LAN address (the route a phone on the same Wi-Fi would use); UDP connect sends nothing.
-#[tauri::command]
+#[tauri::command(async)]
 fn lan_ip() -> String {
     std::net::UdpSocket::bind("0.0.0.0:0").and_then(|s| { s.connect("8.8.8.8:80")?; s.local_addr() })
         .map(|a| a.ip().to_string()).unwrap_or_default()
@@ -449,7 +451,7 @@ async fn claude_login(app: AppHandle, st: St<'_>, nick: String) -> R<Value> {
     claude_add_token(st, nick, token)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn claude_add_token(st: St, nick: String, token: String) -> R<Value> {
     if !store::token_ok(&token) {
         return Err("That doesn't look like a token from `claude setup-token` (sk-ant-oat…).".into());
@@ -460,7 +462,7 @@ fn claude_add_token(st: St, nick: String, token: String) -> R<Value> {
     Ok(json!(a))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn claude_remove(st: St, id: String) {
     let mut cfg = st.cfg.lock().unwrap();
     store::remove_account(&mut cfg, &id);
@@ -476,7 +478,7 @@ fn set_notify(st: St, notify: Value) {
     store::save(&cfg);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn test_notify(app: AppHandle, st: St) {
     claude::notify(&app, &st, "Clauracle", "Notifications work.");
 }
@@ -583,7 +585,7 @@ fn set_projects_dir(st: St, dir: String) {
 }
 
 /// A new, local-only project: <root>/local/<name> (publish it to GitHub later from the GitHub tab).
-#[tauri::command]
+#[tauri::command(async)]
 fn new_local(st: St, name: String) -> R<Value> {
     let name = name.trim();
     if name.is_empty() || name.contains(['/', '\\', ':']) || name.starts_with('.') {
@@ -784,7 +786,7 @@ async fn run_step(app: AppHandle, st: St<'_>, pid: String, step: String) -> R<bo
     Ok(claude::run_step(&app, &st, &pid, &step).await.0)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn build_guess(st: St, pid: String) -> R<store::Build> {
     Ok(store::guess_build(&st.project(&pid).ok_or("no such project")?.path))
 }
@@ -820,7 +822,7 @@ fn env_set(st: St, pid: String, file: String, key: String, value: Option<String>
 }
 
 /// Add the file to .gitignore.
-#[tauri::command]
+#[tauri::command(async)]
 fn env_ignore(st: St, pid: String, file: String) -> R<()> {
     let p = st.project(&pid).ok_or("no such project")?;
     let gi = std::path::Path::new(&p.path).join(".gitignore");
@@ -850,7 +852,7 @@ fn ssl(args: &[&str]) -> R<String> {
 /// Signing request; reuses an existing key (a new key would orphan a cert already made from the old one).
 /// Email = project's git email (Apple rewrites the subject anyway → no prompt). Copied to Downloads so Apple's upload
 /// dialog finds it at once; returns that copy's path.
-#[tauri::command]
+#[tauri::command(async)]
 fn apple_csr(st: St, pid: String) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
     let d = apple_dir(&pid)?;
@@ -868,7 +870,7 @@ fn apple_csr(st: St, pid: String) -> R<String> {
 }
 
 /// Newest .cer in Downloads made after our key (= the one Apple just gave for our CSR), if any. UI polls this.
-#[tauri::command]
+#[tauri::command(async)]
 fn apple_cer_find(pid: String) -> Option<String> {
     let since = std::fs::metadata(apple_dir(&pid).ok()?.join("devid.key")).ok()?.modified().ok()?;
     std::fs::read_dir(dirs::download_dir()?).ok()?.flatten()
@@ -878,7 +880,7 @@ fn apple_cer_find(pid: String) -> Option<String> {
 }
 
 /// Apple's .cer + our key → .p12 → .env (APPLE_CERTIFICATE base64, password, signing identity, team id). Returns the identity.
-#[tauri::command]
+#[tauri::command(async)]
 fn apple_p12(st: St, pid: String, cer: String) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
     let d = apple_dir(&pid)?;
@@ -910,7 +912,7 @@ fn apple_p12(st: St, pid: String, cer: String) -> R<String> {
 }
 
 /// Does this project build for macOS (a CI workflow mentions macos, or it's a Tauri app)? → Build tab offers Mac signing.
-#[tauri::command]
+#[tauri::command(async)]
 fn ships_mac(st: St, pid: String) -> R<bool> {
     let root = std::path::PathBuf::from(st.project(&pid).ok_or("no such project")?.path);
     Ok(root.join("src-tauri/tauri.conf.json").is_file() || std::fs::read_dir(root.join(".github/workflows")).into_iter().flatten().flatten()
@@ -919,7 +921,7 @@ fn ships_mac(st: St, pid: String) -> R<bool> {
 
 /// Bundle ID (= Apple App ID) from the project's config: Tauri `identifier`, Capacitor `appId`, Expo ios.bundleIdentifier.
 /// {id, file, suggest}: suggest = com.<repo owner>.<repo name> (never from the email domain), for the user to accept/edit.
-#[tauri::command]
+#[tauri::command(async)]
 fn bundle_id(st: St, pid: String) -> R<serde_json::Value> {
     let p = st.project(&pid).ok_or("no such project")?;
     let root = std::path::PathBuf::from(&p.path);
@@ -973,7 +975,7 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
 }
 
 /// Writes a new bundle ID into the config file it was found in (string swap keeps formatting).
-#[tauri::command]
+#[tauri::command(async)]
 fn bundle_id_set(st: St, pid: String, id: String) -> R<()> {
     let ok = id.split('.').count() >= 2 && id.split('.').all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
     if !ok { return Err("use reverse-domain form: letters, digits, - and dots, like com.you.app".into()); }
@@ -991,7 +993,7 @@ fn plan_move(st: St, pid: String, from: usize, to: Option<usize>) -> R<()> {
 }
 
 /// Names of the repo's GitHub Actions secrets.
-#[tauri::command]
+#[tauri::command(async)]
 fn gh_secrets(st: St, pid: String) -> R<Vec<String>> {
     let p = st.project(&pid).ok_or("no such project")?;
     let v = store::gh_json(&["secret", "list", "--json", "name"], &p.gh, Some(&p.path));
@@ -999,7 +1001,7 @@ fn gh_secrets(st: St, pid: String) -> R<Vec<String>> {
 }
 
 /// .env values of `keys` → repo secrets, via a temp dotenv file (no values on command lines), deleted right after.
-#[tauri::command]
+#[tauri::command(async)]
 fn gh_secrets_set(st: St, pid: String, keys: Vec<String>) -> R<usize> {
     let p = st.project(&pid).ok_or("no such project")?;
     let text = std::fs::read_to_string(std::path::Path::new(&p.path).join(".env")).unwrap_or_default();
@@ -1066,12 +1068,12 @@ fn read_image(path: String) -> R<tauri::ipc::Response> {
 
 // ---- browsers: open pages in a system browser profile (you stay logged in there) ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn browsers() -> Value {
     json!(store::browsers())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_in_browser(exe: String, profile: String, url: String) -> R<()> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err("http(s) links only".into());
@@ -1090,7 +1092,7 @@ fn open_in_browser(exe: String, profile: String, url: String) -> R<()> {
 /// In-app browser: one child webview "web" laid over the Browser tab's placeholder. Profile dir ~/.clauracle/browser,
 /// shared by all projects ∴ logins persist + are shared. rect None → hide. nav → load url (else only move/resize).
 /// No IPC for it: capabilities need `remote.urls` for external pages. Its navigations → event `weburl` (address bar).
-#[tauri::command]
+#[tauri::command(async)]
 fn web_view(app: AppHandle, url: String, rect: Option<[f64; 4]>, zoom: f64, nav: bool) -> R<()> {
     use tauri::{LogicalPosition as P, LogicalSize as Z};
     let e = |e: tauri::Error| e.to_string();
@@ -1155,7 +1157,7 @@ async fn reach(host: String, port: u16) -> bool {
 }
 
 /// Start page for the in-app browser: the browser profile's homepage (or first startup page) from its Preferences.
-#[tauri::command]
+#[tauri::command(async)]
 fn homepage(exe: String, profile: String) -> String {
     store::browsers().iter().find(|b| b["exe"] == exe.as_str())
         .and_then(|b| std::fs::read_to_string(std::path::Path::new(b["data"].as_str()?).join(if profile.is_empty() { "Default" } else { &profile }).join("Preferences")).ok())

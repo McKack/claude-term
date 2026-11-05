@@ -39,4 +39,6 @@ Current state and open work: see `HANDOVER.md`. Frozen, don't edit: `archive/tui
 - Config written by PowerShell can carry a BOM; the loader strips it, and backs up an unparsable file to `config.broken.json`.
 - New app icon (`npx tauri icon assets/icon.svg`): run `cargo clean -p clauracle` first, or the exe keeps the old one.
 - gcloud, like gh: per-process `CLOUDSDK_CORE_ACCOUNT/PROJECT` from the project, never `gcloud config set`.
+- A plain `#[tauri::command] fn` runs on the window's main thread: if it spawns git/gh/openssl, touches network/keychain
+  or creates a webview, make it `#[tauri::command(async)]`, or the whole window freezes (no crash, no log) while it waits.
 - Bash heredocs feeding code mangle backslashes: edit files with the Edit tool instead.
