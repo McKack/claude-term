@@ -1875,7 +1875,7 @@ function releaseSec(r, builds = []) {
     <div id="relBox">${builds.map(b => row(b, tick(b))).join('') + relFiles.map(f => row({path: f, name: f.split(/[\\/]/).pop()}, true)).join('')
       || `<p class="dim" style="margin:0;font-size:13px">No recent builds found. ${P().build.build ? `<a style="cursor:pointer;color:var(--accent)" onclick="call('run_step', {pid:cur, step:'build'})">Build now</a>` : `<a style="cursor:pointer;color:var(--accent)" onclick="openManager(cur)">Set a build command</a>`}, or add files.</p>`}</div>
     <p id="relWarn" class="dim" style="font-size:13px;margin:0"></p>
-    <div class="btnrow"><button class="btn" onclick="pickRelFiles()">${icon('clip')}Add files</button><button class="btn primary" id="relGo" onclick="makeRelease(this)">${icon('rocket')}Publish</button></div>
+    <div class="btnrow col"><button class="btn" onclick="pickRelFiles()">${icon('clip')}Add files</button><button class="btn primary" id="relGo" onclick="makeRelease(this)">${icon('rocket')}Publish</button></div>
     <p id="relErr" class="err" style="font-size:12.5px;margin:0"></p>
     <label class="check" title="After each successful build: if the project version is ahead of the latest release, publish v&lt;version&gt; with that version's newest build per file type"><input type="checkbox" ${P().rel_auto ? 'checked' : ''} onchange="relAutoSet(this)"><span class="grow">Release after build</span></label>`, builds.length);
 }
