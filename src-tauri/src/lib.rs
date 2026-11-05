@@ -32,6 +32,56 @@ pub fn adopt(child: &tokio::process::Child) {
 pub fn adopt(_: &tokio::process::Child) {}
 
 pub static CHILDREN: std::sync::LazyLock<Mutex<Vec<u32>>> = std::sync::LazyLock::new(Default::default);
+/// Left alive by a crashed earlier run (pid, image name): found at startup, ended only when the user says so.
+static ORPHANS: Mutex<Vec<(u32, String)>> = Mutex::new(Vec::new());
+
+/// Child pids persist to ~/.clauracle/children.txt → the next start can spot what a crash left behind (the Windows job
+/// normally ends them; older builds / other OSes may not). ponytail: list never shrinks within a run; stale pids are
+/// filtered at next start by liveness + name (claude/node/shell) — a reused pid with such a name = false positive, user confirms.
+pub fn track(id: u32) {
+    let mut c = CHILDREN.lock().unwrap();
+    c.push(id);
+    save_children(&c);
+}
+fn save_children(c: &[u32]) {
+    let _ = std::fs::write(store::home().join("children.txt"), c.iter().map(u32::to_string).collect::<Vec<_>>().join("\n"));
+}
+
+/// Running processes: pid → image name without .exe, lowercase.
+fn procs() -> std::collections::HashMap<u32, String> {
+    let out = if cfg!(windows) {
+        store::command(std::path::Path::new("tasklist")).args(["/FO", "CSV", "/NH"]).output()
+    } else {
+        std::process::Command::new("ps").args(["-A", "-o", "pid=,comm="]).output()
+    };
+    let text = out.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    text.lines().filter_map(|l| {
+        let (name, pid) = if cfg!(windows) {
+            let f: Vec<&str> = l.split("\",\"").collect(); // "name.exe","pid",…
+            (f.first()?.trim_start_matches('"').to_string(), f.get(1)?.to_string())
+        } else {
+            let (p, n) = l.trim().split_once(' ')?;
+            (n.trim().rsplit('/').next()?.to_string(), p.to_string())
+        };
+        Some((pid.parse().ok()?, name.to_lowercase().trim_end_matches(".exe").to_string()))
+    }).collect()
+}
+
+fn find_orphans() -> Vec<(u32, String)> {
+    let Ok(t) = std::fs::read_to_string(store::home().join("children.txt")) else { return vec![] };
+    let live = procs();
+    t.lines().filter_map(|l| l.trim().parse().ok())
+        .filter_map(|p: u32| live.get(&p).filter(|n| ["claude", "node", "cmd", "sh", "bash"].contains(&n.as_str())).map(|n| (p, n.clone())))
+        .collect()
+}
+
+/// Orphans from a crashed earlier run; `kill` ends their trees.
+#[tauri::command]
+fn orphans(kill: bool) -> Vec<Value> {
+    let mut o = ORPHANS.lock().unwrap();
+    if kill { o.drain(..).for_each(|(p, _)| kill_tree(p)); }
+    o.iter().map(|(p, n)| json!({"pid": p, "name": n})).collect()
+}
 
 #[tauri::command]
 fn state(st: St) -> Value {
@@ -849,6 +899,7 @@ pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf, args: &[String]) {
     for pid in CHILDREN.lock().unwrap().drain(..) {
         kill_tree(pid); // sessions end before the new instance resumes them
     }
+    save_children(&[]);
     let mut c = std::process::Command::new(exe);
     c.args(args);
     #[cfg(windows)]
@@ -920,6 +971,7 @@ pub fn run() {
             app.manage(Arc::new(State { cfg: Mutex::new(store::load()), live: Default::default(),
                                         asks: Default::default(), plugin_dir }));
             let st = app.state::<Arc<State>>().inner().clone();
+            *ORPHANS.lock().unwrap() = find_orphans(); // before resume spawns (track overwrites the file)
             if let Some(r) = st.cfg.lock().unwrap().win { restore_win(app, r); }
             claude::resume_interrupted(app.handle(), &st);
             // warm the slow lookups so Settings opens instantly: gh accounts, and the catalog on a first run
@@ -948,7 +1000,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])
+            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {
@@ -960,8 +1012,16 @@ pub fn run() {
             for pid in CHILDREN.lock().unwrap().drain(..) {
                 kill_tree(pid);
             }
+            save_children(&[]);
         }
     });
+}
+
+#[cfg(test)]
+#[test]
+fn procs_lists_self() {
+    let me = std::process::id();
+    assert!(procs().contains_key(&me), "own pid missing from process list");
 }
 
 #[cfg(test)]

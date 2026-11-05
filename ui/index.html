@@ -2432,6 +2432,8 @@ layout();
 drawSide();
 applyView();
 refresh().then(() => S.active && openProject(S.active));
+/* processes a crashed earlier run left behind: ask, never kill unasked */
+call('orphans', {kill: false}).then(o => o?.length && setTimeout(() => confirm(`A previous Clauracle run left ${o.length} process${o.length === 1 ? '' : 'es'} running:\n\n${o.map(x => `${x.name} (pid ${x.pid})`).join('\n')}\n\nEnd ${o.length === 1 ? 'it' : 'them'}?`) && call('orphans', {kill: true}).then(() => toast('Ended')), 1500));
 // dock grows (input lines, pills, queue) → the log shrinks; if it was at the bottom, glide up by the same amount
 let dockH = 0;
 new ResizeObserver(() => {

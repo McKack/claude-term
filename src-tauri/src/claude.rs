@@ -271,7 +271,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
         .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null()).kill_on_drop(true);
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-    child.id().map(|id| crate::CHILDREN.lock().unwrap().push(id));
+    child.id().map(crate::track);
     crate::adopt(&child);
     let conn = Arc::new(Conn { stdin: tokio::sync::Mutex::new(child.stdin.take().unwrap()),
                                pending: Mutex::new(HashMap::new()), counter: AtomicU64::new(0) });
@@ -797,7 +797,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
     let mut child = match c.spawn() {
         Ok(c) => {
-            c.id().map(|id| crate::CHILDREN.lock().unwrap().push(id));
+            c.id().map(crate::track);
             crate::adopt(&c);
             c
         }
