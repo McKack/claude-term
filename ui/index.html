@@ -516,7 +516,7 @@ const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
 let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'gh', mp = null;
 const ctx = (() => { try { return JSON.parse(localStorage.ctx || '{}'); } catch { return {}; } })();
 const saveCtx = () => { try { localStorage.ctx = JSON.stringify(ctx); } catch {} };
-const hand = {}, team = {}, logs = {}, busy = {}, live = {}, builds = {}, hiddenQs = {}, atts = {}, texts = {}, queue = {};
+const hand = {}, team = {}, logs = {}, busy = {}, live = {}, builds = {}, hiddenQs = {}, qsOpen = {}, atts = {}, texts = {}, queue = {};
 let draftsLoaded = false;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -761,8 +761,8 @@ function drawChrome() {
   const idle = !busy[cur] && !p.ready && p.cont !== 'off' && !queue[cur]?.length && !!logs[cur]?.length;
   $('ready').hidden = !(p.ready || idle);
   $('contBtn').hidden = !p.ready && !next.length;
-  $('readytext').innerHTML = p.questions.length ? `Answer the question${p.questions.length > 1 ? 's' : ''} above, then continue.`
-    : next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
+  // questions never block a Continue: they open in the fresh session (qsOpen), the bar keeps showing the next task
+  $('readytext').innerHTML = next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
     : p.ready ? 'Handover written. Continue clears the context and carries on.'
     : `All tasks done! What should we look at next? ${NEXT_IDEAS.map(([l], i) => `<button class="btn ghost" onclick="askNext(${i})">${l}</button>`).join('')}`;
   $('ready').title = next.map((t, i) => `${i + 1}. ${t}`).join('\n');
@@ -932,7 +932,8 @@ function drawLog() {
   if (!l.length) box.innerHTML = `<div id="empty" style="margin-top:16vh">${CRAB}<p>What should we work on in <b>${esc(P().name)}</b>?</p></div>`;
   l.forEach(e => put(box, e));
   if (live[cur]) box.appendChild(liveEl(cur));
-  if (P().questions.length && !hiddenQs[cur] && (P().ready || P().cont === 'auto' || P().cont === 'off')) box.appendChild(questionCard(cur));
+  // manual clear-continue: questions show only after the Continue (spec), never next to a waiting Continue; N? pill opens them any time
+  if (P().questions.length && !hiddenQs[cur] && (qsOpen[cur] || P().cont === 'auto' || P().cont === 'off')) box.appendChild(questionCard(cur));
   $('log').replaceChildren(box, $('skel'));
   $('log').scrollTop = $('log').scrollHeight;
 }
@@ -1345,7 +1346,7 @@ const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading
 // a clear keeps the conversation so far above the new one, faded (ponytail: last 300 entries, older ones drop)
 const keepOld = pid => (logs[pid] || []).filter(x => x.kind !== 'ask').slice(-300).map(x => ({...x, old: true}));
 function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); /* first: a drawing error can't swallow the Continue */
-  hiddenQs[cur] = false; P().ready = false; $('ready').hidden = true;
+  hiddenQs[cur] = false; qsOpen[cur] = true; P().ready = false; $('ready').hidden = true;
   logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session'}]; readNote(cur, true); drawLog(); }
 
 // ---- events from Rust ----
@@ -1362,7 +1363,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
   cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session'}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
-  ready: () => refresh().then(() => d.pid === cur && drawLog()),
+  ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
   queued: () => refresh(),
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
@@ -1396,7 +1397,7 @@ function confirmQs(pid, card) {
     note: q.querySelector('.note').value}));
   call('answer_questions', {pid, answers});
 }
-function showQuestions(pid) { hiddenQs[pid] = false; drawLog(); }
+function showQuestions(pid) { hiddenQs[pid] = false; qsOpen[pid] = true; drawLog(); }
 
 // ---- permission / interactive question (inline, so other projects keep going) ----
 function askCard(e) {

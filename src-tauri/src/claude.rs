@@ -749,7 +749,7 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                         text("Queued and the user was notified. Carry on with the next task that doesn't depend on them; answers arrive in a later message.")
                     }
                     "auto_answer" => text("Held until the user is back. Carry on with other tasks."),
-                    _ => text("Queued: the user sees them when this turn ends. Finish what doesn't depend on them first."),
+                    _ => text("Queued: the user sees them after the next Continue (never blocks it). Finish what doesn't depend on them first."),
                 }
             }
             _ => json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": "unknown tool"}}),
