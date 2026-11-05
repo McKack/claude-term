@@ -344,6 +344,10 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
 .msg .tlist .ti { font-size:inherit; }
+.ti.working { flex-wrap:wrap; border:1px solid var(--line) !important; border-radius:4px 16px 16px 16px; padding:7px 12px; margin:2px 0; box-shadow:0 0 12px -4px var(--accent);
+  background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
+.ti.working .tt { color:var(--accent); } .ti.working + .ti { border-top:0; }
+.tw { flex-basis:100%; display:flex; gap:5px; align-items:center; padding-left:21px; color:var(--accent); font-size:11.5px; font-variant-numeric:tabular-nums; } .tw svg { width:12px; height:12px; }
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .item a { color:var(--text); text-decoration:none; cursor:pointer; } .item a:hover { color:var(--accent); }
 .out { background:#151412; color:#d8d4cb; border-radius:10px; padding:10px; height:calc(100vh - 190px); overflow:auto; font:12px/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; margin-top:10px; user-select:text; }
@@ -677,7 +681,7 @@ async function refresh() {
     draftsLoaded = true;
     for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; queue[pid] = d.queue || []; if (d.editing) editing[pid] = d.editing; }
   }
-  for (const id of S.busy) busy[id] = true;
+  for (const id of S.busy) { busy[id] = true; busyT[id] ||= Date.now(); } // ponytail: turn already running at load → counts from load
   drawProjects();
   if (P()) drawChrome(); else drawHome();
   if (first) Object.keys(queue).forEach(flushQueue); // held across a restart with no resumed turn: busy:false never comes → send now (after drawChrome: idle bar known)
@@ -896,11 +900,14 @@ setInterval(() => {
 // Working… pill = what's really going on: the running tool (or Thinking) + elapsed, ticking each second
 const doing = {}; // pid → {text, id, t}: set by tool lines / busy, back to Thinking when that tool's result lands
 const setDoing = (pid, text, id) => { doing[pid] = {text, id, t: Date.now()}; };
+const busyT = {}; // pid → turn start (ms): Plan tab's working row counts from here, not per tool
+const workAgo = () => { const s = Math.floor((Date.now() - (busyT[cur] || Date.now())) / 1000); return `Working · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 let workT = null;
 function workTick() {
   const show = !$('workpill').hidden;
   const draw = () => { const d = doing[cur] || {text: 'Thinking', t: Date.now()}, s = Math.floor((Date.now() - d.t) / 1000);
-    $('worktext').textContent = `${d.text} · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+    $('worktext').textContent = `${d.text} · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    for (const e of document.querySelectorAll('#atp .tw span')) e.textContent = workAgo(); };
   if (show && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!show && workT) { clearInterval(workT); workT = null; }
 }
@@ -1451,7 +1458,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
-  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); busy[d.pid] = d.busy; if (!cur) drawHome(); }
+  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) { setDoing(d.pid, 'Thinking'); busyT[d.pid] = Date.now(); } const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; if (!cur) drawHome(); else if (flip && d.pid === cur) drawAtp(); /* Plan row 0 Working look on/off */ }
     if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid]; delete triaging[d.pid];
       refresh().then(() => { if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) contGo(d.pid); else flushQueue(d.pid); }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }
@@ -2629,7 +2636,7 @@ function drawAtp() {
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...S.plans[cur].map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
         ${pl.length > 1 || pl[0].file !== 'PLAN.md' ? `<button class="ib" title="Merge every plan file into PLAN.md" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
-        + L(q.map((x, i) => tli(esc(x), {on: `planCheck(${i}, this)`})))
+        + L(q.map((x, i) => tli(esc(x), {on: `planCheck(${i}, this)`, ...(!i && busy[cur] ? {cls: 'working', end: `<small class="tw">${icon('sparkle')}<span>${workAgo()}</span></small>`} : {})})))
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
     || empty("Your AI's task list and PLAN.md's queue show here");
