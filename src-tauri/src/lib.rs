@@ -18,9 +18,12 @@ fn state(st: St) -> Value {
     let cfg = st.cfg.lock().unwrap();
     let usage: serde_json::Map<String, Value> =
         cfg.accounts.iter().map(|a| (a.id.clone(), json!(store::usage(&cfg, &a.id)))).collect();
+    // when each usage window resets (unix secs), per account: shown in the usage cards, toast when one passes
+    let resets: serde_json::Map<String, Value> = cfg.usage.iter().map(|(id, w)|
+        (id.clone(), json!(w.iter().filter_map(|(k, v)| v.resets_at.map(|r| (k.clone(), r))).collect::<std::collections::HashMap<_, _>>()))).collect();
     let live = st.live.lock().unwrap();
     let busy: Vec<&String> = live.iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k).collect();
-    json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "active": cfg.active, "busy": busy,
+    json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "resets": resets,"active": cfg.active, "busy": busy,
            "default_account": cfg.default_account, "agents_on": cfg.agents_on, "web": !cfg.off.iter().any(|x| x == "web"), "notify": cfg.notify, "drafts": store::drafts(),
            "projects_dir": store::projects_root(&cfg).to_string_lossy(),
            // next steps from HANDOVER.md (ready bar, Tasks tab) + the last few done from CHANGES.md (Tasks tab)
