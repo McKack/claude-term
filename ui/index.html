@@ -1401,15 +1401,17 @@ function questionCard(pid) {
       ${q.options.map(o => `<label class="choice"><input type="${type}" name="${name}" value="${esc(o.label)}" ${o.recommended ? 'checked' : ''}>
         <span>${esc(o.label)}${o.recommended ? ' <span class="pill">recommended</span>' : ''}${o.description ? `<small class="dim">${esc(o.description)}</small>` : ''}</span></label>`).join('')}
       <label class="choice"><input type="${type}" name="${name}" value="__other"><span>Other</span></label>
-      <input class="other" placeholder="Your own answer" oninput="this.previousElementSibling.querySelector('input').checked = !!this.value">
       <input class="note" placeholder="Note (optional)"></div>`;
   }).join('') + `<div class="btns"><button class="btn ghost" onclick="hiddenQs['${pid}']=true; drawLog()">Not now</button><button class="btn primary" onclick="confirmQs('${pid}', this.closest('.card'))">Confirm</button></div>`;
+  // one text field per question: "Note" → "Your own answer" while Other is picked (user 2026-11-05: two fields = same thing)
+  d.onchange = e => { const q = e.target.closest('.q'); if (q && e.target.type !== 'text') q.querySelector('.note').placeholder =
+    q.querySelector('[value=__other]').checked ? 'Your own answer' : 'Note (optional)'; };
   return d;
 }
 function confirmQs(pid, card) {
-  const answers = [...card.querySelectorAll('.q')].map(q => ({id: q.dataset.id,
-    choice: [...q.querySelectorAll('.choice input:checked')].map(i => i.value === '__other' ? 'Other: ' + q.querySelector('.other').value : i.value),
-    note: q.querySelector('.note').value}));
+  const answers = [...card.querySelectorAll('.q')].map(q => { const t = q.querySelector('.note').value, other = q.querySelector('[value=__other]').checked;
+    return {id: q.dataset.id, choice: [...q.querySelectorAll('.choice input:checked')].map(i => i.value === '__other' ? 'Other: ' + t : i.value),
+      note: other ? '' : t}; });
   call('answer_questions', {pid, answers});
 }
 function showQuestions(pid) { hiddenQs[pid] = false; qsOpen[pid] = true; drawLog(); }
