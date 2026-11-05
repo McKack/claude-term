@@ -1406,7 +1406,7 @@ const TRIAGE_ISSUES = 'New from the user while a Continue waited. Only file it n
 const triaging = {}; // pid → plan-only turn running; Continue follows it
 function toTasks(pid, texts) {
   triaging[pid] = true;
-  call('send', {pid, text: (issueQ(pid) ? TRIAGE_ISSUES : TRIAGE) + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n'), images: [], files: []});
+  call('send', {pid, text: (issueOn(pid) ? TRIAGE_ISSUES : TRIAGE) /* issueOn ∵ issueQ = null until team loads → wrongly PLAN.md */ + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n'), images: [], files: []});
   texts.forEach(t => addEntry(pid, {kind: 'user', text: t}));
   if (pid === cur) drawChrome();
 }
@@ -1643,9 +1643,8 @@ function projectsPage() {
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
       ${(p.allow || []).length ? optRow('Always allowed', 'Tools this project runs without asking', `<span class="row wrap" style="gap:4px">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ✕</span>`).join('')}</span>`) : ''}
       ${optRow('Credit the AI in commits', 'Off: no Co-Authored-By or "Generated with" lines; the AI never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
-      ${p.gh ? optRow('Prompts become team tasks', 'Each task you give your AI is filed as a GitHub issue (Team tasks), claimed while it works and closed when done', sw(p.team_auto, 'setM({team_auto:this.checked})')) : ''}
       ${optRow('Keep .env away from the AI', 'The AI can\'t read or edit .env files; manage them in the .env panel', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
-    </div>`, [p.ponytail, p.terse, p.ai_credit, p.gh && p.team_auto, p.hide_env].filter(Boolean).length + ' on')}
+    </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on')}
     ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
       <span>After each task</span><select onchange="setBuild('after', this.value)">${options({'': 'Nothing', build: 'Build', build_run: 'Build + run', build_deploy: 'Build + deploy'}, p.build.after)}</select>
       <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to the AI to fix</small></label></div>`,
