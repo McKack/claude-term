@@ -225,8 +225,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 .qp:hover { border-color:var(--accent); } .qp .ib { width:22px; height:22px; } .qp .ib svg { width:13px; height:13px; }
 .qp .qi { display:inline-grid; place-items:center; width:24px; height:20px; border-radius:99px; background:var(--soft); color:var(--accent); flex:none; } .qp .qi svg { width:12px; height:12px; }
 .qp .qt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; padding:0 4px; }
-#workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; white-space:nowrap; overflow:hidden; transition:width .4s ease; }
-#worktext { transition:opacity .35s ease; }
+#workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; white-space:nowrap; overflow:hidden; } #worktext { font-variant-numeric:tabular-nums; }
 #workpill[hidden], #handpill[hidden] { display:none; }
 .born { animation:hatch .4s ease-out; } /* from the pill's bubble (top-left) out to the full row */
 @keyframes hatch { from { clip-path:inset(0 50% calc(100% - 64px) 0 round 16px); opacity:.5; } to { clip-path:inset(0 0 0 0 round 0); opacity:1; } }
@@ -475,7 +474,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
     <div class="col" id="skel" hidden><div class="crow claude"><img class="av" src="icon.svg" alt=""><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div>
       <div id="handpill" hidden>Preparing plan…</div>
-      <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Working…</span></div></div></div></div></div>
+      <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div></div>
   <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i"><use href="#i-down"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
@@ -841,28 +840,15 @@ setInterval(() => {
   if (++tickN % 10 === 0) try { localStorage.times = JSON.stringify(TIMES); } catch {}
   drawTimes();
 }, 1000);
-// Working… pill: a new line every few seconds while visible
-const WORDS = ['Reticulating splines', 'Entering the matrix', 'Calibrating the flux capacitor', 'Charging the warp core', 'Consulting the oracle',
-  'Rerouting power to the shields', 'Spinning up the hyperdrive', 'Compiling the multiverse', 'Loading the next level', 'Grinding XP',
-  'Respawning at the last checkpoint', 'Hacking the mainframe', 'Aligning the dilithium crystals', 'Decrypting the transmission',
-  'Scanning for life forms', 'Bending spacetime', 'Feeding the hamsters', 'Untangling the quantum foam', 'Polishing the pixels',
-  'Asking the rubber duck', 'Herding electrons', 'Plotting a course', 'Engaging thrusters', 'Rolling for initiative', 'Speedrunning the codebase',
-  'Collecting the power-ups', 'Booting the holodeck', 'Synchronising the neural link', 'Defragmenting the timeline', 'Dodging the blue shell'];
+// Working… pill = what's really going on: the running tool (or Thinking) + elapsed, ticking each second
+const doing = {}; // pid → {text, id, t}: set by tool lines / busy, back to Thinking when that tool's result lands
+const setDoing = (pid, text, id) => { doing[pid] = {text, id, t: Date.now()}; };
 let workT = null;
-// every 9s: text fades out, the pill glides to the new text's width, text fades in
 function workTick() {
-  const pill = $('workpill'), sp = $('worktext'), show = !pill.hidden, pick = () => WORDS[Math.floor(Math.random() * WORDS.length)] + '…';
-  if (show && !workT) {
-    pill.style.width = ''; sp.textContent = pick(); sp.style.opacity = 1;
-    workT = setInterval(() => {
-      sp.style.opacity = 0;
-      setTimeout(() => {
-        const w0 = pill.offsetWidth; sp.textContent = pick(); pill.style.width = 'auto';
-        const w1 = pill.offsetWidth; pill.style.width = w0 + 'px'; void pill.offsetWidth; // reflow, then animate to w1
-        pill.style.width = w1 + 'px'; sp.style.opacity = 1;
-      }, 350);
-    }, 9000);
-  }
+  const show = !$('workpill').hidden;
+  const draw = () => { const d = doing[cur] || {text: 'Thinking', t: Date.now()}, s = Math.floor((Date.now() - d.t) / 1000);
+    $('worktext').textContent = `${d.text} · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  if (show && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!show && workT) { clearInterval(workT); workT = null; }
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
@@ -1395,12 +1381,14 @@ function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   line: () => { if (d.kind === 'claude') live[d.pid] = '';
+    if (d.kind === 'tool' && !d.parent) setDoing(d.pid, 'Running: ' + d.text.replace(/\s+/g, ' ').slice(0, 60), d.id);
+    else if (d.result_of && d.result_of === doing[d.pid]?.id) setDoing(d.pid, 'Thinking');
     if (reading[d.pid] && /^(claude|tool|err)$/.test(d.kind)) readNote(d.pid, false); // notes/system lines of the reconnect ≠ the reply
     addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of}); if (d.result_of && d.pid === cur) drawAtp(); },
   weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
-  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); busy[d.pid] = d.busy; if (!cur) drawHome(); }
+  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); busy[d.pid] = d.busy; if (!cur) drawHome(); }
     if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; refresh().then(() => flushQueue(d.pid)); } /* flush after refresh: ready/idle bar known */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;

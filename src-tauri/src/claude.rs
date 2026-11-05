@@ -729,6 +729,16 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                     return text("Clear-continue is off for this project: nothing will be cleared. Just end the turn.");
                 }
                 live.armed.store(true, SeqCst);
+                // watchdog: work is done once ready is called; only the closing summary is left. A stalled API reply
+                // (seen: 3+ min, no output) would hold the Working pill forever → interrupt after 30s, the turn ends.
+                let l = live.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    let conn = l.conn.lock().unwrap().clone();
+                    if let (true, true, Some(c)) = (l.armed.load(SeqCst), l.busy.load(SeqCst), conn) {
+                        let _ = c.request(json!({"subtype": "interrupt"}), 10).await;
+                    }
+                });
                 text("Armed. When this turn ends the context is cleared and a fresh session continues from PLAN.md and HANDOVER.md. End the turn now.")
             }
             Some("lesson") => {
