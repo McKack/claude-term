@@ -2,7 +2,7 @@
 
 Tauri 2 desktop app that wraps the user's installed Claude Code CLI (stream-json protocol, spoken directly) and GitHub through `gh`.
 It is a *wrapper*: commands, skills, MCP servers, hooks and settings all come from the real CLIs.
-Current state and open work: see `HANDOVER.md`. Frozen, don't edit: `archive/tui/` (old TUI), `archive/python/` (pywebview prototype).
+Current state: `HANDOVER.md`. Open work: GitHub issues labelled `task`. Frozen, don't edit: `archive/tui/` (old TUI), `archive/python/` (pywebview prototype).
 
 ## Files
 - `src-tauri/src/lib.rs`: Tauri commands (what the page calls), child-process tracking, app setup.

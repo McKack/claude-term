@@ -15,7 +15,7 @@ const LESSONS_MAX: usize = 30; // ponytail: ~30 one-liners ≈ 1k tokens per ses
 const PONYTAIL_MD: &str =include_str!("../../plugin/skills/ponytail/SKILL.md");
 
 const APPEND: &str = "You are running inside Clauracle, a desktop app around Claude Code that keeps long work going \
-across fresh sessions through PLAN.md and HANDOVER.md. Its tools: mcp__clauracle__ready (the task is done and plan + \
+across fresh sessions through a task list and HANDOVER.md. Its tools: mcp__clauracle__ready (the task is done and plan + \
 handover are written: Clauracle clears the context and continues) and mcp__clauracle__ask (questions for the user, queued; never \
 wait for them). Save tokens: hand searching, reading many files and running builds/tests to the helper agents \
 (Task tool) when they fit, and keep your own replies short.";
@@ -38,14 +38,35 @@ const HANDOVER_RULES: &str = "
 - Questions for the user go through mcp__clauracle__ask (numbered, options with your recommendation marked). They
   are queued and answered later: carry on with whatever doesn't depend on them.";
 
+/// HANDOVER_RULES for a project on GitHub: tasks = issues (one list for Plan tab, Next pill, Continue, team; no PLAN.md drift).
+const ISSUE_RULES: &str = "
+# Handover (Clauracle)
+- Tasks = open GitHub issues labelled `task`: the ONE task list (no PLAN.md). Clauracle's continue message lists them in
+  order (first = next); `gh issue view N` for details. Skip issues someone else is assigned to.
+- Each new user request becomes an issue at once (`gh issue create --label task --title <short> --body <full request>`),
+  so nothing is lost across sessions. Your own ideas needing the user's yes: add `--label suggestion` (rare, only
+  clearly high-value ones); the user accepts or dismisses them. Every issue must be finishable work, never a standing rule.
+- If PLAN.md, TASKS.md, TODO.md or HANDOVER.md still list open tasks, file them as issues (same order) and remove them there.
+- HANDOVER.md lets a fresh session resume: goal, current state, how to build and test, gotchas, rules; no task list;
+  under ~50 lines. Finished work goes to CHANGES.md (newest first, one line per change). In a git repo where these
+  aren't tracked, add them to .git/info/exclude.
+- Finishing a task: verify it, `gh issue close N -c <one-line summary>`, update HANDOVER.md and CHANGES.md, commit if
+  the project's rules allow, then call mcp__clauracle__ready as the LAST action of the turn.
+- Do NOT call ready, stop and say why instead, when something failed you can't fix or no task is left.
+- Questions for the user go through mcp__clauracle__ask (numbered, options with your recommendation marked). They
+  are queued and answered later: carry on with whatever doesn't depend on them.";
+
+/// Tasks live in GitHub issues: the project is on GitHub and has a gh account to read them with.
+pub fn issue_mode(p: &Project) -> bool { !p.owner.is_empty() && !p.gh.is_empty() }
+
 const AUTO_RULES: &str = "
 # Auto mode: the user is away
-Work ONE task per session from PLAN.md's queue, then hand over with mcp__clauracle__ready; Clauracle starts the
+Work ONE task per session from the task queue, then hand over with mcp__clauracle__ready; Clauracle starts the
 next session by itself.";
 
 const AUTO_ANSWER_RULES: &str = "
 # Auto mode with answers: the user is away
-Work ONE task per session from PLAN.md's queue, then hand over with mcp__clauracle__ready. When a question has a
+Work ONE task per session from the task queue, then hand over with mcp__clauracle__ready. When a question has a
 sensible recommended answer, decide it yourself, go with that, and note the decision in CHANGES.md. Only questions
 that truly need the user (taste, money, accounts, irreversible or risky choices) go to mcp__clauracle__ask with
 blocking=true; they are held, and you continue with other tasks.";
@@ -57,14 +78,32 @@ every fact (why, constraint, edge case, upgrade path). Example: `// cache: 5m TT
 
 const PREPARE: &str = "Pause here; don't start anything new{why}. Update HANDOVER.md so a fresh session can pick up \
 exactly where you are (goal, what you were doing and how far it got, what is verified and what isn't, gotchas \
-learned) and PLAN.md's Queue (next steps in order), move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
+learned) and the task list (PLAN.md's Queue, or GitHub issues when tasks live there: next steps in order), move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
 
 const RESUMED: &str = "continue
 
 Clauracle restarted while you were working (a restart you asked for, an update, or a crash), so your last turn was cut off. Check where you got to (files, git status) and carry on.";
 
-const CONTINUE: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md and \
+pub const CONTINUE: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md and \
 PLAN.md at the project root and carry on with the next step.";
+// same first 60 chars as CONTINUE (history() matches that prefix)
+const CONTINUE_ISSUES: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md and \
+carry on with the next open task (GitHub issues labelled `task`, first = next):";
+
+/// The "continue" message for a fresh session, or None when nothing is queued. Issue mode: one `gh issue list`
+/// (blocking, ~1s) → ordered "#N title" lines; gh failing → generic text (a network blip mustn't stop a run).
+pub fn cont_text(p: &Project) -> Option<String> {
+    if !issue_mode(p) {
+        return (!queue(&p.path).is_empty()).then(|| CONTINUE.into());
+    }
+    let v = store::tasks(&p.path, &p.gh);
+    if !v.is_array() {
+        return Some(format!("{CONTINUE_ISSUES} run `gh issue list --label task` to see them."));
+    }
+    let q = store::task_queue(&v, &p.gh, &p.order);
+    (!q.is_empty()).then(|| format!("{CONTINUE_ISSUES}\n{}",
+        q.iter().map(|x| format!("- #{} {}", x["number"], x["title"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n")))
+}
 
 // ---------------------------------------------------------------------------------------------
 
@@ -203,7 +242,7 @@ async fn run(app: AppHandle, st: Arc<State>, pid: String, live: Arc<Live>) {
 fn args(st: &State, p: &Project) -> Vec<String> {
     let cfg = st.cfg.lock().unwrap();
     let (deny, _) = store::restrictions(&cfg, p);
-    let mut append = format!("{APPEND}\n{HANDOVER_RULES}");
+    let mut append = format!("{APPEND}\n{}", if issue_mode(p) { ISSUE_RULES } else { HANDOVER_RULES });
     append += match p.cont.as_str() { "auto" => AUTO_RULES, "auto_answer" => AUTO_ANSWER_RULES, _ => "" };
     if p.terse {
         append += TERSE_RULES;
@@ -543,7 +582,8 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
             }
         }
     }
-    if queue(&p.path).is_empty() && p.answers.is_empty() {
+    let msg = cont_text(&p); // ponytail: blocking gh call on a runtime worker (~1s, once per session)
+    if msg.is_none() && p.answers.is_empty() {
         // empty Queue = done: no fresh "continue" turn ∵ it would only find nothing and stop (or invent work)
         line(app, pid, "note", "Queue is empty: all done. Send a new request to start again.");
         if !p.questions.is_empty() { // held auto_answer questions → show now, run is over
@@ -552,15 +592,15 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
         notify(app, st, &format!("{}: done", p.name), &format!("The Queue is empty. {} question(s) waiting.", p.questions.len()));
         return; // ready stays: Continue still works if tasks get added
     }
-    fresh(app, st, pid, live, true);
+    fresh(app, st, pid, live, Some(msg.unwrap_or_else(|| CONTINUE.into())));
 }
 
 fn label(window: &str) -> &str {
     match window { "five_hour" => "5-hour", "seven_day" => "weekly", w => w }
 }
 
-/// Clear the context: a new session, then (optionally) "continue" plus any answers.
-pub fn fresh(app: &AppHandle, st: &State, pid: &str, live: &Live, cont: bool) {
+/// Clear the context: a new session, then (optionally) the continue message `cont` plus any answers.
+pub fn fresh(app: &AppHandle, st: &State, pid: &str, live: &Live, cont: Option<String>) {
     live.armed.store(false, SeqCst);
     live.handing_over.store(false, SeqCst);
     live.first_turn.store(true, SeqCst);
@@ -571,8 +611,8 @@ pub fn fresh(app: &AppHandle, st: &State, pid: &str, live: &Live, cont: bool) {
     }).unwrap_or_default();
     emit(app, "cleared", json!({"pid": pid}));
     let mut items = vec![Input::Reconnect];
-    if cont {
-        items.push(Input::Msg(if answers.is_empty() { CONTINUE.into() } else { format!("{CONTINUE}\n\n{answers}") }));
+    if let Some(c) = cont {
+        items.push(Input::Msg(if answers.is_empty() { c } else { format!("{c}\n\n{answers}") }));
     } else if !answers.is_empty() {
         items.push(Input::Msg(answers));
     }
@@ -795,7 +835,7 @@ fn tool_list(own: bool) -> Value {
             "blocking": {"type": "boolean", "description": "true only if work truly can't go on without the user"}}}}}});
     let mut t = json!({"tools": [
         {"name": "ready", "description": "Call as the LAST action of a turn once the task is done (or paused) and \
-          PLAN.md and HANDOVER.md are updated. When the turn ends Clauracle clears the context and a fresh session continues \
+          the task list and HANDOVER.md are updated. When the turn ends Clauracle clears the context and a fresh session continues \
           (or waits for the user's Continue).", "inputSchema": {"type": "object", "properties": {}}},
         {"name": "ask", "description": "Queue questions for the user (numbered in a card, options with your \
           recommendation, a note field each). Don't wait: the answers arrive later.", "inputSchema": q},
@@ -873,7 +913,7 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                         let _ = c.request(json!({"subtype": "interrupt"}), 10).await;
                     }
                 });
-                text("Armed. When this turn ends the context is cleared and a fresh session continues from PLAN.md and HANDOVER.md. End the turn now.")
+                text("Armed. When this turn ends the context is cleared and a fresh session continues from the task list and HANDOVER.md. End the turn now.")
             }
             Some("lesson") => {
                 let rule: String = m["params"]["arguments"]["rule"].as_str().unwrap_or("").trim().chars().take(160).collect();

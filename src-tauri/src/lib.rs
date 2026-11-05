@@ -188,7 +188,7 @@ fn remove_project(st: St, pid: String) {
 /// current reply, same session).
 #[tauri::command]
 fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Value> {
-    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage", "rel_auto"]; // read live per call: no reconnect
+    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage", "rel_auto", "order"]; // read live per call: no reconnect
     let p = st.with_project(&pid, |p| {
         let mut v = json!(p);
         for (k, val) in changes.as_object().cloned().unwrap_or_default() {
@@ -216,7 +216,7 @@ fn send(app: AppHandle, st: St, pid: String, text: String, images: Option<Vec<Va
     let live = session(&app, &st, &pid);
     let (images, files) = (images.unwrap_or_default(), files.unwrap_or_default());
     if text.trim() == "/clear" && images.is_empty() && files.is_empty() {
-        return claude::fresh(&app, &st, &pid, &live, false);
+        return claude::fresh(&app, &st, &pid, &live, None);
     }
     let text = if files.is_empty() { text } else {
         format!("{text}\n\nAttached files (read them as needed):\n{}", files.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n"))
@@ -259,7 +259,7 @@ async fn interrupt(st: St<'_>, pid: String) -> R<()> {
 #[tauri::command]
 fn new_session(app: AppHandle, st: St, pid: String) {
     let live = session(&app, &st, &pid);
-    claude::fresh(&app, &st, &pid, &live, false);
+    claude::fresh(&app, &st, &pid, &live, None);
 }
 
 /// The Continue button: clear the context and carry on from the handover (with any answers).
@@ -305,7 +305,7 @@ fn set_lessons(st: St, lessons: Vec<String>) {
     store::save(&cfg);
 }
 
-#[tauri::command]
+#[tauri::command(async)] // async ∵ cont_text runs gh in issue mode
 fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
     let live = session(&app, &st, &pid);
     if let Some(x) = extra.filter(|x| !x.trim().is_empty()) { // user messages sent while it waited: ride along with "continue"
@@ -321,7 +321,8 @@ fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
             st.with_project(&pid, |p| p.account = n);
         }
     }
-    claude::fresh(&app, &st, &pid, &live, true);
+    let msg = claude::cont_text(&st.project(&pid).unwrap()); // after a pool switch: same path/gh anyway
+    claude::fresh(&app, &st, &pid, &live, Some(msg.unwrap_or_else(|| claude::CONTINUE.into())));
 }
 
 /// Clear & continue on demand: Claude writes the handover first, then it's ready.
