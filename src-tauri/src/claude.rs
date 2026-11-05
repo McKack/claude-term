@@ -984,7 +984,8 @@ pub fn queue(dir: &str) -> Vec<String> {
 /// Plan tab drag: moves open Queue task `from` to slot `to` (indexes as `queue()` gives them) in the primary plan.
 /// Block = top-level item + following lines (wraps, sub-items) → multi-line tasks move whole; numbered items renumbered
 /// from the first number. ponytail: index → owning top-level block, so an indented sub-item drags its parent.
-pub fn queue_move(dir: &str, from: usize, to: usize) -> Result<(), String> {
+/// `to` = None → block removed (Plan tab tick = task done).
+pub fn queue_move(dir: &str, from: usize, to: Option<usize>) -> Result<(), String> {
     let path = std::path::Path::new(dir).join(primary(dir));
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
@@ -997,15 +998,15 @@ pub fn queue_move(dir: &str, from: usize, to: usize) -> Result<(), String> {
     // open item k → its block (same filter as items(): [x] skipped)
     let owner: Vec<Option<usize>> = (s..e).filter_map(|i| item.captures(lines[i]).filter(|c| !c[2].starts_with("[x]") && !c[2].starts_with("[X]"))
         .map(|_| starts.iter().rposition(|&b| b <= i))).collect();
-    let (Some(Some(fb)), Some(Some(tb))) = (owner.get(from), owner.get(to)) else { return Err("task not found".into()) };
-    let (fb, tb) = (*fb, *tb);
-    if fb == tb { return Ok(()); }
+    let Some(Some(fb)) = owner.get(from).copied() else { return Err("task not found".into()) };
+    let tb = match to { None => None, Some(t) => match owner.get(t) { Some(Some(b)) => Some(*b), _ => return Err("task not found".into()) } };
+    if tb == Some(fb) { return Ok(()); }
     let mut tail_from = e; // trailing blank lines stay at the section's end, not with the last block
     while tail_from > starts[0] && lines[tail_from - 1].trim().is_empty() { tail_from -= 1; }
     let mut blocks: Vec<Vec<String>> = starts.iter().enumerate()
         .map(|(k, &b)| lines[b..starts.get(k + 1).copied().unwrap_or(tail_from).max(b + 1)].iter().map(|l| l.to_string()).collect()).collect();
     let b = blocks.remove(fb);
-    blocks.insert(tb, b);
+    if let Some(tb) = tb { blocks.insert(tb, b); }
     let num = regex::Regex::new(r"^(\d+)([.)]\s)").unwrap();
     let mut n = starts.iter().find_map(|&i| num.captures(lines[i]).and_then(|c| c[1].parse::<usize>().ok()));
     for bl in blocks.iter_mut() {
@@ -1091,11 +1092,13 @@ mod tests {
         let p = d.join("PLAN.md");
         std::fs::write(&p, "# Plan\n\n## Queue\n0. A first\n   A wrap\n3. B\n- [x] gone\n4. C\n\n## Waiting\n- W\n").unwrap();
         let dir = d.to_str().unwrap();
-        queue_move(dir, 0, 2).unwrap();
+        queue_move(dir, 0, Some(2)).unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "# Plan\n\n## Queue\n0. B\n- [x] gone\n1. C\n2. A first\n   A wrap\n\n## Waiting\n- W\n");
         assert_eq!(queue(dir), ["B", "C", "A first A wrap"]);
-        queue_move(dir, 2, 0).unwrap();
+        queue_move(dir, 2, Some(0)).unwrap();
         assert_eq!(queue(dir), ["A first A wrap", "B", "C"]);
+        queue_move(dir, 0, None).unwrap(); // tick = done → block gone, renumbered
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "# Plan\n\n## Queue\n0. B\n- [x] gone\n1. C\n\n## Waiting\n- W\n");
     }
 
     #[test]

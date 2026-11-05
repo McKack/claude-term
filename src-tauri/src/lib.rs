@@ -950,9 +950,9 @@ fn bundle_id_set(st: St, pid: String, id: String) -> R<()> {
     std::fs::write(&path, text.replacen(&format!("\"{old}\""), &format!("\"{id}\""), 1)).map_err(|e| e.to_string())
 }
 
-/// Plan tab drag: reorders the primary plan's Queue (claude::queue_move).
+/// Plan tab drag: reorders the primary plan's Queue (claude::queue_move); to = null → removes the task (ticked done).
 #[tauri::command]
-fn plan_move(st: St, pid: String, from: usize, to: usize) -> R<()> {
+fn plan_move(st: St, pid: String, from: usize, to: Option<usize>) -> R<()> {
     claude::queue_move(&st.project(&pid).ok_or("no such project")?.path, from, to)
 }
 

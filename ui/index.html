@@ -127,6 +127,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .msg.claude p { margin:.35em 0; } .msg.claude :first-child { margin-top:0; }
 .msg.claude pre { background:var(--code); border:1px solid var(--line); padding:10px 12px; border-radius:10px; overflow:auto; }
 .msg code, pre { font:12.5px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; } .msg :not(pre)>code { background:var(--code); padding:1px 5px; border-radius:5px; }
+code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-radius:4px; font:12px ui-monospace,Consolas,monospace; }
 .msg.claude a { color:var(--accent); }
 .tools { display:flex; flex-direction:column; gap:2px; }
 .msg.tool { font:12px ui-monospace,"Cascadia Code",Consolas,monospace; color:var(--faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; gap:6px; align-items:center; }
@@ -590,9 +591,10 @@ function splitCmd(c) {
   out.push(cur); return out.map(s => s.trim()).filter(Boolean);
 }
 // app dialogs instead of WebView2's Win7-looking confirm()/alert(); opened last → on top of dlg/dlg2. Esc = cancel.
-function sure(text, ok = 'OK', cancel = 'Cancel') {
-  const d = $('dlgc'), [head, ...rest] = String(text).split('\n\n');
-  d.innerHTML = `<div class="small-dlg"><h2 style="margin:0 0 8px;font-size:17px;white-space:pre-wrap">${esc(head)}</h2>${rest.length ? `<p class="dim" style="margin:0;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto">${esc(rest.join('\n\n'))}</p>` : ''}
+// html: body as HTML (already escaped) instead of text's rest
+function sure(text, ok = 'OK', cancel = 'Cancel', html) {
+  const d = $('dlgc'), [head, ...rest] = String(text).split('\n\n'), body = html ?? (rest.length ? esc(rest.join('\n\n')) : '');
+  d.innerHTML = `<div class="small-dlg"><h2 style="margin:0 0 8px;font-size:17px;white-space:pre-wrap">${esc(head)}</h2>${body ? `<p class="dim" style="margin:0;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto">${body}</p>` : ''}
     <div class="btns">${cancel ? `<button class="btn ghost" value="">${esc(cancel)}</button>` : ''}<button class="btn primary" value="1">${esc(ok)}</button></div></div>`;
   return new Promise(res => { d.onclose = () => res(d.returnValue === '1'); d.returnValue = '';
     d.querySelectorAll('button').forEach(b => b.onclick = () => d.close(b.value)); d.showModal(); d.querySelector('.primary').focus(); });
@@ -2687,8 +2689,17 @@ function qDrag(e, from) {
     q.splice(to, 0, q.splice(from, 1)[0]); drawAtp();
     try { await call('plan_move', {pid: cur, from, to}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Reorder failed: ' + er}); } refresh(); };
 }
-// ponytail: placeholder; PLAN.md Queue item i checked → confirm dialog + action land with Queue task "Plan tab tasks (a)"
-function planCheck(i, box) { box.checked = false; }
+// task text → HTML with the concrete bits in accent: `code`, paths/files (a/b, x.ext), identifiers (camelCase, snake_case, fn())
+// ponytail: regex heuristic; misses plain-word names, fine for a confirm
+const hl = s => esc(s).replace(/`([^`]+)`|(\b\w+\([^()]{0,30}\)|(?:[\w.~-]*\/)+[\w.*-]*|\b[\w-]{2,}\.[a-z]{1,5}\b|\b[a-z]+[A-Z]\w*\b|\b\w+_\w+\b)/g,
+  (m, c, x) => `<code class="hl">${c ?? x}</code>`);
+// Plan tab tick on Queue task i → confirm with the task highlighted → plan_move to:null drops it from PLAN.md
+async function planCheck(i, box) {
+  box.checked = false; const t = S.queues?.[cur]?.[i]; if (t == null) return;
+  if (!await sure('Mark this task done?', 'Done, remove it', 'Cancel', `These highlighted items are planned to be worked on:\n\n<span style="color:var(--primary)">${hl(t)}</span>`)) return;
+  S.queues[cur].splice(i, 1); drawAtp();
+  try { await call('plan_move', {pid: cur, from: i, to: null}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Remove failed: ' + er}); } refresh();
+}
 async function queueToTeam(btn) {
   const have = new Set(teamTasks(cur).map(x => x.title.trim().toLowerCase()));
   const todo = (S.queues?.[cur] || []).map(x => x.length > 120 ? x.slice(0, 117) + '…' : x).filter(t => !have.has(t.toLowerCase()));
