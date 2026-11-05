@@ -192,7 +192,11 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 .recent .proj { border:1px solid var(--line); margin:6px 0; background:var(--card); }
 .side-sub { padding:12px 10px 4px 9px; font-size:11.5px; color:var(--faint); }
 /* terminal view: the raw stream, CLI style */
-#log.term { background:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #151412); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
+/* console colour: dark theme = a bit darker than the UI (tint follows via --bg); light = the old dark console. Whole #main takes it ∴ the
+   header fade (log mask) and dock fade land on the same colour */
+:root { --term:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #151412); } :root[data-theme=dark] { --term:color-mix(in srgb, var(--bg) 78%, #000); }
+#main:has(> #log.term) { background:var(--term); }
+#log.term { background:var(--term); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
 #log.term .col { max-width:none; gap:4px; font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
 #log.term .msg { white-space:pre-wrap; align-self:stretch; background:none; border:0; padding:0; border-radius:0; max-width:none; }
 #log.term .msg.user { color:#fff; font-weight:600; } #log.term .msg.user::before { content:"› "; color:var(--accent); }
@@ -208,7 +212,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
   background:linear-gradient(to bottom, transparent, var(--bg) 40px); }
 #dock .col > * { pointer-events:auto; }
 #workpill, #handpill, #ready, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:48px; }
-#log.term + #dock { background:linear-gradient(to bottom, transparent, #151412 40px); }
+#log.term + #dock { background:linear-gradient(to bottom, transparent, var(--term) 40px); }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
   overflow:hidden; overflow-wrap:anywhere; color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
 #dock .col { gap:8px; }
@@ -608,12 +612,18 @@ const pix = ([c, rows], k = 6) => `<svg width="${rows[0].length * k}" height="${
   [...r.matchAll(/#+/g)].map(m => `<rect x="${m.index * k}" y="${y * k}" width="${m[0].length * k}" height="${k}"/>`)).join('')}</svg>`;
 const CRAB = `<div class="crab">${MASCOTS.map(m => pix(m)).join('')}</div>`;
 const recent = () => [...S.projects].sort((a, b) => b.used - a.used);
+// home: Active = working now or finished < 1 min ago (cooldown), then back to Recent; the Working… state shows on its row
+const lastBusy = {}, ACTIVE_MS = 60000, isActive = p => busy[p.id] || Date.now() - (lastBusy[p.id] || 0) < ACTIVE_MS;
+const actRow = p => projRow(p).replace(/<\/div>\s*$/, `<span class="pill">${busy[p.id] ? 'Working…' : 'Done'}</span></div>`);
 function drawHome() {
-  const box = $('log').querySelector('.col');
+  const box = $('log').querySelector('.col'), act = recent().filter(isActive);
+  $('skel').hidden = true; // the Working… skeleton belongs to an open project, not home
+  clearTimeout(drawHome.t); if (act.some(p => !busy[p.id])) drawHome.t = setTimeout(() => !cur && drawHome(), 5000);
   box.innerHTML = `<div id="empty">${CRAB}<h2 class="brandname" style="color:var(--text);margin:0 0 6px;font-size:30px">Claur<span style="color:var(--accent)">acle</span></h2>
     <p>${S.projects.length ? 'Pick up where you left off, or start something new.' : 'Open a folder or clone a GitHub repo. Each project keeps its own GitHub account, AI account, connections, build and .env.'}</p>
     <p class="row" style="justify-content:center"><button class="btn primary" onclick="newLocal()">${icon('plus')}New project</button><button class="btn" onclick="addProject()">${icon('folder')}Open folder</button><button class="btn" onclick="openClone()">${icon('gh')}Clone from GitHub</button></p>
-    ${S.projects.length ? `<div class="recent"><div class="label">Recent</div>${recent().slice(0, 6).map(projRow).join('')}</div>` : ''}
+    ${act.length ? `<div class="recent"><div class="label">Active</div>${act.map(actRow).join('')}</div>` : ''}
+    ${S.projects.length > act.length ? `<div class="recent"><div class="label">Recent</div>${recent().filter(p => !isActive(p)).slice(0, 6).map(projRow).join('')}</div>` : ''}
     <p id="missing"></p></div>`;
   $('missing').innerHTML = [!S.claude && `Claude Code isn't installed. <button class="btn" onclick="install('claude', this)">Install Claude Code</button>`,
     !S.gh && `GitHub features need the GitHub CLI. <button class="btn" onclick="install('gh', this)">Install gh</button>`].filter(Boolean).join('<br><br>');
@@ -1339,7 +1349,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of}); if (d.result_of && d.pid === cur) drawAtp(); },
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } const b = $('log'); b.scrollTop = b.scrollHeight; } },
-  status: () => { if ('busy' in d) busy[d.pid] = d.busy;
+  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); busy[d.pid] = d.busy; if (!cur) drawHome(); }
     if (d.busy === false) { if (reading[d.pid]) readNote(d.pid, false); live[d.pid] = ''; refresh().then(() => flushQueue(d.pid)); } /* flush after refresh: ready/idle bar known */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
