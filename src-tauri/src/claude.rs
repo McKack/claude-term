@@ -747,7 +747,7 @@ pub static UI_WAIT: Mutex<Vec<(u64, tokio::sync::oneshot::Sender<String>)>> = Mu
 static UI_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Self-test: runs in the main webview (never the OS mouse): find by sel/text/x,y → click (or type), optional js,
-/// then report the top open dialog/popover text (else #main). Page answers via `ui_reply`. Cards (permission/question) refused.
+/// then report the top open dialog/popover text (or `show` selector's). Page answers via `ui_reply`. Cards (permission/question) refused.
 async fn ui_tool(app: &AppHandle, a: &Value) -> String {
     use tauri::Manager;
     let Some(w) = app.get_webview_window("main") else { return "No window.".into() };
@@ -776,7 +776,9 @@ try {
   if (a.js) { const v = await eval(a.js); out.push('js → ' + String(typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 4000)); }
   await new Promise(r => setTimeout(r, a.wait ?? 400));
   const top = [...document.querySelectorAll('dialog[open], :popover-open')].filter(e => e.id !== 'tip').pop();
-  out.push((top ? `Open ${top.id || top.tagName}: ` : 'Page: ') + (top || document.getElementById('main') || document.body).innerText.slice(0, 1500));
+  const sh = a.show ? document.querySelector(a.show) : top; /* no #main dump by default ∵ chat log = token noise */
+  if (sh) out.push(`${a.show ? 'Shown' : 'Open ' + (top.id || top.tagName)}: ` + sh.innerText.slice(0, 1500));
+  else if (a.show) out.push('show: nothing matched');
 } catch (e) { out.push('Error: ' + e); }
 call('ui_reply', {id: ID, text: out.join('\n')}); })()"#;
 
@@ -808,10 +810,11 @@ fn tool_list(own: bool) -> Value {
           (inside the page, not the OS mouse). Pick ONE target: `sel` (CSS selector), `text` (visible text/tooltip of a \
           clickable, case-insensitive substring) or `x`,`y` (CSS px). Default = click; `type` = set an input's value; \
           `right` = right-click. `js` = expression evaluated after (await-ed; page globals like S, cur, P() visible). \
-          Returns what was hit + the open dialog/popover text (else #main) after `wait` ms (400). \
+          Returns what was hit + the open dialog/popover text after `wait` ms (400); `show` = CSS selector whose text \
+          to return instead (e.g. \"#right\"). \
           Permission/question cards are refused.", "inputSchema": {"type": "object", "properties": {
             "sel": {"type": "string"}, "text": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"},
-            "type": {"type": "string"}, "right": {"type": "boolean"}, "js": {"type": "string"}, "wait": {"type": "number"}}}}));
+            "type": {"type": "string"}, "right": {"type": "boolean"}, "js": {"type": "string"}, "wait": {"type": "number"}, "show": {"type": "string"}}}}));
     }
     t
 }
