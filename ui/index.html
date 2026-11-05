@@ -2038,8 +2038,14 @@ const cxCount = (kind, scope, x) => { const xs = cxItems(kind, scope);
   return `${xs.filter(i => scope === 'global' ? !SET.off.includes(i.id) : onOf(x).includes(i.id)).length}/${xs.length}`; };
 // settings section that folds; title + "on/total" pill; key unique per page/scope
 const cxFold = (key, title, kind, scope, x) => fold(key, title, `<div class="box">${cxList(kind, scope, x)}</div>`, cxCount(kind, scope, x));
-const cxList = (kind, scope, x) => cxItems(kind, scope).map(i =>
-  optRow(esc(i.label), esc(i.note), scope === 'global' ? sw(!SET.off.includes(i.id), `setGlobalOff('${esc(i.id)}', !this.checked)`)
+// MCP status from `claude mcp list` (note); not connected → how to fix: claude.ai connectors sign in on claude.ai
+// (CLI can't run their OAuth headless), others via /mcp in an interactive CLI. Rescan after.
+const cxBad = i => i.kind === 'mcp' && !/^connected$/i.test(i.note);
+const cxNote = i => esc(i.note) + (!cxBad(i) ? '' : /^claude\.ai /.test(i.label)
+  ? ` · <a href="#" data-url="https://claude.ai/settings/connectors">Authenticate</a>, then Rescan` : ' · run /mcp in the Terminal tab, then Rescan');
+const cxList = (kind, scope, x) => (scope.startsWith('project:') && kind === 'mcp' && cxItems(kind, scope).some(i => cxBad(i) && onOf(x).includes(i.id))
+  ? `<p class="dim" style="margin:4px 0 8px">${icon('info')} Some picked connections aren't connected: Claude can't use them until they are.</p>` : '') + cxItems(kind, scope).map(i =>
+  optRow(esc(i.label), cxNote(i), scope === 'global' ? sw(!SET.off.includes(i.id), `setGlobalOff('${esc(i.id)}', !this.checked)`)
     : sw(onOf(x).includes(i.id), `toggleOn('${esc(scope)}', '${esc(i.id)}', this.checked)`))).join('') || '<p class="dim">None.</p>';
 function setGlobalOff(id, off) {
   SET.off = SET.off.filter(i => i !== id).concat(off ? [id] : []);
