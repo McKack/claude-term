@@ -897,6 +897,39 @@ pub fn builds(dir: &str) -> Vec<serde_json::Value> {
         "size": size, "mtime": t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)})).collect()
 }
 
+// ---- disk: build/cache folders a build regenerates. Safety: only fixed names AND git-ignored (no git → never touched) ----
+const CACHE_DIRS: [&str; 12] = ["target", "src-tauri/target", "dist", "build", "out", ".next", ".nuxt", ".turbo", ".parcel-cache",
+    ".gradle", "node_modules/.cache", ".pytest_cache"];
+pub const IDLE_CLEAN_DAYS: u64 = 14; // ponytail: fixed; a setting if someone wants caches kept longer
+
+fn dir_size(p: &Path) -> u64 {
+    // symlink_metadata: links/junctions count as themselves, never followed
+    std::fs::read_dir(p).into_iter().flatten().flatten().map(|e| match e.path().symlink_metadata() {
+        Ok(m) if m.is_dir() => dir_size(&e.path()),
+        Ok(m) => m.len(),
+        _ => 0,
+    }).sum()
+}
+
+/// (folder relative to the project, bytes) for each cache folder present and git-ignored.
+pub fn caches(dir: &str) -> Vec<(String, u64)> {
+    CACHE_DIRS.iter().filter(|d| Path::new(dir).join(d).symlink_metadata().map_or(false, |m| m.is_dir()))
+        .filter(|d| run("git", &["check-ignore", "-q", d], Some(dir), &[]).ok)
+        .map(|d| (d.to_string(), dir_size(&Path::new(dir).join(d)))).collect()
+}
+
+/// Delete the cache folders named in `which` (empty = all); bytes freed. Re-checked here: the page isn't trusted with paths.
+pub fn clean(dir: &str, which: &[String]) -> u64 {
+    caches(dir).into_iter().filter(|(d, _)| which.is_empty() || which.contains(d))
+        .filter(|(d, _)| std::fs::remove_dir_all(Path::new(dir).join(d)).is_ok()).map(|(_, n)| n).sum()
+}
+
+/// Days since the project's git index changed (add/commit/checkout); None without git.
+pub fn idle_days(dir: &str) -> Option<u64> {
+    let m = std::fs::metadata(Path::new(dir).join(".git/index")).ok()?.modified().ok()?;
+    Some(m.elapsed().ok()?.as_secs() / 86400)
+}
+
 /// GitHub release `tag` with `files` attached and notes generated from the commits since the last one.
 pub fn release(dir: &str, user: &str, tag: &str, files: &[String]) -> Result<String, String> {
     if tag.is_empty() || tag.starts_with('-') { return Err("bad tag".into()); }
@@ -1021,6 +1054,21 @@ pub fn push_phone(topic: &str, title: &str, body: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn clean_only_touches_ignored_caches() {
+        let d = std::env::temp_dir().join("clauracle-clean-test");
+        let _ = std::fs::remove_dir_all(&d);
+        for sub in ["target/x", "dist"] { std::fs::create_dir_all(d.join(sub)).unwrap(); }
+        std::fs::write(d.join("target/x/f"), "12345").unwrap();
+        std::fs::write(d.join("dist/keep"), "1").unwrap();
+        std::fs::write(d.join(".gitignore"), "target/\n").unwrap();
+        let s = d.to_string_lossy().to_string();
+        assert!(super::run("git", &["init", "-q"], Some(&s), &[]).ok);
+        assert_eq!(super::caches(&s), vec![("target".to_string(), 5)]); // dist exists but isn't ignored
+        assert_eq!(super::clean(&s, &[]), 5);
+        assert!(!d.join("target").exists() && d.join("dist/keep").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
     #[test]
     fn default_nicks_count_up() {
         let mut cfg = Config::default();

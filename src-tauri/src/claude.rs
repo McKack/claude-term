@@ -316,21 +316,37 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
     emit(app, "status", json!({"pid": pid, "busy": false, "connected": true}));
 
     loop {
-        let content = match live.inbox.pop().await {
-            Input::Msg(text) => json!(text),
-            Input::Rich(blocks) => blocks,
-            Input::Reconnect => {
-                let _ = child.kill().await;
-                return Err("reconnect".into());
+        // idle: our next input, OR output from a turn the CLI started itself (background task finished → it
+        // wakes Claude). Without the 2nd arm that turn's `result` ended OUR next turn → every turn shown one late.
+        let mut first = tokio::select! {
+            i = live.inbox.pop() => {
+                let content = match i {
+                    Input::Msg(text) => json!(text),
+                    Input::Rich(blocks) => blocks,
+                    Input::Reconnect => {
+                        let _ = child.kill().await;
+                        return Err("reconnect".into());
+                    }
+                };
+                live.busy.store(true, SeqCst);
+                st.with_project(pid, |p| p.working = true);
+                emit(app, "status", json!({"pid": pid, "busy": true, "handover": live.handing_over.load(SeqCst)}));
+                conn.write(&json!({"type": "user", "message": {"role": "user", "content": content},
+                                   "parent_tool_use_id": null, "session_id": "default"})).await?;
+                None
+            }
+            m = msgs.recv() => {
+                let m = m.ok_or("claude stopped")?;
+                // between-turn noise (late result, system notices other than a turn's init) → show, stay idle
+                if m["type"] == "result" || (m["type"] == "system" && m["subtype"] != "init") { show(app, st, pid, &m); continue; }
+                live.busy.store(true, SeqCst);
+                st.with_project(pid, |p| p.working = true);
+                emit(app, "status", json!({"pid": pid, "busy": true, "handover": false}));
+                Some(m)
             }
         };
-        live.busy.store(true, SeqCst);
-        st.with_project(pid, |p| p.working = true);
-        emit(app, "status", json!({"pid": pid, "busy": true, "handover": live.handing_over.load(SeqCst)}));
-        conn.write(&json!({"type": "user", "message": {"role": "user", "content": content},
-                           "parent_tool_use_id": null, "session_id": "default"})).await?;
         loop {
-            let m = msgs.recv().await.ok_or("claude stopped")?;
+            let m = match first.take() { Some(m) => m, None => msgs.recv().await.ok_or("claude stopped")? };
             show(app, st, pid, &m);
             if m["type"] == "result" {
                 break;

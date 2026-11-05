@@ -580,6 +580,18 @@ async fn release(st: St<'_>, pid: String, tag: String, files: Vec<String>) -> R<
 }
 
 #[tauri::command]
+async fn disk(st: St<'_>, pid: String) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    tauri::async_runtime::spawn_blocking(move || json!(store::caches(&p.path).into_iter()
+        .map(|(d, n)| json!({"dir": d, "size": n})).collect::<Vec<_>>())).await.map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn disk_clean(st: St<'_>, pid: String, dirs: Vec<String>) -> R<u64> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    tauri::async_runtime::spawn_blocking(move || store::clean(&p.path, &dirs)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn task_do(st: St<'_>, pid: String, action: String, arg: String) -> R<()> {
     let p = st.project(&pid).ok_or("no such project")?;
     tauri::async_runtime::spawn_blocking(move || store::task_do(&p.path, &p.gh, &action, &arg)).await.map_err(|e| e.to_string())?
@@ -792,6 +804,12 @@ pub fn run() {
             claude::resume_interrupted(app.handle(), &st);
             // warm the slow lookups so Settings opens instantly: gh accounts, and the catalog on a first run
             let st2 = st.clone();
+            // housekeeping: old update download; caches of projects idle ≥ IDLE_CLEAN_DAYS (a build regenerates them)
+            let dirs: Vec<String> = st.cfg.lock().unwrap().projects.iter().map(|p| p.path.clone()).collect();
+            tauri::async_runtime::spawn_blocking(move || {
+                let _ = std::fs::remove_dir_all(std::env::temp_dir().join("clauracle-update"));
+                for d in dirs.iter().filter(|d| store::idle_days(d).map_or(false, |n| n >= store::IDLE_CLEAN_DAYS)) { store::clean(d, &[]); }
+            });
             tauri::async_runtime::spawn(async move {
                 let _ = tauri::async_runtime::spawn_blocking(store::gh_users).await;
                 if st2.cfg.lock().unwrap().catalog.is_empty() {
@@ -810,7 +828,7 @@ pub fn run() {
             continue_now, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])
+            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|_, e| {

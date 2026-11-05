@@ -675,7 +675,8 @@ function drawChrome() {
   $('readytext').innerHTML = p.questions.length ? `Answer the question${p.questions.length > 1 ? 's' : ''} above, then continue.`
     : next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}` : 'Handover written. Continue clears the context and carries on.';
   $('ready').title = next.map((t, i) => `${i + 1}. ${t}`).join('\n');
-  $('handpill').hidden = !(busy[cur] && hand[cur]);
+  $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
+  $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
   workTick();
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
@@ -1185,16 +1186,16 @@ $('prompt').addEventListener('keydown', e => {
 });
 const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
 $('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { drawChrome(); keepDraft(); } });
-// Continue → fresh log + "Reading handover…" at once; the note stays (below the continue prompt) until Claude's first line/tool
-const READING = 'Reading handover…', reading = {};
-const readNote = (pid, on) => { logs[pid] = (logs[pid] || []).filter(x => x.text !== READING); if (on) logs[pid].push({kind: 'note', text: READING}); else delete reading[pid]; };
-function cont_() { hiddenQs[cur] = false; reading[cur] = true; logs[cur] = [{kind: 'note', text: 'Fresh session'}]; readNote(cur, true);
+// Continue/auto-clear → "Reading handover…" pill (same spot as Working…) until Claude's first own line/tool or turn end
+const reading = {};
+const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading[pid]; if (pid === cur) drawChrome(); };
+function cont_() { hiddenQs[cur] = false; logs[cur] = [{kind: 'note', text: 'Fresh session'}]; readNote(cur, true);
   P().ready = false; $('ready').hidden = true; drawLog(); call('continue_now', {pid: cur}); }
 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   line: () => { if (d.kind === 'claude') live[d.pid] = '';
-    if (reading[d.pid]) { readNote(d.pid, false); if (d.kind === 'user') setTimeout(() => { reading[d.pid] = true; readNote(d.pid, true); d.pid === cur && drawLog(); }); else if (d.pid === cur) drawLog(); }
+    if (reading[d.pid] && d.kind !== 'user') readNote(d.pid, false);
     addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of}); if (d.result_of && d.pid === cur) drawAtp(); },
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
@@ -1336,10 +1337,25 @@ function projectsPage() {
       <span>After each task</span><select onchange="setBuild('after', this.value)">${options({'': 'Nothing', build: 'Build', build_run: 'Build + run', build_deploy: 'Build + deploy'}, p.build.after)}</select>
       <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Claude to fix</small></label></div>`,
       ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3')}
+    ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Cleaned automatically after 14 days without commits.</p>
+      <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
     ${cxFold('p-mcp', 'Connections', 'mcp', 'project:' + p.id, p)}${cxFold('p-skill', 'Skills', 'skill', 'project:' + p.id, p)}
     <div class="btns" style="justify-content:space-between"><button class="btn" onclick="removeProject()">Remove project</button><button class="btn primary" onclick="closeDlg()">Done</button></div></div></div>`;
 }
 const setBuild = (k, v) => setM({build: {...P(mp).build, [k]: v}});
+async function drawDisk() {
+  const box = $('diskBox'); box.textContent = 'Measuring…';
+  const l = await call('disk', {pid: mp}).catch(e => (box.textContent = e, null)); if (!l) return;
+  box.innerHTML = l.length ? l.map(c => `<div class="row"><span class="mono grow">${esc(c.dir)}</span><span class="dim">${mb(c.size)}</span>
+      <button class="btn" onclick="cleanDisk(['${esc(c.dir)}'])">Clean</button></div>`).join('')
+    + (l.length > 1 ? `<div class="btnrow"><button class="btn primary" onclick="cleanDisk([])">Clean all · ${mb(l.reduce((a, c) => a + c.size, 0))}</button></div>` : '')
+    : '<p class="dim" style="margin:0">Nothing to clean.</p>';
+}
+async function cleanDisk(dirs) {
+  $('diskBox').textContent = 'Cleaning…';
+  const n = await call('disk_clean', {pid: mp, dirs}).catch(e => ($('diskBox').textContent = e, null)); if (n == null) return;
+  await drawDisk(); $('diskBox').insertAdjacentHTML('afterbegin', `<p class="dim" style="margin:0 0 6px">Freed ${mb(n)}.</p>`);
+}
 async function removeProject() {
   if (!confirm(`Remove ${P(mp).name} from Clauracle? The folder stays on disk.`)) return;
   await call('remove_project', {pid: mp}); closeDlg();
@@ -1399,7 +1415,7 @@ async function commitPush() {
 // a GitHub release of picked builds: recent outputs found in the project (newest ticked) + any added by hand;
 // Publish only with at least one file. Tag suggested as the last one +1 patch.
 const ago = s => { const m = (Date.now() / 1000 - s) / 60; return m < 60 ? `${Math.max(1, m | 0)} min ago` : m < 1440 ? `${m / 60 | 0} h ago` : `${m / 1440 | 0} d ago`; };
-const mb = n => n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.ceil(n / 1e3) + ' kB';
+const mb = n => n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.ceil(n / 1e3) + ' kB';
 function releaseSec(r, builds = []) {
   const last = r?.tagName || '', next = last ? last.replace(/(\d+)(?!.*\d)/, n => +n + 1) : 'v0.1.0';
   const row = (b, on) => `<label class="check" title="${esc(b.path)}"><input type="checkbox" value="${esc(b.path)}" ${on ? 'checked' : ''} onchange="relReady()">
