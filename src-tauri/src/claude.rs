@@ -632,6 +632,10 @@ async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) ->
     if tool == "AskUserQuestion" {
         input["answers"] = a["answers"].clone();
     }
+    if a["session"] == true { // "Allow this session": CLI-side rule, gone when the CLI process ends (reconnect/clear)
+        return json!({"behavior": "allow", "updatedInput": input, "updatedPermissions": [{"type": "addRules",
+            "rules": [{"toolName": tool}], "behavior": "allow", "destination": "session"}]});
+    }
     json!({"behavior": "allow", "updatedInput": input})
 }
 

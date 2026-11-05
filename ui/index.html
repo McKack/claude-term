@@ -1459,14 +1459,14 @@ function askCard(e) {
   } else {
     const body = i.command || (i.file_path ? i.file_path + '\n\n' + (i.new_string || i.content || '') : JSON.stringify(i, null, 2));
     d.innerHTML = `<h4>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
-      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-a="2" title="This project stops asking for ${esc(e.tool)} (undo in the project manager)">Always allow ${esc(e.tool)} here</button><button class="btn primary" data-a="1">Allow</button></div>`;
+      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-a="2" title="This project stops asking for ${esc(e.tool)} (undo in the project manager)">Always allow</button><button class="btn" data-a="3" title="Don't ask for ${esc(e.tool)} again until this session restarts or is cleared">Allow this session</button><button class="btn primary" data-a="1">Allow</button></div>`;
   }
   d.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
     const allow = b.dataset.a !== '0', answers = {};
     if (b.dataset.a === '2') { const p = P(e.pid) || P(); call('update_project', {pid: p.id, changes: {allow: [...new Set([...(p.allow || []), e.tool])]}}).then(refresh); }
     (i.questions || []).forEach((q, n) => answers[q.question] = [...d.querySelectorAll(`[name=a${n}]:checked`)]
       .map(x => x.value === '__other' ? x.closest('.q').querySelector('.other').value : x.value).join(', '));
-    call('answer_ask', {id: e.id, answer: {allow, answers, note: d.querySelector('.deny')?.value || ''}});
+    call('answer_ask', {id: e.id, answer: {allow, answers, session: b.dataset.a === '3', note: d.querySelector('.deny')?.value || ''}});
     e.done = allow ? 'allowed' : 'denied';
     d.replaceWith(askCard(e));
   });
