@@ -251,7 +251,7 @@ pre.diff .ctx { color:var(--faint); }
 #handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:4px 16px 16px 16px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
-#readytext b { font-weight:600; } #readytext:has(.btn) { white-space:normal; line-height:2.2; } #readytext .btn { margin-left:6px; padding:2px 10px; font-size:12.5px; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+#readytext b { font-weight:600; } #readytext:has(.btn) { white-space:normal; line-height:2.2; } #readytext .btn { margin-left:6px; padding:2px 10px; font-size:12.5px; border:1px solid var(--line); } #readytext .btn:hover { border-color:var(--accent); color:var(--accent); background:var(--soft); } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
 #readytext.full { white-space:pre-wrap; max-height:40vh; overflow:auto; } /* click: the whole next task, line breaks kept */
 .btn.sm { padding:2px 8px; font-size:12px; }
 .warn { background:color-mix(in srgb, var(--err) 12%, transparent); color:var(--err); border-radius:10px; padding:8px 10px; font-size:12.5px; margin:6px 0; }
@@ -889,7 +889,7 @@ function drawChrome() {
   // questions never block a Continue: they open in the fresh session (qsOpen), the bar keeps showing the next task
   $('readytext').innerHTML = next.length ? `<input type="checkbox" disabled style="vertical-align:-2px;margin:0 6px 0 0;opacity:.55">Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
     : p.ready ? 'Plan written. Continue clears the context and carries on.'
-    : `All tasks done! What should we look at next? ${NEXT_IDEAS.map(([l], i) => `<button class="btn ghost" onclick="askNext(${i})">${l}</button>`).join('')}`;
+    : `All tasks done! What next? ${p.build?.build ? `<button class="btn" onclick="call('run_step', {pid:cur, step:'build'}); rightTab('build')">Build</button>` : ''}${NEXT_IDEAS.map(([l], i) => `<button class="btn" onclick="askNext(${i})">${l}</button>`).join('')}`;
   $('ready').title = ''; $('readytext').title = next.length ? 'Click to show the whole task' : ''; // hover = nothing extra; click toggles .full
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
   $('handpill').textContent = reading[cur] ? 'Reading plan…' : 'Preparing plan…';
