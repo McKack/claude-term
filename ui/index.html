@@ -166,8 +166,18 @@ pre.termout { background:#161514; color:#d8d4cb; padding:8px 12px; white-space:p
 .small-dlg.wide { width:min(820px,94vw); }
 pre.diff { margin:0; padding:8px 0; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; white-space:pre; }
 pre.diff > .ctx, pre.diff > .del, pre.diff > .add { display:block; padding:0 10px; } /* diff rows only, not colour spans */
-pre.diff:not(:has(> .ctx, > .del, > .add)) { padding:8px 12px; white-space:pre-wrap; overflow-wrap:anywhere; } /* commands, output, JSON */ pre.diff .del { background:color-mix(in srgb, var(--err) 14%, transparent); }
-pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.diff .ctx { color:var(--faint); }
+pre.diff:not(:has(> .ctx, > .del, > .add)) { padding:8px 12px; white-space:pre-wrap; overflow-wrap:anywhere; } /* commands, output, JSON */
+/* −/+ differ in BRIGHTNESS too (red-green colourblind user): del = dark bg + dimmed struck text, add = light bg + full text */
+pre.diff .del { background:color-mix(in srgb, color-mix(in srgb, var(--err) 45%, #000) 30%, transparent); color:color-mix(in srgb, var(--text) 62%, transparent);
+  text-decoration:line-through color-mix(in srgb, var(--text) 30%, transparent); }
+pre.diff .add { background:color-mix(in srgb, color-mix(in srgb, #3fbf6f 55%, #fff) 30%, transparent); color:var(--text); }
+pre.diff .ctx { color:var(--faint); }
+/* tool dialog: header row fixed above, scroller with log-like top/bottom fades; per-call rows stick while scrolling */
+.dscroll { max-height:65vh; overflow:auto; display:grid; gap:8px; padding:10px 0 14px; margin-top:-6px;
+  mask-image:linear-gradient(to bottom, transparent, #000 10px, #000 calc(100% - 16px), transparent); }
+.dscroll > .row { position:sticky; top:0; z-index:1; background:var(--card); padding:6px 0 4px; }
+.dscroll.wrap pre.diff { white-space:pre-wrap; overflow-wrap:anywhere; }
+.dscroll:not(.wrap) pre.diff:has(> .ctx, > .del, > .add) { display:grid; grid-template-columns:minmax(100%, max-content); } /* nowrap: rows = longest line wide ∴ bg spans the scroll width */
 .msg.tool::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--line2); flex:none; }
 .msg.note { color:var(--dim); font-size:13px; text-align:center; } .msg.note .i { width:13px; height:13px; vertical-align:-2px; }
 /* error: red rounded box, monospace; title = where it came from (the tool line before it) */
@@ -1140,8 +1150,11 @@ function toolDlg(es, title = es[0].text) {
     const out = e.id && (logs[cur] || []).find(x => x.result_of === e.id);
     if (typeof d.command === 'string') return `<pre class="diff termout">${shHi(d.command)}</pre>` + (out ? `<pre class="diff ${out.kind === 'err' ? 'errout' : ''}">${esc(out.text)}</pre>` : '');
     return `<pre class="diff">${esc(JSON.stringify(d, null, 2))}</pre>`; })(e.detail || {})).join('');
-  dlg(`<h2 class="mono" style="margin:0 0 10px;font-size:14px;overflow-wrap:anywhere">${esc(title)}${es.length > 1 ? ` <span class="pill">×${es.length}</span>` : ''}</h2>
-    <div style="max-height:65vh;overflow:auto;display:grid;gap:8px">${body}</div>
+  const wrap = localStorage.diffWrap !== '0'; // wrap ON by default, choice remembered
+  dlg(`<div class="row" style="gap:8px;align-items:flex-start;margin-bottom:10px"><h2 class="mono" style="margin:0;font-size:14px;overflow-wrap:anywhere;flex:1;min-width:0">${esc(title)}${es.length > 1 ? ` <span class="pill">×${es.length}</span>` : ''}</h2>
+    <button class="btn${wrap ? ' primary' : ''}" style="padding:2px 10px;font-size:12px" title="Wrap long lines"
+      onclick="const s=this.closest('div').nextElementSibling;try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('primary',s.classList.contains('wrap'))">Wrap</button></div>
+    <div class="dscroll${wrap ? ' wrap' : ''}">${body}</div>
     <div class="btns"><button class="btn primary" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');
 }
 // streaming text: #live is the bubble (deltas rewrite it); its row goes when the full entry lands
