@@ -211,6 +211,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 #dock { padding:40px 24px 14px; margin-top:-40px; position:relative; z-index:2; pointer-events:none;
   background:linear-gradient(to bottom, transparent, var(--bg) 40px); }
 #dock .col > * { pointer-events:auto; }
+#jump { position:absolute; top:0; left:50%; transform:translateX(-50%); pointer-events:auto; gap:4px; }
 #workpill, #handpill, #ready, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:48px; }
 #log.term + #dock { background:linear-gradient(to bottom, transparent, var(--term) 40px); }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
@@ -473,7 +474,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <div class="col" id="skel" hidden><div class="crow claude"><img class="av" src="icon.svg" alt=""><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div>
       <div id="handpill" hidden>Preparing plan…</div>
       <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Working…</span></div></div></div></div></div>
-  <div id="dock" hidden><div class="col">
+  <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i"><use href="#i-down"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="P().ready ? cont_() : sendNow(cur, {text: (S.queues?.[cur]?.length ? 'Carry on with the next task in PLAN.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(cur)[0], atts: []})">Continue</button></div>
@@ -773,8 +774,8 @@ function drawChrome() {
   $('handpill').textContent = reading[cur] ? 'Reading plan…' : 'Preparing plan…';
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
   const sk = $('skel'), skOn = !$('workpill').hidden || !$('handpill').hidden;
-  if (sk.hidden && skOn) { $('skelts').textContent = tm(new Date().toISOString()); const l = $('log'), stick = l.scrollHeight - l.scrollTop - l.clientHeight < 120;
-    sk.hidden = false; if (stick) l.scrollTop = l.scrollHeight; }
+  if (sk.hidden && skOn) { $('skelts').textContent = tm(new Date().toISOString()); const stick = atEnd();
+    sk.hidden = false; if (stick) toEnd(true); }
   sk.hidden = !skOn;
   workTick();
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%${resetIn(p.account, k) ? ', ' + resetIn(p.account, k) : ''}">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
@@ -937,9 +938,19 @@ function drawLog() {
   if (live[cur]) box.appendChild(liveEl(cur));
   // manual clear-continue: questions show only after the Continue (spec), never next to a waiting Continue; N? pill opens them any time
   if (P().questions.length && !hiddenQs[cur] && (qsOpen[cur] || P().cont === 'auto' || P().cont === 'off')) box.appendChild(questionCard(cur));
-  $('log').replaceChildren(box, $('skel'));
-  $('log').scrollTop = $('log').scrollHeight;
+  const lg = $('log'), same = drawLog.pid === cur, stick = !same || atEnd(), top = lg.scrollTop; drawLog.pid = cur;
+  lg.replaceChildren(box, $('skel'));
+  if (stick) toEnd(true); else lg.scrollTop = top; // redraw while scrolled up: stay put (no jump)
 }
+// follow new output only when within 50px of the bottom; else count it on the ↓ button (click/scroll down = back to following)
+const atEnd = () => { const l = $('log'); return l.scrollHeight - l.scrollTop - l.clientHeight < 50; };
+let unseen = 0;
+function toEnd(stick, n = 0) {
+  const l = $('log'), j = $('jump');
+  if (stick) { l.scrollTop = l.scrollHeight; unseen = 0; j.hidden = true; return; }
+  unseen += n; j.hidden = false; j.lastChild.textContent = unseen ? ' ' + unseen + ' new' : '';
+}
+$('log').addEventListener('scroll', () => { if (!$('jump').hidden && atEnd()) { unseen = 0; $('jump').hidden = true; } }, {passive: true});
 // consecutive tool lines share one compact group in chat view; the same call again bumps "×N" on its line; click → what it did
 function put(box, e) {
   const el = entry(e);
@@ -1124,12 +1135,12 @@ function addEntry(pid, e) {
     (EDITS[pid] ||= {})[relOf(pid, e.detail.file_path || e.detail.notebook_path)] = Date.now(); if (pid === cur) badgeFiles();
   }
   if (pid !== cur) return;
-  const log = $('log'), box = log.querySelector('.col'), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+  const log = $('log'), box = log.querySelector('.col'), stick = atEnd();
   box.querySelector('#empty')?.remove(); const lv = $('live'); (lv?.closest('.crow') || lv)?.remove();
   box._swap = !!lv && e.kind === 'claude'; put(box, e); box._swap = false; // final text replacing the streamed one: hatched already
   if (live[pid]) box.appendChild(liveEl(pid));
   if (e.kind === 'tool') drawRails();
-  if (stick) log.scrollTop = log.scrollHeight;
+  toEnd(stick, 1);
 }
 
 // ---- composer: text, pasted images (previews), attached files ----
@@ -1358,7 +1369,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if (reading[d.pid] && d.kind !== 'user') readNote(d.pid, false);
     addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of}); if (d.result_of && d.pid === cur) drawAtp(); },
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
-    if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } const b = $('log'); b.scrollTop = b.scrollHeight; } },
+    if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
   status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); busy[d.pid] = d.busy; if (!cur) drawHome(); }
     if (d.busy === false) { if (reading[d.pid]) readNote(d.pid, false); live[d.pid] = ''; refresh().then(() => flushQueue(d.pid)); } /* flush after refresh: ready/idle bar known */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }
@@ -2395,7 +2406,7 @@ refresh().then(() => S.active && openProject(S.active));
 let dockH = 0;
 new ResizeObserver(() => {
   const h = $('dock').offsetHeight, d = h - dockH, l = $('log'); dockH = h;
-  if (d > 0 && l.scrollHeight - l.scrollTop - l.clientHeight - d < 120) l.scrollBy({top: d, behavior: 'smooth'});
+  if (d > 0 && l.scrollHeight - l.scrollTop - l.clientHeight - d < 50) l.scrollBy({top: d, behavior: 'smooth'});
 }).observe($('dock'));
 setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 6 * 3600e3);
 </script>
