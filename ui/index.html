@@ -903,6 +903,7 @@ function put(box, e) {
 function hatch(box, el) {
   const s = $('skel').firstElementChild;
   if (!box.isConnected || $('skel').hidden || view !== 'chat') return;
+  $('skelts').textContent = tm(new Date().toISOString()); // skeleton's time = the latest post
   el.classList.add('born'); s.classList.remove('respawn'); void s.offsetWidth; s.classList.add('respawn');
 }
 // file → blob URL, cached per path (ponytail: never revoked; fine for a session's handful of screenshots)
@@ -927,7 +928,9 @@ function entry(e) {
     d.querySelectorAll('.thumbs img').forEach((im, k) => im.onclick = () => openViewer(imgs, k, null));
     d.append(e.text);
   }
-  else if (view === 'term') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')' : e.text;
+  else if (view === 'term') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')'
+    // tool output: drop reminder blocks + blank-line runs (else a one-liner renders as a tall empty box)
+    : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
   else d.textContent = e.text;
   return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
