@@ -343,14 +343,16 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .atrow.completed .grow { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } /* done = one line; full text in the tooltip */
 /* unified task list (tli): dashed dividers, 2-line clamp, click → .open = full text; checkbox read-only except Plan › Tasks */
 .tlist { display:flex; flex-direction:column; margin:2px 0; } .ti { display:flex; gap:8px; align-items:flex-start; padding:5px 0; border-top:1px dashed var(--line2); cursor:pointer; font-size:13px; }
-.tlist > .ti:first-child { border-top:0; } .ti > input { flex:none; margin:3px 0 0; accent-color:var(--accent); } .ti > input:disabled { opacity:.55; cursor:default; }
+.tlist > .ti:first-child { border-top:0; } .ti > input { flex:none; font:inherit; margin:calc((1lh - 13px) / 2) 0 0; accent-color:var(--accent); } /* font:inherit → 1lh = text line ∴ box centred on line 1 (13px = Chromium checkbox) */ .ti > input:disabled { opacity:.55; cursor:default; }
 .ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
 .msg .tlist .ti { font-size:inherit; }
 .qdrag { flex:none; border:0; background:none; color:var(--faint); cursor:grab; padding:0 2px; font-size:14px; line-height:1.2; opacity:0; touch-action:none; }
 .ti:hover > .qdrag, .ti.drag > .qdrag { opacity:1; } .ti.drag { opacity:.75; background:color-mix(in srgb, var(--accent) 10%, transparent); } .ti.drag .qdrag { cursor:grabbing; }
 .ti.sug > input { display:none; } .ti.sug > .ib { flex:none; padding:0 2px; }
-.ti.working .tt { color:var(--accent); text-shadow:0 0 8px color-mix(in srgb, var(--accent) 45%, transparent); } /* row = Claude works on it: colour + soft glow only */
+.ti.working .tt { color:transparent; background:linear-gradient(90deg, var(--accent) 25%, color-mix(in srgb, var(--accent) 35%, var(--text)) 50%, var(--accent) 75%) 0 0/200% 100%;
+  -webkit-background-clip:text; background-clip:text; animation:shimmer 1.8s linear infinite; } /* Claude works on it: Working… pill's shimmer, on the text */
+.ti.working > input { outline:1.5px solid var(--accent); outline-offset:-1.5px; border-radius:3px; } /* unchecked box ignores accent-color → outline tints it */
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .item a { color:var(--text); text-decoration:none; cursor:pointer; } .item a:hover { color:var(--accent); }
 .out { background:#151412; color:#d8d4cb; border-radius:10px; padding:10px; height:calc(100vh - 190px); overflow:auto; font:12px/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; margin-top:10px; user-select:text; }
