@@ -565,9 +565,9 @@ async function refresh() {
     for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; queue[pid] = d.queue || []; if (d.editing) editing[pid] = d.editing; }
   }
   for (const id of S.busy) busy[id] = true;
-  if (first) Object.keys(queue).forEach(flushQueue); // held across a restart with no resumed turn: busy:false never comes → send now
   drawProjects();
   if (P()) drawChrome(); else drawHome();
+  if (first) Object.keys(queue).forEach(flushQueue); // held across a restart with no resumed turn: busy:false never comes → send now (after drawChrome: idle bar known)
 }
 // Claude Code's crab, on the home screen and on every fresh chat
 // mascots, one per AI account vibe: pixel grids drawn as whole-pixel SVG rects (crisp at any zoom; text glyphs left seams)
@@ -1191,10 +1191,7 @@ function send() {
   $('prompt').value = ed ? ed.prev.text : ''; atts[cur] = ed ? ed.prev.atts : []; grow(); drawAtts(); drawEditBar();
   const q = queue[cur] ||= [];
   // Continue waiting (handover written): a typed prompt becomes the Queue's last task, and the waiting one runs
-  if (P().ready && !busy[cur] && !RESTARTING && !ed && !a.length) {
-    const pid = cur; return call('queue_add', {pid, text: t}).then(() => { keepDraft(pid, true); cont_(); addEntry(pid, {kind: 'note', text: 'Added to the task queue: ' + t.trim().split('\n')[0]}); },
-      e => { $('prompt').value = t; grow(); addEntry(pid, {kind: 'err', text: 'Couldn\'t add the task: ' + e}); });
-  }
+  if (contWaiting(cur) && !ed && !a.length) { keepDraft(cur, true); return toTasks(cur, [t]); }
   if (busy[cur] || RESTARTING) q.splice(ed ? ed.i : q.length, 0, {text: t, atts: a}); // an edited one goes back to its place
   else sendNow(cur, {text: t, atts: a});
   drawQueue(); keepDraft(cur, true);
@@ -1211,7 +1208,21 @@ const drawEditBar = () => { $('cancelEdit').hidden = !editing[cur]; };
 let RESTARTING = false; // Claude asked for a restart: hold everything in the saved queue until the new app is up
 function flushQueue(pid) {
   if (RESTARTING || busy[pid] || editing[pid] || !queue[pid]?.length) return;
+  if (contWaiting(pid)) { // a Continue is up: text messages become tasks, then the Continue runs; attachments stay queued
+    const tasks = queue[pid].filter(m => !m.atts.length); queue[pid] = queue[pid].filter(m => m.atts.length);
+    if (pid === cur) drawQueue(); keepDraft(pid, true);
+    if (tasks.length) return toTasks(pid, tasks.map(m => m.text));
+  }
   sendNow(pid, queue[pid].shift()); if (pid === cur) drawQueue(); keepDraft(pid, true);
+}
+// Continue waiting = handover written (ready), or the idle bar offering the next task (current project only: it's drawn)
+const contWaiting = pid => !busy[pid] && !RESTARTING && P(pid)?.cont !== 'off' && (P(pid)?.ready || (pid === cur && !$('ready').hidden && !$('contBtn').hidden));
+async function toTasks(pid, texts) {
+  try { for (const t of texts) await call('queue_add', {pid, text: t}); }
+  catch (e) { addEntry(pid, {kind: 'err', text: 'Couldn\'t add the task: ' + e}); return; }
+  await refresh(); // the new tasks join S.queues before Continue reads the next one
+  if (pid === cur) $('contBtn').click(); else if (P(pid).ready) call('continue_now', {pid});
+  texts.forEach(t => addEntry(pid, {kind: 'note', text: 'Added to the task queue: ' + t.trim().split('\n')[0]}));
 }
 function sendNow(pid, {text: t, atts: a}) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
@@ -1278,7 +1289,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } const b = $('log'); b.scrollTop = b.scrollHeight; } },
   status: () => { if ('busy' in d) busy[d.pid] = d.busy;
-    if (d.busy === false) { if (reading[d.pid]) readNote(d.pid, false); flushQueue(d.pid); refresh(); live[d.pid] = ''; } // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
+    if (d.busy === false) { if (reading[d.pid]) readNote(d.pid, false); live[d.pid] = ''; refresh().then(() => flushQueue(d.pid)); } /* flush after refresh: ready/idle bar known */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
