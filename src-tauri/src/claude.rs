@@ -616,6 +616,12 @@ async fn control(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, 
     let id = v["request_id"].clone();
     let resp = match req["subtype"].as_str() {
         Some("can_use_tool") => Ok(permission(app, st, pid, req).await),
+        // ui = async (waits on the page's reply) → handled here, not in sync mcp()
+        Some("mcp_message") if req["message"]["params"]["name"] == "ui" && own_repo(st, pid) => {
+            let m = &req["message"];
+            let t = ui_tool(app, &m["params"]["arguments"]).await;
+            Ok(json!({"mcp_response": {"jsonrpc": "2.0", "id": m["id"], "result": {"content": [{"type": "text", "text": t}]}}}))
+        }
         Some("mcp_message") => Ok(json!({"mcp_response": mcp(app, st, pid, live, &req["message"])})),
         Some("hook_callback") => Ok(json!({})),
         s => Err(format!("unsupported control request {s:?}")),
@@ -730,7 +736,51 @@ fn rule_hit_works() {
     assert!(rule_hit("Bash(grep:*)@100", "Bash", &i, 99) && !rule_hit("Bash(grep:*)@100", "Bash", &i, 100));
 }
 
-fn tool_list() -> Value {
+/// Project = Clauracle's own source → gets the `ui` self-test tool. ponytail: path sniff; ∵ any other project's
+/// Claude clicking the app could approve its own permission cards.
+fn own_repo(st: &Arc<State>, pid: &str) -> bool {
+    st.project(pid).is_some_and(|p| std::fs::read_to_string(std::path::Path::new(&p.path).join("src-tauri/tauri.conf.json"))
+        .is_ok_and(|s| s.contains("no.arctim.clauracle")))
+}
+
+pub static UI_WAIT: Mutex<Vec<(u64, tokio::sync::oneshot::Sender<String>)>> = Mutex::new(Vec::new());
+static UI_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Self-test: runs in the main webview (never the OS mouse): find by sel/text/x,y → click (or type), optional js,
+/// then report the top open dialog/popover text (else #main). Page answers via `ui_reply`. Cards (permission/question) refused.
+async fn ui_tool(app: &AppHandle, a: &Value) -> String {
+    use tauri::Manager;
+    let Some(w) = app.get_webview_window("main") else { return "No window.".into() };
+    let id = UI_N.fetch_add(1, SeqCst);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    UI_WAIT.lock().unwrap().push((id, tx));
+    let js = UI_JS.replace("ID", &id.to_string()).replace("ARGS", &a.to_string()); // ID first ∵ args may hold "ID"
+    if let Err(e) = w.eval(&js) { return format!("eval failed: {e}"); }
+    let r = tokio::time::timeout(std::time::Duration::from_secs(15), rx).await;
+    UI_WAIT.lock().unwrap().retain(|(i, _)| *i != id);
+    r.ok().and_then(|r| r.ok()).unwrap_or_else(|| "No reply from the page in 15s.".into())
+}
+
+const UI_JS: &str = r#"(async () => { const a = ARGS; let el = null, out = [];
+try {
+  if (a.sel) el = document.querySelector(a.sel);
+  else if (a.text) { const t = a.text.toLowerCase(); el = [...document.querySelectorAll('button,a,summary,label,input,select,textarea,[onclick],[data-tip],[title],.ti,.proj,[tabindex]')]
+    .filter(e => e.getClientRects().length).find(e => (e.innerText || e.value || e.dataset.tip || e.title || e.placeholder || '').trim().toLowerCase().includes(t)); }
+  else if (a.x != null) el = document.elementFromPoint(a.x, a.y);
+  if ((a.sel || a.text || a.x != null) && !el) out.push('Nothing matched.');
+  else if (el && el.closest('.card.qs, .card:has([data-a])')) out.push('Refused: permission/question cards are the user\'s.');
+  else if (el) { el.scrollIntoView({block: 'nearest'});
+    if (a.type != null) { el.focus(); el.value = a.type; el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); }
+    else el[a.right ? 'dispatchEvent' : 'click'](new MouseEvent('contextmenu', {bubbles: true, clientX: el.getBoundingClientRect().x + 4, clientY: el.getBoundingClientRect().y + 4}));
+    out.push((a.type != null ? 'Typed into: ' : 'Clicked: ') + el.outerHTML.slice(0, 200)); }
+  if (a.js) { const v = await eval(a.js); out.push('js → ' + String(typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 4000)); }
+  await new Promise(r => setTimeout(r, a.wait ?? 400));
+  const top = [...document.querySelectorAll('dialog[open], :popover-open')].filter(e => e.id !== 'tip').pop();
+  out.push((top ? `Open ${top.id || top.tagName}: ` : 'Page: ') + (top || document.getElementById('main') || document.body).innerText.slice(0, 1500));
+} catch (e) { out.push('Error: ' + e); }
+call('ui_reply', {id: ID, text: out.join('\n')}); })()"#;
+
+fn tool_list(own: bool) -> Value {
     let q = json!({"type": "object", "required": ["questions"], "properties": {"questions": {"type": "array", "items": {
         "type": "object", "required": ["question", "options"], "properties": {
             "question": {"type": "string", "description": "the question only; Clauracle numbers them"},
@@ -739,7 +789,7 @@ fn tool_list() -> Value {
                 "recommended": {"type": "boolean", "description": "your suggestion; at most one per question"}}}},
             "multi": {"type": "boolean", "description": "more than one option may be picked"},
             "blocking": {"type": "boolean", "description": "true only if work truly can't go on without the user"}}}}}});
-    json!({"tools": [
+    let mut t = json!({"tools": [
         {"name": "ready", "description": "Call as the LAST action of a turn once the task is done (or paused) and \
           PLAN.md and HANDOVER.md are updated. When the turn ends Clauracle clears the context and a fresh session continues \
           (or waits for the user's Continue).", "inputSchema": {"type": "object", "properties": {}}},
@@ -752,7 +802,18 @@ fn tool_list() -> Value {
         {"name": "restart", "description": "Restart Clauracle itself, e.g. to try a new build of it. Nothing is lost: \
           every session resumes, this turn continues after the restart, unsent input stays. `exe`: a newly built \
           Clauracle executable: it replaces the running app's exe in place (same path), then starts.",
-         "inputSchema": {"type": "object", "properties": {"exe": {"type": "string"}}}}]})
+         "inputSchema": {"type": "object", "properties": {"exe": {"type": "string"}}}}]});
+    if own {
+        t["tools"].as_array_mut().unwrap().push(json!({"name": "ui", "description": "Self-test Clauracle's own window \
+          (inside the page, not the OS mouse). Pick ONE target: `sel` (CSS selector), `text` (visible text/tooltip of a \
+          clickable, case-insensitive substring) or `x`,`y` (CSS px). Default = click; `type` = set an input's value; \
+          `right` = right-click. `js` = expression evaluated after (await-ed; page globals like S, cur, P() visible). \
+          Returns what was hit + the open dialog/popover text (else #main) after `wait` ms (400). \
+          Permission/question cards are refused.", "inputSchema": {"type": "object", "properties": {
+            "sel": {"type": "string"}, "text": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"},
+            "type": {"type": "string"}, "right": {"type": "boolean"}, "js": {"type": "string"}, "wait": {"type": "number"}}}}));
+    }
+    t
 }
 
 /// What to start: this exe, or a new build as its own swap helper (`--swap-into` this exe's path), so the app's
@@ -789,7 +850,7 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
     match m["method"].as_str() {
         Some("initialize") => ok(json!({"protocolVersion": m["params"]["protocolVersion"].as_str().unwrap_or("2025-06-18"),
             "capabilities": {"tools": {}}, "serverInfo": {"name": "clauracle", "version": "1.0.0"}})),
-        Some("tools/list") => ok(tool_list()),
+        Some("tools/list") => ok(tool_list(own_repo(st, pid))),
         Some("tools/call") => match m["params"]["name"].as_str() {
             Some("ready") => {
                 let p = st.project(pid).unwrap();

@@ -980,6 +980,13 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
 
 /// Release panel "Set version": swaps the version in every version file that exists (first `version` key/line only,
 /// formatting kept). Cargo.lock follows on the next cargo build.
+/// Page → the `ui` self-test tool's waiting call (claude::ui_tool).
+#[tauri::command]
+fn ui_reply(id: u64, text: String) {
+    let mut w = claude::UI_WAIT.lock().unwrap();
+    if let Some(i) = w.iter().position(|(n, _)| *n == id) { let _ = w.remove(i).1.send(text); }
+}
+
 #[tauri::command(async)]
 fn version_set(st: St, pid: String, v: String) -> R<Vec<String>> {
     if v.is_empty() || !v.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c)) { return Err("bad version".into()); }
@@ -1379,7 +1386,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            state, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
+            state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
