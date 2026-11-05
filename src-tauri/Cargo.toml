@@ -23,6 +23,7 @@ ureq = "2"
 regex = "1"
 portable-pty = "0.8"
 dirs = "5"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] } # Browser tab: phone-preview QR
 
 [profile.release]
 opt-level = "s"

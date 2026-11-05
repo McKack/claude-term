@@ -22,6 +22,8 @@ Current state and open work: see `HANDOVER.md`. Frozen, don't edit: `archive/tui
 - Visual check: run the debug exe and capture with PrintWindow; never drive the user's mouse/keyboard (SendKeys, clicks).
 
 ## Conventions
+- Efficient by default: cache what the UI shows (avatars, gh lookups, QR, LAN ip…); no re-fetch/re-check within seconds
+  or on every card open; keep token use low (compressed prompts/lessons, one task per session).
 - Keep it minimal: std first, no new deps without a reason. Mark deliberate shortcuts with `ponytail:`.
 - Connections/skills are allow-lists per project/account (`on`): nothing is on until picked (a picker asks on every new
   project/account). `on: None` = legacy deny-list (`off`). Global `cfg.off` switches an item off everywhere.

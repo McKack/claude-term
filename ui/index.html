@@ -324,6 +324,10 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .code .ln { color:var(--faint); text-align:right; padding:8px 8px 8px 10px; border-right:1px solid var(--line); white-space:pre; user-select:none; }
 .code pre { margin:0; padding:8px 12px; white-space:pre; }
 #web { width:100%; height:calc(100vh - 175px); border:1px solid var(--line); border-radius:10px; background:#fff; }
+/* phone preview: a 390×844 viewport (iPhone-ish) in a bezel, shrunk with zoom to fit the panel */
+.phone { margin:0 auto; width:390px; height:844px; border:12px solid #111; border-radius:46px; overflow:hidden; box-shadow:0 0 0 1px var(--line2), var(--shadow); background:#000; }
+.phone #web { width:100%; height:100%; border:0; border-radius:0; }
+.qrbox { display:flex; gap:12px; align-items:center; margin-bottom:10px; } .qr svg { width:110px; height:110px; display:block; border-radius:8px; }
 
 /* dialogs */
 dialog { border-radius:20px; color:var(--text); padding:0; } dialog:focus, dialog:focus-visible { outline:none; }
@@ -607,7 +611,9 @@ const projRow = p => `<div class="proj ${p.id === cur ? 'on' : ''}" onclick="ope
 const AVC = ['#7c83ff', '#d97757', '#3fbf9f', '#c9a86a', '#b67be0'];
 // AI accounts: the service's mark (all Claude for now) in its brand colour
 const avAI = (a, cls = '') => `<span class="av ai ${cls}" title="${esc(a.nick)}"><svg><use href="#i-claude"/></svg></span>`;
-const avGh = (u, cls = '') => `<img class="av ${cls}" src="https://github.com/${encodeURIComponent(u)}.png?size=88" alt="" title="@${esc(u)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av ${cls}',textContent:'${esc(u[0] || '?').toUpperCase()}',style:'background:#555'}))">`;
+// avatars: one preloaded Image per user, kept alive → the page's image cache draws re-rendered cards instantly (no reload flash)
+const AVIMG = new Map(), avUrl = u => { const s = `https://github.com/${encodeURIComponent(u)}.png?size=88`; if (!AVIMG.has(u)) AVIMG.set(u, Object.assign(new Image(), {src: s})); return s; };
+const avGh = (u, cls = '') => `<img class="av ${cls}" src="${avUrl(u)}" alt="" title="@${esc(u)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av ${cls}',textContent:'${esc(u[0] || '?').toUpperCase()}',style:'background:#555'}))">`;
 const ghKnown = () => [...new Set([...ghUsers, ...S.projects.map(p => p.gh)].filter(Boolean))];
 function drawAcct() {
   const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0];
@@ -1645,19 +1651,31 @@ function drawSide() {
 }
 
 // browser view: preview inside Clauracle, or open in a real browser profile (your logins live there)
-const webUrl = {};
-let BROWSERS = null;
+const webUrl = {}, QRS = new Map(); // QR svg per url (cached)
+let BROWSERS = null, LAN = null, webPhone = false;
 async function drawWeb() {
   BROWSERS ||= await call('browsers');
   const url = webUrl[cur] || (builds[cur]?.out.match(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?[^\s]*/g) || []).pop() || 'http://localhost:3000';
   webUrl[cur] = url;
   const opts = BROWSERS.flatMap(b => (b.profiles.length ? b.profiles : [{dir: '', name: 'default'}]).map(p =>
     `<option value='${esc(JSON.stringify([b.exe, p.dir]))}'>${esc(b.name)} · ${esc(p.name)}${p.user ? ' (' + esc(p.user) + ')' : ''}</option>`)).join('');
+  let phone = '';
+  if (webPhone) { // the phone needs this PC's LAN address, not localhost (dev server must listen on 0.0.0.0, e.g. vite --host)
+    LAN ??= await call('lan_ip');
+    const purl = LAN ? url.replace(/\/\/(localhost|127\.0\.0\.1)/, '//' + LAN) : url, local = purl !== url;
+    if (!QRS.has(purl)) QRS.set(purl, await call('qr', {text: purl}).catch(() => ''));
+    phone = `<div class="qrbox"><div class="qr">${QRS.get(purl)}</div><div class="grow" style="min-width:0"><small class="dim">Scan on your phone</small>
+      <a class="mono" data-url="${esc(purl)}" style="display:block;overflow-wrap:anywhere;color:var(--accent);cursor:pointer">${esc(purl)}</a>
+      ${local ? '<small class="faint">Same Wi-Fi; the dev server must listen on all addresses (e.g. <code>vite --host</code>)</small>' : ''}</div></div>`;
+  }
   $('rbody').innerHTML = `<div class="row" style="margin-bottom:8px"><input id="wurl" class="grow sel mono" value="${esc(url)}" onkeydown="if(event.key==='Enter'){webUrl[cur]=this.value; drawWeb()}">
-    <button class="ib" title="Reload" onclick="$('web').src=$('wurl').value">${icon('loop')}</button></div>
-    <iframe id="web" src="${esc(url)}"></iframe>
-    <div class="row" style="margin-top:8px"><small class="dim">Open in</small><select id="bsel" class="grow">${opts || '<option value="">no Chromium browser found</option>'}</select>
+    <button class="ib" title="Reload" onclick="$('web').src=$('wurl').value">${icon('loop')}</button>
+    <span class="seg"><button class="${webPhone ? '' : 'on'}" onclick="webPhone=false; drawWeb()">Desktop</button><button class="${webPhone ? 'on' : ''}" onclick="webPhone=true; drawWeb()">Phone</button></span></div>
+    ${phone}${webPhone ? `<div class="phone"><iframe id="web" src="${esc(url)}"></iframe></div>` : `<iframe id="web" src="${esc(url)}"></iframe>`}`
+    + `<div class="row" style="margin-top:8px"><small class="dim">Open in</small><select id="bsel" class="grow">${opts || '<option value="">no Chromium browser found</option>'}</select>
       <button class="btn" onclick="openIn()">Open</button></div>`;
+  const ph = $('rbody').querySelector('.phone'); // fit the 414px-wide phone into the panel (zoom keeps its 390px viewport)
+  if (ph) ph.style.zoom = Math.min(1, ($('rbody').clientWidth - 4) / 414, (innerHeight - 330) / 868);
 }
 function openIn() {
   const v = $('bsel').value; if (!v) return;

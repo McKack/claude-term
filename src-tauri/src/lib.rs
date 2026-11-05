@@ -185,6 +185,20 @@ fn new_session(app: AppHandle, st: St, pid: String) {
 }
 
 /// The Continue button: clear the context and carry on from the handover (with any answers).
+/// QR code as an SVG string (Browser tab, phone preview).
+#[tauri::command]
+fn qr(text: String) -> R<String> {
+    let c = qrcode::QrCode::new(text.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(c.render::<qrcode::render::svg::Color>().min_dimensions(150, 150).quiet_zone(true).build())
+}
+
+/// This machine's LAN address (the route a phone on the same Wi-Fi would use); UDP connect sends nothing.
+#[tauri::command]
+fn lan_ip() -> String {
+    std::net::UdpSocket::bind("0.0.0.0:0").and_then(|s| { s.connect("8.8.8.8:80")?; s.local_addr() })
+        .map(|a| a.ip().to_string()).unwrap_or_default()
+}
+
 #[tauri::command]
 fn set_lessons(st: St, lessons: Vec<String>) {
     let mut cfg = st.cfg.lock().unwrap();
@@ -844,7 +858,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
-            continue_now, queue_add, set_lessons, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
+            continue_now, queue_add, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
             env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])
