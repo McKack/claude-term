@@ -41,10 +41,11 @@ const HANDOVER_RULES: &str = "
 /// HANDOVER_RULES for a project on GitHub: tasks = issues (one list for Plan tab, Next pill, Continue, team; no PLAN.md drift).
 const ISSUE_RULES: &str = "
 # Handover (Clauracle)
-- Tasks = open GitHub issues labelled `task`: the ONE task list (no PLAN.md). Clauracle's continue message lists them in
-  order (first = next); `gh issue view N` for details. Skip issues someone else is assigned to.
-- Each new user request becomes an issue at once (`gh issue create --label task --title <short> --body <full request>`),
-  so nothing is lost across sessions. Your own ideas needing the user's yes: add `--label suggestion` (rare, only
+- Tasks = open GitHub issues labelled `clauracle`: the ONE task list (no PLAN.md). Clauracle's continue message lists
+  them in order (first = next); `gh issue view N` for details. Skip issues someone else is assigned to.
+- Each new user request becomes an issue at once (`gh issue create --label clauracle --label <type> --title <short>
+  --body <full request>`, type = task | feature | fix; `gh label create` it if missing), so nothing is lost across
+  sessions. Your own ideas needing the user's yes: add `--label suggestion` (rare, only
   clearly high-value ones); the user accepts or dismisses them. Every issue must be finishable work, never a standing rule.
 - If PLAN.md, TASKS.md, TODO.md or HANDOVER.md still list open tasks, file them as issues (same order) and remove them there.
 - HANDOVER.md lets a fresh session resume: goal, current state, how to build and test, gotchas, rules; no task list;
@@ -88,7 +89,7 @@ pub const CONTINUE: &str = "continue\n\nThis is a fresh session (Clauracle clear
 PLAN.md at the project root and carry on with the next step.";
 // same first 60 chars as CONTINUE (history() matches that prefix)
 const CONTINUE_ISSUES: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md and \
-carry on with the next open task (GitHub issues labelled `task`, first = next):";
+carry on with the next open task (GitHub issues labelled `clauracle`, first = next):";
 
 /// The "continue" message for a fresh session, or None when nothing is queued. Issue mode: one `gh issue list`
 /// (blocking, ~1s) → ordered "#N title" lines; gh failing → generic text (a network blip mustn't stop a run).
@@ -98,7 +99,7 @@ pub fn cont_text(p: &Project) -> Option<String> {
     }
     let v = store::tasks(&p.path, &p.gh);
     if !v.is_array() {
-        return Some(format!("{CONTINUE_ISSUES} run `gh issue list --label task` to see them."));
+        return Some(format!("{CONTINUE_ISSUES} run `gh issue list --label clauracle` to see them."));
     }
     let q = store::task_queue(&v, &p.gh, &p.order);
     (!q.is_empty()).then(|| format!("{CONTINUE_ISSUES}\n{}",

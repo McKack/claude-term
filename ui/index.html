@@ -52,6 +52,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .row { display:flex; gap:8px; align-items:center; } .wrap { flex-wrap:wrap; } .grow { flex:1; min-width:0; }
 .label { font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); }
 .pill { font-size:11.5px; padding:1px 8px; border-radius:99px; background:var(--soft); color:var(--accent); white-space:nowrap; }
+.pill.lbl { font-size:10.5px; padding:0 6px; vertical-align:1px; color:color-mix(in srgb, var(--lc) 70%, var(--text)); background:color-mix(in srgb, var(--lc) 16%, transparent); border:1px solid color-mix(in srgb, var(--lc) 45%, transparent); }
 .mono { font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
 /* switch */
 .sw { position:relative; width:32px; height:18px; flex:none; } .sw input { opacity:0; position:absolute; inset:0; margin:0; cursor:pointer; }
@@ -1412,7 +1413,7 @@ const contWaiting = pid => !busy[pid] && !RESTARTING && P(pid)?.cont !== 'off' &
 // then on turn end the plan is re-read (Next updates) and the Continue runs (status busy:false → contGo)
 const TRIAGE = 'New from the user while a Continue waited. Only update PLAN.md now: urgent or blocking → reword it as a task at the TOP of the Queue; otherwise reword it into the Queue by priority (merge with a matching task); a plain question → answer it briefly. Don\'t start the work and don\'t call mcp__clauracle__ready: Clauracle continues with the Queue\'s first task when this turn ends.\n\n';
 // ponytail: new issues land at the Queue's end (order is local, P.order); user drags urgent ones up
-const TRIAGE_ISSUES = 'New from the user while a Continue waited. Only file it now: each task → `gh issue create --label task` (or add it to a matching open issue with `gh issue comment`); a plain question → answer it briefly. Don\'t start the work and don\'t call mcp__clauracle__ready: Clauracle continues with the first open task when this turn ends.\n\n';
+const TRIAGE_ISSUES = 'New from the user while a Continue waited. Only file it now: each task → `gh issue create --label clauracle --label <task|feature|fix>` (or add it to a matching open issue with `gh issue comment`); a plain question → answer it briefly. Don\'t start the work and don\'t call mcp__clauracle__ready: Clauracle continues with the first open task when this turn ends.\n\n';
 const triaging = {}; // pid → plan-only turn running; Continue follows it
 function toTasks(pid, texts) {
   triaging[pid] = true;
@@ -1921,7 +1922,7 @@ async function makeRelease(btn) {
   try { const url = await call('release', {pid: cur, tag: $('relTag').value.trim(), files}); relFiles = []; addEntry(cur, {kind: 'note', text: 'Released: ' + url}); drawRight(true); }
   catch (e) { $('relErr').textContent = e; btn.disabled = false; }
 }
-// ---- team tasks: open GitHub issues labelled `task`; taken = assignee + `in progress` ----
+// ---- team tasks: open GitHub issues labelled `clauracle`; taken = assignee + `in progress` ----
 // ponytail: polled every 60s for the open project (live push needs webhooks and a server)
 async function pollTeam() {
   const pid = cur;
@@ -1949,10 +1950,21 @@ function issueQ(pid) {
   const me = P(pid).gh.toLowerCase(), ord = P(pid).order || [], at = n => { const i = ord.indexOf(n); return i < 0 ? 1e9 + n : i; };
   return teamTasks(pid).filter(x => !isIdea(x) && (!x.assignees.length || x.assignees.some(a => a.login.toLowerCase() === me))).sort((a, b) => at(a.number) - at(b.number));
 }
+// Issues list (#15): row = #N link + title + type pills (GitHub colour; `clauracle` hidden ∵ every row has it)
+const issueHtml = x => `<a data-url="${esc(x.url)}">#${x.number}</a> ${esc(x.title)}`
+  + x.labels.filter(l => l.name !== 'clauracle').map(l => ` <span class="pill lbl" style="--lc:#${esc(l.color || '888')}">${esc(l.name)}</span>`).join('');
+// after the drag queue: suggestions (Accept/Dismiss), others' issues (who), new-issue field
+const issuesRest = () => { const iq = issueQ(cur), me = (team[cur]?.me || '').toLowerCase();
+  return `<div class="tlist">${teamTasks(cur).filter(isIdea).map((x, i) => tli(issueHtml(x), {cls: 'sug',
+      end: `<button class="ib" title="Accept: queue it" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: close the issue" onclick="planWait(${i}, false)">${icon('x')}</button>`})).join('')
+    + teamTasks(cur).filter(x => !isIdea(x) && !iq.includes(x)).map(x => tli(issueHtml(x), {cls: 'in_progress', end: `<span class="pill">${esc(x.assignees.map(a => a.login).join(', '))}</span>`})).join('')}</div>
+    <div class="row"><input id="newTask" class="grow" placeholder="New issue (task)" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add issue" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`; };
 const nextUp = pid => { const iq = issueQ(pid); if (iq) return iq.map(x => `#${x.number} ${x.title}`); const q = S.queues?.[pid] || []; return q.length ? q : teamTasks(pid).filter(x => !isDoing(x)).map(x => `#${x.number} ${x.title}`); };
 function tasksHtml() {
   const t = team[cur];
   if (!t?.repo) return '';
+  const warns = (t.conflicts || []).map(c => `<div class="warn">@${esc(c.author)}'s PR <a data-url="${esc(c.url)}">#${c.number}</a> also changes ${c.files.map(f => `<code>${esc(f)}</code>`).join(', ')}</div>`).join('');
+  if (issueOn(cur)) return warns; // issue mode: the Issues list (drawAtp) holds them all
   const me = (t.me || '').toLowerCase();
   // one row per task: title on the left, who / what you can do on the right
   const row = x => { const who = x.assignees.map(a => a.login), mine = who.some(l => l.toLowerCase() === me);
@@ -1960,8 +1972,8 @@ function tasksHtml() {
       mine ? `<button class="btn ghost sm" onclick="taskDo('release', ${x.number})">Release</button><button class="btn sm" onclick="taskDo('done', ${x.number})">Done</button>`
         : isDoing(x) ? `<span class="pill">${esc(who.join(', ') || 'in progress')}</span>` : `<button class="btn sm" onclick="taskStart(${x.number})">Start</button>`}); };
   const ts = teamTasks(cur), doing = ts.filter(isDoing).length;
-  return fold('tasks', 'Team tasks', (t.conflicts || []).map(c => `<div class="warn">@${esc(c.author)}'s PR <a data-url="${esc(c.url)}">#${c.number}</a> also changes ${c.files.map(f => `<code>${esc(f)}</code>`).join(', ')}</div>`).join('')
-    + (ts.length ? `<div class="tlist">${ts.map(row).join('')}</div>` : empty('No open tasks'))
+  return fold('tasks', 'Team tasks', warns
+    +(ts.length ? `<div class="tlist">${ts.map(row).join('')}</div>` : empty('No open tasks'))
     + `<div class="row"><input id="newTask" class="grow" placeholder="New task for the team" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add task" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`,
     ts.length ? `${doing}/${ts.length}` : (t.conflicts || []).length);
 }
@@ -2802,17 +2814,18 @@ function drawAtp() {
   const open = t.filter(x => x.status !== 'completed'), fin = t.filter(x => x.status === 'completed');
   const L = a => `<div class="tlist">${a.join('')}</div>`;
   const wt = iq ? teamTasks(cur).filter(isIdea).map(x => `#${x.number} ${x.title}`) : S.waits?.[cur] || [];
-  const tasks = ((wt.length ? `<div class="label" title="${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: your AI noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
+  const tasks = ((wt.length && !iq ? `<div class="label" title="${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: your AI noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
         end: `<button class="ib" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: ${iq ? 'close the issue' : 'remove from PLAN.md'}" onclick="planWait(${i}, false)">${icon('x')}</button>`}))) : '')
     + (t.length ? `<div class="label">Now</div>` + L([...open.map(x => tli(esc(x.status === 'in_progress' && x.activeForm || x.content), {cls: x.status})),
         ...fin.slice(-3).map(x => tli(esc(x.content), {done: 1, cls: 'completed', tip: x.content}))]) : '')
-    + (pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">Plan<span class="grow"></span>
-        <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...(issueQ(cur) ? [{label: 'GitHub issues (task)', hint: issueQ(cur).length + ' open', run: () => expandRight('gh')}] : []), ...S.plans[cur].filter(o => !issueQ(cur) || o.items.length).map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
+    + (iq || pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">${iq ? 'Issues' : 'Plan'}<span class="grow"></span>
+        <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...(issueQ(cur) ? [{label: 'GitHub issues (clauracle)', hint: issueQ(cur).length + ' open', run: () => expandRight('gh')}] : []), ...S.plans[cur].filter(o => !issueQ(cur) || o.items.length).map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
         ${!iq && (pl.length > 1 || pl[0].file !== 'PLAN.md') ? `<button class="ib" title="Merge every plan file into PLAN.md\n${estTok()}" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
         ${P().gh && (iq ? S.queues?.[cur]?.length : q.length) ? `<button class="ib" title="File ${iq ? 'PLAN.md\'s leftover tasks' : 'the queue'} as GitHub issues${iq ? ' (removed from PLAN.md after)' : ' (Team tasks)'}" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
-        + L(q.map((x, i) => tli(esc(x), {on: `planCheck(${i}, this)`, cls: !i && busy[cur] ? 'working' : '',
+        + L(q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: !i && busy[cur] ? 'working' : '',
             end: `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⠿</button>`}))).replace('class="tlist"', 'class="tlist" id="qlist"')
+        + (iq ? issuesRest() : '')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}${iq ? ' · not issues yet' : ''}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
     || empty(`Your AI's task list and ${iq ? 'open task issues' : "PLAN.md's queue"} show here`, `<button class="btn sm" onclick="$('prompt').value = '${iq ? 'Plan this as GitHub task issues: ' : 'Plan this in PLAN.md: '}'; $('prompt').focus(); grow()">${icon('list')}Plan with your AI</button>`);
@@ -2838,7 +2851,7 @@ async function mergePlans() {
 async function cleanPlan() {
   if (issueQ(cur)) { const n = issueQ(cur).length;
     if (!await sure(`Clean up the task issues?\n\nClaude reviews the ${n} open task issues against the project's current state: merges related ones, closes stale or already-done ones.\n\nIt shows the proposal first and only changes issues after you say yes.\n${estTok()}`)) return;
-    return sendNow(cur, {text: 'Clean up the open GitHub issues labelled `task`: check each against the code/git state; propose merges (one issue absorbs the other, the rest closed) and closing stale or already-done ones. Show the proposal with one line per change and why, then STOP: don\'t change any issue or start any task until I confirm.', atts: []}); }
+    return sendNow(cur, {text: 'Clean up the open GitHub issues labelled `clauracle`: check each against the code/git state; propose merges (one issue absorbs the other, the rest closed) and closing stale or already-done ones. Show the proposal with one line per change and why, then STOP: don\'t change any issue or start any task until I confirm.', atts: []}); }
   const n = (S.queues?.[cur] || []).length;
   if (!await sure(`Clean up the plan?\n\nClaude reviews the ${n} queued tasks against the project's current state: merges related ones, drops stale or already-done ones, re-orders by priority.\n\nIt shows the proposed Queue first and only writes PLAN.md after you say yes.\n${estTok()}`)) return;
   sendNow(cur, {text: `Clean up PLAN.md's "## Queue": check each task against the code/git state; merge related tasks, drop stale or already-done ones, re-order by priority (needs-the-user's-yes → "## Waiting on the user"). Show the proposed new Queue plus one line per merge/drop with why, then STOP: don't edit PLAN.md or start any task until I confirm.`, atts: []});

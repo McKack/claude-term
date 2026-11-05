@@ -1051,20 +1051,29 @@ pub fn release(dir: &str, user: &str, tag: &str, files: &[String]) -> Result<Str
     if o.ok { Ok(o.stdout.trim().to_string()) } else { Err(o.stderr.trim().to_string()) }
 }
 
-// ---- team tasks: GitHub issues labelled `task`; taken = assignee + `in progress` (no commits, all live on GitHub) ----
+// ---- Clauracle's issues: label `clauracle` (= ours, ≠ hand-filed repo issues) + a type label (task/feature/fix/
+// suggestion); taken = assignee + `in progress` (no commits, all live on GitHub) ----
 
+pub const OUR_LABEL: &str = "clauracle";
 pub const TASK_LABEL: &str = "task";
-pub const OLD_LABEL: &str = "clauracle"; // ponytail: pre-2026-11 label; renamed in place on first empty list, drop later
 pub const DOING_LABEL: &str = "in progress";
-pub const IDEA_LABEL: &str = "suggestion"; // + `task`: Claude's own idea awaiting the user's yes (Plan tab Accept/Dismiss)
+pub const IDEA_LABEL: &str = "suggestion"; // Claude's own idea awaiting the user's yes (Issues list Accept/Dismiss)
 
 pub fn tasks(dir: &str, user: &str) -> serde_json::Value {
-    let list = || gh_json(&["issue", "list", "--label", TASK_LABEL, "--state", "open", "--limit", "100",
+    let list = |l: &str| gh_json(&["issue", "list", "--label", l, "--state", "open", "--limit", "100",
               "--json", "number,title,url,assignees,labels,updatedAt"], user, Some(dir));
-    let v = list();
-    // empty → maybe old label: `gh label edit` renames it on every issue at once; fails harmlessly if absent
-    if v.as_array().is_some_and(|a| a.is_empty())
-        && run("gh", &["label", "edit", OLD_LABEL, "--name", TASK_LABEL], Some(dir), &gh_env(user)).ok { return list(); }
+    let v = list(OUR_LABEL);
+    // ponytail: migration (2026-11-05): none ours yet → tag open `task` issues `clauracle` once; drop later
+    if v.as_array().is_some_and(|a| a.is_empty()) {
+        let old = list(TASK_LABEL);
+        let ns: Vec<String> = old.as_array().into_iter().flatten().filter_map(|x| x["number"].as_u64()).map(|n| n.to_string()).collect();
+        if !ns.is_empty() {
+            let env = gh_env(user);
+            run("gh", &["label", "create", OUR_LABEL, "--color", "D77655", "--description", "Tracked in Clauracle"], Some(dir), &env);
+            for n in &ns { run("gh", &["issue", "edit", n, "--add-label", OUR_LABEL], Some(dir), &env); }
+            return list(OUR_LABEL);
+        }
+    }
     v
 }
 
@@ -1074,9 +1083,9 @@ pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<(), Str
     let gh = |a: &[&str]| { let o = run("gh", a, Some(dir), &env); if o.ok { Ok(()) } else { Err(o.stderr.trim().to_string()) } };
     match action {
         "new" => {
-            let _ = gh(&["label", "create", TASK_LABEL, "--color", "D77655", "--description", "Task tracked in Clauracle"]);
+            let _ = gh(&["label", "create", OUR_LABEL, "--color", "D77655", "--description", "Tracked in Clauracle"]);
             let (title, body) = split_task(arg);
-            gh(&["issue", "create", "--title", &title, "--body", &body, "--label", TASK_LABEL])
+            gh(&["issue", "create", "--title", &title, "--body", &body, "--label", OUR_LABEL, "--label", TASK_LABEL])
         }
         "claim" => {
             let _ = gh(&["label", "create", DOING_LABEL, "--color", "4F5BD5", "--description", "Someone is on it"]);
