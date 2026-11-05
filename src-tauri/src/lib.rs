@@ -183,7 +183,7 @@ fn remove_project(st: St, pid: String) {
 /// current reply, same session).
 #[tauri::command]
 fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Value> {
-    let quiet = ["name", "context_limit", "build", "keep", "services", "allow"]; // read live per call: no reconnect
+    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage"]; // read live per call: no reconnect
     let p = st.with_project(&pid, |p| {
         let mut v = json!(p);
         for (k, val) in changes.as_object().cloned().unwrap_or_default() {
@@ -938,6 +938,40 @@ fn bundle_id(st: St, pid: String) -> R<serde_json::Value> {
     Ok(serde_json::json!({"id": found.as_ref().map(|f| &f.1), "file": found.as_ref().map(|f| f.0), "suggest": suggest}))
 }
 
+/// App version + the file it's in: package.json / tauri.conf.json "version", Cargo.toml / pyproject.toml `version = "…"`.
+// ponytail: first `version =` line in a toml (≈ [package]/[project]); workspace-inherited versions → not found
+fn version_of(root: &std::path::Path) -> Option<(String, &'static str)> {
+    ["src-tauri/tauri.conf.json", "package.json", "Cargo.toml", "src-tauri/Cargo.toml", "pyproject.toml"].into_iter().find_map(|f| {
+        let t = std::fs::read_to_string(root.join(f)).ok()?;
+        let v = if f.ends_with(".json") { serde_json::from_str::<Value>(&t).ok()?["version"].as_str()?.to_string() } else { toml_version(&t)? };
+        Some((v, f))
+    })
+}
+fn toml_version(t: &str) -> Option<String> {
+    t.lines().find_map(|l| l.trim().strip_prefix("version")?.trim_start().strip_prefix('=')?.trim().strip_prefix('"')?.split('"').next().map(String::from))
+}
+
+/// Release wizard facts, plain checks, no AI: files present, version vs last tag, git clean, last CI run, Mac secrets.
+#[tauri::command]
+async fn release_check(st: St<'_>, pid: String) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = std::path::PathBuf::from(&p.path);
+        let files: Vec<(String, std::path::PathBuf)> = std::fs::read_dir(&root).into_iter().flatten().flatten().map(|e| (e.file_name().to_string_lossy().to_uppercase(), e.path())).collect();
+        let has = |pre: &[&str]| files.iter().any(|(n, _)| pre.iter().any(|x| n.starts_with(x)));
+        let readme = files.iter().find(|(n, _)| n.starts_with("README")).and_then(|(_, f)| std::fs::read_to_string(f).ok()).map_or(0, |t| t.lines().count());
+        let ver = version_of(&root);
+        let git = |a: &[&str]| store::run("git", a, Some(&p.path), &[]);
+        let tag = git(&["describe", "--tags", "--abbrev=0"]);
+        let icon = ["src-tauri/icons/icon.png", "public/favicon.ico", "public/favicon.svg", "assets/icon.png", "assets/icon.svg", "icon.png", "app/src/main/res"].iter().any(|f| root.join(f).exists());
+        let remote = store::repo_of(&p.path).is_some();
+        json!({"readme": readme, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
+               "version": ver.as_ref().map(|v| &v.0), "vfile": ver.as_ref().map(|v| v.1), "tag": if tag.ok { tag.stdout.trim() } else { "" },
+               "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon, "remote": remote,
+               "ci": if remote { store::gh_json(&["run", "list", "--limit", "1", "--json", "conclusion,status,workflowName,url"], &p.gh, Some(&p.path)).get(0).cloned() } else { None }})
+    }).await.map_err(|e| e.to_string())
+}
+
 /// Writes a new bundle ID into the config file it was found in (string swap keeps formatting).
 #[tauri::command]
 fn bundle_id_set(st: St, pid: String, id: String) -> R<()> {
@@ -1281,7 +1315,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, plan_move, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, release_check, plan_move, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {
@@ -1309,4 +1343,11 @@ fn procs_lists_self() {
 #[test]
 fn newer_versions() {
     assert!(newer("v0.2.0", "0.1.9") && newer("0.1.10", "0.1.9") && !newer("v0.1.0", "0.1.0") && !newer("0.0.9", "0.1.0"));
+}
+
+#[cfg(test)]
+#[test]
+fn toml_versions() {
+    assert_eq!(toml_version("[package]\nname = \"x\"\nversion = \"0.1.2\"\n").as_deref(), Some("0.1.2"));
+    assert_eq!(toml_version("[package]\nversion.workspace = true\n"), None);
 }
