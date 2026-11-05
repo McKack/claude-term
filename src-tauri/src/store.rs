@@ -36,6 +36,7 @@ pub struct Account {
     pub on: Option<Vec<String>>, // what new projects start with (connections/skills); Some([]) = nothing yet
     pub limits: Limits,
     pub pool: String, // accounts sharing a pool take over from each other at their limits
+    pub base_url: String, // "" = Anthropic login (setup-token); else custom endpoint, keychain holds its API key
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -309,12 +310,16 @@ pub fn set_token(id: &str, token: &str) {
     }
 }
 
-pub fn account_env(id: &str) -> Vec<(String, String)> {
+pub fn account_env(id: &str, base_url: &str) -> Vec<(String, String)> {
     if id == MAIN {
         return vec![];
     }
-    keyring::Entry::new(KEYRING, id).ok().and_then(|e| e.get_password().ok())
-        .map(|t| vec![("CLAUDE_CODE_OAUTH_TOKEN".into(), t)]).unwrap_or_default()
+    let Some(t) = keyring::Entry::new(KEYRING, id).ok().and_then(|e| e.get_password().ok()) else { return vec![] };
+    if base_url.is_empty() {
+        return vec![("CLAUDE_CODE_OAUTH_TOKEN".into(), t)];
+    }
+    // gateways differ: x-api-key vs Bearer → send both; CLAUDE_CODE_OAUTH_TOKEN removed by caller ∵ it'd win
+    vec![("ANTHROPIC_BASE_URL".into(), base_url.into()), ("ANTHROPIC_API_KEY".into(), t.clone()), ("ANTHROPIC_AUTH_TOKEN".into(), t)]
 }
 
 /// "Claude 2": the AI's name plus the next number not taken by an account already named that way.
@@ -324,7 +329,7 @@ pub fn default_nick(cfg: &Config, provider: &str) -> String {
     format!("{ai} {n}")
 }
 
-pub fn add_account(cfg: &mut Config, nick: &str, token: &str) -> Account {
+pub fn add_account(cfg: &mut Config, nick: &str, token: &str, base_url: &str) -> Account {
     let nick = if nick.trim().is_empty() { default_nick(cfg, "claude") } else { nick.trim().to_string() };
     let nick = nick.as_str();
     let base: String = Regex::new(r"\W+").unwrap().replace_all(nick.trim(), "-").trim_matches('-').to_string();
@@ -333,7 +338,7 @@ pub fn add_account(cfg: &mut Config, nick: &str, token: &str) -> Account {
         .find(|c| !cfg.accounts.iter().any(|a| &a.id == c)).unwrap();
     set_token(&id, token);
     let a = Account { id, nick: nick.into(),
-                      provider: "claude".into(), on: Some(vec![]), ..Default::default() };
+                      provider: "claude".into(), on: Some(vec![]), base_url: base_url.trim().trim_end_matches('/').into(), ..Default::default() };
     cfg.accounts.push(a.clone());
     a
 }

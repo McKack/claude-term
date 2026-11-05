@@ -2526,7 +2526,7 @@ function aiPage() {
   return `<div class="row" style="align-items:flex-start;gap:12px"><p class="dim grow" style="margin-top:0">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>
     <button class="btn primary" onclick="addAcctDlg()">${icon('plus')}Add account</button></div>`
     + S.accounts.map(a => { const u = S.usage[a.id] || {}; return `<details class="acct"><summary>
-      <span class="chev">${icon('chev')}</span>${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : 'setup-token'}</small>
+      <span class="chev">${icon('chev')}</span>${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : a.base_url ? esc(a.base_url) : 'setup-token'}</small>
       ${a.pool ? `<span class="pill">${esc(a.pool)}</span>` : ''}${a.id === S.default_account ? '<span class="pill">default</span>' : ''}<span class="grow"></span>${meter(u.five_hour, '5h')} ${meter(u.seven_day, 'week')}</summary>
       <div><div class="grid2">
         <span>Name</span><input value="${esc(a.nick)}" onchange="this.value.trim() && acct('${esc(a.id)}', {nick:this.value.trim()})">
@@ -2695,6 +2695,9 @@ function addAcctDlg() {
     <button class="btn primary" style="width:100%;justify-content:center;margin-top:10px" onclick="addClaude()">Sign in with Claude</button>
     <div class="ordiv">or</div>
     <div class="row"><input id="token" class="grow mono" placeholder="Token from claude setup-token: sk-ant-oat01-…"><button class="btn" onclick="pasteClaude()">Add</button></div>
+    <div class="ordiv">or a custom endpoint (proxy, gateway)</div>
+    <input id="baseUrl" class="mono" style="width:100%" placeholder="Base URL, e.g. https://gateway.example.com">
+    <div class="row" style="margin-top:6px"><input id="apiKey" type="password" class="grow mono" placeholder="API key"><button class="btn" onclick="pasteClaude(1)">Add</button></div>
     <p id="loginMsg" class="dim" style="font-size:13px"></p></div>`;
   d.showModal(); $('nick').focus(); // opened after Settings → the topmost modal, so it's the active one
 }
@@ -2702,8 +2705,8 @@ async function addClaude() {
   $('loginMsg').textContent = 'Starting claude setup-token…';
   try { await call('claude_login', {nick: $('nick').value}); $('dlg2').close(); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; }
 }
-async function pasteClaude() {
-  try { await call('claude_add_token', {nick: $('nick').value, token: $('token').value}); $('dlg2').close(); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; }
+async function pasteClaude(custom) {
+  try { await call('claude_add_token', custom ? {nick: $('nick').value, token: $('apiKey').value, baseUrl: $('baseUrl').value.trim()} : {nick: $('nick').value, token: $('token').value});$('dlg2').close(); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; }
 }
 async function askNewAccount() {
   const known = S.accounts.map(a => a.id);

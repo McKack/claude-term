@@ -306,9 +306,13 @@ fn args(st: &State, p: &Project) -> Vec<String> {
 async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
     let p = st.project(pid).ok_or("project removed")?;
     let claude = store::which("claude").ok_or("Claude Code isn't installed (Settings › Install)")?;
-    let env: Vec<(String, String)> = [store::account_env(&p.account), store::gh_env(&p.gh), store::gcloud_env(&p.gaccount, &p.gcp),
+    let base = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).map(|a| a.base_url.clone()).unwrap_or_default();
+    let env: Vec<(String, String)> = [store::account_env(&p.account, &base),store::gh_env(&p.gh), store::gcloud_env(&p.gaccount, &p.gcp),
         vec![("CLAUDE_CODE_ENTRYPOINT".into(), "sdk-clauracle".into())]].concat();
     let mut cmd = tokio::process::Command::from(store::command(&claude));
+    if !base.is_empty() {
+        cmd.env_remove("CLAUDE_CODE_OAUTH_TOKEN");
+    }
     cmd.args(args(st, &p)).envs(env).env_remove("CLAUDECODE").current_dir(&p.path)
         .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null()).kill_on_drop(true);

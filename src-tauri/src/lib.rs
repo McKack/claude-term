@@ -458,16 +458,21 @@ async fn claude_login(app: AppHandle, st: St<'_>, nick: String) -> R<Value> {
     let token = tauri::async_runtime::spawn_blocking(move || {
         store::setup_token(|url| emit(&a2, "login_url", json!({"url": url})))
     }).await.map_err(|e| e.to_string())??;
-    claude_add_token(st, nick, token)
+    claude_add_token(st, nick, token, None)
 }
 
 #[tauri::command(async)]
-fn claude_add_token(st: St, nick: String, token: String) -> R<Value> {
-    if !store::token_ok(&token) {
+fn claude_add_token(st: St, nick: String, token: String, base_url: Option<String>) -> R<Value> {
+    let base = base_url.unwrap_or_default();
+    if !base.is_empty() {
+        if !base.trim().starts_with("http") || token.trim().is_empty() {
+            return Err("Needs an http(s) base URL and an API key.".into());
+        }
+    } else if !store::token_ok(&token) {
         return Err("That doesn't look like a token from `claude setup-token` (sk-ant-oat…).".into());
     }
     let mut cfg = st.cfg.lock().unwrap();
-    let a = store::add_account(&mut cfg, &nick, &token);
+    let a = store::add_account(&mut cfg, &nick, &token, &base);
     store::save(&cfg);
     Ok(json!(a))
 }
