@@ -2642,6 +2642,7 @@ function drawAtp() {
     + (pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...S.plans[cur].map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
         ${pl.length > 1 || pl[0].file !== 'PLAN.md' ? `<button class="ib" title="Merge every plan file into PLAN.md" onclick="mergePlans()">${icon('brush')}</button>` : ''}
+        ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
         ${P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
         + L(q.map((x, i) => { const g = `<button class="qdrag" title="Drag to reorder (writes PLAN.md)" onpointerdown="qDrag(event, ${i})">⠿</button>`;
             return tli(esc(x), {on: `planCheck(${i}, this)`, ...(!i && busy[cur] ? {cls: 'working', end: `<small class="tw">${icon('sparkle')}<span>${workAgo()}</span></small>` + g} : {end: g})}); }))
@@ -2676,6 +2677,12 @@ async function mergePlans() {
   if (!from.length && pl[0]?.file === 'PLAN.md') return;
   if (!await sure(`Merge into PLAN.md?\n\n${from.map(o => `${o.file}: ${o.items.length} task${o.items.length === 1 ? '' : 's'}`).join('\n') || 'Creates PLAN.md'}\n\nClaude moves them into PLAN.md's Queue (by priority, duplicates merged) and removes them from those files.`)) return;
   sendNow(cur, {text: `Merge the open tasks of ${from.map(o => o.file).join(', ') || 'HANDOVER.md'} into PLAN.md's "## Queue" (by priority, merge duplicates; things needing the user's yes under "## Waiting on the user"), then remove them from those files (in HANDOVER.md drop its Queue section). Don't start any task.`, atts: []});
+}
+// cleanup: Claude proposes a tidier Queue (merge/drop/reorder vs project state) → user confirms in chat before it writes
+async function cleanPlan() {
+  const n = (S.queues?.[cur] || []).length;
+  if (!await sure(`Clean up the plan?\n\nClaude reviews the ${n} queued tasks against the project's current state: merges related ones, drops stale or already-done ones, re-orders by priority.\n\nIt shows the proposed Queue first and only writes PLAN.md after you say yes.`)) return;
+  sendNow(cur, {text: `Clean up PLAN.md's "## Queue": check each task against the code/git state; merge related tasks, drop stale or already-done ones, re-order by priority (needs-the-user's-yes → "## Waiting on the user"). Show the proposed new Queue plus one line per merge/drop with why, then STOP: don't edit PLAN.md or start any task until I confirm.`, atts: []});
 }
 // Plan tab: drag a Queue row by its grip (pointer events ∵ Tauri's file-drop handler eats HTML5 DnD) → row moves live
 // among its siblings → drop = plan_move rewrites PLAN.md's Queue (blocks whole, renumbered); optimistic S.queues splice
