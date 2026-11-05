@@ -1061,12 +1061,20 @@ pub fn run() {
             });
             tauri::async_runtime::spawn(async move {
                 let _ = tauri::async_runtime::spawn_blocking(store::gh_users).await;
-                if st2.cfg.lock().unwrap().catalog.is_empty() {
-                    let dir = st2.plugin_dir.clone();
-                    if let Ok(items) = tauri::async_runtime::spawn_blocking(move || store::catalog(&dir)).await {
+                // every start (background, ~`claude mcp list` time): new servers/plugins/skills get known → denied/off
+                // unless picked. Changed → sessions reconnect after their current reply so their CLI settings follow.
+                let dir = st2.plugin_dir.clone();
+                if let Ok(items) = tauri::async_runtime::spawn_blocking(move || store::catalog(&dir)).await {
+                    let ids = |c: &[store::Item]| c.iter().map(|i| i.id.clone()).collect::<Vec<_>>();
+                    let changed = {
                         let mut cfg = st2.cfg.lock().unwrap();
+                        let changed = ids(&cfg.catalog) != ids(&items);
                         cfg.catalog = items;
                         store::save(&cfg);
+                        changed
+                    };
+                    if changed {
+                        for l in st2.live.lock().unwrap().values() { l.inbox.push(claude::Input::Reconnect); }
                     }
                 }
             });
