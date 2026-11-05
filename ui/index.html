@@ -336,6 +336,9 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
   white-space:nowrap; overflow-x:auto; scrollbar-width:none; display:flex; gap:4px; font-size:12px; } .pathbar .crumbs a { color:var(--dim); } .pathbar .crumbs a:hover { color:var(--accent); }
 .tree div { padding:3px 8px; border-radius:6px; cursor:pointer; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; gap:6px; align-items:center; }
 .tree div:hover { background:var(--hover); } .tree svg { color:var(--faint); }
+/* edited-lately badge: count pill (folder, < 1 min) or dot; opacity set in badgeFiles, eased between its 5s ticks */
+.tree .eb { margin-left:auto; flex:none; min-width:8px; height:8px; border-radius:99px; background:var(--accent); transition:opacity 5s linear; }
+.tree .eb:not(:empty) { min-width:18px; height:16px; padding:0 5px; color:var(--ink); font-size:10.5px; font-weight:700; line-height:16px; text-align:center; }
 .code { display:grid; grid-template-columns:auto 1fr; font:12.5px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); }
 .code .ln { color:var(--faint); text-align:right; padding:8px 8px 8px 10px; border-right:1px solid var(--line); white-space:pre; user-select:none; }
 .code pre { margin:0; padding:8px 12px; white-space:pre; }
@@ -1113,6 +1116,9 @@ function addEntry(pid, e) {
   if (isProcess(e) && busy[pid]) { hand[pid] = hand[pid] || 'soft'; if (pid === cur) drawChrome(); }
   if (!e.ts && (e.kind === 'user' || e.kind === 'claude')) e.ts = new Date().toISOString();
   (logs[pid] ||= []).push(e);
+  if (e.kind === 'tool' && /^(Edit|MultiEdit|Write|NotebookEdit)\b/.test(toolName(e)) && (e.detail?.file_path || e.detail?.notebook_path)) {
+    (EDITS[pid] ||= {})[relOf(pid, e.detail.file_path || e.detail.notebook_path)] = Date.now(); if (pid === cur) badgeFiles();
+  }
   if (pid !== cur) return;
   const log = $('log'), box = log.querySelector('.col'), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
   box.querySelector('#empty')?.remove(); const lv = $('live'); (lv?.closest('.crow') || lv)?.remove();
@@ -1690,6 +1696,26 @@ async function drawFiles(rel = filesAt[cur] ?? '') {
       return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p)">${icon(i.dir ? 'folder' : 'file')}${esc(i.name)}</div>`; }).join('')
       || '<p class="dim" style="padding:0 8px">Empty.</p>'}</div>`;
   const c = box.querySelector('.pathbar .crumbs'); c.scrollLeft = c.scrollWidth;
+  badgeFiles();
+}
+// Files tree badges: files Claude edited (live, this app run). < 1 min: folders show how many files inside, files a dot;
+// 1–2 min: a plain dot that fades out; then gone. EDITS[pid][rel path] = ms of the last edit
+const EDITS = {}, EDIT_MS = 60000;
+const relOf = (pid, f) => { const r = (P(pid)?.path || '').replace(/[\\/]+$/, '').replace(/\\/g, '/'); f = f.replace(/\\/g, '/');
+  return r && f.toLowerCase().startsWith(r.toLowerCase() + '/') ? f.slice(r.length + 1) : f; };
+function badgeFiles() {
+  clearTimeout(badgeFiles.t);
+  const ed = Object.entries(EDITS[cur] || {}), now = Date.now();
+  let live = false;
+  document.querySelectorAll('#files .tree > div[data-p]').forEach(r => {
+    const p = r.dataset.p, ages = ed.filter(([f]) => f === p || f.startsWith(p + '/')).map(([, t]) => now - t).filter(a => a < 2 * EDIT_MS);
+    const n = ages.filter(a => a < EDIT_MS).length, isDir = !ed.some(([f]) => f === p);
+    let b = r.querySelector('.eb');
+    if (!ages.length) return b?.remove();
+    live = true; b ||= r.appendChild(document.createElement('span')); b.className = 'eb';
+    b.textContent = n && isDir ? n : ''; b.style.opacity = n ? 1 : Math.max(0, 2 - Math.min(...ages) / EDIT_MS); // linear fade over min 2 b.title = n ? `${n} file${n > 1 ? 's' : ''} edited in the last minute` : 'Edited lately';
+  });
+  if (live) badgeFiles.t = setTimeout(badgeFiles, 5000);
 }
 let envAt = null;
 function previewFile(rel) {
