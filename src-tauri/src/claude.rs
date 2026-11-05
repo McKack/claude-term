@@ -606,7 +606,7 @@ async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) ->
         return json!({"behavior": "allow", "updatedInput": input});
     }
     let (cont, mode, allow) = st.project(pid).map(|p| (p.cont, p.mode, p.allow)).unwrap_or_default();
-    if tool != "AskUserQuestion" && allow.iter().any(|t| t == tool) {
+    if tool != "AskUserQuestion" && allow.iter().any(|r| rule_hit(r, tool, &input, store::now() as u64)) {
         return json!({"behavior": "allow", "updatedInput": input});
     }
     // the project's mode as set now: a switch mid-turn only reaches the CLI on reconnect, and CLI acceptEdits
@@ -632,11 +632,34 @@ async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) ->
     if tool == "AskUserQuestion" {
         input["answers"] = a["answers"].clone();
     }
-    if a["session"] == true { // "Allow this session": CLI-side rule, gone when the CLI process ends (reconnect/clear)
+    if a["session"] == true { // "This session": CLI-side rule, gone when the CLI process ends (reconnect/clear)
+        let mut r = json!({"toolName": tool}); // rule "Bash(grep:*)" → ruleContent "grep:*"
+        if let Some(c) = a["rule"].as_str().and_then(|s| s.strip_prefix(tool)?.strip_prefix('(')?.strip_suffix(')')) { r["ruleContent"] = json!(c); }
         return json!({"behavior": "allow", "updatedInput": input, "updatedPermissions": [{"type": "addRules",
-            "rules": [{"toolName": tool}], "behavior": "allow", "destination": "session"}]});
+            "rules": [r], "behavior": "allow", "destination": "session"}]});
     }
     json!({"behavior": "allow", "updatedInput": input})
+}
+
+/// Project allow rule: "Tool" or "Bash(prefix:*)", optional "@<unix secs>" expiry (For 24 hours).
+/// Prefix rules never match shell operators ∵ "grep x && rm …" must still ask.
+fn rule_hit(rule: &str, tool: &str, input: &Value, now: u64) -> bool {
+    let (rule, until) = rule.rsplit_once('@').and_then(|(r, t)| Some((r, t.parse::<u64>().ok()?))).unwrap_or((rule, u64::MAX));
+    if now >= until { return false; }
+    match rule.strip_suffix(":*)").and_then(|r| r.split_once('(')) {
+        None => rule == tool,
+        Some((t, pre)) => t == tool && input["command"].as_str().is_some_and(|c| { let c = c.trim();
+            (c == pre || c.starts_with(&format!("{pre} "))) && !c.contains(['&', '|', ';', '`', '$', '>', '<', '\n']) }),
+    }
+}
+
+#[test]
+fn rule_hit_works() {
+    let i = json!({"command": "grep -c foo x.txt"});
+    assert!(rule_hit("Bash", "Bash", &i, 0) && rule_hit("Bash(grep:*)", "Bash", &i, 0) && rule_hit("Bash(grep -c:*)", "Bash", &i, 0));
+    assert!(!rule_hit("Bash(grep -v:*)", "Bash", &i, 0) && !rule_hit("Bash(gre:*)", "Bash", &i, 0) && !rule_hit("Edit", "Bash", &i, 0));
+    assert!(!rule_hit("Bash(grep:*)", "Bash", &json!({"command": "grep x && rm -rf /"}), 0));
+    assert!(rule_hit("Bash(grep:*)@100", "Bash", &i, 99) && !rule_hit("Bash(grep:*)@100", "Bash", &i, 100));
 }
 
 fn tool_list() -> Value {

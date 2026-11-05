@@ -100,6 +100,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #branch { font-size:12px; color:var(--dim); background:var(--side); border:1px solid var(--line); padding:1px 8px; border-radius:99px; white-space:nowrap; }
 .seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
 .seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
+.amenu:not([hidden]) { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; } .amenu .seg { margin-right:auto; }
 .seg button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #log { flex:1; overflow:auto; padding:8px 24px 24px; margin-top:-54px; padding-top:62px; mask-image:linear-gradient(to bottom, transparent 36px, #000 52px); } /* under #head: 16px fade, lower part of the header */
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
@@ -1458,21 +1459,27 @@ function askCard(e) {
       + `<div class="btns"><button class="btn ghost" data-a="0">Dismiss</button><button class="btn primary" data-a="1">Answer</button></div>`;
   } else {
     const body = i.command || (i.file_path ? i.file_path + '\n\n' + (i.new_string || i.content || '') : JSON.stringify(i, null, 2));
+    // depth ("What?"): Bash grep -c → Bash | Bash grep | Bash grep -c; rules "Bash(grep:*)" (CLI syntax), medium default
+    const w = e.tool === 'Bash' ? (i.command || '').trim().split(/\s+/).filter(Boolean).slice(0, 2) : [];
+    rules = [[e.tool, e.tool], ...w.map((_, n) => [`${e.tool}(${w.slice(0, n + 1).join(' ')}:*)`, `${e.tool} ${w.slice(0, n + 1).join(' ')}`])];
+    rule = rules[Math.min(1, rules.length - 1)][0];
     d.innerHTML = `<h4>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
-      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="ib" data-m title="More ways to allow">${icon('more')}</button><button class="btn" data-a="3" title="Don't ask for ${esc(e.tool)} again until this session restarts or is cleared">Allow this session</button><button class="btn primary" data-a="1">Allow</button></div>`;
-    // "…": the lasting allows. 2 = this project (Clauracle), 4 = everywhere (~/.claude/settings.json, plain Claude too)
-    d.querySelector('[data-m]').onclick = ev => menuAt(ev.currentTarget, [{title: `Allow ${e.tool}`},
-      {label: 'Always allow in this project', hint: 'Undo in the project manager', run: () => answer('2')},
-      {label: 'Always allow everywhere', hint: 'Adds it to your Claude settings (~/.claude/settings.json)', run: () => answer('4')}]);
+      <div class="amenu" hidden>${rules.length > 1 ? `<div class="dim">What?</div><span class="seg">${rules.map(([r, l]) => `<button data-r="${esc(r)}" class="${r === rule ? 'on' : ''}">${esc(l)}</button>`).join('')}</span>` : ''}
+        <button class="btn ghost" data-a="3" title="Until this session restarts or is cleared">This session</button><button class="btn ghost" data-a="5" title="In this project, for the next 24 hours">For 24 hours</button><button class="btn ghost" data-a="2" title="In this project; undo in the project manager">Always</button></div>
+      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-m>Allow ${icon('chev')}</button><button class="btn primary" data-a="1">Allow now</button></div>`;
+    d.querySelector('[data-m]').onclick = () => { const m = d.querySelector('.amenu'); m.hidden = !m.hidden; };
+    d.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { rule = b.dataset.r; d.querySelectorAll('[data-r]').forEach(x => x.classList.toggle('on', x === b)); });
   }
+  var rules, rule;
   d.querySelectorAll('[data-a]').forEach(b => b.onclick = () => answer(b.dataset.a));
   function answer(a) {
     const allow = a !== '0', answers = {};
-    if (a === '2') { const p = P(e.pid) || P(); call('update_project', {pid: p.id, changes: {allow: [...new Set([...(p.allow || []), e.tool])]}}).then(refresh); }
-    if (a === '4') call('allow_global', {tool: e.tool}).catch(err => toast(String(err)));
+    // 2 = always, 5 = 24 h ("rule@unix secs", claude::rule_hit): this project's allow list
+    if (a === '2' || a === '5') { const p = P(e.pid) || P(), r = a === '5' ? `${rule}@${Math.floor(Date.now() / 1000) + 86400}` : rule;
+      call('update_project', {pid: p.id, changes: {allow: [...new Set([...(p.allow || []), r])]}}).then(refresh); }
     (i.questions || []).forEach((q, n) => answers[q.question] = [...d.querySelectorAll(`[name=a${n}]:checked`)]
       .map(x => x.value === '__other' ? x.closest('.q').querySelector('.other').value : x.value).join(', '));
-    call('answer_ask', {id: e.id, answer: {allow, answers, session: a === '3', note: d.querySelector('.deny')?.value || ''}});
+    call('answer_ask', {id: e.id, answer: {allow, answers, session: a === '3', rule, note: d.querySelector('.deny')?.value || ''}});
     e.done = allow ? 'allowed' : 'denied';
     d.replaceWith(askCard(e));
   }
@@ -1536,7 +1543,7 @@ function projectsPage() {
     ${fold('p-save', 'Options', `<div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
-      ${(p.allow || []).length ? optRow('Always allowed', 'Tools this project runs without asking', `<span class="row wrap" style="gap:4px">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t)} ✕</span>`).join('')}</span>`) : ''}
+      ${(p.allow || []).length ? optRow('Always allowed', 'Tools this project runs without asking', `<span class="row wrap" style="gap:4px">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ✕</span>`).join('')}</span>`) : ''}
       ${optRow('Credit Claude in commits', 'Off: no Co-Authored-By or "Generated with" lines; Claude never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
       ${p.gh ? optRow('Prompts become team tasks', 'Each task you give Claude is filed as a GitHub issue (Team tasks), claimed while it works and closed when done', sw(p.team_auto, 'setM({team_auto:this.checked})')) : ''}
       ${optRow('Keep .env away from Claude', 'Claude can\'t read or edit .env files; manage them in the .env panel', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
