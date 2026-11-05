@@ -2744,9 +2744,10 @@ const todos = pid => {
   return l.filter(e => e.kind === 'tool' && /^TodoWrite\b/.test(e.text) && Array.isArray(e.detail?.todos)).pop()?.detail.todos || [];
 };
 // subagents Claude started (Task/Agent tool): running = no result yet while the turn runs; their own tool calls carry `parent`
-const agentsOf = pid => { const l = logs[pid] || [];
+// running only if started this turn (after the last user msg) ∵ an old agent w/o logged result (background, cut by restart) looked revived each prompt
+const agentsOf = pid => { const l = logs[pid] || [], turn = l.findLastIndex(e => e.kind === 'user');
   return l.filter(e => e.kind === 'tool' && /^(Task|Agent)\b/.test(e.text)).map(e => { const sub = l.filter(x => x.parent && x.parent === e.id);
-    return {type: e.detail?.subagent_type || 'agent', desc: e.detail?.description || '', running: !!busy[pid] && !!e.id && !l.some(x => x.result_of === e.id),
+    return {type: e.detail?.subagent_type || 'agent', desc: e.detail?.description || '', running: !!busy[pid] && !!e.id && l.indexOf(e) > turn && !l.some(x => x.result_of === e.id),
       steps: sub.length, last: sub.at(-1)?.text.replace(/^↳ /, '')}; }); };
 // bottom of the right panel, tabs Tasks | Agents, height dragged from its top edge (remembered).
 // Tasks: Claude's live list (open + last 3 done) → HANDOVER.md's queue (next) → CHANGES.md's newest 3 (done, faded)
