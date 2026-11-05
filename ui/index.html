@@ -528,12 +528,12 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="right" hidden>
   <div id="rtabs">
     <button data-t="tasks" id="rtabTasks" hidden onclick="rightTab('tasks')" title="Plan & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button>
-    <button data-t="gh" onclick="rightTab('gh')" title="GitHub"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
-    <button data-t="build" onclick="rightTab('build')" title="Build"><svg class="i"><use href="#i-hammer"/></svg><span>Build</span></button>
-    <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
-    <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
     <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
     <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
+    <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
+    <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
+    <button data-t="build" onclick="rightTab('build')" title="Build"><svg class="i"><use href="#i-hammer"/></svg><span>Build</span></button>
+    <button data-t="gh" onclick="rightTab('gh')" title="GitHub"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
   </div>
   <div id="rbody"></div>
   <div id="atp"></div>
@@ -1491,6 +1491,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
+    if (d.step === 'build' && d.done != null) { delete GHI[d.pid]; if (d.pid === cur && tab === 'build') drawRight(); } /* new build files → Release list refetch */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
   gh_code: () => { const m = $('ghMsg'); if (m) m.innerHTML = `Enter <b style="font-size:18px" class="sel mono">${esc(d.code)}</b> at <a href="#" data-url="${esc(d.url)}">github.com/login/device</a>`; T.opener.openUrl(d.url); },
@@ -1733,11 +1734,13 @@ async function relWizard(p, force) {
   const seg = `<span class="seg" style="margin-bottom:8px">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const up = to > k; // moving up (or starting) → mark when the list is green; same stage → light update path
   const act = up ? `<button class="btn primary" ${left ? `title="${left} check${left > 1 ? 's' : ''} open"` : ''} onclick="relMark(${to}, ${left})">${icon('rocket')}Mark as ${STAGES[SK[to]]}</button>`
-    : `<button class="btn primary" onclick="rightTab('gh')">${icon('rocket')}Release ${STAGES[SK[k]]} update</button>`;
+    : `<button class="btn primary" onclick="relGoTo()">${icon('rocket')}Release ${STAGES[SK[k]]} update</button>`;
   return sec('Release', `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}</p>${seg}
     <div>${items.map(row).join('')}</div><div class="btnrow col">${act}${ask}</div>`, (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re);
 }
 const relRefresh = () => { delete RELC[cur]; delete SECRETS[cur]; drawRight(); };
+// Release panel sits below the wizard (Build tab): open its fold + scroll to it
+const relGoTo = () => { const t = $('relTag'), d = t?.closest('details'); if (!d) return say('No GitHub release panel: this project has no GitHub remote yet (GitHub tab › publish).'); d.open = true; d.scrollIntoView({behavior: 'smooth', block: 'start'}); t.focus(); };
 async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
   const text = id === 'summary' ? `Release prep: in a few lines, what this project is and does, then what's missing for an MVP release (open checks: ${open || 'none'}). Plan only, don't change files.` : RELAI[id];
@@ -1768,8 +1771,12 @@ async function drawRight(force) {
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
           <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
       + await relWizard(p)
+      + await (async () => { // Release (GitHub) right below the wizard: Build → Run → Release; gh_info shared with GitHub tab via GHI (30s)
+        let c = GHI[pid0];
+        if (force === true || !c || Date.now() - c.t > 30000) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) GHI[pid0] = c = {g, t: Date.now()}; }
+        return c?.g?.remote ? releaseSec(c.g.release, c.g.builds) : ''; })()
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
-    if (cur === pid0 && tab === 'build') box.innerHTML = h; // awaits above (release_check: git+gh) → user may have switched tab/project
+    if (cur === pid0 && tab === 'build') { box.innerHTML = h; relReady(); } // awaits above (release_check: git+gh) → user may have switched tab/project
     return;
   }
   /* GHI cache: last gh_info per project → drawn at once, refetch only if >30s old or forced (Refresh/actions).
@@ -1798,7 +1805,7 @@ function drawGh(g, busy) {
       : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
       : g.err ? `<p class="err">${esc(g.err)}</p>` : publishForm(p, g.users || []), `<button class="ib${busy ? ' upd' : ''}" title="${busy ? 'Updating…' : 'Refresh'}" onclick="drawRight(true)">${icon('loop')}</button>`)
     + `<div id="tasksBox">${tasksHtml()}</div>`
-    + (g.remote ? changesSec(g.git || {}) + releaseSec(g.release, g.builds) : '')
+    + (g.remote ? changesSec(g.git || {}) : '')
     + fold('prs', 'Pull requests', list(g.prs, 'pr'), g.prs?.length || 0) + fold('issues', 'Issues', list(g.issues, 'issue'), g.issues?.length || 0);
   relReady();
 }
