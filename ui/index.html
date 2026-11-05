@@ -1573,6 +1573,7 @@ function toggleRight() { UI.rc = !UI.rc; layout(); drawRight(); }
 function rightTab(t) { tab = UI.tab = t; try { localStorage.ui = JSON.stringify(UI); } catch {} drawRight(); } // restored at start (UI.tab)
 // Build auto-setup: commands guessed from project files (Rust build_guess, no tokens) → confirm; cached per project
 const GUESS = {};
+const MAC = {}; // pid → ships for macOS (ships_mac), once per app run
 async function guessHtml() {
   const g = GUESS[cur] ??= await call('build_guess', {pid: cur}).catch(() => ({}));
   const ks = ['build', 'run', 'deploy'].filter(k => g[k]), set = `<button class="btn${ks.length ? '' : ' primary'} block" onclick="openManager(cur)">${icon('hammer')}Set build and run commands</button>`;
@@ -1595,6 +1596,9 @@ async function drawRight() {
     box.innerHTML = sec('Commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}
         <button class="btn ghost" onclick="call('stop_run', {pid:cur})">${icon('stop')}Stop</button></div>`
         : await guessHtml(), `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
+      + (!svcOf(p).includes('macsign') && (MAC[cur] ??= await call('ships_mac', {pid: cur}).catch(() => false))
+        ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
+          <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
     return;
   }
@@ -1878,6 +1882,11 @@ const SERVICES = {
   resend: {name: 'Resend', note: 'Email', keys: ['RESEND_API_KEY'], steps: ['Verify your domain', 'Make an API key'], links: [['Domains', 'https://resend.com/domains'], ['API keys', 'https://resend.com/api-keys']]},
   sentry: {name: 'Sentry', note: 'Error tracking', keys: ['SENTRY_DSN'], links: [['Projects', 'https://sentry.io/organizations/']]},
   vercel: {name: 'Vercel', note: 'Hosting', keys: ['VERCEL_TOKEN'], links: [['Tokens', 'https://vercel.com/account/tokens'], ['Dashboard', 'https://vercel.com/dashboard']]},
+  macsign: {name: 'Mac signing', note: 'Developer ID: Mac builds open without the "unidentified developer" block', gh: true,
+    keys: ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_TEAM_ID', 'APPLE_ID', 'APPLE_PASSWORD'],
+    steps: ['Make signing request (below): it opens the folder with devid.csr', 'Certificates › + › Developer ID Application (G2 Sub-CA), upload devid.csr, download the .cer',
+      'Load the .cer (below): fills the first four keys', 'Make an app-specific password, then fill APPLE_ID (your Apple account email) and APPLE_PASSWORD', 'Send to GitHub: CI then signs and notarizes Mac builds'],
+    links: [['Certificates', 'https://developer.apple.com/account/resources/certificates/add'], ['App-specific password', 'https://account.apple.com/account/manage']]},
   appstore: {name: 'App Store Connect', note: 'iOS / macOS releases', keys: ['ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_PRIVATE_KEY'],
     steps: ['Make the app record', 'Integrations: make an API key (for uploads from CI)'], links: [['Apps', 'https://appstoreconnect.apple.com/apps'], ['API keys', 'https://appstoreconnect.apple.com/access/integrations/api']]},
   play: {name: 'Google Play', note: 'Android releases', keys: ['PLAY_SERVICE_ACCOUNT_JSON'],
@@ -1906,11 +1915,35 @@ async function drawServices() {
       + (x.steps ? `<ol class="steps">${x.steps.map(t => `<li>${esc(t)}</li>`).join('')}</ol>` : '')
       + (x.links ? `<div class="btnrow">${x.links.map(([l, u]) => `<button class="btn sm" data-url="${esc(u)}">${esc(l)}</button>`).join('')}</div>` : '')
       + `<div class="keys">${x.keys.map(k => `<div><span>${k}</span>${envKeys.have.has(k) ? '<small class="ok">set</small>' : '<small class="faint">missing</small>'}</div>`).join('')}</div>`
-      + (miss.length ? `<button class="btn primary block" onclick="fillKeys('${id}')">${icon('key')}Fill in ${miss.length} key${miss.length > 1 ? 's' : ''}</button>` : ''),
+      + (id === 'macsign' ? `<div class="btnrow"><button class="btn sm" onclick="appleCsr()">Make signing request</button><button class="btn sm" onclick="appleCer()">Load .cer…</button></div>` : '')
+      + (miss.length ? `<button class="btn primary block" onclick="fillKeys('${id}')">${icon('key')}Fill in ${miss.length} key${miss.length > 1 ? 's' : ''}</button>` : '')
+      + (x.gh ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
       `<span class="pill" ${miss.length ? 'style="background:var(--hover);color:var(--dim)"' : ''}>${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`;
   if (ids.includes('google')) drawCloud();
+  ids.filter(id => SERVICES[id].gh).forEach(id => secCount(id));
+}
+// repo secret names cached per project ∵ gh round trip; refreshed after a send
+const SECRETS = {};
+async function secCount(id, fresh) {
+  const pid = cur; if (fresh || !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
+  const s = SECRETS[pid], el = $('sec-' + id), k = SERVICES[id].keys;
+  if (el) el.textContent = s ? `(${k.filter(x => s.includes(x)).length}/${k.length} on GitHub)` : '';
+}
+async function toSecrets(id, btn) {
+  btn.disabled = true; $('secErr-' + id).textContent = '';
+  try { await call('gh_secrets_set', {pid: cur, keys: SERVICES[id].keys}); await secCount(id, true); }
+  catch (e) { $('secErr-' + id).textContent = e; }
+  btn.disabled = false;
+}
+async function appleCsr() {
+  const email = prompt('Your Apple Developer account email'); if (!email) return;
+  try { T.opener.revealItemInDir(await call('apple_csr', {pid: cur, email})); } catch (e) { alert(e); }
+}
+async function appleCer() {
+  const cer = await T.dialog.open({filters: [{name: 'Certificate', extensions: ['cer', 'pem', 'crt']}]}); if (!cer) return;
+  try { const who = await call('apple_p12', {pid: cur, cer}); addEntry(cur, {kind: 'note', text: 'Mac signing: ' + who}); drawServices(); } catch (e) { alert(e); }
 }
 // every missing key of a service in one dialog, written into the project's .env (values never go through Claude)
 function fillKeys(id) {

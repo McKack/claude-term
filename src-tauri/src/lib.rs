@@ -790,6 +790,95 @@ fn env_ignore(st: St, pid: String, file: String) -> R<()> {
     std::fs::write(gi, text).map_err(|e| e.to_string())
 }
 
+// ---- Mac signing (Developer ID) from any OS, via openssl ----
+// key + CSR (~/.clauracle/apple/<pid>, never in the repo) → user uploads CSR at Apple, downloads .cer → .p12 →
+// base64 + identity/team into .env → gh secrets (tauri-action signs + notarizes when APPLE_* secrets exist).
+
+fn apple_dir(pid: &str) -> R<std::path::PathBuf> {
+    let d = dirs::home_dir().ok_or("no home")?.join(".clauracle/apple").join(pid);
+    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    Ok(d)
+}
+
+fn ssl(args: &[&str]) -> R<String> {
+    let o = store::run("openssl", args, None, &[]);
+    if o.ok { Ok(o.stdout) } else { Err(format!("openssl: {}", o.stderr.trim())) }
+}
+
+/// Signing request; reuses an existing key (a new key would orphan a cert already made from the old one).
+#[tauri::command]
+fn apple_csr(pid: String, email: String) -> R<String> {
+    let d = apple_dir(&pid)?;
+    let (key, csr) = (d.join("devid.key"), d.join("devid.csr"));
+    if !key.is_file() || !csr.is_file() {
+        ssl(&["req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", &key.to_string_lossy(), "-out", &csr.to_string_lossy(),
+              "-subj", &format!("/emailAddress={}/CN=Developer ID", email.replace(['/', '='], ""))])?;
+    }
+    Ok(csr.to_string_lossy().into())
+}
+
+/// Apple's .cer + our key → .p12 → .env (APPLE_CERTIFICATE base64, password, signing identity, team id). Returns the identity.
+#[tauri::command]
+fn apple_p12(st: St, pid: String, cer: String) -> R<String> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let d = apple_dir(&pid)?;
+    let s = |x: &str| d.join(x).to_string_lossy().into_owned();
+    if !d.join("devid.key").is_file() { return Err("make the signing request first".into()); }
+    ssl(&["x509", "-inform", "DER", "-in", &cer, "-out", &s("devid.pem")])
+        .or_else(|_| ssl(&["x509", "-in", &cer, "-out", &s("devid.pem")]))?; // .cer is DER; PEM accepted too
+    let subj = ssl(&["x509", "-in", &s("devid.pem"), "-noout", "-subject", "-nameopt", "sep_multiline,utf8"])?;
+    let field = |k: &str| subj.lines().find_map(|l| l.trim().strip_prefix(k)).unwrap_or("").to_string();
+    let (cn, team) = (field("CN="), field("OU="));
+    if !cn.starts_with("Developer ID Application") {
+        return Err(format!("that's a \"{cn}\" certificate: make a Developer ID Application one"));
+    }
+    let pw = ssl(&["rand", "-hex", "16"])?.trim().to_string();
+    let args = |legacy| { let mut a = vec!["pkcs12", "-export", "-inkey"]; if legacy { a.insert(2, "-legacy"); } a };
+    let (k, pem, p12, pass) = (s("devid.key"), s("devid.pem"), s("devid.p12"), format!("pass:{pw}"));
+    let rest = ["-in", pem.as_str(), "-out", p12.as_str(), "-passout", pass.as_str()];
+    // -legacy (OpenSSL 3) ∵ macOS `security import` can't read its default AES p12; OpenSSL 1.x has no flag → retry without
+    ssl(&[args(true).as_slice(), &[k.as_str()], &rest].concat()).or_else(|_| ssl(&[args(false).as_slice(), &[k.as_str()], &rest].concat()))?;
+    let b64 = ssl(&["base64", "-A", "-in", &p12])?.trim().to_string();
+    let env = std::path::Path::new(&p.path).join(".env");
+    let mut text = std::fs::read_to_string(&env).unwrap_or_default();
+    for (key, v) in [("APPLE_CERTIFICATE", b64.as_str()), ("APPLE_CERTIFICATE_PASSWORD", pw.as_str()), ("APPLE_SIGNING_IDENTITY", cn.as_str()), ("APPLE_TEAM_ID", team.as_str())] {
+        text = store::env_set(&text, key, Some(v));
+    }
+    std::fs::write(&env, text).map_err(|e| e.to_string())?;
+    if store::git_ignored(&p.path, ".env") == Some(false) { env_ignore(st, pid, ".env".into())?; }
+    Ok(cn)
+}
+
+/// Does this project build for macOS (a CI workflow mentions macos, or it's a Tauri app)? → Build tab offers Mac signing.
+#[tauri::command]
+fn ships_mac(st: St, pid: String) -> R<bool> {
+    let root = std::path::PathBuf::from(st.project(&pid).ok_or("no such project")?.path);
+    Ok(root.join("src-tauri/tauri.conf.json").is_file() || std::fs::read_dir(root.join(".github/workflows")).into_iter().flatten().flatten()
+        .any(|e| std::fs::read_to_string(e.path()).is_ok_and(|t| t.to_lowercase().contains("macos"))))
+}
+
+/// Names of the repo's GitHub Actions secrets.
+#[tauri::command]
+fn gh_secrets(st: St, pid: String) -> R<Vec<String>> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let v = store::gh_json(&["secret", "list", "--json", "name"], &p.gh, Some(&p.path));
+    Ok(v.as_array().ok_or("gh couldn't list secrets (no repo / no access?)")?.iter().filter_map(|x| x["name"].as_str().map(String::from)).collect())
+}
+
+/// .env values of `keys` → repo secrets, via a temp dotenv file (no values on command lines), deleted right after.
+#[tauri::command]
+fn gh_secrets_set(st: St, pid: String, keys: Vec<String>) -> R<usize> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let text = std::fs::read_to_string(std::path::Path::new(&p.path).join(".env")).unwrap_or_default();
+    let vals: Vec<(String, String)> = store::env_parse(&text).into_iter().filter(|(k, v)| keys.contains(k) && !v.is_empty()).collect();
+    if vals.is_empty() { return Err("none of those keys have a value in .env".into()); }
+    let tmp = apple_dir(&pid)?.join("secrets.env");
+    std::fs::write(&tmp, vals.iter().map(|(k, v)| format!("{k}={v}\n")).collect::<String>()).map_err(|e| e.to_string())?;
+    let o = store::run("gh", &["secret", "set", "-f", &tmp.to_string_lossy()], Some(&p.path), &store::gh_env(&p.gh));
+    let _ = std::fs::remove_file(&tmp);
+    if o.ok { Ok(vals.len()) } else { Err(o.stderr.trim().to_string()) }
+}
+
 // ---- code view ----
 
 /// A path inside the project (no escaping it with ..).
@@ -1085,7 +1174,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_p12, ships_mac, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

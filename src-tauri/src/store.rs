@@ -420,7 +420,8 @@ pub fn which(name: &str) -> Option<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     dirs.extend([bin_dir(), h.join(".local/bin"), h.join(".claude/local"), h.join(".npm-global/bin"),
                  h.join("google-cloud-sdk/bin"), dirs::data_local_dir().unwrap_or_default().join("Google/Cloud SDK/google-cloud-sdk/bin"),
-                 "C:/Program Files (x86)/Google/Cloud SDK/google-cloud-sdk/bin".into(), "/opt/homebrew/bin".into(), "/usr/local/bin".into(), "/usr/bin".into()]);
+                 "C:/Program Files (x86)/Google/Cloud SDK/google-cloud-sdk/bin".into(), "/opt/homebrew/bin".into(), "/usr/local/bin".into(), "/usr/bin".into(),
+                 "C:/Program Files/Git/usr/bin".into()]); // last: Git for Windows' openssl (Mac signing)
     let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat"] } else { &[""] };
     dirs.iter().flat_map(|d| exts.iter().map(move |e| d.join(format!("{name}{e}")))).find(|p| p.is_file())
 }
