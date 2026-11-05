@@ -1100,7 +1100,7 @@ pub fn browsers() -> Vec<serde_json::Value> {
         let profiles: Vec<serde_json::Value> = state["profile"]["info_cache"].as_object().into_iter().flatten()
             .map(|(dir, i)| serde_json::json!({"dir": dir, "name": i["name"].as_str().unwrap_or(dir),
                                                "user": i["user_name"].as_str().unwrap_or("")})).collect();
-        Some(serde_json::json!({"name": name, "exe": exe.to_string_lossy(), "profiles": profiles}))
+        Some(serde_json::json!({"name": name, "exe": exe.to_string_lossy(), "data": data.to_string_lossy(), "profiles": profiles}))
     }).collect()
 }
 

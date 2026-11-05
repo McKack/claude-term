@@ -865,6 +865,55 @@ fn open_in_browser(exe: String, profile: String, url: String) -> R<()> {
     c.arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
+/// In-app browser: one child webview "web" laid over the Browser tab's placeholder. Profile dir ~/.clauracle/browser,
+/// shared by all projects ∴ logins persist + are shared. rect None → hide. nav → load url (else only move/resize).
+/// No IPC for it: capabilities need `remote.urls` for external pages. Its navigations → event `weburl` (address bar).
+#[tauri::command]
+fn web_view(app: AppHandle, url: String, rect: Option<[f64; 4]>, zoom: f64, nav: bool) -> R<()> {
+    use tauri::{LogicalPosition as P, LogicalSize as Z};
+    let e = |e: tauri::Error| e.to_string();
+    let wv = app.get_webview("web");
+    let Some([x, y, w, h]) = rect else { return wv.map_or(Ok(()), |v| v.hide().map_err(e)) };
+    let u: tauri::Url = url.parse().map_err(|_| "bad address")?;
+    if !matches!(u.scheme(), "http" | "https") { return Err("http(s) links only".into()); }
+    let v = match wv {
+        Some(v) => {
+            v.set_position(P::new(x, y)).map_err(e)?;
+            v.set_size(Z::new(w, h)).map_err(e)?;
+            if nav { v.navigate(u).map_err(e)?; }
+            v
+        }
+        None => {
+            let a = app.clone();
+            let b = tauri::webview::WebviewBuilder::new("web", tauri::WebviewUrl::External(u))
+                .data_directory(dirs::home_dir().unwrap_or_default().join(".clauracle/browser"))
+                .on_navigation(move |u| { emit(&a, "weburl", json!(u.as_str())); true });
+            app.get_window("main").ok_or("no main window")?.add_child(b, P::new(x, y), Z::new(w, h)).map_err(e)?
+        }
+    };
+    v.set_zoom(zoom).map_err(e)?;
+    v.show().map_err(e)
+}
+
+/// Phone preview: does host:port accept a TCP connection (dev server bound to 0.0.0.0, not only localhost)?
+#[tauri::command]
+async fn reach(host: String, port: u16) -> bool {
+    use std::net::ToSocketAddrs;
+    tauri::async_runtime::spawn_blocking(move || (host.as_str(), port).to_socket_addrs().ok().and_then(|mut a| a.next())
+        .is_some_and(|a| std::net::TcpStream::connect_timeout(&a, std::time::Duration::from_millis(600)).is_ok()))
+        .await.unwrap_or(false)
+}
+
+/// Start page for the in-app browser: the browser profile's homepage (or first startup page) from its Preferences.
+#[tauri::command]
+fn homepage(exe: String, profile: String) -> String {
+    store::browsers().iter().find(|b| b["exe"] == exe.as_str())
+        .and_then(|b| std::fs::read_to_string(std::path::Path::new(b["data"].as_str()?).join(if profile.is_empty() { "Default" } else { &profile }).join("Preferences")).ok())
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|p| p["homepage"].as_str().or(p["session"]["startup_urls"][0].as_str()).map(String::from))
+        .filter(|u| u.starts_with("http")).unwrap_or_default()
+}
+
 /// Start `exe` (detached, it outlives us) and quit; the new instance resumes cut-off turns (claude::resume_interrupted).
 /// Main window geometry → config (close, quit, restart). Maximized keeps the last normal rect ∵ restore needs it.
 fn save_win(app: &AppHandle) {
@@ -1000,7 +1049,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

@@ -1396,6 +1396,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   line: () => { if (d.kind === 'claude') live[d.pid] = '';
     if (reading[d.pid] && /^(claude|tool|err)$/.test(d.kind)) readNote(d.pid, false); // notes/system lines of the reconnect ≠ the reply
     addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of}); if (d.result_of && d.pid === cur) drawAtp(); },
+  weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
   status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); busy[d.pid] = d.busy; if (!cur) drawHome(); }
@@ -1785,12 +1786,15 @@ function drawSide() {
   drawAtp();
 }
 
-// browser view: preview inside Clauracle, or open in a real browser profile (your logins live there)
+// browser view: in-app browser (native child webview, own profile shared by all projects), or open in a real browser profile
 const webUrl = {}, QRS = new Map(); // QR svg per url (cached)
-let BROWSERS = null, LAN = null, webPhone = false;
+let BROWSERS = null, LAN = null, webPhone = false, HOMEPG;
 async function drawWeb() {
   BROWSERS ||= await call('browsers');
-  const url = webUrl[cur] || (builds[cur]?.out.match(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?[^\s]*/g) || []).pop() || 'http://localhost:3000';
+  // start page: dev server from the build log, else the first browser profile's homepage, else localhost:3000
+  const b0 = BROWSERS[0];
+  HOMEPG ??= b0 ? await call('homepage', {exe: b0.exe, profile: b0.profiles[0]?.dir || ''}).catch(() => '') : '';
+  const url = webUrl[cur] || (builds[cur]?.out.match(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?[^\s]*/g) || []).pop() || HOMEPG || 'http://localhost:3000';
   webUrl[cur] = url;
   const opts = BROWSERS.flatMap(b => (b.profiles.length ? b.profiles : [{dir: '', name: 'default'}]).map(p =>
     `<option value='${esc(JSON.stringify([b.exe, p.dir]))}'>${esc(b.name)} · ${esc(p.name)}${p.user ? ' (' + esc(p.user) + ')' : ''}</option>`)).join('');
@@ -1799,9 +1803,13 @@ async function drawWeb() {
     LAN ??= await call('lan_ip');
     const purl = LAN ? url.replace(/\/\/(localhost|127\.0\.0\.1)/, '//' + LAN) : url, local = purl !== url;
     if (!QRS.has(purl)) QRS.set(purl, await call('qr', {text: purl}).catch(() => ''));
+    // only reachable from the phone if the dev server listens on all interfaces → offer Claude the fix
+    const pu = new URL(purl), off = local && !await call('reach', {host: pu.hostname, port: +pu.port || 80}).catch(() => true);
+    const fix = off ? `<div class="row" style="margin-bottom:8px"><small class="dim grow">Not reachable from the phone: the dev server only listens on localhost.</small>
+      <button class="btn" onclick="$('prompt').value = 'Make the dev server listen on all interfaces (0.0.0.0, e.g. vite --host) so a phone on the same Wi-Fi can open ${esc(purl)}'; grow(); $('prompt').focus()">Fix with Claude</button></div>` : '';
     // QR: 2 screen px per module; click → fills the panel width for scanning, click again → back
     phone = `<div class="qrbox"><div class="qr" title="Click to enlarge for scanning" onclick="this.classList.toggle('big')">${QRS.get(purl)}</div><div class="grow" style="min-width:0"><small class="dim">Scan on your phone${local ? ' (same Wi-Fi)' : ''}</small>
-      <a class="mono" data-url="${esc(purl)}" style="display:block;overflow-wrap:anywhere;color:var(--accent);cursor:pointer">${esc(purl)}</a></div></div>`;
+      <a class="mono" data-url="${esc(purl)}" style="display:block;overflow-wrap:anywhere;color:var(--accent);cursor:pointer">${esc(purl)}</a></div></div>${fix}`;
   }
   // reload ↔ go: typing a different address turns it into "go"
   $('rbody').innerHTML = `<div class="row" style="margin-bottom:8px"><button class="ib" id="wgo" title="Reload" onclick="webGo()">${icon('loop')}</button>
@@ -1809,13 +1817,27 @@ async function drawWeb() {
       oninput="const g = this.value !== webUrl[cur]; $('wgo').innerHTML = icon(g ? 'go' : 'loop'); $('wgo').title = g ? 'Go' : 'Reload'">
     <span class="seg"><button class="${webPhone ? '' : 'on'}" title="Desktop" onclick="webPhone=false; drawWeb()">${icon('monitor')}</button><button class="${webPhone ? 'on' : ''}" title="Phone" onclick="webPhone=true; drawWeb()">${icon('phone')}</button></span></div>
     ${phone}${webPhone ? `<div class="phone"><div class="screen"><div class="sbar"><b id="ptime">${new Date().toTimeString().slice(0, 5)}</b><i class="cam"></i><span class="bat"></span></div>
-      <iframe id="web" src="${esc(url)}"></iframe></div></div>` : `<iframe id="web" src="${esc(url)}"></iframe>`}`
+      <div id="web"></div></div></div>` : `<div id="web"></div>`}`
     + `<div class="row" style="margin-top:8px"><small class="dim">Open in</small><select id="bsel" class="grow">${opts || '<option value="">no Chromium browser found</option>'}</select>
       <button class="btn" onclick="openIn()">Open</button></div>`;
   const ph = $('rbody').querySelector('.phone'); // fit the 414px-wide phone into the panel (zoom keeps its 390px viewport)
   if (ph) ph.style.zoom = Math.min(1, ($('rbody').clientWidth - 4) / 414, (innerHeight - 330) / 868);
+  syncWeb();
 }
-function webGo() { const v = $('wurl').value.trim(); if (v === webUrl[cur]) $('web').src = v; else { webUrl[cur] = /^\w+:\/\//.test(v) ? v : 'http://' + v; drawWeb(); } }
+function webGo() { const v = $('wurl').value.trim(); webUrl[cur] = /^\w+:\/\//.test(v) ? v : 'http://' + v; webNav = ''; drawWeb(); } // webNav '' → (re)load
+// native webview follows #web's box; hidden when #web is gone or a dialog/menu is open (a native view covers any HTML)
+// ponytail: 4×/s poll, catches resize/rail/tabs/modals in one place; ResizeObserver+events if lag shows
+let webAt = '', webNav = '';
+function syncWeb() {
+  const el = $('web'), z = LOOK.scale / 100, r = el?.getBoundingClientRect();
+  const cover = [...document.querySelectorAll('dialog[open], :popover-open')].some(e => e.id !== 'tip');
+  const rect = r?.width && r.height && !cover ? [r.x, r.y, r.width, r.height].map(v => v * z) : null;
+  const ph = el?.closest('.phone'), wz = ph ? z * (+ph.style.zoom || 1) : 1; // phone: keep its 390px viewport
+  const url = webUrl[cur] || '', nav = !!rect && url !== webNav, key = JSON.stringify([rect, wz, url]);
+  if (key === webAt && !nav) return; webAt = key; if (nav) webNav = url;
+  call('web_view', {url, rect, zoom: wz, nav}).catch(e => { if (nav) toast(String(e)); });
+}
+setInterval(syncWeb, 250);
 function openIn() {
   const v = $('bsel').value; if (!v) return;
   const [exe, profile] = JSON.parse(v);
