@@ -294,9 +294,10 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .stat { text-align:center; line-height:1.15; padding:2px 0; } .stat b { display:block; font-size:14px; font-weight:600; }
 .stat small { font-size:10px; color:var(--faint); }
 #rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
-#rtabs button, #stabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; flex:none; }
+.ptabs { display:inline-flex; gap:2px; }
+#rtabs button, #stabs button, .ptabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; flex:none; }
 #rtabs button span, #stabs button span { display:none; } #rtabs button.on span, #stabs button.on span { display:inline; }
-#rtabs button:hover, #stabs button:hover { background:var(--hover); } #rtabs button.on, #stabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
+#rtabs button:hover, #stabs button:hover, .ptabs button:hover { background:var(--hover); } #rtabs button.on, #stabs button.on, .ptabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 #atp { position:relative; border-top:1px solid var(--line); height:240px; min-height:44px; display:flex; flex-direction:column; flex:none; } #atp:empty { display:none; }
 #atp.min { height:auto !important; min-height:0; } #atp.min .atbody, #atp.tabbed .atgrip { display:none; }
@@ -325,9 +326,18 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .code pre { margin:0; padding:8px 12px; white-space:pre; }
 #web { width:100%; height:calc(100vh - 175px); border:1px solid var(--line); border-radius:10px; background:#fff; }
 /* phone preview: a 390×844 viewport (iPhone-ish) in a bezel, shrunk with zoom to fit the panel */
-.phone { margin:0 auto; width:390px; height:844px; border:12px solid #111; border-radius:46px; overflow:hidden; box-shadow:0 0 0 1px var(--line2), var(--shadow); background:#000; }
-.phone #web { width:100%; height:100%; border:0; border-radius:0; }
-.qrbox { display:flex; gap:12px; align-items:center; margin-bottom:10px; } .qr svg { width:110px; height:110px; display:block; border-radius:8px; }
+/* bezel = padding on a dark box (not a border: the screen's own rounded clip avoids light AA seams at the corners) */
+.phone { margin:0 auto; width:414px; height:868px; padding:12px; box-sizing:border-box; border-radius:48px; background:#111; box-shadow:0 0 0 1px var(--line2), var(--shadow); }
+.phone .screen { position:relative; height:100%; border-radius:36px; overflow:hidden; background:#000; display:flex; flex-direction:column; }
+.phone .screen::after { content:""; position:absolute; inset:0; pointer-events:none; border-radius:inherit; background:radial-gradient(ellipse at center, transparent 62%, #0000002e 100%); }
+.phone .sbar { height:30px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:0 26px; color:#fff; font:600 13px system-ui, sans-serif; position:relative; }
+.phone .sbar .cam { position:absolute; left:50%; top:9px; width:12px; height:12px; margin-left:-6px; border-radius:50%; background:#1a1a1a; box-shadow:inset 0 0 0 3px #050505, 0 0 0 1px #222; }
+.phone .sbar .bat { width:22px; height:11px; border:1.5px solid #fff; border-radius:3px; position:relative; box-sizing:border-box; background:linear-gradient(90deg, #fff 70%, transparent 70%) content-box; padding:1px; }
+.phone .sbar .bat::after { content:""; position:absolute; right:-4px; top:2.5px; width:2px; height:4px; background:#fff; border-radius:0 1px 1px 0; }
+.phone #web { flex:1; width:100%; height:auto; border:0; border-radius:0; background:#fff; }
+.qr { flex:none; cursor:zoom-in; line-height:0; } .qr svg { padding:4px; background:#fff; border-radius:6px; shape-rendering:crispEdges; }
+.qr.big { flex-basis:100%; cursor:zoom-out; } .qr.big svg { width:100%; height:auto; } .qrbox:has(.qr.big) { flex-wrap:wrap; }
+.qrbox { display:flex; gap:12px; align-items:center; margin-bottom:10px; }
 
 /* dialogs */
 dialog { border-radius:20px; color:var(--text); padding:0; } dialog:focus, dialog:focus-visible { outline:none; }
@@ -408,7 +418,10 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4M19 6l1.5-1.5"/></symbol>
   <symbol id="i-search"viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
   <symbol id="i-clock"viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 0 0-5.6-1.5A3 3 0 0 0 4 8a3 3 0 0 0 0 5 3.5 3.5 0 0 0 3 5.5A3 3 0 0 0 12 19zM12 5a3 3 0 0 1 5.6-1.5A3 3 0 0 1 20 8a3 3 0 0 1 0 5 3.5 3.5 0 0 1-3 5.5A3 3 0 0 1 12 19zM12 5v14"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-go" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-brain"viewBox="0 0 24 24"><path d="M12 5a3 3 0 0 0-5.6-1.5A3 3 0 0 0 4 8a3 3 0 0 0 0 5 3.5 3.5 0 0 0 3 5.5A3 3 0 0 0 12 19zM12 5a3 3 0 0 1 5.6-1.5A3 3 0 0 1 20 8a3 3 0 0 1 0 5 3.5 3.5 0 0 1-3 5.5A3 3 0 0 1 12 19zM12 5v14"/></symbol>
   <symbol id="i-cal"viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
@@ -1672,19 +1685,23 @@ async function drawWeb() {
     LAN ??= await call('lan_ip');
     const purl = LAN ? url.replace(/\/\/(localhost|127\.0\.0\.1)/, '//' + LAN) : url, local = purl !== url;
     if (!QRS.has(purl)) QRS.set(purl, await call('qr', {text: purl}).catch(() => ''));
-    phone = `<div class="qrbox"><div class="qr">${QRS.get(purl)}</div><div class="grow" style="min-width:0"><small class="dim">Scan on your phone</small>
-      <a class="mono" data-url="${esc(purl)}" style="display:block;overflow-wrap:anywhere;color:var(--accent);cursor:pointer">${esc(purl)}</a>
-      ${local ? '<small class="faint">Same Wi-Fi; the dev server must listen on all addresses (e.g. <code>vite --host</code>)</small>' : ''}</div></div>`;
+    // QR: 2 screen px per module; click → fills the panel width for scanning, click again → back
+    phone = `<div class="qrbox"><div class="qr" title="Click to enlarge for scanning" onclick="this.classList.toggle('big')">${QRS.get(purl)}</div><div class="grow" style="min-width:0"><small class="dim">Scan on your phone${local ? ' (same Wi-Fi)' : ''}</small>
+      <a class="mono" data-url="${esc(purl)}" style="display:block;overflow-wrap:anywhere;color:var(--accent);cursor:pointer">${esc(purl)}</a></div></div>`;
   }
-  $('rbody').innerHTML = `<div class="row" style="margin-bottom:8px"><input id="wurl" class="grow sel mono" value="${esc(url)}" onkeydown="if(event.key==='Enter'){webUrl[cur]=this.value; drawWeb()}">
-    <button class="ib" title="Reload" onclick="$('web').src=$('wurl').value">${icon('loop')}</button>
-    <span class="seg"><button class="${webPhone ? '' : 'on'}" onclick="webPhone=false; drawWeb()">Desktop</button><button class="${webPhone ? 'on' : ''}" onclick="webPhone=true; drawWeb()">Phone</button></span></div>
-    ${phone}${webPhone ? `<div class="phone"><iframe id="web" src="${esc(url)}"></iframe></div>` : `<iframe id="web" src="${esc(url)}"></iframe>`}`
+  // reload ↔ go: typing a different address turns it into "go"
+  $('rbody').innerHTML = `<div class="row" style="margin-bottom:8px"><button class="ib" id="wgo" title="Reload" onclick="webGo()">${icon('loop')}</button>
+    <input id="wurl" class="grow sel mono" style="min-width:0" value="${esc(url)}" onkeydown="if(event.key==='Enter')webGo()"
+      oninput="const g = this.value !== webUrl[cur]; $('wgo').innerHTML = icon(g ? 'go' : 'loop'); $('wgo').title = g ? 'Go' : 'Reload'">
+    <span class="seg"><button class="${webPhone ? '' : 'on'}" title="Desktop" onclick="webPhone=false; drawWeb()">${icon('monitor')}</button><button class="${webPhone ? 'on' : ''}" title="Phone" onclick="webPhone=true; drawWeb()">${icon('phone')}</button></span></div>
+    ${phone}${webPhone ? `<div class="phone"><div class="screen"><div class="sbar"><b id="ptime">${new Date().toTimeString().slice(0, 5)}</b><i class="cam"></i><span class="bat"></span></div>
+      <iframe id="web" src="${esc(url)}"></iframe></div></div>` : `<iframe id="web" src="${esc(url)}"></iframe>`}`
     + `<div class="row" style="margin-top:8px"><small class="dim">Open in</small><select id="bsel" class="grow">${opts || '<option value="">no Chromium browser found</option>'}</select>
       <button class="btn" onclick="openIn()">Open</button></div>`;
   const ph = $('rbody').querySelector('.phone'); // fit the 414px-wide phone into the panel (zoom keeps its 390px viewport)
   if (ph) ph.style.zoom = Math.min(1, ($('rbody').clientWidth - 4) / 414, (innerHeight - 330) / 868);
 }
+function webGo() { const v = $('wurl').value.trim(); if (v === webUrl[cur]) $('web').src = v; else { webUrl[cur] = /^\w+:\/\//.test(v) ? v : 'http://' + v; drawWeb(); } }
 function openIn() {
   const v = $('bsel').value; if (!v) return;
   const [exe, profile] = JSON.parse(v);
@@ -2180,7 +2197,7 @@ const agentsOf = pid => { const l = logs[pid] || [];
 // bottom of the right panel, tabs Tasks | Agents, height dragged from its top edge (remembered).
 // Tasks: Claude's live list (open + last 3 done) → HANDOVER.md's queue (next) → CHANGES.md's newest 3 (done, faded)
 let atpTab = (() => { try { return localStorage.atpTab || 'tasks'; } catch { return 'tasks'; } })();
-const atpSet = t => { atpTab = t; try { localStorage.atpTab = t; } catch {} drawAtp(); };
+const atpSet = t => { atpTab = t; try { localStorage.atpTab = t; } catch {} if (atpMin) atpMinT(); else drawAtp(); }; // a tab click also expands
 // placement: 'right|left' + '-dock' (bottom of that panel) | '-tab' (a tab in that panel); atpMin = docked + folded to its header
 let ATW = (() => { try { return localStorage.atpWhere || 'right-dock'; } catch { return 'right-dock'; } })();
 let atpMin = (() => { try { return localStorage.atpMin === '1'; } catch { return false; } })();
@@ -2221,7 +2238,7 @@ function drawAtp() {
     : empty('No helper agents started in this session');
   const cnt = open.length ? open.length : q.length;
   el.innerHTML = `<div class="atgrip" title="Drag to resize"></div><div class="athead">${tabbed ? icon('list')
-      : `<button class="ib tog" title="${atpMin ? 'Expand' : 'Collapse'}" onclick="atpMinT()">${icon('list')}</button>`}<span class="seg">
+      : `<button class="ib tog" title="${atpMin ? 'Expand' : 'Collapse'}" onclick="atpMinT()">${icon('list')}</button>`}<span class="ptabs">
       <button class="${atpTab === 'tasks' ? 'on' : ''}" onclick="atpSet('tasks')">Tasks${cnt ? ` <span class="pill">${cnt}</span>` : ''}</button>
       <button class="${atpTab === 'agents' ? 'on' : ''}" onclick="atpSet('agents')">Agents${run.length ? ` <span class="pill">${run.length}</span>` : ''}</button></span><span class="grow"></span>
       <button class="ib" title="Where this panel shows" onclick="menuAt(this, atpPlaceItems())">${icon('more')}</button></div>

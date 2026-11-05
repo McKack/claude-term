@@ -189,7 +189,8 @@ fn new_session(app: AppHandle, st: St, pid: String) {
 #[tauri::command]
 fn qr(text: String) -> R<String> {
     let c = qrcode::QrCode::new(text.as_bytes()).map_err(|e| e.to_string())?;
-    Ok(c.render::<qrcode::render::svg::Color>().min_dimensions(150, 150).quiet_zone(true).build())
+    // 2px per module, no quiet zone (the page pads it): sharp at 1:1, scaled up on click
+    Ok(c.render::<qrcode::render::svg::Color>().module_dimensions(2, 2).quiet_zone(false).build())
 }
 
 /// This machine's LAN address (the route a phone on the same Wi-Fi would use); UDP connect sends nothing.
