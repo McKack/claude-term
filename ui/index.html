@@ -204,7 +204,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 #handpill, #workpill { align-self:center; font-size:12.5px; color:var(--dim); padding:5px 16px; border-radius:99px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
-#readytext b { font-weight:600; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#readytext b { font-weight:600; } #readytext:has(.btn) { white-space:normal; line-height:2.2; } #readytext .btn { margin-left:6px; padding:2px 10px; font-size:12.5px; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .btn.sm { padding:2px 8px; font-size:12px; }
 .warn { background:color-mix(in srgb, var(--err) 12%, transparent); color:var(--err); border-radius:10px; padding:8px 10px; font-size:12.5px; margin:6px 0; }
 .sec { margin:0 0 18px; } .sh { display:flex; align-items:center; gap:6px; min-height:26px; margin:0 2px 6px; } .sh .label { flex:1; }
@@ -419,7 +419,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Working…</span></div>
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
-    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" onclick="cont_()">Continue</button></div>
+    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" id="contBtn" onclick="P().ready ? cont_() : sendNow(cur, {text: 'Carry on with the next task: ' + nextUp(cur)[0], atts: []})">Continue</button></div>
     <div id="composer">
       <div id="slash" hidden></div>
       <div id="atts"></div>
@@ -670,10 +670,15 @@ function drawChrome() {
   $('tPony').classList.toggle('on', p.ponytail);
   $('tCont').classList.toggle('on', p.cont !== 'off');
   $('tCont').title = 'Clear & continue: ' + MODES[p.cont][0];
-  $('ready').hidden = !p.ready;
   const next = nextUp(cur);
+  // idle without a fresh handover: still offer the next task (sent in this session, no clear) or, queue empty, presets
+  const idle = !busy[cur] && !p.ready && p.cont !== 'off' && !queue[cur]?.length && !!logs[cur]?.length;
+  $('ready').hidden = !(p.ready || idle);
+  $('contBtn').hidden = !p.ready && !next.length;
   $('readytext').innerHTML = p.questions.length ? `Answer the question${p.questions.length > 1 ? 's' : ''} above, then continue.`
-    : next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}` : 'Handover written. Continue clears the context and carries on.';
+    : next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
+    : p.ready ? 'Handover written. Continue clears the context and carries on.'
+    : `All tasks done! What should we look at next? ${NEXT_IDEAS.map(([l], i) => `<button class="btn ghost" onclick="askNext(${i})">${l}</button>`).join('')}`;
   $('ready').title = next.map((t, i) => `${i + 1}. ${t}`).join('\n');
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
   $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
@@ -1455,6 +1460,11 @@ setInterval(pollTeam, 60000);
 const teamTasks = pid => Array.isArray(team[pid]?.tasks) ? team[pid].tasks : [];
 const isDoing = x => x.labels.some(l => l.name === 'in progress') || x.assignees.length;
 // what's next: HANDOVER.md's queue, else free team tasks
+// "All tasks done" presets: [button, prompt sent]
+const NEXT_IDEAS = [['Review for bugs', 'Review the recent changes for bugs and fix what you find.'],
+  ['Audit bloat', '/ponytail-audit'], ['Add tests', 'Find the riskiest untested code and add one small check for it.'],
+  ['Suggest next', 'Suggest the three most useful next improvements for this project, briefly, and ask which to do.']];
+const askNext = i => sendNow(cur, {text: NEXT_IDEAS[i][1], atts: []});
 const nextUp = pid => { const q = S.queues?.[pid] || []; return q.length ? q : teamTasks(pid).filter(x => !isDoing(x)).map(x => `#${x.number} ${x.title}`); };
 function tasksHtml() {
   const t = team[cur];
