@@ -117,11 +117,11 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .crow .cm { font-size:11.5px; color:var(--faint); display:flex; gap:7px; align-items:center; } .crow .cm b { color:var(--dim); font-weight:600; }
 #log:not(.term) .col > .tools, #log:not(.term) .col > .msg.err { margin-left:36px; } /* under Claude's bubble, past its avatar */
 /* reply to the terminal card above: └ spine from the card (avatar centre x = -23px) into a one-line "what ran" header */
-.crow.reply { margin-top:-1px; } .crow.reply:not(.cont) > .av { margin-top:22px; }
-.rto { position:relative; display:flex; align-items:center; gap:6px; height:18px; min-width:0; font-size:11.5px; color:var(--faint); cursor:pointer; }
-.rto::before { content:''; position:absolute; left:-23px; top:-10px; width:17px; height:19px; border:2px solid var(--line2); border-width:0 0 2px 2px; border-bottom-left-radius:8px; }
-.rto .i { width:12px; height:12px; } .rto b { color:var(--dim); font-weight:600; } .rto span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
-.rto:hover b, .rto:hover span { color:var(--text); }
+/* reply to a terminal card: a narrower card tucked under it (flat top, card's shadow overlaps), reply icon on the left */
+.tools.termcard { position:relative; z-index:1; }
+#log .crow.reply { width:94%; margin:-21px auto 0; } /* -12 gap -3 card margin -6 tuck */ #log .crow.reply > .av, #log .crow.reply .cm { display:none; }
+#log .crow.reply .cb { flex:1; max-width:none; } #log .crow.reply .msg.claude { position:relative; border-top:0; border-radius:0 0 14px 14px; padding:15px 14px 9px 38px; }
+.rto { position:absolute; left:13px; top:16px; color:var(--faint); cursor:pointer; line-height:0; } .rto .i { width:15px; height:15px; } .rto:hover { color:var(--text); }
 .termcard.flash { animation:tcflash 1.2s ease-out; } @keyframes tcflash { from { box-shadow:0 0 0 2px var(--accent); } }
 .crow .msg.user { max-width:100%; } .crow.cont > .av { visibility:hidden; height:0; } .crow.cont .cm { display:none; } .crow.cont { margin-top:-4px; }
 .msg.claude p { margin:.35em 0; } .msg.claude :first-child { margin-top:0; }
@@ -446,7 +446,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
   <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9a6 6 0 0 1-6 6H6"/></symbol>
-  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
+  <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 6 6v4"/></symbol>
+  <symbol id="i-info"viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
   <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14 4l6 6-7 7-6-6zM7 11l-3 3c-1 1-1 4-1 6 2 0 5 0 6-1l3-3"/></symbol>
   <symbol id="i-sparkle"viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
 </svg>
@@ -983,10 +984,10 @@ function put(box, e) {
   const tg = box.lastElementChild;
   if (e.kind === 'claude' && tg?.classList.contains('tools')) { // right after a terminal card → a reply to it: curved arrow + what ran
     const t = tg._tabs.get(tg._last), d = t.es.at(-1).detail || {}, r = document.createElement('div');
-    r.className = 'rto'; r.title = 'Jump to what ran';
-    r.innerHTML = `${icon('term')}<b>${esc(t.label)}</b><span>${esc((d.command || '').split('\n')[0] || d.file_path || d.pattern || t.title)}</span>`;
+    r.className = 'rto'; r.title = 'Reply to ' + t.label + ': ' + ((d.command || '').split('\n')[0] || d.file_path || d.pattern || t.title);
+    r.innerHTML = icon('reply'); // the card sits right above: no repeated header text
     r.onclick = () => { tg.scrollIntoView({block: 'nearest', behavior: 'smooth'}); tg.classList.remove('flash'); void tg.offsetWidth; tg.classList.add('flash'); };
-    el.classList.add('reply'); el.querySelector('.cb')?.prepend(r);
+    el.classList.add('reply'); el.querySelector('.msg.claude')?.prepend(r);
   }
   if (el.classList.contains('crow')) { // same speaker again (Claude across its tool lines too) → no second avatar/name
     let prev = box.lastElementChild;
