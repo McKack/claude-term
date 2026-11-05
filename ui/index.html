@@ -1493,7 +1493,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
-    if (d.step === 'build' && d.done != null) { delete GHI[d.pid]; if (d.pid === cur && tab === 'build') drawRight(); } /* new build files → Release list refetch */
+    if (d.step === 'build' && d.done != null) { delete GHI[d.pid]; (d.done && P(d.pid)?.rel_auto ? relAuto(d.pid) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → Release list refetch */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
   gh_code: () => { const m = $('ghMsg'); if (m) m.innerHTML = `Enter <b style="font-size:18px" class="sel mono">${esc(d.code)}</b> at <a href="#" data-url="${esc(d.url)}">github.com/login/device</a>`; T.opener.openUrl(d.url); },
@@ -1840,7 +1840,7 @@ function releaseSec(r, builds = []) {
   const last = r?.tagName || '', pv = RELC[cur]?.c?.version || '',
     next = pv && (!last || vgt(pv, fver(last))) ? 'v' + pv : last ? last.replace(/(\d+)(?!.*\d)/, n => +n + 1) : 'v0.1.0';
   // tick newest build per file type whose version matches the tag (or carries none); builds come newest first
-  const seen = new Set(), tick = b => { const x = b.name.replace(/^[^.]*/, ''), v = fver(b.name); if (seen.has(x) || (v && v !== tver(next))) return false; seen.add(x); return true; };
+  const pick = new Set(relPick(builds, tver(next))), tick = b => pick.has(b);
   const row = (b, on) => `<label class="check" title="${esc(b.path)}"><input type="checkbox" value="${esc(b.path)}" ${on ? 'checked' : ''} onchange="relReady()">
     <span class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(b.name)}<small class="dim" style="display:block">${b.mtime ? ago(b.mtime) + ' · ' : ''}${b.size ? mb(b.size) : 'added'}</small></span></label>`;
   return fold('release', 'Release', `${last ? `<p class="dim">Latest: <a data-url="${esc(r.url)}" style="cursor:pointer;color:var(--accent)">${esc(last)}</a></p>` : '<p class="dim">No releases yet.</p>'}
@@ -1850,7 +1850,30 @@ function releaseSec(r, builds = []) {
       || `<p class="dim" style="margin:0;font-size:13px">No recent builds found. ${P().build.build ? `<a style="cursor:pointer;color:var(--accent)" onclick="call('run_step', {pid:cur, step:'build'})">Build now</a>` : `<a style="cursor:pointer;color:var(--accent)" onclick="openManager(cur)">Set a build command</a>`}, or add files.</p>`}</div>
     <p id="relWarn" class="dim" style="font-size:13px;margin:0"></p>
     <div class="btnrow"><button class="btn" onclick="pickRelFiles()">${icon('clip')}Add files</button><button class="btn primary" id="relGo" onclick="makeRelease(this)">${icon('rocket')}Publish</button></div>
-    <p id="relErr" class="err" style="font-size:12.5px;margin:0"></p>`, builds.length);
+    <p id="relErr" class="err" style="font-size:12.5px;margin:0"></p>
+    <label class="check" title="After each successful build: if the project version is ahead of the latest release, publish v&lt;version&gt; with that version's newest build per file type"><input type="checkbox" ${P().rel_auto ? 'checked' : ''} onchange="relAutoSet(this)"><span class="grow">Release after build</span></label>`, builds.length);
+}
+// newest build per file type whose version = v (or carries none); builds come newest first
+const relPick = (builds, v) => { const seen = new Set(); return builds.filter(b => { const x = b.name.replace(/^[^.]*/, ''), bv = fver(b.name); if (seen.has(x) || (bv && bv !== v)) return false; seen.add(x); return true; }); };
+async function relAutoSet(el) {
+  if (el.checked && !await sure('Release after every build?\n\nWhen a build succeeds and the project version is ahead of the latest release, Clauracle publishes a GitHub release with those files. Releases are public on public repos.', 'Turn on')) return el.checked = false;
+  await call('update_project', {pid: cur, changes: {rel_auto: el.checked}}); await refresh();
+}
+// build done ok + rel_auto → release v<version> if ahead of the last tag; only files that carry that version (versionless could be stale); never re-tags
+async function relAuto(pid) {
+  const note = t => addEntry(pid, {kind: 'note', text: 'Release after build: ' + t});
+  delete RELC[pid];
+  const [g, c] = await Promise.all([call('gh_info', {pid}).catch(() => null), call('release_check', {pid}).catch(() => null)]);
+  if (g) GHI[pid] = {g, t: Date.now()};
+  if (c) RELC[pid] = {c, t: Date.now()};
+  if (!g?.remote) return note('skipped, no GitHub remote');
+  const v = c?.version || '', last = g.release?.tagName || '';
+  if (!SEMV.test(v)) return note('skipped, no project version found');
+  if (last && !vgt(v, fver(last))) return note(`skipped, v${v} isn't ahead of ${last}`);
+  const files = relPick(g.builds || [], v).filter(b => fver(b.name) === v).map(b => b.path);
+  if (!files.length) return note(`skipped, no build files named with v${v}`);
+  try { note('published ' + await call('release', {pid, tag: 'v' + v, files})); delete GHI[pid]; }
+  catch (e) { note('failed: ' + e); }
 }
 let relFiles = [];
 const relPicked = () => [...document.querySelectorAll('#relBox input:checked')].map(c => c.value);
