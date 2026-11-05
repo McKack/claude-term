@@ -1756,8 +1756,8 @@ async function drawRight(force) {
   if (tab === 'env') return drawEnv();
   if (tab === 'svc') return drawServices();
   if (tab === 'build') {
-    const has = p.build.build || p.build.run || p.build.deploy;
-    box.innerHTML = sec('Commands', has ? `<div class="btnrow b3">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+    const has = p.build.build || p.build.run || p.build.deploy, pid0 = cur;
+    const h = sec('Commands', has ? `<div class="btnrow b3">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>`
         : await guessHtml(), `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
@@ -1766,6 +1766,7 @@ async function drawRight(force) {
           <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
       + await relWizard(p)
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
+    if (cur === pid0 && tab === 'build') box.innerHTML = h; // awaits above (release_check: git+gh) → user may have switched tab/project
     return;
   }
   /* GHI cache: last gh_info per project → drawn at once, refetch only if >30s old or forced (Refresh/actions).
@@ -1819,8 +1820,9 @@ async function commitPush() {
 const ago = s => { const m = (Date.now() / 1000 - s) / 60; return m < 60 ? `${Math.max(1, m | 0)} min ago` : m < 1440 ? `${m / 60 | 0} h ago` : `${m / 1440 | 0} d ago`; };
 const mb = n => n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.ceil(n / 1e3) + ' kB';
 // version in a file name (Clauracle_0.1.0_x64-setup.exe → 0.1.0); a tag's version = tag minus leading v
-const fver = n => n.match(/\d+\.\d+\.\d+/)?.[0] || '', tver = t => t.replace(/^v/i, '');
-const vgt = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+// pre-release kept (0.2.0-beta.1) ∵ else a beta tag never matches its files; vgt ignores the suffix (parseInt)
+const fver = n => n.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.\d+)*)?/)?.[0] || '', tver = t => t.replace(/^v/i, ''), SEMV = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
+const vgt = (a, b) => { const x = a.split('.').map(n => parseInt(n, 10)), y = b.split('.').map(n => parseInt(n, 10)); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
 function releaseSec(r, builds = []) {
   // tag default: project version (release_check, if cached) when ahead of the last tag, else last +1 patch
   const last = r?.tagName || '', pv = RELC[cur]?.c?.version || '',
@@ -1846,8 +1848,8 @@ function relReady() {
   const v = tver($('relTag').value.trim()), odd = relPicked().map(f => fver(f.split(/[\\/]/).pop())).filter(x => x && x !== v);
   const none = ![...document.querySelectorAll('#relBox input')].some(c => fver(c.value.split(/[\\/]/).pop()) === v);
   $('relGo').disabled = !relPicked().length || !v || odd.length > 0;
-  $('relWarn').innerHTML = odd.length || (none && /^\d+\.\d+\.\d+$/.test(v))
-    ? `${odd.length ? `Picked files are v${esc([...new Set(odd)].join(', v'))}, the tag is v${esc(v)}. ` : `No build of v${esc(v)} yet. `}${/^\d+\.\d+\.\d+$/.test(v) && P().build.build
+  $('relWarn').innerHTML = odd.length || (none && SEMV.test(v))
+    ? `${odd.length ? `Picked files are v${esc([...new Set(odd)].join(', v'))}, the tag is v${esc(v)}. ` : `No build of v${esc(v)} yet. `}${SEMV.test(v) && P().build.build
       ? `<a style="cursor:pointer;color:var(--accent)" onclick="relBump('${esc(v)}')">Set version to ${esc(v)} and build</a>` : 'Build that version first.'}` : '';
 }
 async function relBump(v) {
@@ -2800,8 +2802,8 @@ function qDrag(e, from) {
     if (o) list.insertBefore(row, at(o) > at(row) ? o.nextSibling : o); };
   g.onpointerup = g.onpointercancel = async () => { g.onpointermove = g.onpointerup = g.onpointercancel = null; row.classList.remove('drag'); document.body.classList.remove('dragging');
     const to = at(row), q = S.queues?.[cur]; if (to === from || !q) return drawAtp();
-    q.splice(to, 0, q.splice(from, 1)[0]); drawAtp();
-    try { await call('plan_move', {pid: cur, from, to}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Reorder failed: ' + er}); } refresh(); };
+    const text = q[from]; q.splice(to, 0, q.splice(from, 1)[0]); drawAtp();
+    try { await call('plan_move', {pid: cur, from, to, text}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Reorder failed: ' + er}); } refresh(); };
 }
 // task text → HTML with the concrete bits in accent: `code`, paths/files (a/b, x.ext), identifiers (camelCase, snake_case, fn())
 // ponytail: regex heuristic; misses plain-word names, fine for a confirm
@@ -2812,7 +2814,7 @@ async function planCheck(i, box) {
   box.checked = false; const t = S.queues?.[cur]?.[i]; if (t == null) return;
   if (!await sure('Mark this task done?', 'Done, remove it', 'Cancel', `These highlighted items are planned to be worked on:\n\n<span style="color:var(--primary)">${hl(t)}</span>`)) return;
   S.queues[cur].splice(i, 1); drawAtp();
-  try { await call('plan_move', {pid: cur, from: i, to: null}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Remove failed: ' + er}); } refresh();
+  try { await call('plan_move', {pid: cur, from: i, to: null, text: t}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Remove failed: ' + er}); } refresh();
 }
 // Plan tab suggestion (PLAN.md Waiting on the user) → accept = to the Queue's end, dismiss = removed; plain file edit, no AI
 async function planWait(i, accept) {

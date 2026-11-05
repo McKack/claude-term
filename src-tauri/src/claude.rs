@@ -535,7 +535,10 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
     if queue(&p.path).is_empty() && p.answers.is_empty() {
         // empty Queue = done: no fresh "continue" turn ∵ it would only find nothing and stop (or invent work)
         line(app, pid, "note", "Queue is empty: all done. Send a new request to start again.");
-        notify(app, st, &format!("{}: done", p.name), "The Queue is empty.");
+        if !p.questions.is_empty() { // held auto_answer questions → show now, run is over
+            emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
+        }
+        notify(app, st, &format!("{}: done", p.name), &format!("The Queue is empty. {} question(s) waiting.", p.questions.len()));
         return; // ready stays: Continue still works if tasks get added
     }
     fresh(app, st, pid, live, true);
@@ -913,14 +916,21 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     drop(tx);
     if step == "run" {
         let (app2, pid2) = (app.clone(), pid.to_string());
-        let old = RUNNING.lock().unwrap().insert(pid.to_string(), child);
-        drop(old); // kill_on_drop stops the previous run
+        static GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let gen = GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let old = RUNNING.lock().unwrap().insert(pid.to_string(), (gen, child));
+        if let Some((_, c)) = old { kill(c); } // replace = stop the previous run's whole tree
         tauri::async_runtime::spawn(async move {
             while let Some(s) = rx.recv().await {
                 emit(&app2, "build", json!({"pid": pid2, "step": "run", "line": s, "done": null}));
             }
-            // output closed = app exited (or stopped) → UI swaps Stop back to Run
-            emit(&app2, "build", json!({"pid": pid2, "step": "run", "line": null, "done": true}));
+            // output closed = app exited (or stopped) → UI swaps Stop back to Run; skip if a newer run replaced this one
+            let mut r = RUNNING.lock().unwrap();
+            if r.get(&pid2).map_or(true, |(g, _)| *g == gen) {
+                r.remove(&pid2);
+                drop(r);
+                emit(&app2, "build", json!({"pid": pid2, "step": "run", "line": null, "done": true}));
+            }
         });
         return (true, String::new());
     }
@@ -938,10 +948,16 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
 }
 
 pub fn stop_run(pid: &str) -> bool {
-    RUNNING.lock().unwrap().remove(pid).is_some()
+    let c = RUNNING.lock().unwrap().remove(pid);
+    c.map(|(_, c)| kill(c)).is_some()
 }
 
-static RUNNING: std::sync::LazyLock<Mutex<HashMap<String, tokio::process::Child>>> =
+/// kill_on_drop only stops the `cmd /C` shell; the app it started (npm → node → cargo → app) kept running → tree kill.
+fn kill(c: tokio::process::Child) {
+    if let Some(id) = c.id() { crate::kill_tree(id); }
+}
+
+static RUNNING: std::sync::LazyLock<Mutex<HashMap<String, (u64, tokio::process::Child)>>> =
     std::sync::LazyLock::new(Default::default);
 
 // ---- history of a resumed session ------------------------------------------------------------------
@@ -995,7 +1011,11 @@ pub fn queue(dir: &str) -> Vec<String> {
 /// Block = top-level item + following lines (wraps, sub-items) → multi-line tasks move whole; numbered items renumbered
 /// from the first number. ponytail: index → owning top-level block, so an indented sub-item drags its parent.
 /// `to` = None → block removed (Plan tab tick = task done).
-pub fn queue_move(dir: &str, from: usize, to: Option<usize>) -> Result<(), String> {
+/// `want` = task text the UI showed → refuse if Claude changed PLAN.md meanwhile (else a stale index hits another task).
+pub fn queue_move(dir: &str, from: usize, to: Option<usize>, want: Option<&str>) -> Result<(), String> {
+    if want.is_some_and(|w| queue(dir).get(from).map(|s| s.as_str()) != Some(w)) {
+        return Err("PLAN.md changed meanwhile: try again".into());
+    }
     let path = std::path::Path::new(dir).join(primary(dir));
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
@@ -1006,9 +1026,18 @@ pub fn queue_move(dir: &str, from: usize, to: Option<usize>) -> Result<(), Strin
     let item = regex::Regex::new(r"^(\s*)(?:\d+[.)]|[-*])\s+(?:\[ \]\s*)?(.+)").unwrap();
     let starts: Vec<usize> = (s..e).filter(|&i| item.captures(lines[i]).map_or(false, |c| c[1].is_empty())).collect();
     // open item k → its block (same filter as items(): [x] skipped)
-    let owner: Vec<Option<usize>> = (s..e).filter_map(|i| item.captures(lines[i]).filter(|c| !c[2].starts_with("[x]") && !c[2].starts_with("[X]"))
-        .map(|_| starts.iter().rposition(|&b| b <= i))).collect();
+    let opens: Vec<usize> = (s..e).filter(|&i| item.captures(lines[i]).is_some_and(|c| !c[2].starts_with("[x]") && !c[2].starts_with("[X]"))).collect();
+    let owner: Vec<Option<usize>> = opens.iter().map(|&i| starts.iter().rposition(|&b| b <= i)).collect();
     let Some(Some(fb)) = owner.get(from).copied() else { return Err("task not found".into()) };
+    let fi = opens[from];
+    if to.is_none() && fi != starts[fb] {
+        // ticked sub-item → only it (+ its deeper wrap lines) goes, not the parent block
+        let ind = lines[fi].len() - lines[fi].trim_start().len();
+        let mut j = fi + 1;
+        while j < e && !lines[j].trim().is_empty() && !item.is_match(lines[j]) && lines[j].len() - lines[j].trim_start().len() > ind { j += 1; }
+        let out: Vec<&str> = lines[..fi].iter().chain(&lines[j..]).copied().collect();
+        return std::fs::write(&path, out.join(nl) + if text.ends_with('\n') { nl } else { "" }).map_err(|e| e.to_string());
+    }
     let tb = match to { None => None, Some(t) => match owner.get(t) { Some(Some(b)) => Some(*b), _ => return Err("task not found".into()) } };
     if tb == Some(fb) { return Ok(()); }
     let mut tail_from = e; // trailing blank lines stay at the section's end, not with the last block
@@ -1148,13 +1177,17 @@ mod tests {
         let p = d.join("PLAN.md");
         std::fs::write(&p, "# Plan\n\n## Queue\n0. A first\n   A wrap\n3. B\n- [x] gone\n4. C\n\n## Waiting\n- W\n").unwrap();
         let dir = d.to_str().unwrap();
-        queue_move(dir, 0, Some(2)).unwrap();
+        queue_move(dir, 0, Some(2), Some("A first A wrap")).unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "# Plan\n\n## Queue\n0. B\n- [x] gone\n1. C\n2. A first\n   A wrap\n\n## Waiting\n- W\n");
         assert_eq!(queue(dir), ["B", "C", "A first A wrap"]);
-        queue_move(dir, 2, Some(0)).unwrap();
+        assert!(queue_move(dir, 2, Some(0), Some("B")).is_err()); // stale text → refused
+        queue_move(dir, 2, Some(0), None).unwrap();
         assert_eq!(queue(dir), ["A first A wrap", "B", "C"]);
-        queue_move(dir, 0, None).unwrap(); // tick = done → block gone, renumbered
+        queue_move(dir, 0, None, None).unwrap(); // tick = done → block gone, renumbered
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "# Plan\n\n## Queue\n0. B\n- [x] gone\n1. C\n\n## Waiting\n- W\n");
+        std::fs::write(&p, "## Queue\n1. X\n   - a\n     a wrap\n   - b\n2. Y\n").unwrap();
+        queue_move(dir, 1, None, None).unwrap(); // tick sub-item → only it goes
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "## Queue\n1. X\n   - b\n2. Y\n");
     }
 
     #[test]

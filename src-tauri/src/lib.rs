@@ -794,7 +794,7 @@ fn build_guess(st: St, pid: String) -> R<store::Build> {
     Ok(store::guess_build(&st.project(&pid).ok_or("no such project")?.path))
 }
 
-#[tauri::command]
+#[tauri::command(async)] // taskkill blocks
 fn stop_run(pid: String) -> bool {
     claude::stop_run(&pid)
 }
@@ -949,7 +949,8 @@ fn version_of(root: &std::path::Path) -> Option<(String, &'static str)> {
     ["src-tauri/tauri.conf.json", "package.json", "Cargo.toml", "src-tauri/Cargo.toml", "pyproject.toml"].into_iter().find_map(|f| {
         let t = std::fs::read_to_string(root.join(f)).ok()?;
         let v = if f.ends_with(".json") { serde_json::from_str::<Value>(&t).ok()?["version"].as_str()?.to_string() } else { toml_version(&t)? };
-        Some((v, f))
+        // tauri.conf "version": "../package.json" = path ref → not a version, try the next file
+        v.starts_with(|c: char| c.is_ascii_digit()).then_some((v, f))
     })
 }
 fn toml_version(t: &str) -> Option<String> {
@@ -992,7 +993,7 @@ fn version_set(st: St, pid: String, v: String) -> R<Vec<String>> {
 }
 /// json: first `"version": "x"`; toml: first line `version = "x"` (= [package] in practice). None = no version there.
 fn swap_version(t: &str, v: &str) -> Option<String> {
-    let at = t.find("\"version\"").or_else(|| t.lines().scan(0, |o, l| { let s = *o; *o += l.len() + 1; Some((s, l)) })
+    let at = t.find("\"version\"").or_else(|| t.split_inclusive('\n').scan(0, |o, l| { let s = *o; *o += l.len(); Some((s, l)) }) /* ≠ lines(): +1 was off by one per CRLF */
         .find(|(_, l)| l.starts_with("version") && l[7..].trim_start().starts_with('=')).map(|(s, _)| s))?;
     let q1 = at + t[at..].find(['=', ':'])? + 1;
     let q1 = q1 + t[q1..].find('"')? + 1;
@@ -1022,8 +1023,8 @@ fn bundle_id_set(st: St, pid: String, id: String) -> R<()> {
 
 /// Plan tab drag: reorders the primary plan's Queue (claude::queue_move); to = null → removes the task (ticked done).
 #[tauri::command]
-fn plan_move(st: St, pid: String, from: usize, to: Option<usize>) -> R<()> {
-    claude::queue_move(&st.project(&pid).ok_or("no such project")?.path, from, to)
+fn plan_move(st: St, pid: String, from: usize, to: Option<usize>, text: Option<String>) -> R<()> {
+    claude::queue_move(&st.project(&pid).ok_or("no such project")?.path, from, to, text.as_deref())
 }
 
 /// Plan tab suggestion i: accept → moved to the Queue's end, else dismissed (claude::wait_take).
@@ -1296,7 +1297,7 @@ fn restart(app: AppHandle) {
     }
 }
 
-fn kill_tree(pid: u32) {
+pub(crate) fn kill_tree(pid: u32) {
     if cfg!(windows) {
         let _ = store::command(std::path::Path::new("taskkill")).args(["/F", "/T", "/PID", &pid.to_string()]).output();
     } else {
