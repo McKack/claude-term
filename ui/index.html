@@ -336,12 +336,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 #rtabs button span, #stabs button span { display:none; } #rtabs button.on span, #stabs button.on span { display:inline; }
 #rtabs button:hover, #stabs button:hover, .ptabs button:hover { background:var(--hover); } #rtabs button.on, #stabs button.on, .ptabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
-#atp { position:relative; border-top:1px solid var(--line); height:240px; min-height:44px; display:flex; flex-direction:column; flex:none; } #atp:empty { display:none; }
-#atp.min { height:auto !important; min-height:0; } #atp.min .atbody, #atp.tabbed .atgrip { display:none; }
-#atp.tabbed { flex:1; height:auto !important; min-height:0; border-top:0; } .athead .ib.tog { margin:-4px -2px -4px -6px; }
-.atgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } .atgrip:hover, body.dragging .atgrip { background:color-mix(in srgb, var(--accent) 30%, transparent); }
-.athead { display:flex; gap:8px; align-items:center; padding:8px 14px 6px; color:var(--faint); } .athead .seg button { font-size:12.5px; }
-.atbody { flex:1; overflow:auto; padding:2px 14px 12px; display:flex; flex-direction:column; gap:5px; } .atbody .label { margin:6px 0 0; }
+#atp { display:flex; flex-direction:column; gap:5px; } #atp:empty { display:none; } #atp .label { margin:6px 0 0; }
 .atrow { display:flex; gap:8px; align-items:baseline; font-size:13px; } .atrow small { display:block; color:var(--faint); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .atrow .dot { flex:none; translate:0 -1px; } .atrow .tk { width:14px; flex:none; color:var(--faint); } .atrow.in_progress { color:var(--accent); } .atrow.completed { color:var(--faint); text-decoration:line-through; opacity:.7; }
 .atrow.completed .grow { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } /* done = one line; full text in the tooltip */
@@ -491,7 +486,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="side">
   <div id="brand"><svg class="logo" onclick="goHome()" style="cursor:pointer" title="Home"><use href="#i-logo"/></svg><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b>
 </div>
-  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="tasks" id="stabTasks" hidden onclick="setSide('tasks')" title="Plan & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button></span>
+  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
@@ -536,17 +531,16 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 
 <aside id="right" hidden>
   <div id="rtabs">
-    <button data-t="tasks" id="rtabTasks" hidden onclick="rightTab('tasks')" title="Plan & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button>
+    <button data-t="gh" onclick="rightTab('gh')" title="GitHub: plan, tasks, repo"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
+    <button data-t="agents" onclick="rightTab('agents')" title="Agents"><svg class="i"><use href="#i-bot"/></svg><span>Agents</span></button>
     <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
     <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
     <button data-t="build" onclick="rightTab('build')" title="Build"><svg class="i"><use href="#i-hammer"/></svg><span>Build</span></button>
-    <button data-t="gh" onclick="rightTab('gh')" title="GitHub"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
     <i class="rsep"></i><!-- workspace group (Code, Browser) always behind this line -->
     <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
     <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
   </div>
   <div id="rbody"></div>
-  <div id="atp"></div>
   <div id="rrail" class="railbox"></div><div class="grip" data-side="r" title="Drag to resize, double-click to collapse"></div>
 </aside>
 
@@ -1770,7 +1764,7 @@ async function drawRight(force) {
   if (UI.rc) return drawRRail();
   document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
   const box = $('rbody'), p = P();
-  box.hidden = tab === 'tasks'; if (tab === 'tasks' || ATW === 'right-tab') drawAtp(); if (tab === 'tasks') return; // leaving the Plan tab must re-hide #atp
+  if (tab === 'agents') { box.innerHTML = '<div id="atp"></div>'; return drawAtp(); }
   if (tab === 'code') return drawCode();
   if (tab === 'web') return drawWeb();
   if (tab === 'env') return drawEnv();
@@ -1796,11 +1790,11 @@ async function drawRight(force) {
   /* GHI cache: last gh_info per project → drawn at once, refetch only if >30s old or forced (Refresh/actions).
      While fetching: refresh icon pulses; inputs the user changed meanwhile are re-applied onto the fresh render (same → drop). */
   const pid = cur, c = GHI[pid], stale = force === true || !c || Date.now() - c.t > 30000;
-  if (c) drawGh(c.g, stale); else box.innerHTML = '<p class="dim">Loading…</p>';
+  if (c) drawGh(c.g, stale); else { box.innerHTML = '<div id="atp"></div><p class="dim">Loading…</p>'; drawAtp(); } // Plan needs no gh: show it at once
   if (!stale) return;
   const before = c && formVals(box), g = await call('gh_info', {pid}).catch(e => c?.g || {err: String(e)});
   GHI[pid] = {g, t: Date.now()};
-  if (pid !== cur || tab !== 'gh' || $('right').hidden || UI.rc) return;
+  if (pid !== cur || tab !== 'gh' || $('right').hidden || UI.rc || qDragging) return; // mid-drag re-render would drop the row; GHI already fresh
   const mine = before && formVals(box), focus = document.activeElement?.id;
   drawGh(g, false);
   if (mine) for (const [k, v] of Object.entries(mine)) if (v !== before[k]) { const el = formEl(box, k); if (el) el.type === 'checkbox' ? el.checked = v : el.value = v; }
@@ -1818,10 +1812,11 @@ function drawGh(g, busy) {
   box.innerHTML = sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
       : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
       : g.err ? `<p class="err">${esc(g.err)}</p>` : publishForm(p, g.users || []), `<button class="ib${busy ? ' upd' : ''}" title="${busy ? 'Updating…' : 'Refresh'}" onclick="drawRight(true)">${icon('loop')}</button>`)
+    + '<div id="atp"></div>' // Plan (issue queue / PLAN.md, drag order, Suggestions, Cleanup): drawAtp fills it
     + `<div id="tasksBox">${tasksHtml()}</div>`
     + (g.remote ? changesSec(g.git || {}) : '')
     + fold('prs', 'Pull requests', list(g.prs, 'pr'), g.prs?.length || 0) + fold('issues', 'Issues', list(g.issues, 'issue'), g.issues?.length || 0);
-  relReady();
+  drawAtp(); relReady();
 }
 // info only (user: no chores): uncommitted files listed; Claude commits, claude::after_turn pushes (store::auto_push)
 function changesSec(s) {
@@ -2052,11 +2047,10 @@ async function drawCode() {
 function setSide(t) { UI.st = t; layout(); drawSide(); }
 function toggleLeft() { UI.lc = !UI.lc; layout(); }
 function drawSide() {
-  const t = UI.st || 'projects';
+  const t = UI.st === 'files' ? 'files' : 'projects'; // old saved 'tasks' tab (removed) → projects
   document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', b.dataset.s === t));
   $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files';
   if (t === 'files') drawFiles();
-  drawAtp();
 }
 
 // browser view: in-app browser (native child webview, own profile shared by all projects), or open in a real browser profile
@@ -2739,7 +2733,7 @@ function barMin(id) {
 const rMin = () => barMin('rtabs'), lMin = () => Math.max(180, barMin('shead'));
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
-if (UI.tab) tab = UI.tab;
+if (UI.tab) tab = UI.tab === 'tasks' ? 'gh' : UI.tab; // old Plan tab → GitHub
 applyLook();
 function layout() {
   try { localStorage.ui = JSON.stringify(UI); } catch {}
@@ -2788,34 +2782,10 @@ const agentsOf = pid => { const l = logs[pid] || [], turn = l.findLastIndex(e =>
   return l.filter(e => e.kind === 'tool' && /^(Task|Agent)\b/.test(e.text)).map(e => { const sub = l.filter(x => x.parent && x.parent === e.id);
     return {type: e.detail?.subagent_type || 'agent', desc: e.detail?.description || '', running: !!busy[pid] && !!e.id && l.indexOf(e) > turn && !l.some(x => x.result_of === e.id),
       steps: sub.length, last: sub.at(-1)?.text.replace(/^↳ /, '')}; }); };
-// bottom of the right panel, tabs Tasks | Agents, height dragged from its top edge (remembered).
-// Tasks: Claude's live list (open + last 3 done) → HANDOVER.md's queue (next) → CHANGES.md's newest 3 (done, faded)
-let atpTab = (() => { try { return localStorage.atpTab || 'tasks'; } catch { return 'tasks'; } })();
-const atpSet = t => { atpTab = t; try { localStorage.atpTab = t; } catch {} if (atpMin) atpMinT(); else drawAtp(); }; // a tab click also expands
-// placement: 'right|left' + '-dock' (bottom of that panel) | '-tab' (a tab in that panel); atpMin = docked + folded to its header
-let ATW = (() => { try { return localStorage.atpWhere || 'right-dock'; } catch { return 'right-dock'; } })();
-let atpMin = (() => { try { return localStorage.atpMin === '1'; } catch { return false; } })();
-function atpMinT() { atpMin = !atpMin; try { localStorage.atpMin = atpMin ? '1' : ''; } catch {} drawAtp(); }
-function atpPlace(w) {
-  ATW = w; try { localStorage.atpWhere = w; } catch {}
-  if (tab === 'tasks') tab = 'gh'; if (UI.st === 'tasks') UI.st = 'projects';
-  if (w === 'right-tab') tab = 'tasks'; if (w === 'left-tab') UI.st = 'tasks';
-  drawSide(); drawRight(); drawAtp();
-}
-const atpPlaceItems = () => [{title: 'Show as'},
-  {label: 'Panel at the bottom', check: ATW.endsWith('dock'), run: () => atpPlace(ATW.split('-')[0] + '-dock')},
-  {label: 'A tab', check: ATW.endsWith('tab'), run: () => atpPlace(ATW.split('-')[0] + '-tab')}, '-', {title: 'Side'},
-  {label: 'Right', check: ATW.startsWith('right'), run: () => atpPlace('right-' + ATW.split('-')[1])},
-  {label: 'Left', check: ATW.startsWith('left'), run: () => atpPlace('left-' + ATW.split('-')[1])}];
+// #atp = Plan block at the top of the GitHub tab, or the whole Agents tab (drawRight/drawGh create it; absent → no-op).
+// Plan: Suggestions → Claude's live list (open + last 3 done) → Queue (issues / PLAN.md, drag order) → Done lately
 function drawAtp() {
   const el = $('atp'); if (!el || !cur) return;
-  const [side, mode] = ATW.split('-'), tabbed = mode === 'tab', host = $(side === 'left' ? 'side' : 'right'), rail = $(side === 'left' ? 'lrail' : 'rrail');
-  if (el.nextElementSibling !== rail) host.insertBefore(el, rail);
-  const rt = ATW !== 'right-tab', st = ATW !== 'left-tab'; // Tasks tab shown/hidden → tab bars' min widths change
-  if ($('rtabTasks').hidden !== rt || $('stabTasks').hidden !== st) { $('rtabTasks').hidden = rt; $('stabTasks').hidden = st; for (const k in MINW) delete MINW[k]; layout(); }
-  el.hidden = tabbed && (side === 'right' ? tab !== 'tasks' : UI.st !== 'tasks');
-  el.classList.toggle('tabbed', tabbed); el.classList.toggle('min', !tabbed && atpMin);
-  if (!el.style.height) try { if (localStorage.atpH) el.style.height = localStorage.atpH; } catch {}
   const iq = issueQ(cur); // issue mode: Queue/suggestions = GitHub issues; PLAN.md items left = "not filed yet"
   const ag = agentsOf(cur), t = todos(cur), run = ag.filter(a => a.running), dn = S.done?.[cur] || [];
   const q = iq ? iq.map(x => `#${x.number} ${x.title}`) : S.queues?.[cur] || [], pl = iq ? [{file: 'Issues', items: q}, ...(S.plans?.[cur] || []).filter(o => o.items.length)] : S.plans?.[cur] || [];
@@ -2826,7 +2796,7 @@ function drawAtp() {
         end: `<button class="ib" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: ${iq ? 'close the issue' : 'remove from PLAN.md'}" onclick="planWait(${i}, false)">${icon('x')}</button>`}))) : '')
     + (t.length ? `<div class="label">Now</div>` + L([...open.map(x => tli(esc(x.status === 'in_progress' && x.activeForm || x.content), {cls: x.status})),
         ...fin.slice(-3).map(x => tli(esc(x.content), {done: 1, cls: 'completed', tip: x.content}))]) : '')
-    + (pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>
+    + (pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">Plan<span class="grow"></span>
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...(issueQ(cur) ? [{label: 'GitHub issues (task)', hint: issueQ(cur).length + ' open', run: () => expandRight('gh')}] : []), ...S.plans[cur].filter(o => !issueQ(cur) || o.items.length).map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
         ${!iq && (pl.length > 1 || pl[0].file !== 'PLAN.md') ? `<button class="ib" title="Merge every plan file into PLAN.md\n${estTok()}" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
@@ -2841,27 +2811,11 @@ function drawAtp() {
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
     : S.agents_on ? empty('No helper agents started in this session', `<button class="btn ghost sm" onclick="openSettings('agents')">${icon('bot')}Agent settings</button>`)
     : empty('Helper agents are off', `<button class="btn sm" onclick="agentsOn()">${icon('bot')}Switch on</button><button class="btn ghost sm" onclick="openSettings('agents')">Settings</button>`);
-  const cnt = open.length ? open.length : q.length;
-  const h = `<div class="atgrip" title="Drag to resize"></div><div class="athead">${tabbed ? icon('list')
-      : `<button class="ib tog" title="${atpMin ? 'Expand' : 'Collapse'}" onclick="atpMinT()">${icon('list')}</button>`}<span class="ptabs">
-      <button class="${atpTab === 'tasks' ? 'on' : ''}" onclick="atpSet('tasks')">Plan${cnt ? ` <span class="pill">${cnt}</span>` : ''}</button>
-      <button class="${atpTab === 'agents' ? 'on' : ''}" onclick="atpSet('agents')">Agents${run.length ? ` <span class="pill">${run.length}</span>` : ''}</button></span><span class="grow"></span>
-      <button class="ib" title="Where this panel shows" onclick="menuAt(this, atpPlaceItems())">${icon('more')}</button></div>
-    <div class="atbody">${atpTab === 'agents' ? agents : tasks}</div>`;
-  // mid-drag: skip only the rebuild (would drop the row); placement/visibility above still apply ∵ a stuck drag flag once froze the panel
-  if (qDragging) return;
+  const h = tab === 'agents' ? agents : tasks;
+  if (qDragging) return; // mid-drag: a rebuild would drop the row
   if (el._h === h) return; // drawChrome → drawRails → here on every keystroke: same HTML → keep DOM (open rows, animations)
   el.innerHTML = el._h = h;
   if ($('qlist')) qSortable($('qlist'));
-  el.querySelector('.atgrip').onpointerdown = e => {
-    const g = e.target, y0 = e.clientY, h0 = el.offsetHeight, max = host.offsetHeight - 120;
-    g.setPointerCapture(e.pointerId); document.body.classList.add('dragging');
-    // like the side panels: dragged under 70px → folds to its header; dragged up again → opens (min 120px)
-    g.onpointermove = m => { const h = h0 + y0 - m.clientY, fold = h < 70;
-      if (fold !== atpMin) { atpMin = fold; el.classList.toggle('min', fold); try { localStorage.atpMin = fold ? '1' : ''; } catch {} }
-      if (!fold) el.style.height = Math.max(120, Math.min(max, h)) + 'px'; };
-    g.onpointerup = () => { g.onpointermove = null; document.body.classList.remove('dragging'); try { localStorage.atpH = el.style.height; } catch {} drawAtp(); };
-  };
 }
 // sweep: Claude merges every plan file's open tasks into PLAN.md (confirmed first, showing what moves)
 async function mergePlans() {
@@ -2958,7 +2912,7 @@ function drawRRail() {
     + (ctx[cur] != null ? stat(ctx[cur] + '%', 'context', 'Context window used') : '')
     + (u.five_hour != null ? stat(u.five_hour + '%', '5h', '5-hour usage') : '')
     + (u.seven_day != null ? stat(u.seven_day + '%', '7d', 'Weekly usage') : '')
-    + '<hr>' + [['gh', 'gh', 'GitHub'], ['build', 'hammer', 'Build'], ['env', 'key', '.env'], ['svc', 'layers', 'Services'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
+    + '<hr>' + [['gh', 'gh', 'GitHub'], ['agents', 'bot', 'Agents'], ['build', 'hammer', 'Build'], ['env', 'key', '.env'], ['svc', 'layers', 'Services'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
       .map(([k, i, l]) => `<button class="ib" title="${l}" onclick="expandRight('${k}')">${icon(i)}</button>`).join('');
 }
 function expandRight(t) { tab = t; UI.rc = false; layout(); drawRight(); }
