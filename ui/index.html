@@ -265,7 +265,10 @@ pre.diff .ctx { color:var(--faint); }
 .keys > div { display:flex; justify-content:space-between; gap:8px; font:12.5px ui-monospace,Consolas,monospace; padding:2px 0; } .keys span:first-child { overflow:hidden; text-overflow:ellipsis; }
 .stepper { list-style:none; padding:0; margin:4px 0; counter-reset:st; font-size:13px; color:var(--dim); }
 .stepper li { position:relative; padding:3px 0 16px 40px; counter-increment:st; }
-.stepper li::before { content:counter(st); position:absolute; left:0; top:0; width:28px; height:28px; border-radius:50%; background:var(--soft); color:var(--accent); font-weight:600; display:grid; place-items:center; }
+.stepper .sn { position:absolute; left:0; top:0; width:28px; height:28px; padding:0; border:0; border-radius:50%; background:var(--soft); color:var(--accent); font-weight:600; font-size:13px; font-family:inherit; display:grid; place-items:center; cursor:pointer; }
+.stepper .sn:hover { outline:1px solid var(--accent); } .stepper li.done .sn { background:var(--accent); color:var(--bg); }
+.stepper li.done > :not(.sn) { opacity:.45; transition:opacity .2s; } .stepper .under { margin-top:6px; font-size:12px; overflow-wrap:anywhere; }
+.streset { display:flex; justify-content:flex-end; margin-bottom:2px; }
 .stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
 .stepper b { color:var(--text); font-weight:600; } .stepper .btnrow { margin-top:8px; align-items:center; } .stepper .keys { margin-top:8px; }
 .warn a { color:inherit; text-decoration:underline; cursor:pointer; }
@@ -2148,7 +2151,8 @@ const SERVICES = {
   // steps: string | {t, a: () => action html}; **x** = UI name on the other site (bold); gh:'step' = Send button lives in a step
   macsign: {name: 'Mac signing', note: 'Developer ID: Mac builds open without the "unidentified developer" block', gh: 'step',
     keys: ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_TEAM_ID', 'APPLE_ID', 'APPLE_PASSWORD'],
-    steps: [{t: 'Make the signing request: **devid.csr** lands in your **Downloads** and Apple\'s page opens', a: () => `<button class="btn sm primary" onclick="appleCsr()">Make signing request</button><small class="dim" id="csrMsg"></small>`},
+    steps: [{t: 'Make the signing request: **devid.csr** lands in your **Downloads** and Apple\'s page opens', a: () => `<button class="btn sm primary" onclick="appleCsr()">Make signing request</button>`,
+        u: s => s.csr ? `<div class="under dim mono" title="Copy" style="cursor:pointer" onclick="copy(this.textContent)">${esc(s.csr)}</div>` : ''},
       {t: 'At Apple pick **Developer ID Application**, then **G2 Sub-CA** › **Continue**, choose **devid.csr** › **Continue** › **Download**', a: () => `<button class="btn sm" data-url="${APPLE_CERTS}">Certificates</button>`},
       {t: 'Clauracle picks the downloaded **.cer** up from **Downloads** by itself and fills the first four keys', a: () => `<button class="btn sm" onclick="appleCer()">Load .cer…</button><small class="dim" id="cerWait"></small>`},
       {t: 'Make an **App-Specific Password** (under **Sign-In and Security**), then fill **APPLE_ID** (your Apple account email) and **APPLE_PASSWORD**',
@@ -2185,7 +2189,7 @@ async function drawServices() {
   }
   box.innerHTML = ids.map(id => { const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k));
     return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px"><p class="dim">Asking gcloud…</p></div>' : '')
-      + (x.steps ? `<ol class="stepper">${x.steps.map(s => `<li>${esc(s.t || s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}${s.a ? `<div class="btnrow">${s.a()}</div>` : ''}</li>`).join('')}</ol>` : '')
+      + (x.steps ? stepper(id, x.steps) : '')
       + (x.links ? `<div class="btnrow">${x.links.map(([l, u]) => `<button class="btn sm" data-url="${esc(u)}">${esc(l)}</button>`).join('')}</div>` : '')
       + (id === 'appstore' ? bundleRow() : '')
       + `<div class="keys">${x.keys.map(k => `<div><span>${k}</span>${envKeys.have.has(k) ? '<small class="ok">set</small>' : '<small class="faint">missing</small>'}</div>`).join('')}</div>`
@@ -2197,6 +2201,24 @@ async function drawServices() {
   if (ids.includes('google')) drawCloud();
   ids.filter(id => SERVICES[id].gh).forEach(id => secCount(id));
   if (ids.includes('macsign') && !envKeys.have.has('APPLE_CERTIFICATE') && !cerT) cerWatch();
+}
+// step wizards: progress per project+service in localStorage `steps` {pid: {svc: {d: [done idx], csr}}} ∵ UI-only state, survives restarts
+const STEPS = (() => { try { return JSON.parse(localStorage.steps || '{}'); } catch { return {}; } })();
+const stepOf = id => (STEPS[cur] ||= {})[id] ||= {d: []};
+function stepSet(id, i, on, extra) {
+  const s = Object.assign(stepOf(id), extra); s.d = s.d.filter(x => x !== i);
+  if (on ?? true) s.d.push(i);
+  try { localStorage.steps = JSON.stringify(STEPS); } catch {}
+  if (tab === 'svc') drawServices();
+}
+const stepTog = (id, i) => stepSet(id, i, !stepOf(id).d.includes(i));
+function stepReset(id) { delete (STEPS[cur] || {})[id]; try { localStorage.steps = JSON.stringify(STEPS); } catch {} drawServices(); }
+function stepper(id, steps) {
+  const s = stepOf(id);
+  return (s.d.length || s.csr ? `<div class="streset"><button class="btn sm ghost" onclick="stepReset('${id}')">Reset steps</button></div>` : '')
+    + `<ol class="stepper">${steps.map((x, i) => { const on = s.d.includes(i);
+      return `<li${on ? ' class="done"' : ''}><button class="sn" onclick="stepTog('${id}', ${i})" title="${on ? 'Mark not done' : 'Mark done'}">${on ? icon('check') : i + 1}</button>`
+        + `<span>${esc(x.t || x).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}</span>${x.a ? `<div class="btnrow">${x.a()}</div>` : ''}${x.u ? x.u(s) : ''}</li>`; }).join('')}</ol>`;
 }
 // Bundle ID row: current value (copy) + Change (edit dialog w/ live check, suggestion = com.<gh owner>.<app>)
 function bundleRow() {
@@ -2245,12 +2267,12 @@ async function secCount(id, fresh) {
 }
 async function toSecrets(id, btn) {
   btn.disabled = true; $('secErr-' + id).textContent = '';
-  try { await call('gh_secrets_set', {pid: cur, keys: SERVICES[id].keys}); await secCount(id, true); }
+  try { await call('gh_secrets_set', {pid: cur, keys: SERVICES[id].keys}); await secCount(id, true); if (SERVICES[id].gh === 'step') stepSet(id, SERVICES[id].steps.findIndex(s => /secrets/.test(s.t))); }
   catch (e) { $('secErr-' + id).textContent = e; }
   btn.disabled = false;
 }
 async function appleCsr() {
-  try { const f = await call('apple_csr', {pid: cur}); T.opener.openUrl(APPLE_CERTS); const m = $('csrMsg'); if (m) m.textContent = ' Saved: ' + f; cerWatch(); }
+  try { const f = await call('apple_csr', {pid: cur}); T.opener.openUrl(APPLE_CERTS); stepSet('macsign', 0, true, {csr: f}); cerWatch(); }
   catch (e) { say(e); }
 }
 async function appleCer() {
@@ -2259,7 +2281,7 @@ async function appleCer() {
   if (cer) appleLoad(cer);
 }
 async function appleLoad(cer) {
-  try { const who = await call('apple_p12', {pid: cur, cer}); addEntry(cur, {kind: 'note', text: 'Mac signing: ' + who}); drawServices(); } catch (e) { say(e); }
+  try { const who = await call('apple_p12', {pid: cur, cer}); addEntry(cur, {kind: 'note', text: 'Mac signing: ' + who}); stepSet('macsign', 2); } catch (e) { say(e); }
 }
 // every missing key of a service (or just `only`) in one dialog, written into the project's .env (values never go through Claude)
 function fillKeys(id, only) {
