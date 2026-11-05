@@ -1003,15 +1003,15 @@ const toolName = e => e.text.replace(/^↳ /, '').split(' ')[0];
 function actLine(e) {
   const d = e.detail || {}, n = toolName(e), lc = s => (s || '').split('\n').length;
   if (typeof d.command === 'string') return `<span class="sh-p">${n === 'PowerShell' ? 'PS&gt;' : '$'}</span> ${shHi(d.command)}`;
-  const gist = 'old_string' in d ? `−${lc(d.old_string)} +${lc(d.new_string)}` : Array.isArray(d.edits) ? `${d.edits.length} edits`
+  const gist = 'old_string' in d ? (([r, a]) => `−${r} +${a}`)(dstat(d.old_string, d.new_string)) : Array.isArray(d.edits) ? `${d.edits.length} edits`
     : typeof d.content === 'string' ? `${lc(d.content)} lines` : d.pattern || d.query || d.url || d.description || d.prompt || (d.offset ? `from line ${d.offset}` : '');
   return `${TICON[n] ? icon(TICON[n]) : icon('term')} <span class="sh-c">${esc(n)}</span> <span class="sh-m">${esc(String(gist).slice(0, 200))}</span>`;
 }
 // consecutive calls of one tool (outside the shell tab) = one row: Edit ±lines summed, ×N; click → all their diffs
 function runLine(es) {
   if (es.length === 1) return actLine(es[0]);
-  const n = toolName(es[0]), lc = s => (s || '').split('\n').length, ds = es.map(e => e.detail || {});
-  const gist = ds.every(d => 'old_string' in d) ? `−${ds.reduce((a, d) => a + lc(d.old_string), 0)} +${ds.reduce((a, d) => a + lc(d.new_string), 0)}` : '';
+  const n = toolName(es[0]), ds = es.map(e => e.detail || {});
+  const st = ds.every(d => 'old_string' in d) && ds.map(d => dstat(d.old_string, d.new_string)), gist = st ? `−${st.reduce((s, x) => s + x[0], 0)} +${st.reduce((s, x) => s + x[1], 0)}` : '';
   return `${TICON[n] ? icon(TICON[n]) : icon('term')} <span class="sh-c">${esc(n)}</span> <span class="sh-m">${gist}</span> <small class="sh-m">×${es.length}</small>`;
 }
 function drawAct(g) {
@@ -1029,6 +1029,14 @@ function drawAct(g) {
   g.querySelector('.ttabs .on')?.scrollIntoView({block: 'nearest', inline: 'nearest'});
 }
 // ponytail: diff = common head/tail lines as context, the middle as -/+ blocks (no LCS); enough for Edit's small hunks
+// [removed, added] line counts, same head/tail trim as diff() → the row's −/+ matches what the diff shows
+function dstat(a = '', b = '') {
+  const x = a ? a.split('\n') : [], y = b ? b.split('\n') : [];
+  let h = 0, t = 0;
+  while (h < x.length && h < y.length && x[h] === y[h]) h++;
+  while (t < x.length - h && t < y.length - h && x[x.length - 1 - t] === y[y.length - 1 - t]) t++;
+  return [x.length - h - t, y.length - h - t];
+}
 function diff(a = '', b = '') {
   const x = a ? a.split('\n') : [], y = b ? b.split('\n') : [];
   let h = 0, t = 0;
