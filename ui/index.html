@@ -481,7 +481,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <div id="composer">
       <div id="slash" hidden></div>
       <div id="atts"></div>
-      <textarea id="prompt" rows="1" placeholder="Message Claude…"></textarea>
+      <textarea id="prompt" rows="1" placeholder="Message your AI…"></textarea>
       <div class="tb">
         <button class="ib" title="Attach files" onclick="pickFiles()"><svg class="i"><use href="#i-clip"/></svg></button>
         <button class="ib" id="tPony" title="Ponytail: the simplest code that works" onclick="setP({ponytail:!P().ponytail})"><svg class="i"><use href="#i-feather"/></svg></button>
@@ -742,7 +742,7 @@ function statsCard(btn) {
     <h5>Usage · ${esc(nick(p.account))}</h5>${bar(u.five_hour, '5-hour', 'clock', 'five_hour')}${bar(u.seven_day, 'Weekly', 'cal', 'seven_day')}
     <h5>This session <span class="faint">since ${esc(tm(new Date(x.start).toISOString()))}</span></h5>
     <div class="row" style="font-size:12px;gap:6px">${icon('timer')}<span class="grow">You, active</span>${dur(x.you)}</div>
-    <div class="row" style="font-size:12px;gap:6px">${icon('sparkle')}<span class="grow">Claude working</span>${dur(x.ai)}</div>
+    <div class="row" style="font-size:12px;gap:6px">${icon('sparkle')}<span class="grow">AI working</span>${dur(x.ai)}</div>
     <div class="row" style="font-size:12px;gap:6px">${icon('clock')}<span class="grow">Total, either going</span>${dur(x.any)}</div>
     <div class="btnrow"><button class="btn sm" id="scReset">Start timers over</button></div>`;
   document.body.append(card); card.showPopover();
@@ -1413,7 +1413,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
 function questionCard(pid) {
   const qs = P(pid).questions, d = document.createElement('div');
   d.className = 'card qs';
-  d.innerHTML = `<h4>Claude has ${qs.length} question${qs.length > 1 ? 's' : ''}</h4><p class="dim" style="margin:0 0 4px;font-size:13px">Answers go along with the next message.</p>` + qs.map((q, i) => {
+  d.innerHTML = `<h4>Your AI has ${qs.length} question${qs.length > 1 ? 's' : ''}</h4><p class="dim" style="margin:0 0 4px;font-size:13px">Answers go along with the next message.</p>` + qs.map((q, i) => {
     const type = q.multi ? 'checkbox' : 'radio', name = 'q' + i;
     return `<div class="q" data-id="${esc(q.id)}"><div><span class="num">${i + 1}</span><b>${esc(q.question.replace(/^\s*\d+[.)]\s*/, ''))}</b>${q.blocking ? ' <span class="pill">needs you</span>' : ''}</div>
       ${q.options.map(o => `<label class="choice"><input type="${type}" name="${name}" value="${esc(o.label)}" ${o.recommended ? 'checked' : ''}>
@@ -1441,7 +1441,7 @@ function askCard(e) {
   if (e.done) { d.className = 'msg note'; d.innerHTML = `${icon('shield')} ${esc(e.tool)}: ${esc(e.done)}`; return d; }
   if (e.tool === 'AskUserQuestion') {
     d.classList.add('qs');
-    d.innerHTML = `<h4>Claude asks</h4>` + (i.questions || []).map((q, n) => `<div class="q"><div><span class="num">${n + 1}</span><b>${esc(q.question)}</b></div>
+    d.innerHTML = `<h4>Your AI asks</h4>` + (i.questions || []).map((q, n) => `<div class="q"><div><span class="num">${n + 1}</span><b>${esc(q.question)}</b></div>
       ${(q.options || []).map(o => `<label class="choice"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="a${n}" value="${esc(o.label)}"><span>${esc(o.label)}<small class="dim">${esc(o.description || '')}</small></span></label>`).join('')}
       <label class="choice"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="a${n}" value="__other"><span>Other</span></label>
       <input class="other" placeholder="Your own answer" oninput="this.previousElementSibling.querySelector('input').checked = !!this.value"></div>`).join('')
@@ -1536,13 +1536,13 @@ function projectsPage() {
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
       ${(p.allow || []).length ? optRow('Always allowed', 'Tools this project runs without asking', `<span class="row wrap" style="gap:4px">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ✕</span>`).join('')}</span>`) : ''}
-      ${optRow('Credit Claude in commits', 'Off: no Co-Authored-By or "Generated with" lines; Claude never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
-      ${p.gh ? optRow('Prompts become team tasks', 'Each task you give Claude is filed as a GitHub issue (Team tasks), claimed while it works and closed when done', sw(p.team_auto, 'setM({team_auto:this.checked})')) : ''}
-      ${optRow('Keep .env away from Claude', 'Claude can\'t read or edit .env files; manage them in the .env panel', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
+      ${optRow('Credit the AI in commits', 'Off: no Co-Authored-By or "Generated with" lines; the AI never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
+      ${p.gh ? optRow('Prompts become team tasks', 'Each task you give your AI is filed as a GitHub issue (Team tasks), claimed while it works and closed when done', sw(p.team_auto, 'setM({team_auto:this.checked})')) : ''}
+      ${optRow('Keep .env away from the AI', 'The AI can\'t read or edit .env files; manage them in the .env panel', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>`, [p.ponytail, p.terse, p.ai_credit, p.gh && p.team_auto, p.hide_env].filter(Boolean).length + ' on')}
     ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
       <span>After each task</span><select onchange="setBuild('after', this.value)">${options({'': 'Nothing', build: 'Build', build_run: 'Build + run', build_deploy: 'Build + deploy'}, p.build.after)}</select>
-      <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Claude to fix</small></label></div>`,
+      <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to the AI to fix</small></label></div>`,
       ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3')}
     ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Cleaned automatically after 14 days without commits.</p>
       <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
@@ -1606,7 +1606,7 @@ async function drawRight() {
   }
   box.innerHTML = '<p class="dim">Loading…</p>';
   const g = await call('gh_info', {pid: cur}), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
-    <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask Claude</button></div></div>`;
+    <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask your AI</button></div></div>`;
   const list = (xs, kind) => xs?.length ? `<div class="list">${xs.map(x => item(x, kind)).join('')}</div>` : empty('None open');
   box.innerHTML = sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
       : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
@@ -1815,7 +1815,7 @@ async function drawWeb() {
     // only reachable from the phone if the dev server listens on all interfaces → offer Claude the fix
     const pu = new URL(purl), off = local && !await call('reach', {host: pu.hostname, port: +pu.port || 80}).catch(() => true);
     const fix = off ? `<div class="row" style="margin-bottom:8px"><small class="dim grow">Not reachable from the phone: the dev server only listens on localhost.</small>
-      <button class="btn" onclick="$('prompt').value = 'Make the dev server listen on all interfaces (0.0.0.0, e.g. vite --host) so a phone on the same Wi-Fi can open ${esc(purl)}'; grow(); $('prompt').focus()">Fix with Claude</button></div>` : '';
+      <button class="btn" onclick="$('prompt').value = 'Make the dev server listen on all interfaces (0.0.0.0, e.g. vite --host) so a phone on the same Wi-Fi can open ${esc(purl)}'; grow(); $('prompt').focus()">Fix with AI</button></div>` : '';
     // QR: 2 screen px per module; click → fills the panel width for scanning, click again → back
     phone = `<div class="qrbox"><div class="qr" title="Click to enlarge for scanning" onclick="this.classList.toggle('big')">${QRS.get(purl)}</div><div class="grow" style="min-width:0"><small class="dim">Scan on your phone${local ? ' (same Wi-Fi)' : ''}</small>
       <a class="mono" data-url="${esc(purl)}" style="display:block;overflow-wrap:anywhere;color:var(--accent);cursor:pointer">${esc(purl)}</a></div></div>${fix}`;
@@ -1957,7 +1957,7 @@ async function appleCer() {
 // every missing key of a service in one dialog, written into the project's .env (values never go through Claude)
 function fillKeys(id) {
   const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k)), files = envKeys.files.map(f => f.file);
-  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(x.name)} keys</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Saved in the project's .env file, hidden from Claude. Leave a field empty to skip it.</p>
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(x.name)} keys</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Saved in the project's .env file, hidden from the AI. Leave a field empty to skip it.</p>
     <div class="sc" style="border:0;padding:0;background:none">${miss.map(k => field(`<span class="mono">${k}</span>`, /KEY$|JSON/.test(k) && /PRIVATE|JSON/.test(k)
       ? `<textarea data-k="${k}" rows="3" class="mono"></textarea>` : `<input data-k="${k}" class="mono">`)).join('')}
     ${field('File', `<select id="fkFile">${options(Object.fromEntries((files.length ? files : ['.env']).map(f => [f, f])), files[0] || '.env')}</select>`)}</div>
@@ -2018,7 +2018,7 @@ const PRESETS = {
 const shown = {};
 async function drawEnv() {
   const files = await call('env_list', {pid: cur}), box = $('rbody');
-  box.innerHTML = `<p class="dim" style="margin-top:0;font-size:13px">Values stay hidden until you show them${P().hide_env ? '. Claude can\'t read these files' : ''}.</p>`
+  box.innerHTML = `<p class="dim" style="margin-top:0;font-size:13px">Values stay hidden until you show them${P().hide_env ? '. Your AI can\'t read these files' : ''}.</p>`
     + files.map(f => `<div class="envfile"><div class="row"><b class="grow mono">${esc(f.file)}</b>
       ${f.ignored === false ? `<span class="pill" style="color:var(--err)">not git-ignored</span><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="call('env_ignore', {pid:cur, file:'${esc(f.file)}'}).then(drawEnv)">Ignore it</button>` : f.ignored ? '<small class="ok">git-ignored</small>' : ''}</div>
       ${f.keys.map(([k, v]) => { const id = f.file + ':' + k; return `<div class="kv"><span class="k sel">${esc(k)}</span>
@@ -2086,7 +2086,7 @@ const cxBad = i => i.kind === 'mcp' && !/^connected$/i.test(i.note);
 const cxNote = i => esc(i.note) + (!cxBad(i) ? '' : /^claude\.ai /.test(i.label)
   ? ` · <a href="#" data-url="https://claude.ai/settings/connectors">Authenticate</a>, then Rescan` : ' · run /mcp in the Terminal tab, then Rescan');
 const cxList = (kind, scope, x) => (scope.startsWith('project:') && kind === 'mcp' && cxItems(kind, scope).some(i => cxBad(i) && onOf(x).includes(i.id))
-  ? `<p class="dim" style="margin:4px 0 8px">${icon('info')} Some picked connections aren't connected: Claude can't use them until they are.</p>` : '') + cxItems(kind, scope).map(i =>
+  ? `<p class="dim" style="margin:4px 0 8px">${icon('info')} Some picked connections aren't connected: your AI can't use them until they are.</p>` : '') + cxItems(kind, scope).map(i =>
   optRow(esc(i.label), cxNote(i), scope === 'global' ? sw(!SET.off.includes(i.id), `setGlobalOff('${esc(i.id)}', !this.checked)`)
     : sw(onOf(x).includes(i.id), `toggleOn('${esc(scope)}', '${esc(i.id)}', this.checked)`))).join('') || '<p class="dim">None.</p>';
 function setGlobalOff(id, off) {
@@ -2122,7 +2122,7 @@ async function pickItems(scope, title, pre) {
   await call('set_items', {scope, items});
   closeDlg(); await refresh();
 }
-const askProject = p => pickItems('project:' + p.id, `What can Claude use in ${p.name}?`, p.on || []);
+const askProject = p => pickItems('project:' + p.id, `What can your AI use in ${p.name}?`, p.on || []);
 // projects from before allow-lists: ask once, ticked as they are now
 const asked = {};
 async function askLegacy(pid) {
@@ -2130,7 +2130,7 @@ async function askLegacy(pid) {
   if (!p || p.on != null || asked[pid]) return;
   asked[pid] = true;
   SET ||= await call('settings');
-  pickItems('project:' + pid, `Choose what Claude can use in ${p.name}`, onOf(p));
+  pickItems('project:' + pid, `Choose what your AI can use in ${p.name}`, onOf(p));
 }
 function cxPage() {
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
@@ -2138,11 +2138,11 @@ function cxPage() {
     ${cxFold('g-mcp', 'Connections', 'mcp', 'global')}${cxFold('g-skill', 'Skills', 'skill', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}`;
 }
 function agentsPage() {
-  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to Claude until you switch them on (top right).'}</p>`
+  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to your AI until you switch them on (top right).'}</p>`
     + `<div style="${S.agents_on ? '' : 'opacity:.5'}">` + AGENTS.map((a, i) => `<div class="agent"><div class="row">${sw(a.on, `agentSet(${i}, 'on', this.checked)`)}<input class="mono" value="${esc(a.name)}" style="width:160px" onchange="agentSet(${i}, 'name', this.value.trim())">
         <select onchange="agentSet(${i}, 'model', this.value)">${options({haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus', inherit: 'Same as session'}, a.model || 'inherit')}</select>
         <span class="grow"></span><button class="ib" title="Remove" onclick="AGENTS.splice(${i},1); saveAgents()">${icon('x')}</button></div>
-      <input value="${esc(a.description)}" placeholder="When Claude should use it" onchange="agentSet(${i}, 'description', this.value)">
+      <input value="${esc(a.description)}" placeholder="When your AI should use it" onchange="agentSet(${i}, 'description', this.value)">
       <textarea placeholder="Its instructions" onchange="agentSet(${i}, 'prompt', this.value)">${esc(a.prompt)}</textarea></div>`).join('')
     + `<p class="row"><button class="btn" onclick="AGENTS.push({name:'helper', model:'haiku', description:'', prompt:'', on:true}); saveAgents()">${icon('plus')}Add agent</button></p></div>`;
 }
@@ -2169,7 +2169,7 @@ function aiPage() {
       <div class="btns">${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
     + `<div class="label" style="margin-top:18px">Lessons</div>
-    <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules Claude records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
+    <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules your AI records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
     <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
       onchange="call('set_lessons', {lessons: this.value.split('\\n')}).then(refresh)">${esc((S.lessons || []).join('\n'))}</textarea>`;
 }
@@ -2352,13 +2352,26 @@ async function openClone() {
   const draw = () => { const f = $('cloneFilter').value.trim(), fl = f.toLowerCase();
     const list = repos.filter(r => r.nameWithOwner.toLowerCase().includes(fl)).slice(0, 100);
     if (f.includes('/') && !list.some(r => r.nameWithOwner.toLowerCase() === fl)) list.unshift({nameWithOwner: f});
-    $('repoList').innerHTML = list.map(r => `<div class="item"><a onclick="clone('${esc(r.nameWithOwner)}')">${esc(r.nameWithOwner)}</a><div class="dim" style="font-size:12px">${esc(r.description)}</div></div>`).join('') || 'No repos.'; };
-  const load = async () => { $('repoList').textContent = 'Loading…'; repos = await call('gh_repos', {user: $('cloneUser').value}) || []; draw(); };
-  $('cloneUser').onchange = load; $('cloneFilter').oninput = draw; load();
+    $('repoList').innerHTML = list.map(r => `<div class="item"><a onclick="pickRepo('${esc(r.nameWithOwner)}', '${esc(r.branch || '')}')">${esc(r.nameWithOwner)}</a><div class="dim" style="font-size:12px">${esc(r.description)}</div></div>`).join('') || 'No repos.'; };
+  const load = async () => { const u = $('cloneUser').value; $('repoList').textContent = 'Loading…'; repos = REPOS[u] ||= await call('gh_repos', {user: u}) || []; draw(); };
+  $('cloneUser').onchange = load; $('cloneFilter').oninput = draw; cloneBack = draw; load();
+}
+const REPOS = {}; // gh user → repo list, per app run ∵ paginated gh api call
+let cloneBack;
+// step 2: branch to check out (default first) and an optional new branch made from it
+async function pickRepo(repo, def) {
+  const box = $('repoList'), user = $('cloneUser').value;
+  box.innerHTML = `<div class="sc" style="padding:0;border:0;gap:10px"><b>${esc(repo)}</b>
+    <label class="dim">Branch <select id="cloneBranch" class="block"><option>${esc(def || 'default')}</option></select></label>
+    <label class="dim">New branch from it (optional) <input id="cloneNew" class="block" placeholder="e.g. my-feature"></label>
+    <div class="btnrow"><button class="btn" onclick="cloneBack()">Back</button><button class="btn primary" onclick="clone('${esc(repo)}')">${icon('gh')}Clone</button></div></div>`;
+  const bs = await call('gh_branches', {user, repo}).catch(() => []);
+  if ($('cloneBranch')) $('cloneBranch').innerHTML = (bs.length ? [def, ...bs.filter(b => b !== def)].filter(Boolean) : [def || 'default']).map(b => `<option>${esc(b)}</option>`).join('');
 }
 async function clone(repo) {
+  const branch = $('cloneBranch')?.value, new_branch = $('cloneNew')?.value.trim() || null;
   $('repoList').textContent = `Cloning ${repo}…`;
-  try { const p = await call('clone_repo', {user: $('cloneUser').value, repo}); closeDlg(); await refresh(); await openProject(p.id); askProject(P(p.id)); }
+  try { const p = await call('clone_repo', {user: $('cloneUser').value, repo, branch: branch === 'default' ? null : branch, new_branch}); closeDlg(); await refresh(); await openProject(p.id); askProject(P(p.id)); }
   catch (e) { $('repoList').textContent = e; }
 }
 
@@ -2468,7 +2481,7 @@ function drawAtp() {
         + q.map((x, i) => row(i + 1 + '.', x)).join('')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}</div>` + o.items.map(x => row('○', x)).join('')).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + dn.map(x => row('✓', x, 'completed')).join('') : ''))
-    || empty("Claude's task list and PLAN.md's queue show here");
+    || empty("Your AI's task list and PLAN.md's queue show here");
   const agents = ag.length ? [...run, ...ag.filter(a => !a.running).slice(-4).reverse()].map(a =>
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
@@ -2529,7 +2542,7 @@ function drawRRail() {
   const p = P(), t = todos(cur), u = S.usage[p.account] || {};
   const stat = (big, small, title, attrs = '') => `<div class="stat" title="${esc(title)}" ${attrs}><b>${big}</b><small>${small}</small></div>`;
   const list = t.map(x => (x.status === 'completed' ? '✓ ' : x.status === 'in_progress' ? '▸ ' : '○ ') + x.content).join('\n');
-  $('rrail').innerHTML = stat(t.length ? `${t.filter(x => x.status === 'in_progress').length}/${t.length}` : '–', 'tasks', list || "No task list yet (Claude's to-dos show here)")
+  $('rrail').innerHTML = stat(t.length ? `${t.filter(x => x.status === 'in_progress').length}/${t.length}` : '–', 'tasks', list || "No task list yet (your AI's to-dos show here)")
     + (t.length ? stat(t.filter(x => x.status === 'completed').length, 'done', list) : '')
     + (p.questions.length ? stat(p.questions.length, 'asks', 'Questions waiting', `onclick="showQuestions(cur)" style="cursor:pointer;color:var(--accent)"`) : '')
     + (team[cur]?.repo ? stat(`${teamTasks(cur).filter(isDoing).length}/${teamTasks(cur).length}`, 'team', teamTasks(cur).map(x => `#${x.number} ${x.title}${x.assignees.length ? ' (' + x.assignees.map(a => a.login).join(', ') + ')' : ''}`).join('\n') || 'No open team tasks', `onclick="expandRight('gh')" style="cursor:pointer"`) : '')

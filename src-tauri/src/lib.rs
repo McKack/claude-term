@@ -706,24 +706,46 @@ async fn task_do(st: St<'_>, pid: String, action: String, arg: String) -> R<()> 
 
 #[tauri::command]
 async fn gh_repos(user: String) -> Value {
-    tauri::async_runtime::spawn_blocking(move || store::gh_json(&["repo", "list", "--limit", "300", "--json", "nameWithOwner,description"], &user, None))
-        .await.unwrap_or(Value::Null)
+    // user/repos ∵ `gh repo list` = owned only; this adds collaborator + org repos. --paginate → one array per page (a line each)
+    let q = "[.[] | {nameWithOwner: .full_name, description, branch: .default_branch}]";
+    tauri::async_runtime::spawn_blocking(move || {
+        let o = store::run("gh", &["api", "--paginate", "user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member", "--jq", q], None, &store::gh_env(&user));
+        if !o.ok { return Value::Null; }
+        Value::Array(o.stdout.lines().filter_map(|l| serde_json::from_str::<Vec<Value>>(l).ok()).flatten().collect())
+    }).await.unwrap_or(Value::Null)
 }
 
 #[tauri::command]
-async fn clone_repo(st: St<'_>, user: String, repo: String) -> R<Value> {
+async fn gh_branches(user: String, repo: String) -> Vec<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let o = store::run("gh", &["api", "--paginate", &format!("repos/{repo}/branches?per_page=100"), "--jq", ".[].name"], None, &store::gh_env(&user));
+        o.stdout.lines().map(String::from).collect()
+    }).await.unwrap_or_default()
+}
+
+/// `branch` = existing branch to check out (None = default); `new_branch` = made from it after cloning.
+#[tauri::command]
+async fn clone_repo(st: St<'_>, user: String, repo: String, branch: Option<String>, new_branch: Option<String>) -> R<Value> {
     // <root>/<owner>/<repo>; already cloned there = just add it
     let dest = store::projects_root(&st.cfg.lock().unwrap()).join(repo.split('/').collect::<std::path::PathBuf>()).to_string_lossy().to_string();
-    if let Some(p) = st.cfg.lock().unwrap().projects.iter().find(|p| p.path == dest) {
-        return Ok(json!(p));
-    }
     if !std::path::Path::new(&dest).join(".git").exists() {
         let (d, u) = (dest.clone(), user.clone());
-        let out = tauri::async_runtime::spawn_blocking(move || store::run("gh", &["repo", "clone", &repo, &d], None, &store::gh_env(&u)))
-            .await.map_err(|e| e.to_string())?;
+        let out = tauri::async_runtime::spawn_blocking(move || {
+            let mut a = vec!["repo", "clone", &repo, &d];
+            if let Some(b) = branch.as_deref().filter(|b| !b.is_empty()) { a.extend(["--", "-b", b]); }
+            store::run("gh", &a, None, &store::gh_env(&u))
+        }).await.map_err(|e| e.to_string())?;
         if !out.ok {
             return Err(out.stderr.trim().to_string());
         }
+    }
+    // also on an existing clone: the user asked for a fresh branch
+    if let Some(nb) = new_branch.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+        let o = store::run("git", &["checkout", "-b", nb], Some(&dest), &[]);
+        if !o.ok { return Err(o.stderr.trim().to_string()); }
+    }
+    if let Some(p) = st.cfg.lock().unwrap().projects.iter().find(|p| p.path == dest) {
+        return Ok(json!(p));
     }
     let who = detect(&st, dest.clone()).await;
     let mut cfg = st.cfg.lock().unwrap();
@@ -1183,7 +1205,7 @@ pub fn run() {
             state, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
             continue_now, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
-            test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, build_guess, stop_run,
+            test_notify, install, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
             env_list, env_set, env_ignore, apple_csr, apple_p12, ships_mac, bundle_id, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
