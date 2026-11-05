@@ -23,7 +23,8 @@ wait for them). Save tokens: hand searching, reading many files and running buil
 const HANDOVER_RULES: &str = "
 # Handover (Clauracle)
 - HANDOVER.md at the project root lets a fresh session resume: goal, current state, an ordered \"## Queue\" of open
-  tasks (first = next), how to build and test, gotchas. Under ~50 lines. In a git repo where it isn't tracked, add it
+  tasks (first = next), how to build and test, gotchas. The Queue holds only work you can start now; anything that
+  needs the user's yes goes under \"## Waiting on the user\", never in the Queue. Under ~50 lines. In a git repo where it isn't tracked, add it
   to .git/info/exclude. Finished work goes to CHANGES.md (newest first, one line per change), not the handover.
 - Finishing a task: verify it, update HANDOVER.md and CHANGES.md, commit if the project's rules allow, then call
   mcp__clauracle__ready as the LAST action of the turn.
@@ -652,28 +653,25 @@ fn tool_list() -> Value {
           "properties": {"rule": {"type": "string"}}}},
         {"name": "restart", "description": "Restart Clauracle itself, e.g. to try a new build of it. Nothing is lost: \
           every session resumes, this turn continues after the restart, unsent input stays. `exe`: a newly built \
-          Clauracle executable to run instead (it's copied first, so the build output stays writable).",
+          Clauracle executable: it replaces the running app's exe in place (same path), then starts.",
          "inputSchema": {"type": "object", "properties": {"exe": {"type": "string"}}}}]})
 }
 
-/// The exe to start: this one, or a copy of a new build in ~/.clauracle/run (alternating a/b so the copy
-/// we're running from is never the one overwritten).
-fn restart_target(exe: &str) -> Result<std::path::PathBuf, String> {
+/// What to start: this exe, or a new build as its own swap helper (`--swap-into` this exe's path), so the app's
+/// path never changes (pinnable) ∵ Windows locks a running exe: the helper waits for us to exit, then replaces it.
+fn restart_target(exe: &str) -> Result<(std::path::PathBuf, Vec<String>), String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     if exe.is_empty() {
-        return Ok(me);
+        return Ok((me, vec![]));
     }
-    let src = std::path::Path::new(exe);
+    let src = std::fs::canonicalize(exe).map_err(|_| format!("{exe} isn't a file"))?;
     if !src.is_file() {
         return Err(format!("{exe} isn't a file"));
     }
-    let dir = store::home().join("run");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let ext = src.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-    let a = dir.join(format!("clauracle-a{ext}"));
-    let dest = if me == a { dir.join(format!("clauracle-b{ext}")) } else { a };
-    std::fs::copy(src, &dest).map_err(|e| e.to_string())?;
-    Ok(dest)
+    if std::fs::canonicalize(&me).is_ok_and(|m| m == src) {
+        return Ok((me, vec![])); // already running that build
+    }
+    Ok((src, vec!["--swap-into".into(), me.to_string_lossy().into_owned()]))
 }
 
 /// At startup: turns that were running when Clauracle went down (crash, restart) pick up where they were.
@@ -718,14 +716,14 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
             Some("restart") => {
                 let exe = m["params"]["arguments"]["exe"].as_str().unwrap_or("").to_string();
                 match restart_target(&exe) {
-                    Ok(target) => {
+                    Ok((target, args)) => {
                         // page holds new prompts in its (saved) queue from now on ∵ one sent in the next 800ms reached
                         // the CLI, which was killed before writing it to the transcript → lost after the restart
                         emit(app, "restarting", json!({}));
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_millis(800)).await; // let this reply land
-                            crate::relaunch(&app, target);
+                            crate::relaunch(&app, target, &args);
                         });
                         text("Restarting Clauracle now. This turn resumes after the restart; end it here.")
                     }
@@ -858,7 +856,7 @@ pub fn queue(dir: &str) -> Vec<String> {
     let mut out = vec![];
     for l in text.lines() {
         if l.starts_with('#') {
-            on = l.to_lowercase().contains("queue");
+            on = l.trim_start_matches('#').trim().eq_ignore_ascii_case("queue"); // exact: "## Waiting (not queue items)" ≠ queue
         } else if on {
             if let Some(c) = item.captures(l) {
                 out.push(c[1].replace("**", "").trim().to_string());
@@ -866,24 +864,6 @@ pub fn queue(dir: &str) -> Vec<String> {
         }
     }
     out
-}
-
-/// Appends a task to the end of HANDOVER.md's Queue (section/file created if missing); extra lines indented under it.
-pub fn queue_add(dir: &str, task: &str) -> std::io::Result<()> {
-    let f = std::path::Path::new(dir).join("HANDOVER.md");
-    let text = std::fs::read_to_string(&f).unwrap_or_else(|_| "# Handover\n".into());
-    let item = format!("- {}", task.trim().lines().collect::<Vec<_>>().join("\n  "));
-    let mut lines: Vec<String> = text.lines().map(String::from).collect();
-    match lines.iter().position(|l| l.starts_with('#') && l.to_lowercase().contains("queue")) {
-        Some(h) => {
-            let end = lines[h + 1..].iter().position(|l| l.starts_with('#')).map_or(lines.len(), |i| h + 1 + i);
-            let mut at = end; // after the section's last non-blank line
-            while at > h + 1 && lines[at - 1].trim().is_empty() { at -= 1; }
-            lines.insert(at, item);
-        }
-        None => lines.extend(["".into(), "## Queue".into(), item]),
-    }
-    std::fs::write(f, lines.join("\n") + "\n")
 }
 
 /// The newest `n` entries of CHANGES.md (newest first, one bullet per change): what was done lately.
@@ -959,9 +939,8 @@ mod tests {
         std::fs::write(d.join("HANDOVER.md"), "# Handover\n## Where\n- not this\n## Queue\n1. **Add** login\n2) Tests\n   detail line\n- Docs\n## Gotchas\n- no\n").unwrap();
         assert_eq!(queue(d.to_str().unwrap()), ["Add login", "Tests", "Docs"]);
         assert!(queue("/nope").is_empty());
-        queue_add(d.to_str().unwrap(), "New one\nmore").unwrap();
-        assert_eq!(queue(d.to_str().unwrap()), ["Add login", "Tests", "Docs", "New one"]);
-        assert!(std::fs::read_to_string(d.join("HANDOVER.md")).unwrap().contains("- New one\n  more\n## Gotchas"));
+        std::fs::write(d.join("HANDOVER.md"), "## Queue\n- A\n## Waiting on the user (not queue items)\n- B\n").unwrap();
+        assert_eq!(queue(d.to_str().unwrap()), ["A"]);
     }
 
     #[test]

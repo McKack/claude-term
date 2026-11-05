@@ -208,14 +208,13 @@ fn set_lessons(st: St, lessons: Vec<String>) {
 }
 
 #[tauri::command]
-fn queue_add(st: St, pid: String, text: String) -> R<()> {
-    let p = st.project(&pid).ok_or("no such project")?;
-    claude::queue_add(&p.path, &text).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn continue_now(app: AppHandle, st: St, pid: String) {
+fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
     let live = session(&app, &st, &pid);
+    if let Some(x) = extra.filter(|x| !x.trim().is_empty()) { // user messages sent while it waited: ride along with "continue"
+        st.with_project(&pid, |p| p.answers = if p.answers.is_empty() { x } else { format!("{}
+
+{x}", p.answers) });
+    }
     let p = st.project(&pid).unwrap();
     let over = store::over_limit(&st.cfg.lock().unwrap(), &p.account);
     if over.is_some() {
@@ -788,11 +787,12 @@ fn open_in_browser(exe: String, profile: String, url: String) -> R<()> {
 }
 
 /// Start `exe` (detached, it outlives us) and quit; the new instance resumes cut-off turns (claude::resume_interrupted).
-pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf) {
+pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf, args: &[String]) {
     for pid in CHILDREN.lock().unwrap().drain(..) {
         kill_tree(pid); // sessions end before the new instance resumes them
     }
     let mut c = std::process::Command::new(exe);
+    c.args(args);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -803,6 +803,29 @@ pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf) {
     }
 }
 
+/// Swap helper (a new build started with `--swap-into <installed exe>`): copy itself next to the target, rename it
+/// over the target once the old app has exited (rename fails while Windows holds the exe), start it, exit.
+/// ponytail: ~30s retry, then starts whatever is there (old build) so the app always comes back.
+fn swap_into(dest: &std::path::Path) {
+    let tmp = dest.with_extension("new");
+    if let Ok(me) = std::env::current_exe() {
+        if std::fs::copy(&me, &tmp).is_ok() {
+            for _ in 0..150 {
+                if std::fs::rename(&tmp, dest).is_ok() { break; }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
+    let mut c = std::process::Command::new(dest);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x8 | 0x200);
+    }
+    let _ = c.spawn();
+}
+
 #[tauri::command]
 fn save_draft(pid: String, draft: Value) {
     store::save_draft(&pid, draft);
@@ -811,7 +834,7 @@ fn save_draft(pid: String, draft: Value) {
 #[tauri::command]
 fn restart(app: AppHandle) {
     if let Ok(me) = std::env::current_exe() {
-        relaunch(&app, me);
+        relaunch(&app, me, &[]);
     }
 }
 
@@ -825,6 +848,10 @@ fn kill_tree(pid: u32) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--swap-into") {
+        return swap_into(std::path::Path::new(args.get(2).map_or("", String::as_str)));
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -859,7 +886,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
-            continue_now, queue_add, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
+            continue_now, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, stop_run,
             env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])

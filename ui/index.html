@@ -637,12 +637,14 @@ function drawAcct() {
   $('acctBtn').innerHTML = `<span class="stack">${avAI(a)}${gh ? avGh(gh) : ''}</span>
     <span class="nm grow">${esc(a.nick)}<small>${gh ? '@' + esc(gh) : 'no GitHub account'}</small></span>`;
 }
-// "resets in 2h 14m · 14:30" for an account's usage window ('' when unknown)
+// usage line: icon · title · bar · % on one row; the reset time on its own line underneath, aligned past the icon
+const useRow = (v, l, ic, sub) => `<div style="font-size:12px"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span><span class="bar" style="width:90px"><i style="width:${v || 0}%"></i></span><span style="width:34px;text-align:right">${v == null ? '–' : v + '%'}</span></div>${sub ? `<small class="faint" style="display:block;padding-left:22px">${sub}</small>` : ''}</div>`;
+// "Reset: 2h 14m · 14:30" for an account's usage window ('' when unknown)
 function resetIn(id, k) {
   const r = S.resets?.[id]?.[k]; if (!r) return '';
   const ms = r * 1000 - Date.now(); if (ms <= 0) return 'reset, fresh quota';
   const h = Math.floor(ms / 36e5), m = Math.floor(ms % 36e5 / 6e4);
-  return `resets in ${h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m}m`} · ${tm(new Date(r * 1000).toISOString())}`;
+  return `Reset: ${h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m}m`} · ${tm(new Date(r * 1000).toISOString())}`;
 }
 // a usage window that reset in the last 10 min → one toast (seen keys kept per page load)
 const RESEEN = new Set();
@@ -657,7 +659,7 @@ function toast(text) {
 function acctCard(btn) {
   const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0], u = S.usage[a?.id] || {};
   const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
-  const bar = (v, l, ic, k) => v == null ? '' : `<div class="row" style="font-size:12px;gap:6px">${icon(ic)}<span class="grow">${l}<small class="faint" style="display:block">${resetIn(a.id, k)}</small></span><span class="bar" style="width:90px"><i style="width:${v}%"></i></span>${v}%</div>`;
+  const bar = (v, l, ic, k) => v == null ? '' : useRow(v, l, ic, resetIn(a.id, k));
   card.innerHTML = !a ? `<button class="btn primary block" onclick="openSettings('ai')">Add an AI account</button>` : `
     <div class="who">${p?.gh ? avGh(p.gh, 'lg') : avAI(a, 'lg')}<span class="grow" style="min-width:0"><b>${esc(a.nick)}</b><small class="dim">${p?.gh ? '@' + esc(p.gh) + ' on GitHub' : 'No GitHub account'}${p ? ' · ' + esc(p.name) : ''}</small></span></div>
     ${bar(u.five_hour, '5-hour', 'clock', 'five_hour')}${bar(u.seven_day, 'Weekly', 'cal', 'seven_day')}
@@ -680,7 +682,7 @@ function acctCard(btn) {
 function statsCard(btn) {
   const p = P(), u = S.usage[p.account] || {}, x = TIMES[cur] || {you: 0, ai: 0, any: 0, start: Date.now()};
   const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
-  const bar = (v, l, ic, k) => `<div class="row" style="font-size:12px;gap:6px">${icon(ic)}<span class="grow">${l}${k ? `<small class="faint" style="display:block">${resetIn(p.account, k)}</small>` : ''}</span><span class="bar" style="width:90px"><i style="width:${v || 0}%"></i></span>${v == null ? '–' : v + '%'}</div>`;
+  const bar = (v, l, ic, k) => useRow(v, l, ic, k ? resetIn(p.account, k) : '');
   card.innerHTML = `<h5>Context</h5>${bar(ctx[cur], 'Used (last seen)', 'doc')}
     <label class="row" style="font-size:12px;gap:6px">${icon('loop')}<span class="grow">Hand over at</span><input id="scLim" type="number" min="0" max="95" value="${p.context_limit}" style="width:64px">%</label>
     <h5>Usage · ${esc(nick(p.account))}</h5>${bar(u.five_hour, '5-hour', 'clock', 'five_hour')}${bar(u.seven_day, 'Weekly', 'cal', 'seven_day')}
@@ -1218,7 +1220,7 @@ function send() {
   const ed = editing[cur]; delete editing[cur];
   $('prompt').value = ed ? ed.prev.text : ''; atts[cur] = ed ? ed.prev.atts : []; grow(); drawAtts(); drawEditBar();
   const q = queue[cur] ||= [];
-  // Continue waiting (handover written): a typed prompt becomes the Queue's last task, and the waiting one runs
+  // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
   if (contWaiting(cur) && !ed && !a.length) { keepDraft(cur, true); return toTasks(cur, [t]); }
   if (busy[cur] || RESTARTING) q.splice(ed ? ed.i : q.length, 0, {text: t, atts: a}); // an edited one goes back to its place
   else sendNow(cur, {text: t, atts: a});
@@ -1245,12 +1247,13 @@ function flushQueue(pid) {
 }
 // Continue waiting = handover written (ready), or the idle bar offering the next task (current project only: it's drawn)
 const contWaiting = pid => !busy[pid] && !RESTARTING && P(pid)?.cont !== 'off' && (P(pid)?.ready || (pid === cur && !$('ready').hidden && !$('contBtn').hidden));
-async function toTasks(pid, texts) {
-  try { for (const t of texts) await call('queue_add', {pid, text: t}); }
-  catch (e) { addEntry(pid, {kind: 'err', text: 'Couldn\'t add the task: ' + e}); return; }
-  await refresh(); // the new tasks join S.queues before Continue reads the next one
-  if (pid === cur) $('contBtn').click(); else if (P(pid).ready) call('continue_now', {pid});
-  texts.forEach(t => addEntry(pid, {kind: 'note', text: 'Added to the task queue: ' + t.trim().split('\n')[0]}));
+// Claude triages them (urgent → top of the Queue + now; else reworded/merged in; question → answer) and the work runs
+const TRIAGE = 'New from the user while the queue waited. Triage each before anything else: urgent or blocking → reword it as a task at the TOP of HANDOVER.md\'s Queue and do it now; otherwise reword it into the Queue by priority (merge with a matching task); a plain question → answer it briefly. Then carry on with the Queue\'s first task.\n\n';
+function toTasks(pid, texts) {
+  const msg = TRIAGE + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n');
+  if (P(pid).ready) { if (pid === cur) cont_(msg); else call('continue_now', {pid, extra: msg}); } // ready: fresh session carries them
+  else call('send', {pid, text: msg, images: [], files: []}); // idle bar: same session
+  texts.forEach(t => addEntry(pid, {kind: 'user', text: t}));
 }
 function sendNow(pid, {text: t, atts: a}) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
@@ -1306,8 +1309,8 @@ const reading = {};
 const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading[pid]; if (pid === cur) drawChrome(); };
 // a clear keeps the conversation so far above the new one, faded (ponytail: last 300 entries, older ones drop)
 const keepOld = pid => (logs[pid] || []).filter(x => x.text !== READING && x.kind !== 'ask').slice(-300).map(x => ({...x, old: true}));
-function cont_() { hiddenQs[cur] = false; logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session'}]; readNote(cur, true);
-  P().ready = false; $('ready').hidden = true; drawLog(); call('continue_now', {pid: cur}); }
+function cont_(extra) { hiddenQs[cur] = false; logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session'}]; readNote(cur, true);
+  P().ready = false; $('ready').hidden = true; drawLog(); call('continue_now', {pid: cur, extra: extra || null}); }
 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
