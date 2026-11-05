@@ -328,6 +328,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .stat small { font-size:10px; color:var(--faint); }
 #rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
 .ptabs { display:inline-flex; gap:2px; }
+.rsep { flex:none; width:1px; margin:4px 4px; background:var(--line2); }
 #rtabs button, #stabs button, .ptabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; flex:none; }
 #rtabs button span, #stabs button span { display:none; } #rtabs button.on span, #stabs button.on span { display:inline; }
 #rtabs button:hover, #stabs button:hover, .ptabs button:hover { background:var(--hover); } #rtabs button.on, #stabs button.on, .ptabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
@@ -530,12 +531,13 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="right" hidden>
   <div id="rtabs">
     <button data-t="tasks" id="rtabTasks" hidden onclick="rightTab('tasks')" title="Plan & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button>
-    <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
-    <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
     <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
     <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
     <button data-t="build" onclick="rightTab('build')" title="Build"><svg class="i"><use href="#i-hammer"/></svg><span>Build</span></button>
     <button data-t="gh" onclick="rightTab('gh')" title="GitHub"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
+    <i class="rsep"></i><!-- workspace group (Code, Browser) always behind this line -->
+    <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
+    <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
   </div>
   <div id="rbody"></div>
   <div id="atp"></div>
