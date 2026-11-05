@@ -1051,14 +1051,20 @@ pub fn release(dir: &str, user: &str, tag: &str, files: &[String]) -> Result<Str
     if o.ok { Ok(o.stdout.trim().to_string()) } else { Err(o.stderr.trim().to_string()) }
 }
 
-// ---- team tasks: GitHub issues labelled `clauracle`; taken = assignee + `in progress` (no commits, all live on GitHub) ----
+// ---- team tasks: GitHub issues labelled `task`; taken = assignee + `in progress` (no commits, all live on GitHub) ----
 
-pub const TASK_LABEL: &str = "clauracle";
+pub const TASK_LABEL: &str = "task";
+pub const OLD_LABEL: &str = "clauracle"; // ponytail: pre-2026-11 label; renamed in place on first empty list, drop later
 pub const DOING_LABEL: &str = "in progress";
 
 pub fn tasks(dir: &str, user: &str) -> serde_json::Value {
-    gh_json(&["issue", "list", "--label", TASK_LABEL, "--state", "open", "--limit", "100",
-              "--json", "number,title,url,assignees,labels,updatedAt"], user, Some(dir))
+    let list = || gh_json(&["issue", "list", "--label", TASK_LABEL, "--state", "open", "--limit", "100",
+              "--json", "number,title,url,assignees,labels,updatedAt"], user, Some(dir));
+    let v = list();
+    // empty → maybe old label: `gh label edit` renames it on every issue at once; fails harmlessly if absent
+    if v.as_array().is_some_and(|a| a.is_empty())
+        && run("gh", &["label", "edit", OLD_LABEL, "--name", TASK_LABEL], Some(dir), &gh_env(user)).ok { return list(); }
+    v
 }
 
 /// gh issue actions: new (title) | claim | release | done (number).

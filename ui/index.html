@@ -1905,7 +1905,7 @@ async function makeRelease(btn) {
   try { const url = await call('release', {pid: cur, tag: $('relTag').value.trim(), files}); relFiles = []; addEntry(cur, {kind: 'note', text: 'Released: ' + url}); drawRight(true); }
   catch (e) { $('relErr').textContent = e; btn.disabled = false; }
 }
-// ---- team tasks: open GitHub issues labelled `clauracle`; taken = assignee + `in progress` ----
+// ---- team tasks: open GitHub issues labelled `task`; taken = assignee + `in progress` ----
 // ponytail: polled every 60s for the open project (live push needs webhooks and a server)
 async function pollTeam() {
   const pid = cur;
