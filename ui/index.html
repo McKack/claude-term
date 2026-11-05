@@ -344,6 +344,8 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
 .msg .tlist .ti { font-size:inherit; }
+.qdrag { flex:none; border:0; background:none; color:var(--faint); cursor:grab; padding:0 2px; font-size:14px; line-height:1.2; opacity:0; touch-action:none; }
+.ti:hover > .qdrag, .ti.drag > .qdrag { opacity:1; } .ti.drag { opacity:.75; background:color-mix(in srgb, var(--accent) 10%, transparent); } .ti.drag .qdrag { cursor:grabbing; }
 .ti.working { flex-wrap:wrap; border:1px solid var(--line) !important; border-radius:4px 16px 16px 16px; padding:7px 12px; margin:2px 0; box-shadow:0 0 12px -4px var(--accent);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 .ti.working .tt { color:var(--accent); } .ti.working + .ti { border-top:0; }
@@ -2622,7 +2624,7 @@ const atpPlaceItems = () => [{title: 'Show as'},
   {label: 'Right', check: ATW.startsWith('right'), run: () => atpPlace('right-' + ATW.split('-')[1])},
   {label: 'Left', check: ATW.startsWith('left'), run: () => atpPlace('left-' + ATW.split('-')[1])}];
 function drawAtp() {
-  const el = $('atp'); if (!el || !cur) return;
+  const el = $('atp'); if (!el || !cur || el.querySelector('.ti.drag')) return; // mid-drag redraw would drop the row
   const [side, mode] = ATW.split('-'), tabbed = mode === 'tab', host = $(side === 'left' ? 'side' : 'right'), rail = $(side === 'left' ? 'lrail' : 'rrail');
   if (el.nextElementSibling !== rail) host.insertBefore(el, rail);
   const rt = ATW !== 'right-tab', st = ATW !== 'left-tab'; // Tasks tab shown/hidden → tab bars' min widths change
@@ -2639,7 +2641,8 @@ function drawAtp() {
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...S.plans[cur].map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
         ${pl.length > 1 || pl[0].file !== 'PLAN.md' ? `<button class="ib" title="Merge every plan file into PLAN.md" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
-        + L(q.map((x, i) => tli(esc(x), {on: `planCheck(${i}, this)`, ...(!i && busy[cur] ? {cls: 'working', end: `<small class="tw">${icon('sparkle')}<span>${workAgo()}</span></small>`} : {})})))
+        + L(q.map((x, i) => { const g = `<button class="qdrag" title="Drag to reorder (writes PLAN.md)" onpointerdown="qDrag(event, ${i})">⠿</button>`;
+            return tli(esc(x), {on: `planCheck(${i}, this)`, ...(!i && busy[cur] ? {cls: 'working', end: `<small class="tw">${icon('sparkle')}<span>${workAgo()}</span></small>` + g} : {end: g})}); }))
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
     || empty("Your AI's task list and PLAN.md's queue show here", `<button class="btn sm" onclick="$('prompt').value = 'Plan this in PLAN.md: '; $('prompt').focus(); grow()">${icon('list')}Plan with your AI</button>`);
@@ -2671,6 +2674,18 @@ async function mergePlans() {
   if (!from.length && pl[0]?.file === 'PLAN.md') return;
   if (!await sure(`Merge into PLAN.md?\n\n${from.map(o => `${o.file}: ${o.items.length} task${o.items.length === 1 ? '' : 's'}`).join('\n') || 'Creates PLAN.md'}\n\nClaude moves them into PLAN.md's Queue (by priority, duplicates merged) and removes them from those files.`)) return;
   sendNow(cur, {text: `Merge the open tasks of ${from.map(o => o.file).join(', ') || 'HANDOVER.md'} into PLAN.md's "## Queue" (by priority, merge duplicates; things needing the user's yes under "## Waiting on the user"), then remove them from those files (in HANDOVER.md drop its Queue section). Don't start any task.`, atts: []});
+}
+// Plan tab: drag a Queue row by its grip (pointer events ∵ Tauri's file-drop handler eats HTML5 DnD) → row moves live
+// among its siblings → drop = plan_move rewrites PLAN.md's Queue (blocks whole, renumbered); optimistic S.queues splice
+function qDrag(e, from) {
+  e.preventDefault(); const g = e.currentTarget, row = g.closest('.ti'), list = row.parentElement, at = r => [...list.children].indexOf(r);
+  g.setPointerCapture(e.pointerId); row.classList.add('drag'); document.body.classList.add('dragging');
+  g.onpointermove = m => { const o = [...list.children].find(r => { const b = r.getBoundingClientRect(); return r !== row && m.clientY > b.top && m.clientY < b.bottom; });
+    if (o) list.insertBefore(row, at(o) > at(row) ? o.nextSibling : o); };
+  g.onpointerup = g.onpointercancel = async () => { g.onpointermove = g.onpointerup = g.onpointercancel = null; row.classList.remove('drag'); document.body.classList.remove('dragging');
+    const to = at(row), q = S.queues?.[cur]; if (to === from || !q) return drawAtp();
+    q.splice(to, 0, q.splice(from, 1)[0]); drawAtp();
+    try { await call('plan_move', {pid: cur, from, to}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Reorder failed: ' + er}); } refresh(); };
 }
 // ponytail: placeholder; PLAN.md Queue item i checked → confirm dialog + action land with Queue task "Plan tab tasks (a)"
 function planCheck(i, box) { box.checked = false; }
