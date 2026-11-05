@@ -276,6 +276,13 @@ pre.diff .ctx { color:var(--faint); }
 .stepper .sn:hover { outline:1px solid var(--accent); } .stepper li.done .sn { background:var(--ok); color:#fff; }
 .stepper li.done > :not(.sn) { opacity:.45; transition:opacity .2s; } .stepper .under { margin-top:6px; font-size:12px; overflow-wrap:anywhere; }
 .streset { display:flex; justify-content:flex-end; margin-bottom:2px; }
+/* required steps all done → stepper folds to this row (click toggles) */
+.stdone { display:flex; align-items:center; gap:12px; width:100%; border:0; background:none; padding:2px 0 10px; cursor:pointer; font:inherit; font-size:13px; color:var(--text); text-align:left; }
+.stdone > svg:first-child { width:28px; height:28px; padding:6px; box-sizing:border-box; border-radius:50%; background:var(--ok); color:#fff; flex:none; }
+.stdone span { flex:1; } .stdone > svg:last-child { color:var(--dim); transition:transform .15s; } .stdone.open > svg:last-child { transform:rotate(180deg); }
+/* Services all set → Next step (to Build & Release) + sticky "New!" pill till it's scrolled into view */
+.nextstep { margin-top:14px; padding:14px; border-radius:14px; background:var(--soft); text-align:center; } .nextstep p { margin:0 0 10px; }
+.newpill { position:sticky; bottom:8px; display:flex; align-items:center; gap:4px; margin:10px auto 0; border:0; border-radius:99px; padding:6px 12px 6px 8px; background:var(--accent); color:#fff; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:var(--shadow); } .newpill[hidden] { display:none; }
 .stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
 .stepper b { color:var(--text); font-weight:600; } .stepper .btnrow { margin-top:8px; align-items:center; } .stepper .keys { margin-top:8px; }
 /* stepper buttons never squeeze: nowrap + wrap row; a button alone on its line grows full width; non-buttons go below */
@@ -367,7 +374,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti.working > input { outline:1.5px solid var(--accent); outline-offset:-1.5px; border-radius:3px; } /* unchecked box ignores accent-color → outline tints it */
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .item a { color:var(--text); text-decoration:none; cursor:pointer; } .item a:hover { color:var(--accent); }
-.out { background:#151412; color:#d8d4cb; border-radius:10px; padding:10px; height:calc(100vh - 190px); overflow:auto; font:12px/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; margin-top:10px; user-select:text; }
+.out { background:#151412; color:#d8d4cb; border-radius:10px; padding:10px; max-height:240px; overflow:auto; font:12px/1.5 ui-monospace,Consolas,monospace; white-space:pre-wrap; margin-top:10px; user-select:text; }
 .envfile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:0 0 12px; }
 .kv { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 6px; padding:7px 0; border-top:1px solid var(--line); align-items:center; }
 .kv .k { font:600 12.5px ui-monospace,Consolas,monospace; overflow:hidden; text-overflow:ellipsis; }
@@ -546,7 +553,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button data-t="agents" onclick="rightTab('agents')" title="Agents"><svg class="i"><use href="#i-bot"/></svg><span>Agents</span></button>
     <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
     <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
-    <button data-t="build" onclick="rightTab('build')" title="Build"><svg class="i"><use href="#i-hammer"/></svg><span>Build</span></button>
+    <button data-t="build" onclick="rightTab('build')" title="Build &amp; Release"><svg class="i"><use href="#i-hammer"/></svg><span>Build &amp; Release</span></button>
     <i class="rsep"></i><!-- workspace group (Code, Browser) always behind this line -->
     <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
     <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
@@ -2190,7 +2197,11 @@ async function drawServices() {
       + (x.gh === true ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
       `<span class="pill" ${miss.length ? 'style="background:var(--hover);color:var(--dim)"' : ''}>${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
-    + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`;
+    + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`
+    // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
+    + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services set up.</p><button class="btn primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button></div>
+      <button class="newpill" id="newPill" onclick="$('nextStep').scrollIntoView({behavior: 'smooth', block: 'end'})">${icon('down')}New!</button>` : '');
+  if ($('nextStep')) new IntersectionObserver(([e]) => { if (e.isIntersecting && $('newPill')) $('newPill').hidden = true; }).observe($('nextStep'));
   if (ids.includes('google')) drawCloud();
   ids.filter(id => SERVICES[id].gh).forEach(id => secCount(id));
   if (ids.includes('macsign') && !envKeys.have.has('APPLE_CERTIFICATE') && !cerT) cerWatch();
@@ -2221,9 +2232,16 @@ function stepSync(id) { // → true if new steps got ticked (persisted)
   try { localStorage.steps = JSON.stringify(STEPS); } catch {}
   return true;
 }
+// required = not "Optional…"; all ticked → service's steps count as done
+const stepReq = steps => steps.map((x, i) => i).filter(i => !/^Optional/.test(steps[i].t || steps[i]));
+const stepsDone = id => { const st = SERVICES[id].steps; return !st || (stepSync(id), stepReq(st).every(i => stepOf(id).d.includes(i))); };
+const svcDone = id => stepsDone(id) && SERVICES[id].keys.every(k => envKeys.have.has(k));
+function stepOpen(id) { const s = stepOf(id); s.open = !s.open; try { localStorage.steps = JSON.stringify(STEPS); } catch {} drawServices(); }
 function stepper(id, steps) {
-  stepSync(id); const s = stepOf(id);
-  return (s.d.length || s.csr ? `<div class="streset"><button class="btn sm ghost" onclick="stepReset('${id}')">Reset steps</button></div>` : '')
+  stepSync(id); const s = stepOf(id), done = stepsDone(id);
+  const head = done ? `<button class="stdone${s.open ? ' open' : ''}" onclick="stepOpen('${id}')" title="${s.open ? 'Fold the steps' : 'Show the steps'}">${icon('check')}<span>All ${stepReq(steps).length} steps done</span>${icon('down')}</button>` : '';
+  if (done && !s.open) return head;
+  return head + (s.d.length || s.csr ? `<div class="streset"><button class="btn sm ghost" onclick="stepReset('${id}')">Reset steps</button></div>` : '')
     + `<ol class="stepper">${steps.map((x, i) => { const on = s.d.includes(i);
       return `<li${on ? ' class="done"' : ''}><button class="sn" onclick="stepTog('${id}', ${i})" title="${on ? 'Mark not done' : 'Mark done'}">${on ? icon('check') : i + 1}</button>`
         + `<span>${esc(x.t || x).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}</span>${x.a ? `<div class="btnrow">${x.a()}</div>` : ''}${x.u ? x.u(s) : ''}</li>`; }).join('')}</ol>`;
