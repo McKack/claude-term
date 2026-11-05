@@ -445,13 +445,15 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
   <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9a6 6 0 0 1-6 6H6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
+  <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14 4l6 6-7 7-6-6zM7 11l-3 3c-1 1-1 4-1 6 2 0 5 0 6-1l3-3"/></symbol>
   <symbol id="i-sparkle"viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
 </svg>
 
 <aside id="side">
   <div id="brand"><svg class="logo" onclick="goHome()" style="cursor:pointer" title="Home"><use href="#i-logo"/></svg><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b>
 </div>
-  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="tasks" id="stabTasks" hidden onclick="setSide('tasks')" title="Tasks & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button></span>
+  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="tasks" id="stabTasks" hidden onclick="setSide('tasks')" title="Plan & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
@@ -469,12 +471,12 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   </div>
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
     <div class="col" id="skel" hidden><div class="crow claude"><img class="av" src="icon.svg" alt=""><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div>
-      <div id="handpill" hidden>Preparing handover…</div>
+      <div id="handpill" hidden>Preparing plan…</div>
       <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Working…</span></div></div></div></div></div>
   <div id="dock" hidden><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
-    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="P().ready ? cont_() : sendNow(cur, {text: (S.queues?.[cur]?.length ? 'Carry on with the next task in HANDOVER.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(cur)[0], atts: []})">Continue</button></div>
+    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="P().ready ? cont_() : sendNow(cur, {text: (S.queues?.[cur]?.length ? 'Carry on with the next task in PLAN.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(cur)[0], atts: []})">Continue</button></div>
     <div id="composer">
       <div id="slash" hidden></div>
       <div id="atts"></div>
@@ -483,7 +485,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
         <button class="ib" title="Attach files" onclick="pickFiles()"><svg class="i"><use href="#i-clip"/></svg></button>
         <button class="ib" id="tPony" title="Ponytail: the simplest code that works" onclick="setP({ponytail:!P().ponytail})"><svg class="i"><use href="#i-feather"/></svg></button>
         <button class="ib" id="tCont" title="Clear & continue mode" onclick="menuAt(this, contItems())"><svg class="i"><use href="#i-loop"/></svg></button>
-        <button class="ib" title="Clear & continue now: write the handover, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-sparkle"/></svg></button>
+        <button class="ib" title="Clear & continue now: write the plan, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-sparkle"/></svg></button>
         <button class="ib" id="tWeb" onclick="S.web = !S.web; call('set_off', {item: 'web', off: !S.web, scope: 'global'}); drawChrome()"><svg class="i"><use href="#i-globe"/></svg></button>
         <span class="grow"></span>
         <button class="btn ghost sm" id="cancelEdit" hidden title="Put the queued message back, unchanged, in its place" onclick="cancelEdit()" style="margin-right:6px"><svg class="i"><use href="#i-x"/></svg>Cancel edit</button>
@@ -496,7 +498,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 
 <aside id="right" hidden>
   <div id="rtabs">
-    <button data-t="tasks" id="rtabTasks" hidden onclick="rightTab('tasks')" title="Tasks & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button>
+    <button data-t="tasks" id="rtabTasks" hidden onclick="rightTab('tasks')" title="Plan & agents"><svg class="i"><use href="#i-list"/></svg><span>Tasks</span></button>
     <button data-t="gh" onclick="rightTab('gh')" title="GitHub"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
     <button data-t="build" onclick="rightTab('build')" title="Build"><svg class="i"><use href="#i-hammer"/></svg><span>Build</span></button>
     <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
@@ -764,11 +766,11 @@ function drawChrome() {
   $('contBtn').hidden = !p.ready && !next.length;
   // questions never block a Continue: they open in the fresh session (qsOpen), the bar keeps showing the next task
   $('readytext').innerHTML = next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
-    : p.ready ? 'Handover written. Continue clears the context and carries on.'
+    : p.ready ? 'Plan written. Continue clears the context and carries on.'
     : `All tasks done! What should we look at next? ${NEXT_IDEAS.map(([l], i) => `<button class="btn ghost" onclick="askNext(${i})">${l}</button>`).join('')}`;
   $('ready').title = ''; $('readytext').title = next.length ? 'Click to show the whole task' : ''; // hover = nothing extra; click toggles .full
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
-  $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
+  $('handpill').textContent = reading[cur] ? 'Reading plan…' : 'Preparing plan…';
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
   const sk = $('skel'), skOn = !$('workpill').hidden || !$('handpill').hidden;
   if (sk.hidden && skOn) { $('skelts').textContent = tm(new Date().toISOString()); const l = $('log'), stick = l.scrollHeight - l.scrollTop - l.clientHeight < 120;
@@ -1000,7 +1002,7 @@ const TICON = {Edit: 'new', MultiEdit: 'new', Write: 'file', NotebookEdit: 'new'
 // inside the project → relative; elsewhere the full path
 const shortPath = f => { const r = (P()?.path || '').replace(/[\\/]+$/, ''); return r && f.toLowerCase().startsWith(r.toLowerCase()) ? f.slice(r.length + 1) : f; };
 // Clauracle's own process: handover files and its MCP tools (shown as the pill instead)
-const isProcess = e => e.kind === 'tool' && (/^mcp__clauracle__/.test(e.text) || /(^|[\\/])(HANDOVER|CHANGES)\.md$/i.test(e.detail?.file_path || ''));
+const isProcess = e => e.kind === 'tool' && (/^mcp__clauracle__/.test(e.text) || /(^|[\\/])(HANDOVER|CHANGES|PLAN)\.md$/i.test(e.detail?.file_path || ''));
 function entry(e) {
   if (e.kind === 'ask') return askCard(e);
   if (isProcess(e)) return null;
@@ -1285,7 +1287,7 @@ function flushQueue(pid) {
 // Continue waiting = handover written (ready), or the idle bar offering the next task (current project only: it's drawn)
 const contWaiting = pid => !busy[pid] && !RESTARTING && P(pid)?.cont !== 'off' && (P(pid)?.ready || (pid === cur && !$('ready').hidden && !$('contBtn').hidden));
 // Claude triages them (urgent → top of the Queue + now; else reworded/merged in; question → answer) and the work runs
-const TRIAGE = 'New from the user while the queue waited. Triage each before anything else: urgent or blocking → reword it as a task at the TOP of HANDOVER.md\'s Queue and do it now; otherwise reword it into the Queue by priority (merge with a matching task); a plain question → answer it briefly. Then carry on with the Queue\'s first task.\n\n';
+const TRIAGE = 'New from the user while the queue waited. Triage each before anything else: urgent or blocking → reword it as a task at the TOP of PLAN.md\'s Queue and do it now; otherwise reword it into the Queue by priority (merge with a matching task); a plain question → answer it briefly. Then carry on with the Queue\'s first task.\n\n';
 function toTasks(pid, texts) {
   const msg = TRIAGE + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n');
   if (P(pid).ready) { if (pid === cur) cont_(msg); else call('continue_now', {pid, extra: msg}); } // ready: fresh session carries them
@@ -2294,16 +2296,19 @@ function drawAtp() {
   el.hidden = tabbed && (side === 'right' ? tab !== 'tasks' : UI.st !== 'tasks');
   el.classList.toggle('tabbed', tabbed); el.classList.toggle('min', !tabbed && atpMin);
   if (!el.style.height) try { if (localStorage.atpH) el.style.height = localStorage.atpH; } catch {}
-  const ag = agentsOf(cur), t = todos(cur), run = ag.filter(a => a.running), q = S.queues?.[cur] || [], dn = S.done?.[cur] || [];
+  const ag = agentsOf(cur), t = todos(cur), run = ag.filter(a => a.running), q = S.queues?.[cur] || [], dn = S.done?.[cur] || [], pl = S.plans?.[cur] || [];
   const open = t.filter(x => x.status !== 'completed'), fin = t.filter(x => x.status === 'completed');
   const row = (mark, text, cls = '') => `<div class="atrow ${esc(cls)}" title="${esc(text)}"><span class="tk">${mark}</span><span class="grow" style="min-width:0">${esc(text)}</span></div>`;
   const tasks = ((t.length ? `<div class="label">Now</div>` + open.map(x => row(x.status === 'in_progress' ? '▸' : '○', x.status === 'in_progress' && x.activeForm || x.content, x.status)).join('')
         + fin.slice(-3).map(x => row('✓', x.content, 'completed')).join('') : '')
-    + (q.length ? `<div class="label row" style="gap:6px;align-items:baseline">Next<span class="faint" style="text-transform:none;letter-spacing:0;font-weight:400">· HANDOVER.md</span><span class="grow"></span>
-        ${P().gh ? `<button class="btn ghost sm" title="File each as a GitHub issue (Team tasks), in this order; skips ones already there" onclick="queueToTeam(this)">${icon('gh')}To team tasks</button>` : ''}</div>`
-        + q.map((x, i) => row(i + 1 + '.', x)).join('') : '')
+    + (pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>
+        <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...S.plans[cur].map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
+        ${pl.length > 1 || pl[0].file !== 'PLAN.md' ? `<button class="ib" title="Merge every plan file into PLAN.md" onclick="mergePlans()">${icon('brush')}</button>` : ''}
+        ${P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
+        + q.map((x, i) => row(i + 1 + '.', x)).join('')
+        + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}</div>` + o.items.map(x => row('○', x)).join('')).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + dn.map(x => row('✓', x, 'completed')).join('') : ''))
-    || empty("Claude's task list and HANDOVER.md's queue show here");
+    || empty("Claude's task list and PLAN.md's queue show here");
   const agents = ag.length ? [...run, ...ag.filter(a => !a.running).slice(-4).reverse()].map(a =>
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
@@ -2311,7 +2316,7 @@ function drawAtp() {
   const cnt = open.length ? open.length : q.length;
   el.innerHTML = `<div class="atgrip" title="Drag to resize"></div><div class="athead">${tabbed ? icon('list')
       : `<button class="ib tog" title="${atpMin ? 'Expand' : 'Collapse'}" onclick="atpMinT()">${icon('list')}</button>`}<span class="ptabs">
-      <button class="${atpTab === 'tasks' ? 'on' : ''}" onclick="atpSet('tasks')">Tasks${cnt ? ` <span class="pill">${cnt}</span>` : ''}</button>
+      <button class="${atpTab === 'tasks' ? 'on' : ''}" onclick="atpSet('tasks')">Plan${cnt ? ` <span class="pill">${cnt}</span>` : ''}</button>
       <button class="${atpTab === 'agents' ? 'on' : ''}" onclick="atpSet('agents')">Agents${run.length ? ` <span class="pill">${run.length}</span>` : ''}</button></span><span class="grow"></span>
       <button class="ib" title="Where this panel shows" onclick="menuAt(this, atpPlaceItems())">${icon('more')}</button></div>
     <div class="atbody">${atpTab === 'agents' ? agents : tasks}</div>`;
@@ -2325,13 +2330,21 @@ function drawAtp() {
     g.onpointerup = () => { g.onpointermove = null; document.body.classList.remove('dragging'); try { localStorage.atpH = el.style.height; } catch {} drawAtp(); };
   };
 }
+// sweep: Claude merges every plan file's open tasks into PLAN.md (confirmed first, showing what moves)
+function mergePlans() {
+  const pl = S.plans?.[cur] || [], from = pl.filter(o => o.file !== 'PLAN.md' && o.items.length);
+  if (!from.length && pl[0]?.file === 'PLAN.md') return;
+  if (!confirm(`Merge into PLAN.md?\n\n${from.map(o => `${o.file}: ${o.items.length} task${o.items.length === 1 ? '' : 's'}`).join('\n') || 'Creates PLAN.md'}\n\nClaude moves them into PLAN.md's Queue (by priority, duplicates merged) and removes them from those files.`)) return;
+  sendNow(cur, {text: `Merge the open tasks of ${from.map(o => o.file).join(', ') || 'HANDOVER.md'} into PLAN.md's "## Queue" (by priority, merge duplicates; things needing the user's yes under "## Waiting on the user"), then remove them from those files (in HANDOVER.md drop its Queue section). Don't start any task.`, atts: []});
+}
 async function queueToTeam(btn) {
-  btn.disabled = true;
   const have = new Set(teamTasks(cur).map(x => x.title.trim().toLowerCase()));
+  const todo = (S.queues?.[cur] || []).map(x => x.length > 120 ? x.slice(0, 117) + '…' : x).filter(t => !have.has(t.toLowerCase()));
+  if (!todo.length) return addEntry(cur, {kind: 'note', text: 'Every queued task is already a team task'});
+  if (!confirm(`File ${todo.length} task${todo.length === 1 ? '' : 's'} as GitHub issues (Team tasks), in this order?\n\n${todo.map((t, i) => `${i + 1}. ${t}`).join('\n')}`)) return;
+  btn.disabled = true;
   let n = 0;
-  for (const x of S.queues?.[cur] || []) { // one by one, so issue numbers follow the queue's order
-    const title = x.length > 120 ? x.slice(0, 117) + '…' : x;
-    if (have.has(title.toLowerCase())) continue;
+  for (const title of todo) { // one by one, so issue numbers follow the queue's order
     try { await call('task_do', {pid: cur, action: 'new', arg: title}); n++; } catch (e) { addEntry(cur, {kind: 'err', text: String(e)}); break; }
   }
   addEntry(cur, {kind: 'note', text: `${n} team task${n === 1 ? '' : 's'} filed from the queue`}); pollTeam(); btn.disabled = false;

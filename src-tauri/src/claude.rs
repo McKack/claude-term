@@ -15,18 +15,20 @@ const LESSONS_MAX: usize = 30; // ponytail: ~30 one-liners ≈ 1k tokens per ses
 const PONYTAIL_MD: &str =include_str!("../../plugin/skills/ponytail/SKILL.md");
 
 const APPEND: &str = "You are running inside Clauracle, a desktop app around Claude Code that keeps long work going \
-across fresh sessions through HANDOVER.md. Its tools: mcp__clauracle__ready (the task is done and the handover is \
-written: Clauracle clears the context and continues) and mcp__clauracle__ask (questions for the user, queued; never \
+across fresh sessions through PLAN.md and HANDOVER.md. Its tools: mcp__clauracle__ready (the task is done and plan + \
+handover are written: Clauracle clears the context and continues) and mcp__clauracle__ask (questions for the user, queued; never \
 wait for them). Save tokens: hand searching, reading many files and running builds/tests to the helper agents \
 (Task tool) when they fit, and keep your own replies short.";
 
 const HANDOVER_RULES: &str = "
 # Handover (Clauracle)
-- HANDOVER.md at the project root lets a fresh session resume: goal, current state, an ordered \"## Queue\" of open
-  tasks (first = next), how to build and test, gotchas. The Queue holds only work you can start now; anything that
-  needs the user's yes goes under \"## Waiting on the user\", never in the Queue. Under ~50 lines. In a git repo where it isn't tracked, add it
-  to .git/info/exclude. Finished work goes to CHANGES.md (newest first, one line per change), not the handover.
-- Finishing a task: verify it, update HANDOVER.md and CHANGES.md, commit if the project's rules allow, then call
+- PLAN.md at the project root = the ONE task list: an ordered \"## Queue\" of open tasks (first = next) holding only
+  work you can start now; anything that needs the user's yes goes under \"## Waiting on the user\", never in the Queue.
+  HANDOVER.md lets a fresh session resume: goal, current state, how to build and test, gotchas; no task list. Each
+  under ~50 lines. If HANDOVER.md (or TASKS.md/TODO.md) still has open tasks, move them into PLAN.md. In a git repo
+  where these aren't tracked, add them to .git/info/exclude. Finished work goes to CHANGES.md (newest first, one line
+  per change), not the plan or handover.
+- Finishing a task: verify it, update PLAN.md, HANDOVER.md and CHANGES.md, commit if the project's rules allow, then call
   mcp__clauracle__ready as the LAST action of the turn.
 - Do NOT call ready, stop and say why instead, when something failed you can't fix or the queue is empty.
 - Questions for the user go through mcp__clauracle__ask (numbered, options with your recommendation marked). They
@@ -34,12 +36,12 @@ const HANDOVER_RULES: &str = "
 
 const AUTO_RULES: &str = "
 # Auto mode: the user is away
-Work ONE task per session from HANDOVER.md's queue, then hand over with mcp__clauracle__ready; Clauracle starts the
+Work ONE task per session from PLAN.md's queue, then hand over with mcp__clauracle__ready; Clauracle starts the
 next session by itself.";
 
 const AUTO_ANSWER_RULES: &str = "
 # Auto mode with answers: the user is away
-Work ONE task per session from HANDOVER.md's queue, then hand over with mcp__clauracle__ready. When a question has a
+Work ONE task per session from PLAN.md's queue, then hand over with mcp__clauracle__ready. When a question has a
 sensible recommended answer, decide it yourself, go with that, and note the decision in CHANGES.md. Only questions
 that truly need the user (taste, money, accounts, irreversible or risky choices) go to mcp__clauracle__ask with
 blocking=true; they are held, and you continue with other tasks.";
@@ -50,15 +52,15 @@ Write code comments as compact notes an AI reads fully: fragments, symbols (→ 
 every fact (why, constraint, edge case, upgrade path). Example: `// cache: 5m TTL ∵ API rate limit; ↑ if stale data hurts`.";
 
 const PREPARE: &str = "Pause here; don't start anything new{why}. Update HANDOVER.md so a fresh session can pick up \
-exactly where you are (goal, what you were doing and how far it got, what is verified and what isn't, next steps in \
-order, gotchas learned), move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
+exactly where you are (goal, what you were doing and how far it got, what is verified and what isn't, gotchas \
+learned) and PLAN.md's Queue (next steps in order), move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
 
 const RESUMED: &str = "continue
 
 Clauracle restarted while you were working (a restart you asked for, an update, or a crash), so your last turn was cut off. Check where you got to (files, git status) and carry on.";
 
-const CONTINUE: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md at the \
-project root and carry on with the next step.";
+const CONTINUE: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md and \
+PLAN.md at the project root and carry on with the next step.";
 
 // ---------------------------------------------------------------------------------------------
 
@@ -644,7 +646,7 @@ fn tool_list() -> Value {
             "blocking": {"type": "boolean", "description": "true only if work truly can't go on without the user"}}}}}});
     json!({"tools": [
         {"name": "ready", "description": "Call as the LAST action of a turn once the task is done (or paused) and \
-          HANDOVER.md is updated. When the turn ends Clauracle clears the context and a fresh session continues \
+          PLAN.md and HANDOVER.md are updated. When the turn ends Clauracle clears the context and a fresh session continues \
           (or waits for the user's Continue).", "inputSchema": {"type": "object", "properties": {}}},
         {"name": "ask", "description": "Queue questions for the user (numbered in a card, options with your \
           recommendation, a note field each). Don't wait: the answers arrive later.", "inputSchema": q},
@@ -700,7 +702,7 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                     return text("Clear-continue is off for this project: nothing will be cleared. Just end the turn.");
                 }
                 live.armed.store(true, SeqCst);
-                text("Armed. When this turn ends the context is cleared and a fresh session continues from HANDOVER.md. End the turn now.")
+                text("Armed. When this turn ends the context is cleared and a fresh session continues from PLAN.md and HANDOVER.md. End the turn now.")
             }
             Some("lesson") => {
                 let rule: String = m["params"]["arguments"]["rule"].as_str().unwrap_or("").trim().chars().take(160).collect();
@@ -849,24 +851,53 @@ static RUNNING: std::sync::LazyLock<Mutex<HashMap<String, tokio::process::Child>
 
 // ---- history of a resumed session ------------------------------------------------------------------
 
-/// The visible part of a session's transcript (~/.claude/projects/*/<id>.jsonl), last 300 entries.
-/// Items of the "## Queue" list in HANDOVER.md (numbered or bulleted), in order.
-pub fn queue(dir: &str) -> Vec<String> {
-    let text = std::fs::read_to_string(std::path::Path::new(dir).join("HANDOVER.md")).unwrap_or_default();
-    let item = regex::Regex::new(r"^\s*(?:\d+[.)]|[-*])\s+(.+)").unwrap();
-    let mut on = false;
+/// Files in the project root that may hold tasks; PLAN.md = the single source once it exists.
+const PLAN_FILES: [&str; 4] = ["PLAN.md", "HANDOVER.md", "TASKS.md", "TODO.md"];
+
+/// Open tasks of a plan file, in order: its "## Queue" list if it has one; else (not HANDOVER.md: its bullets are
+/// state, not tasks) every top-level list item that isn't checked off.
+fn items(dir: &str, file: &str) -> Vec<String> {
+    let text = std::fs::read_to_string(std::path::Path::new(dir).join(file)).unwrap_or_default();
+    let item = regex::Regex::new(r"^(\s*)(?:\d+[.)]|[-*])\s+(?:\[ \]\s*)?(.+)").unwrap();
+    let has_q = text.lines().any(|l| l.starts_with('#') && l.trim_start_matches('#').trim().eq_ignore_ascii_case("queue"));
+    if !has_q && file == "HANDOVER.md" {
+        return vec![];
+    }
+    let mut on = !has_q;
     let mut out = vec![];
     for l in text.lines() {
         if l.starts_with('#') {
-            on = l.trim_start_matches('#').trim().eq_ignore_ascii_case("queue"); // exact: "## Waiting (not queue items)" ≠ queue
+            if has_q { on = l.trim_start_matches('#').trim().eq_ignore_ascii_case("queue"); } // exact: "## Waiting (not queue items)" ≠ queue
         } else if on {
-            if let Some(c) = item.captures(l) {
-                out.push(c[1].replace("**", "").trim().to_string());
+            match item.captures(l) {
+                Some(c) if (has_q || c[1].is_empty()) && !c[2].starts_with("[x]") && !c[2].starts_with("[X]") =>
+                    out.push(c[2].replace("**", "").trim().to_string()),
+                _ => {}
             }
         }
     }
     out
 }
+
+/// The plan Clauracle works from: PLAN.md if it exists, else an old HANDOVER.md's Queue (migrated by Claude).
+fn primary(dir: &str) -> &'static str {
+    if std::path::Path::new(dir).join("PLAN.md").is_file() { "PLAN.md" } else { "HANDOVER.md" }
+}
+
+/// Next tasks (ready bar, Tasks tab): the primary plan's open items.
+pub fn queue(dir: &str) -> Vec<String> {
+    items(dir, primary(dir))
+}
+
+/// Every plan file with open tasks, primary first: [{file, items}] (Tasks tab ⓘ, merge into PLAN.md).
+pub fn plans(dir: &str) -> Vec<Value> {
+    let p = primary(dir);
+    std::iter::once(p).chain(PLAN_FILES.into_iter().filter(|f| *f != p))
+        .map(|f| (f, items(dir, f))).filter(|(f, i)| *f == p || !i.is_empty())
+        .map(|(f, i)| json!({"file": f, "items": i})).collect()
+}
+
+/// The visible part of a session's transcript (~/.claude/projects/*/<id>.jsonl), last 300 entries.
 
 /// The newest `n` entries of CHANGES.md (newest first, one bullet per change): what was done lately.
 pub fn done(dir: &str, n: usize) -> Vec<String> {
@@ -896,8 +927,8 @@ pub fn history(session: &str) -> Vec<Value> {
                     if hide || t.starts_with('<') {
                         continue;
                     }
-                    out.push(if t.starts_with(CONTINUE) {
-                        json!({"kind": "note", "text": "Fresh session, continued from HANDOVER.md"})
+                    out.push(if t.starts_with(&CONTINUE[..60]) { // prefix: older CONTINUE wordings too
+                        json!({"kind": "note", "text": "Fresh session, continued from the plan"})
                     } else if t.starts_with(RESUMED) {
                         json!({"kind": "note", "text": "Resumed after a restart"})
                     } else {
@@ -943,6 +974,14 @@ mod tests {
         assert!(queue("/nope").is_empty());
         std::fs::write(d.join("HANDOVER.md"), "## Queue\n- A\n## Waiting on the user (not queue items)\n- B\n").unwrap();
         assert_eq!(queue(d.to_str().unwrap()), ["A"]);
+        // TODO.md without a Queue heading: top-level unchecked items; PLAN.md takes over as primary once it exists
+        std::fs::write(d.join("TODO.md"), "# Todo\n- [ ] One\n  - sub\n- [x] Done\n* Two\n").unwrap();
+        std::fs::write(d.join("PLAN.md"), "## Queue\n1. P\n").unwrap();
+        let ds = d.to_str().unwrap();
+        assert_eq!(queue(ds), ["P"]);
+        assert_eq!(plans(ds), [json!({"file": "PLAN.md", "items": ["P"]}), json!({"file": "HANDOVER.md", "items": ["A"]}),
+            json!({"file": "TODO.md", "items": ["One", "Two"]})]);
+        for f in ["TODO.md", "PLAN.md"] { std::fs::remove_file(d.join(f)).unwrap(); }
     }
 
     #[test]
