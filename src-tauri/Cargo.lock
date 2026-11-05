@@ -501,6 +501,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tokio",
  "ureq",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

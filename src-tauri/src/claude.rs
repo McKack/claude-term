@@ -270,6 +270,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
         .stderr(std::process::Stdio::null()).kill_on_drop(true);
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
     child.id().map(|id| crate::CHILDREN.lock().unwrap().push(id));
+    crate::adopt(&child);
     let conn = Arc::new(Conn { stdin: tokio::sync::Mutex::new(child.stdin.take().unwrap()),
                                pending: Mutex::new(HashMap::new()), counter: AtomicU64::new(0) });
     let (msgs_tx, mut msgs) = mpsc::unbounded_channel::<Value>();
@@ -795,6 +796,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     let mut child = match c.spawn() {
         Ok(c) => {
             c.id().map(|id| crate::CHILDREN.lock().unwrap().push(id));
+            crate::adopt(&c);
             c
         }
         Err(e) => {

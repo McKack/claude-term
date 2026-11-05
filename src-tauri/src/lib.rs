@@ -11,6 +11,26 @@ use tauri::{AppHandle, Manager, State as S};
 type St<'a> = S<'a, Arc<State>>;
 type R<T> = Result<T, String>;
 
+/// Windows: claude sessions and run steps go into one kill-on-close job → the OS ends their whole trees when Clauracle
+/// dies any way (crash, force-kill), not only on a clean exit. ponytail: a grandchild spawned in the µs before adopt()
+/// escapes; spawn suspended if that ever shows up. Elsewhere a dead parent closes claude's stdin → it exits.
+#[cfg(windows)]
+pub fn adopt(child: &tokio::process::Child) {
+    use windows_sys::Win32::System::JobObjects::*;
+    static JOB: std::sync::LazyLock<usize> = std::sync::LazyLock::new(|| unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info as *const _ as _, std::mem::size_of_val(&info) as u32);
+        job as usize
+    });
+    if let Some(h) = child.raw_handle() {
+        unsafe { AssignProcessToJobObject(*JOB as _, h as _) };
+    }
+}
+#[cfg(not(windows))]
+pub fn adopt(_: &tokio::process::Child) {}
+
 pub static CHILDREN: std::sync::LazyLock<Mutex<Vec<u32>>> = std::sync::LazyLock::new(Default::default);
 
 #[tauri::command]
@@ -218,7 +238,8 @@ fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
     let p = st.project(&pid).unwrap();
     let over = store::over_limit(&st.cfg.lock().unwrap(), &p.account);
     if over.is_some() {
-        if let Some(n) = store::pool_pick(&st.cfg.lock().unwrap(), &p.account) {
+        let pick = store::pool_pick(&st.cfg.lock().unwrap(), &p.account); // own statement: an if-let would hold the lock into with_project → deadlock
+        if let Some(n) = pick {
             st.with_project(&pid, |p| p.account = n);
         }
     }

@@ -1308,9 +1308,10 @@ $('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash();
 const reading = {};
 const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading[pid]; if (pid === cur) drawChrome(); };
 // a clear keeps the conversation so far above the new one, faded (ponytail: last 300 entries, older ones drop)
-const keepOld = pid => (logs[pid] || []).filter(x => x.text !== READING && x.kind !== 'ask').slice(-300).map(x => ({...x, old: true}));
-function cont_(extra) { hiddenQs[cur] = false; logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session'}]; readNote(cur, true);
-  P().ready = false; $('ready').hidden = true; drawLog(); call('continue_now', {pid: cur, extra: extra || null}); }
+const keepOld = pid => (logs[pid] || []).filter(x => x.kind !== 'ask').slice(-300).map(x => ({...x, old: true}));
+function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); /* first: a drawing error can't swallow the Continue */
+  hiddenQs[cur] = false; P().ready = false; $('ready').hidden = true;
+  logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session'}]; readNote(cur, true); drawLog(); }
 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
