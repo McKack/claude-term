@@ -233,7 +233,8 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 #handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:4px 16px 16px 16px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
-#readytext b { font-weight:600; } #readytext:has(.btn) { white-space:normal; line-height:2.2; } #readytext .btn { margin-left:6px; padding:2px 10px; font-size:12.5px; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#readytext b { font-weight:600; } #readytext:has(.btn) { white-space:normal; line-height:2.2; } #readytext .btn { margin-left:6px; padding:2px 10px; font-size:12.5px; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+#readytext.full { white-space:pre-wrap; max-height:40vh; overflow:auto; } /* click: the whole next task, line breaks kept */
 .btn.sm { padding:2px 8px; font-size:12px; }
 .warn { background:color-mix(in srgb, var(--err) 12%, transparent); color:var(--err); border-radius:10px; padding:8px 10px; font-size:12.5px; margin:6px 0; }
 .sec { margin:0 0 18px; } .sh { display:flex; align-items:center; gap:6px; min-height:26px; margin:0 2px 6px; } .sh .label { flex:1; }
@@ -473,7 +474,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="dock" hidden><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
-    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext"></span><button class="btn primary" id="contBtn" onclick="P().ready ? cont_() : sendNow(cur, {text: (S.queues?.[cur]?.length ? 'Carry on with the next task in HANDOVER.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(cur)[0], atts: []})">Continue</button></div>
+    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="P().ready ? cont_() : sendNow(cur, {text: (S.queues?.[cur]?.length ? 'Carry on with the next task in HANDOVER.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(cur)[0], atts: []})">Continue</button></div>
     <div id="composer">
       <div id="slash" hidden></div>
       <div id="atts"></div>
@@ -765,7 +766,7 @@ function drawChrome() {
   $('readytext').innerHTML = next.length ? `Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
     : p.ready ? 'Handover written. Continue clears the context and carries on.'
     : `All tasks done! What should we look at next? ${NEXT_IDEAS.map(([l], i) => `<button class="btn ghost" onclick="askNext(${i})">${l}</button>`).join('')}`;
-  $('ready').title = next.map((t, i) => `${i + 1}. ${t}`).join('\n');
+  $('ready').title = ''; $('readytext').title = next.length ? 'Click to show the whole task' : ''; // hover = nothing extra; click toggles .full
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
   $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
