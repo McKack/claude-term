@@ -1211,7 +1211,7 @@ pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf, args: &[String]) {
     }
     save_children(&[]);
     let mut c = std::process::Command::new(exe);
-    c.args(args);
+    c.args(args).args(["--after", &std::process::id().to_string()]); // new one waits for us ∵ single-instance guard
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -1279,7 +1279,21 @@ pub fn run() {
     if args.get(1).map(String::as_str) == Some("--swap-into") {
         return swap_into(std::path::Path::new(args.get(2).map_or("", String::as_str)));
     }
+    // relaunched: old instance still exiting (≤3s hard exit) → wait ≤10s, else the guard below would hand off to it and quit
+    if let Some(old) = args.iter().position(|a| a == "--after").and_then(|i| args.get(i + 1)?.parse::<u32>().ok()) {
+        for _ in 0..50 {
+            if !procs().contains_key(&old) { break; }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
