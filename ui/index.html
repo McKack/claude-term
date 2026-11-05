@@ -534,7 +534,7 @@ const MODELS = {'': 'Default', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', h
 const EFFORTS = {'': 'Default', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max'};
 // short forms for the status row; full names in the menus. PERMS order = level 1..4 (least → most freedom)
 const EFF_S = {low: 'L', medium: 'M', high: 'H', xhigh: 'XH', max: 'Max'};
-const PERMS = {plan: 'Plan only', default: 'Ask first', acceptEdits: 'Accept edits', bypassPermissions: 'Bypass'};
+const PERMS = {plan: 'Plan only', default: 'Ask first', acceptEdits: 'Accept edits', auto: 'Auto (classifier)', bypassPermissions: 'Bypass'};
 const permN = m => Object.keys(PERMS).indexOf(m) + 1 || '?';
 const MODE_S = {off: '', manual: 'M', auto: 'A', auto_answer: 'A+'};
 
@@ -808,7 +808,7 @@ function drawChrome() {
   workTick();
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%${resetIn(p.account, k) ? ', ' + resetIn(p.account, k) : ''}">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
   $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? '·' + esc(EFF_S[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
-    + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 4, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}${permN(p.mode)}</button>`
+    + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}${permN(p.mode)}</button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${MODE_S[p.cont] || ''}</button>`
     + `<button class="stats" onclick="statsCard(this)" title="Context, usage and session time">${ctx[cur] != null ? `<span>${icon('doc')}${ctx[cur]}%</span>` : ''}${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime" class="lb"></span></button>`
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
@@ -1459,17 +1459,23 @@ function askCard(e) {
   } else {
     const body = i.command || (i.file_path ? i.file_path + '\n\n' + (i.new_string || i.content || '') : JSON.stringify(i, null, 2));
     d.innerHTML = `<h4>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
-      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-a="2" title="This project stops asking for ${esc(e.tool)} (undo in the project manager)">Always allow</button><button class="btn" data-a="3" title="Don't ask for ${esc(e.tool)} again until this session restarts or is cleared">Allow this session</button><button class="btn primary" data-a="1">Allow</button></div>`;
+      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="ib" data-m title="More ways to allow">${icon('more')}</button><button class="btn" data-a="3" title="Don't ask for ${esc(e.tool)} again until this session restarts or is cleared">Allow this session</button><button class="btn primary" data-a="1">Allow</button></div>`;
+    // "…": the lasting allows. 2 = this project (Clauracle), 4 = everywhere (~/.claude/settings.json, plain Claude too)
+    d.querySelector('[data-m]').onclick = ev => menuAt(ev.currentTarget, [{title: `Allow ${e.tool}`},
+      {label: 'Always allow in this project', hint: 'Undo in the project manager', run: () => answer('2')},
+      {label: 'Always allow everywhere', hint: 'Adds it to your Claude settings (~/.claude/settings.json)', run: () => answer('4')}]);
   }
-  d.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
-    const allow = b.dataset.a !== '0', answers = {};
-    if (b.dataset.a === '2') { const p = P(e.pid) || P(); call('update_project', {pid: p.id, changes: {allow: [...new Set([...(p.allow || []), e.tool])]}}).then(refresh); }
+  d.querySelectorAll('[data-a]').forEach(b => b.onclick = () => answer(b.dataset.a));
+  function answer(a) {
+    const allow = a !== '0', answers = {};
+    if (a === '2') { const p = P(e.pid) || P(); call('update_project', {pid: p.id, changes: {allow: [...new Set([...(p.allow || []), e.tool])]}}).then(refresh); }
+    if (a === '4') call('allow_global', {tool: e.tool}).catch(err => toast(String(err)));
     (i.questions || []).forEach((q, n) => answers[q.question] = [...d.querySelectorAll(`[name=a${n}]:checked`)]
       .map(x => x.value === '__other' ? x.closest('.q').querySelector('.other').value : x.value).join(', '));
-    call('answer_ask', {id: e.id, answer: {allow, answers, session: b.dataset.a === '3', note: d.querySelector('.deny')?.value || ''}});
+    call('answer_ask', {id: e.id, answer: {allow, answers, session: a === '3', note: d.querySelector('.deny')?.value || ''}});
     e.done = allow ? 'allowed' : 'denied';
     d.replaceWith(askCard(e));
-  });
+  }
   return d;
 }
 
