@@ -1739,7 +1739,7 @@ function relItems(c, p) {
   return [
     {s: 0, id: 'readme', t: 'README written', ok: c.readme >= 10, d: c.readme ? `${c.readme} lines` : 'none'},
     {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` : 'not found'},
-    {s: 0, id: 'clean', t: 'Everything committed', ok: c.clean, go: `rightTab('gh')`},
+    {s: 0, id: 'clean', t: 'Everything committed', ok: c.clean, go: `relCommit(this)`},
     {s: 1, id: 'license', t: 'Licence', ok: c.license},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
     {s: 1, id: 'bump', t: 'Version bumped since last tag', ok: !tv || (v && v !== tv), d: tv ? `last tag ${c.tag}` : 'first release'},
@@ -1945,6 +1945,12 @@ async function relBump(v, btn) {
     const f = await call('version_set', {pid: cur, v}); addEntry(cur, {kind: 'note', text: `Version ${v} set in ${f.join(', ')}: building, then publishing v${v}`});
     delete RELC[cur]; RELNEXT[cur] = v; call('run_step', {pid: cur, step: 'build'});
   } catch (e) { $('relErr').textContent = e; btn.disabled = false; }
+}
+// "Everything committed" Fix: commit all + push (git_do commit) ∵ GitHub tab has no manual commit/push anymore
+async function relCommit(btn) {
+  btn.disabled = true;
+  try { await call('git_do', {pid: cur, action: 'commit', arg: 'Prepare release'}); addEntry(cur, {kind: 'note', text: 'Committed and pushed'}); delete RELC[cur]; drawRight(); }
+  catch (e) { addEntry(cur, {kind: 'note', text: `Commit failed: ${e}`}); btn.disabled = false; }
 }
 async function pickRelFiles() {
   const f = await T.dialog.open({multiple: true, defaultPath: P().path}); if (!f) return;
