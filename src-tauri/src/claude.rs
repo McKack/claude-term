@@ -23,7 +23,9 @@ wait for them). Save tokens: hand searching, reading many files and running buil
 const HANDOVER_RULES: &str = "
 # Handover (Clauracle)
 - PLAN.md at the project root = the ONE task list: an ordered \"## Queue\" of open tasks (first = next) holding only
-  work you can start now; anything that needs the user's yes goes under \"## Waiting on the user\", never in the Queue.
+  work you can start now. \"## Waiting on the user\" = YOUR OWN ideas needing the user's yes (shown as suggestions): rare,
+  only clearly high-value ones, never already in the Queue, done (CHANGES.md) or asked by the user. A user's request
+  stays in the Queue even while blocked on an answer (skip it until answered; never demote it to Waiting).
   HANDOVER.md lets a fresh session resume: goal, current state, how to build and test, gotchas; no task list. Each
   under ~50 lines. If HANDOVER.md (or TASKS.md/TODO.md) still has open tasks, move them into PLAN.md. In a git repo
   where these aren't tracked, add them to .git/info/exclude. Finished work goes to CHANGES.md (newest first, one line
