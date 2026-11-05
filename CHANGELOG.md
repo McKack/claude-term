@@ -4,6 +4,7 @@ User-facing changes, newest first.
 
 ## Unreleased
 
+- AI accounts can use a custom endpoint (proxy/gateway): base URL + API key, stored in the OS keychain.
 - Tasks are GitHub issues: GitHub projects keep one queue of open `clauracle`-labelled issues (type pills, drag to
   reorder, Suggestions to accept or dismiss, Cleanup). The Plan block lives in the GitHub tab; Agents got their own tab.
 - Questions that block the work pause the auto run; answering resumes it. Answered cards stay read-only in the chat.
