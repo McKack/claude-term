@@ -1177,7 +1177,10 @@ function drawAct(g) {
   const cp = g.querySelector('.cp');
   if (cp) cp.onclick = () => { navigator.clipboard.writeText(last.detail.command); cp.textContent = 'Copied'; setTimeout(() => cp.textContent = 'Copy', 1200); };
   const tl = g.querySelector('.tl'); tl.scrollTop = tl.scrollHeight;
-  g.querySelector('.ttabs .on')?.scrollIntoView({block: 'nearest', inline: 'nearest'});
+  // scroll only the tab strip; ≠ scrollIntoView ∵ that also scrolls #log → yanked a scrolled-up reader down on every tool update
+  const ts = g.querySelector('.ttabs'), ob = ts.querySelector('.on');
+  if (ob) { const a = ts.getBoundingClientRect(), b = ob.getBoundingClientRect();
+    if (b.left < a.left) ts.scrollLeft += b.left - a.left; else if (b.right > a.right) ts.scrollLeft += b.right - a.right; }
 }
 // ponytail: diff = common head/tail lines as context, the middle as -/+ blocks (no LCS); enough for Edit's small hunks
 // [removed, added] line counts, same head/tail trim as diff() → the row's −/+ matches what the diff shows
