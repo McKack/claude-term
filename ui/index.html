@@ -100,7 +100,6 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #branch { font-size:12px; color:var(--dim); background:var(--side); border:1px solid var(--line); padding:1px 8px; border-radius:99px; white-space:nowrap; }
 .seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
 .seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
-.amenu:not([hidden]) { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; } .amenu .seg { margin-right:auto; }
 .seg button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #log { flex:1; overflow:auto; padding:8px 24px 24px; margin-top:-54px; padding-top:62px; mask-image:linear-gradient(to bottom, transparent 36px, #000 52px); } /* under #head: 16px fade, lower part of the header */
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
@@ -1454,11 +1453,12 @@ function askCard(e) {
     rules = [[e.tool, e.tool], ...w.map((_, n) => [`${e.tool}(${w.slice(0, n + 1).join(' ')}:*)`, `${e.tool} ${w.slice(0, n + 1).join(' ')}`])];
     rule = rules[Math.min(1, rules.length - 1)][0];
     d.innerHTML = `<h4>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
-      <div class="amenu" hidden>${rules.length > 1 ? `<div class="dim">What?</div><span class="seg">${rules.map(([r, l]) => `<button data-r="${esc(r)}" class="${r === rule ? 'on' : ''}">${esc(l)}</button>`).join('')}</span>` : ''}
-        <button class="btn ghost" data-a="3" title="Until this session restarts or is cleared">This session</button><button class="btn ghost" data-a="5" title="In this project, for the next 24 hours">For 24 hours</button><button class="btn ghost" data-a="2" title="In this project; undo in the project manager">Always</button></div>
-      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-m>Allow ${icon('chev')}</button><button class="btn primary" data-a="1">Allow now</button></div>`;
-    d.querySelector('[data-m]').onclick = () => { const m = d.querySelector('.amenu'); m.hidden = !m.hidden; };
-    d.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { rule = b.dataset.r; d.querySelectorAll('[data-r]').forEach(x => x.classList.toggle('on', x === b)); });
+      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-m>Allow…</button><button class="btn primary" data-a="1">Allow now</button></div>`;
+    // Allow… = dropdown: duration → (Bash only) what to allow, as a hover submenu
+    const pick = (a, r) => () => { rule = r; answer(a); };
+    d.querySelector('[data-m]').onclick = ev => menuAt(ev.currentTarget, [['3', 'This session', 'Until this session restarts or is cleared'],
+      ['5', 'For 24 hours', 'In this project'], ['2', 'Always', 'In this project; undo in the project manager']]
+      .map(([a, label, hint]) => rules.length > 1 ? {label, hint, items: [{title: 'What to allow'}, ...rules.map(([r, l]) => ({label: l, run: pick(a, r)}))]} : {label, hint, run: pick(a, rule)}));
   }
   var rules, rule;
   d.querySelectorAll('[data-a]').forEach(b => b.onclick = () => answer(b.dataset.a));
