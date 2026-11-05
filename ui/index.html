@@ -116,6 +116,13 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .crow .cb { min-width:0; display:flex; flex-direction:column; gap:3px; } .crow.claude .cb { flex:1; max-width:88%; } .crow.user .cb { align-items:flex-end; max-width:88%; } /* both leave room at the far end */
 .crow .cm { font-size:11.5px; color:var(--faint); display:flex; gap:7px; align-items:center; } .crow .cm b { color:var(--dim); font-weight:600; }
 #log:not(.term) .col > .tools, #log:not(.term) .col > .msg.err { margin-left:36px; } /* under Claude's bubble, past its avatar */
+/* reply to the terminal card above: └ spine from the card (avatar centre x = -23px) into a one-line "what ran" header */
+.crow.reply { margin-top:-1px; } .crow.reply:not(.cont) > .av { margin-top:22px; }
+.rto { position:relative; display:flex; align-items:center; gap:6px; height:18px; min-width:0; font-size:11.5px; color:var(--faint); cursor:pointer; }
+.rto::before { content:''; position:absolute; left:-23px; top:-10px; width:17px; height:19px; border:2px solid var(--line2); border-width:0 0 2px 2px; border-bottom-left-radius:8px; }
+.rto .i { width:12px; height:12px; } .rto b { color:var(--dim); font-weight:600; } .rto span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
+.rto:hover b, .rto:hover span { color:var(--text); }
+.termcard.flash { animation:tcflash 1.2s ease-out; } @keyframes tcflash { from { box-shadow:0 0 0 2px var(--accent); } }
 .crow .msg.user { max-width:100%; } .crow.cont > .av { visibility:hidden; height:0; } .crow.cont .cm { display:none; } .crow.cont { margin-top:-4px; }
 .msg.claude p { margin:.35em 0; } .msg.claude :first-child { margin-top:0; }
 .msg.claude pre { background:var(--code); border:1px solid var(--line); padding:10px 12px; border-radius:10px; overflow:auto; }
@@ -140,16 +147,19 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .thumbs img { cursor:zoom-in; }
 /* shell commands in chat: a little dark terminal window, same in both themes */
 .termcard { background:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #161514); border:1px solid color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #2e2c2a); border-radius:10px; overflow:hidden; box-shadow:var(--shadow); margin:3px 0; max-width:100%; }
-.termcard .tbar { display:flex; align-items:center; gap:6px; padding:6px 8px 6px 10px; background:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #201f1d); color:#8c877e; font-size:11.5px; }
+.termcard .tbar { display:flex; align-items:center; gap:6px; padding:6px 8px 6px 10px; background:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #201f1d); color:var(--tc-dim); font-size:11.5px; }
 .termcard .tbar i { width:10px; height:10px; border-radius:50%; background:#ff5f57; flex:none; } .termcard .tbar i:nth-child(2) { background:#febc2e; } .termcard .tbar i:nth-child(3) { background:#28c840; }
 .termcard .tbar span { flex:1; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
-.termcard .cp { border:0; border-radius:6px; background:#2e2c2a; color:#d8d4cb; font-size:11px; padding:2px 8px; cursor:pointer; } .termcard .cp:hover { background:#3a3835; }
+/* raised bits (active tab, Copy, row hover) mix the theme tint like the card/border ∴ follow the theme, not fixed brown */
+.termcard { --tc-hi:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #2e2c2a); --tc-hv:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #3a3835);
+  --tc-row:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #201f1d); --tc-dim:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 1.5), #8c877e); }
+.termcard .cp { border:0; border-radius:6px; background:var(--tc-hi); color:#d8d4cb; font-size:11px; padding:2px 8px; cursor:pointer; } .termcard .cp:hover { background:var(--tc-hv); }
 .termcard .tbar .ttabs { flex:1; display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; min-width:0; text-align:left; }
-.termcard .ttabs button { flex:none; border:0; background:none; color:#8c877e; font:11.5px ui-monospace,"Cascadia Code",Consolas,monospace; padding:2px 8px; border-radius:6px; cursor:pointer; white-space:nowrap; }
-.termcard .ttabs button:hover { color:#d8d4cb; } .termcard .ttabs button.on { background:#2e2c2a; color:#d8d4cb; } .termcard .ttabs small { margin-left:4px; color:#8c877e; }
+.termcard .ttabs button { flex:none; border:0; background:none; color:var(--tc-dim); font:11.5px ui-monospace,"Cascadia Code",Consolas,monospace; padding:2px 8px; border-radius:6px; cursor:pointer; white-space:nowrap; }
+.termcard .ttabs button:hover { color:#d8d4cb; } .termcard .ttabs button.on { background:var(--tc-hi); color:#d8d4cb; } .termcard .ttabs small { margin-left:4px; color:var(--tc-dim); }
 .termcard .tl { padding:7px 0; color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; max-height:10.5em; overflow:auto; }
-.termcard .tl > div { padding:0 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; } .termcard .tl > div:hover { background:#201f1d; }
-.termcard .tl .i { width:12px; height:12px; vertical-align:-2px; color:#8c877e; }
+.termcard .tl > div { padding:0 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; } .termcard .tl > div:hover { background:var(--tc-row); }
+.termcard .tl .i { width:12px; height:12px; vertical-align:-2px; color:var(--tc-dim); }
 .termcard pre { margin:0; padding:9px 12px; color:#d8d4cb; font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:9em; overflow:auto; cursor:pointer; }
 .sh-p { color:#8c877e; } .sh-c { color:#f0c674; font-weight:600; } .sh-s { color:#a8d982; } .sh-v { color:#8fb8ff; } .sh-f { color:#c49cf0; } .sh-o { color:#f28b82; } .sh-m { color:#7a756c; font-style:italic; }
 pre.termout { background:#161514; color:#d8d4cb; padding:8px 12px; white-space:pre-wrap; overflow-wrap:anywhere; } pre.errout { color:var(--err); }
@@ -942,6 +952,14 @@ function put(box, e) {
       shotUrl(x.path).then(u => { x.url = im.src = u; }, () => im.remove());
       im.onclick = () => openViewer(imgs.filter(y => y.url), imgs.filter(y => y.url).indexOf(x), null); });
   }
+  const tg = box.lastElementChild;
+  if (e.kind === 'claude' && tg?.classList.contains('tools')) { // right after a terminal card → a reply to it: curved arrow + what ran
+    const t = tg._tabs.get(tg._last), d = t.es.at(-1).detail || {}, r = document.createElement('div');
+    r.className = 'rto'; r.title = 'Jump to what ran';
+    r.innerHTML = `${icon('term')}<b>${esc(t.label)}</b><span>${esc((d.command || '').split('\n')[0] || d.file_path || d.pattern || t.title)}</span>`;
+    r.onclick = () => { tg.scrollIntoView({block: 'nearest', behavior: 'smooth'}); tg.classList.remove('flash'); void tg.offsetWidth; tg.classList.add('flash'); };
+    el.classList.add('reply'); el.querySelector('.cb')?.prepend(r);
+  }
   if (el.classList.contains('crow')) { // same speaker again (Claude across its tool lines too) → no second avatar/name
     let prev = box.lastElementChild;
     if (prev?.classList.contains('tools') && e.kind === 'claude') prev = prev.previousElementSibling;
@@ -1021,14 +1039,15 @@ function actLine(e) {
   if (typeof d.command === 'string') return `<span class="sh-p">${n === 'PowerShell' ? 'PS&gt;' : '$'}</span> ${shHi(d.command)}`;
   const gist = 'old_string' in d ? (([r, a]) => `−${r} +${a}`)(dstat(d.old_string, d.new_string)) : Array.isArray(d.edits) ? `${d.edits.length} edits`
     : typeof d.content === 'string' ? `${lc(d.content)} lines` : d.pattern || d.query || d.url || d.description || d.prompt || (d.offset ? `from line ${d.offset}` : '');
-  return `${TICON[n] ? icon(TICON[n]) : icon('term')} <span class="sh-c">${esc(n)}</span> <span class="sh-m">${esc(String(gist).slice(0, 200))}</span>`;
+  return `${TICON[n] ? icon(TICON[n]) : icon('term')} <span class="sh-c">${esc(n)}</span>${fpath(d)} <span class="sh-m">${esc(String(gist).slice(0, 200))}</span>`;
 }
+const fpath = d => (d = d.file_path || d.notebook_path || d.path) ? ` <span class="sh-s">${esc(d)}</span>` : ''; // full path on file rows, like the preview
 // consecutive calls of one tool (outside the shell tab) = one row: Edit ±lines summed, ×N; click → all their diffs
 function runLine(es) {
   if (es.length === 1) return actLine(es[0]);
   const n = toolName(es[0]), ds = es.map(e => e.detail || {});
   const st = ds.every(d => 'old_string' in d) && ds.map(d => dstat(d.old_string, d.new_string)), gist = st ? `−${st.reduce((s, x) => s + x[0], 0)} +${st.reduce((s, x) => s + x[1], 0)}` : '';
-  return `${TICON[n] ? icon(TICON[n]) : icon('term')} <span class="sh-c">${esc(n)}</span> <span class="sh-m">${gist}</span> <small class="sh-m">×${es.length}</small>`;
+  return `${TICON[n] ? icon(TICON[n]) : icon('term')} <span class="sh-c">${esc(n)}</span>${fpath(ds[0])} <span class="sh-m">${gist}</span> <small class="sh-m">×${es.length}</small>`;
 }
 function drawAct(g) {
   const on = g._tabs.get(g._on), last = on.es.at(-1), runs = [];
@@ -1486,7 +1505,7 @@ async function removeProject() {
 
 // ---- right panel: GitHub · Build · .env · Code · Browser ----
 function toggleRight() { UI.rc = !UI.rc; layout(); drawRight(); }
-function rightTab(t) { tab = t; drawRight(); }
+function rightTab(t) { tab = UI.tab = t; try { localStorage.ui = JSON.stringify(UI); } catch {} drawRight(); } // restored at start (UI.tab)
 // Build auto-setup: commands guessed from project files (Rust build_guess, no tokens) → confirm; cached per project
 const GUESS = {};
 async function guessHtml() {
@@ -2161,6 +2180,7 @@ function barMin(id) {
 const rMin = () => barMin('rtabs'), lMin = () => Math.max(180, barMin('shead'));
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
+if (UI.tab) tab = UI.tab;
 applyLook();
 function layout() {
   try { localStorage.ui = JSON.stringify(UI); } catch {}

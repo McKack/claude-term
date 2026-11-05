@@ -181,6 +181,7 @@ pub struct Config {
     pub catalog: Vec<Item>,
     pub off: Vec<String>, // switched off everywhere
     pub lessons: Vec<String>, // never-again rules (mcp lesson tool / Settings › Accounts), in every session's prompt
+    pub win: Option<[i32; 5]>, // main window at last close/restart: x, y, w, h (physical px), maximized 0|1
     pub notify: Notify,
     pub projects_dir: String, // where clones and new projects go ("" = ~/Clauracle): <root>/<owner>/<repo>, <root>/local/<name>
 }
@@ -945,7 +946,7 @@ pub fn guess_build(dir: &str) -> Build {
     let read = |f: &str| std::fs::read_to_string(p.join(f)).unwrap_or_default();
     let has = |f: &str| p.join(f).exists();
     let mut b = Build::default();
-    let mut set = |b: &mut Build, build: &str, run: &str, deploy: &str| {
+    let set = |b: &mut Build, build: &str, run: &str, deploy: &str| {
         for (slot, v) in [(&mut b.build, build), (&mut b.run, run), (&mut b.deploy, deploy)] {
             if slot.is_empty() { *slot = v.to_string(); }
         }

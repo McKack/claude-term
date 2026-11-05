@@ -813,7 +813,36 @@ fn open_in_browser(exe: String, profile: String, url: String) -> R<()> {
 }
 
 /// Start `exe` (detached, it outlives us) and quit; the new instance resumes cut-off turns (claude::resume_interrupted).
+/// Main window geometry → config (close, quit, restart). Maximized keeps the last normal rect ∵ restore needs it.
+fn save_win(app: &AppHandle) {
+    let (Some(w), Some(st)) = (app.get_webview_window("main"), app.try_state::<Arc<State>>()) else { return };
+    if w.is_minimized().unwrap_or(false) { return; }
+    let max = w.is_maximized().unwrap_or(false);
+    let mut cfg = st.cfg.lock().unwrap();
+    let r = match (max, cfg.win, w.outer_position(), w.inner_size()) {
+        (true, Some(o), ..) => [o[0], o[1], o[2], o[3], 1],
+        (_, _, Ok(p), Ok(s)) => [p.x, p.y, s.width as i32, s.height as i32, max as i32],
+        _ => return,
+    };
+    if cfg.win != Some(r) { cfg.win = Some(r); store::save(&cfg); }
+}
+
+/// Saved geometry back, unless its top-left is on no monitor any more (unplugged screen).
+fn restore_win(app: &tauri::App, r: [i32; 5]) {
+    let Some(w) = app.get_webview_window("main") else { return };
+    let on = w.available_monitors().unwrap_or_default().iter().any(|m| {
+        let (p, s) = (m.position(), m.size());
+        (p.x..p.x + s.width as i32).contains(&(r[0] + 40)) && (p.y..p.y + s.height as i32).contains(&(r[1] + 10))
+    });
+    if on {
+        let _ = w.set_position(tauri::PhysicalPosition::new(r[0], r[1]));
+    }
+    let _ = w.set_size(tauri::PhysicalSize::new(r[2].max(900) as u32, r[3].max(560) as u32));
+    if r[4] == 1 { let _ = w.maximize(); }
+}
+
 pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf, args: &[String]) {
+    save_win(app);
     for pid in CHILDREN.lock().unwrap().drain(..) {
         kill_tree(pid); // sessions end before the new instance resumes them
     }
@@ -888,6 +917,7 @@ pub fn run() {
             app.manage(Arc::new(State { cfg: Mutex::new(store::load()), live: Default::default(),
                                         asks: Default::default(), plugin_dir }));
             let st = app.state::<Arc<State>>().inner().clone();
+            if let Some(r) = st.cfg.lock().unwrap().win { restore_win(app, r); }
             claude::resume_interrupted(app.handle(), &st);
             // warm the slow lookups so Settings opens instantly: gh accounts, and the catalog on a first run
             let st2 = st.clone();
@@ -918,7 +948,10 @@ pub fn run() {
             env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
-    app.run(|_, e| {
+    app.run(|app, e| {
+        if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { .. }, .. } | tauri::RunEvent::ExitRequested { .. } = e {
+            save_win(app);
+        }
         if let tauri::RunEvent::Exit = e {
             // claude processes and run steps don't die with us on Windows: take their whole trees down
             for pid in CHILDREN.lock().unwrap().drain(..) {
