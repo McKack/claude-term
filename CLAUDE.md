@@ -20,6 +20,7 @@ Current state and open work: see `HANDOVER.md`. Frozen, don't edit: `archive/tui
 - Dogfooding: run the installed build, not `target/debug` (Windows locks a running exe, so cargo can't overwrite it).
   After building, the `mcp__clauracle__restart` tool with `exe` swaps to the new build; running turns resume.
 - Visual check: run the debug exe and capture with PrintWindow; never drive the user's mouse/keyboard (SendKeys, clicks).
+  Never ask the user for screenshots: capture yourself when crucial.
 
 ## Conventions
 - Efficient by default: cache what the UI shows (avatars, gh lookups, QR, LAN ip…); no re-fetch/re-check within seconds

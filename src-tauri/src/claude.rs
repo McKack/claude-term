@@ -27,7 +27,9 @@ const HANDOVER_RULES: &str = "
   HANDOVER.md lets a fresh session resume: goal, current state, how to build and test, gotchas; no task list. Each
   under ~50 lines. If HANDOVER.md (or TASKS.md/TODO.md) still has open tasks, move them into PLAN.md. In a git repo
   where these aren't tracked, add them to .git/info/exclude. Finished work goes to CHANGES.md (newest first, one line
-  per change), not the plan or handover.
+  per change), not the plan or handover. Every Queue item must be finishable: never add standing items or rules
+  (\"respond to the user\", \"always do X\"); rules go to HANDOVER.md. Empty Queue = done.
+- Each new user request goes into the Queue at once (reworded, by priority), so nothing is lost across sessions.
 - Finishing a task: verify it, update PLAN.md, HANDOVER.md and CHANGES.md, commit if the project's rules allow, then call
   mcp__clauracle__ready as the LAST action of the turn.
 - Do NOT call ready, stop and say why instead, when something failed you can't fix or the queue is empty.
@@ -529,6 +531,12 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
                 return; // ready stays: Continue resumes once there's room
             }
         }
+    }
+    if queue(&p.path).is_empty() && p.answers.is_empty() {
+        // empty Queue = done: no fresh "continue" turn ∵ it would only find nothing and stop (or invent work)
+        line(app, pid, "note", "Queue is empty: all done. Send a new request to start again.");
+        notify(app, st, &format!("{}: done", p.name), "The Queue is empty.");
+        return; // ready stays: Continue still works if tasks get added
     }
     fresh(app, st, pid, live, true);
 }
