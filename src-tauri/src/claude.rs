@@ -367,8 +367,12 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
         }
         live.busy.store(false, SeqCst);
         st.with_project(pid, |p| p.working = false);
-        emit(app, "status", json!({"pid": pid, "busy": false}));
+        // armed (ready called): UI stays busy through build steps until `ready` is set ∵ busy:false flushes the UI
+        // queue; before ready it saw no Continue waiting → user msgs went into the OLD session instead of toTasks
+        let armed = live.armed.load(SeqCst);
+        if !armed { emit(app, "status", json!({"pid": pid, "busy": false})); }
         after_turn(app, st, pid, live, &conn).await;
+        if armed { emit(app, "status", json!({"pid": pid, "busy": false})); }
     }
 }
 

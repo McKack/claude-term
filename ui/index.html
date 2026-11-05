@@ -474,7 +474,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <div class="col" id="skel" hidden><div class="crow claude"><img class="av" src="icon.svg" alt=""><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div>
       <div id="handpill" hidden>Preparing plan…</div>
       <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div></div>
-  <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i"><use href="#i-down"/></svg><span></span></button><div class="col">
+  <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="P().ready ? cont_() : sendNow(cur, {text: (S.queues?.[cur]?.length ? 'Carry on with the next task in PLAN.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(cur)[0], atts: []})">Continue</button></div>
@@ -962,7 +962,7 @@ let unseen = 0;
 function toEnd(stick, n = 0) {
   const l = $('log'), j = $('jump');
   if (stick) { l.scrollTop = l.scrollHeight; unseen = 0; j.hidden = true; return; }
-  unseen += n; j.hidden = false; j.lastChild.textContent = unseen ? ' ' + unseen + ' new' : '';
+  unseen += n; j.hidden = false; j.lastChild.textContent = unseen ? 'New!' : ''; /* no count: Working pill updates inflate it */
 }
 $('log').addEventListener('scroll', () => { if (!$('jump').hidden && atEnd()) { unseen = 0; $('jump').hidden = true; } }, {passive: true});
 // consecutive tool lines share one compact group in chat view; the same call again bumps "×N" on its line; click → what it did
