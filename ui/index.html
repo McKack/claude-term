@@ -349,7 +349,10 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
 .msg .tlist .ti { font-size:inherit; }
 .qdrag { flex:none; border:0; background:none; color:var(--faint); cursor:grab; padding:0 2px; font-size:14px; line-height:1.2; opacity:0; touch-action:none; }
-.ti:hover > .qdrag, .ti.drag > .qdrag { opacity:1; } .ti.drag { opacity:.75; background:color-mix(in srgb, var(--accent) 10%, transparent); } .ti.drag .qdrag { cursor:grabbing; }
+.ti:hover > .qdrag, .ti.sortable-fallback > .qdrag { opacity:1; }
+/* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
+.ti.qghost { background:color-mix(in srgb, var(--accent) 14%, transparent); outline:1px dashed var(--accent); outline-offset:-1px; border-radius:6px; }
+.ti.qghost > * { opacity:.35; } .ti.sortable-fallback { opacity:.95 !important; background:var(--card); box-shadow:0 6px 18px #0004; border-radius:6px; cursor:grabbing; }
 .ti.sug > input { display:none; } .ti.sug > .ib { flex:none; padding:0 2px; }
 .ti.working .tt { color:transparent; background:linear-gradient(90deg, var(--accent) 25%, color-mix(in srgb, var(--accent) 35%, var(--text)) 50%, var(--accent) 75%) 0 0/200% 100%;
   -webkit-background-clip:text; background-clip:text; animation:shimmer 1.8s linear infinite; } /* Claude works on it: Working… pill's shimmer, on the text */
@@ -547,6 +550,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <dialog id="dlg"></dialog><dialog id="dlg2" class="glass"></dialog><!-- dlg2: a small window over Settings --><dialog id="dlgc" class="glass"></dialog><!-- dlgc: sure()/say(), replaces native confirm/alert -->
 
 
+<script src="sortable.min.js"></script>
 <script>
 const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
 let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'gh', mp = null;
@@ -2771,7 +2775,7 @@ const atpPlaceItems = () => [{title: 'Show as'},
   {label: 'Right', check: ATW.startsWith('right'), run: () => atpPlace('right-' + ATW.split('-')[1])},
   {label: 'Left', check: ATW.startsWith('left'), run: () => atpPlace('left-' + ATW.split('-')[1])}];
 function drawAtp() {
-  const el = $('atp'); if (!el || !cur || el.querySelector('.ti.drag')) return; // mid-drag redraw would drop the row
+  const el = $('atp'); if (!el || !cur || qDragging) return; // mid-drag redraw would drop the row
   const [side, mode] = ATW.split('-'), tabbed = mode === 'tab', host = $(side === 'left' ? 'side' : 'right'), rail = $(side === 'left' ? 'lrail' : 'rrail');
   if (el.nextElementSibling !== rail) host.insertBefore(el, rail);
   const rt = ATW !== 'right-tab', st = ATW !== 'left-tab'; // Tasks tab shown/hidden → tab bars' min widths change
@@ -2792,8 +2796,8 @@ function drawAtp() {
         ${pl.length > 1 || pl[0].file !== 'PLAN.md' ? `<button class="ib" title="Merge every plan file into PLAN.md\n${estTok()}" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
         ${P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
-        + L(q.map((x, i) => { const g = `<button class="qdrag" title="Drag to reorder (writes PLAN.md)" onpointerdown="qDrag(event, ${i})">⠿</button>`;
-            return tli(esc(x), {on: `planCheck(${i}, this)`, cls: !i && busy[cur] ? 'working' : '', end: g}); }))
+        + L(q.map((x, i) => tli(esc(x), {on: `planCheck(${i}, this)`, cls: !i && busy[cur] ? 'working' : '',
+            end: `<button class="qdrag" title="Drag to reorder (writes PLAN.md)">⠿</button>`}))).replace('class="tlist"', 'class="tlist" id="qlist"')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
     || empty("Your AI's task list and PLAN.md's queue show here", `<button class="btn sm" onclick="$('prompt').value = 'Plan this in PLAN.md: '; $('prompt').focus(); grow()">${icon('list')}Plan with your AI</button>`);
@@ -2811,6 +2815,7 @@ function drawAtp() {
     <div class="atbody">${atpTab === 'agents' ? agents : tasks}</div>`;
   if (el._h === h) return; // drawChrome → drawRails → here on every keystroke: same HTML → keep DOM (open rows, animations)
   el.innerHTML = el._h = h;
+  if ($('qlist')) qSortable($('qlist'));
   el.querySelector('.atgrip').onpointerdown = e => {
     const g = e.target, y0 = e.clientY, h0 = el.offsetHeight, max = host.offsetHeight - 120;
     g.setPointerCapture(e.pointerId); document.body.classList.add('dragging');
@@ -2834,17 +2839,17 @@ async function cleanPlan() {
   if (!await sure(`Clean up the plan?\n\nClaude reviews the ${n} queued tasks against the project's current state: merges related ones, drops stale or already-done ones, re-orders by priority.\n\nIt shows the proposed Queue first and only writes PLAN.md after you say yes.\n${estTok()}`)) return;
   sendNow(cur, {text: `Clean up PLAN.md's "## Queue": check each task against the code/git state; merge related tasks, drop stale or already-done ones, re-order by priority (needs-the-user's-yes → "## Waiting on the user"). Show the proposed new Queue plus one line per merge/drop with why, then STOP: don't edit PLAN.md or start any task until I confirm.`, atts: []});
 }
-// Plan tab: drag a Queue row by its grip (pointer events ∵ Tauri's file-drop handler eats HTML5 DnD) → row moves live
-// among its siblings → drop = plan_move rewrites PLAN.md's Queue (blocks whole, renumbered); optimistic S.queues splice
-function qDrag(e, from) {
-  e.preventDefault(); const g = e.currentTarget, row = g.closest('.ti'), list = row.parentElement, at = r => [...list.children].indexOf(r);
-  g.setPointerCapture(e.pointerId); row.classList.add('drag'); document.body.classList.add('dragging');
-  g.onpointermove = m => { const o = [...list.children].find(r => { const b = r.getBoundingClientRect(); return r !== row && m.clientY > b.top && m.clientY < b.bottom; });
-    if (o) list.insertBefore(row, at(o) > at(row) ? o.nextSibling : o); };
-  g.onpointerup = g.onpointercancel = async () => { g.onpointermove = g.onpointerup = g.onpointercancel = null; row.classList.remove('drag'); document.body.classList.remove('dragging');
-    const to = at(row), q = S.queues?.[cur]; if (to === from || !q) return drawAtp();
-    const text = q[from]; q.splice(to, 0, q.splice(from, 1)[0]); drawAtp();
-    try { await call('plan_move', {pid: cur, from, to, text}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Reorder failed: ' + er}); } refresh(); };
+// Plan tab: Queue rows reorder by grip via SortableJS (ui/sortable.min.js, MIT 1.15.6); forceFallback ∵ Tauri's file-drop
+// handler eats HTML5 DnD. Drop = plan_move rewrites PLAN.md's Queue (blocks whole, renumbered); optimistic S.queues splice
+let qDragging = false;
+function qSortable(list) {
+  if (!window.Sortable) return; // ponytail: vendored file missing → no reorder, list still renders
+  Sortable.create(list, {handle: '.qdrag', draggable: '.ti', forceFallback: true, animation: 150, ghostClass: 'qghost',
+    onStart: () => { qDragging = true; document.body.classList.add('dragging'); },
+    onEnd: async ({oldIndex: from, newIndex: to}) => { qDragging = false; document.body.classList.remove('dragging');
+      const q = S.queues?.[cur]; if (to === from || !q) return;
+      const text = q[from]; q.splice(to, 0, q.splice(from, 1)[0]); $('atp')._h = null; drawAtp();
+      try { await call('plan_move', {pid: cur, from, to, text}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Reorder failed: ' + er}); } refresh(); }});
 }
 // task text → HTML with the concrete bits in accent: `code`, paths/files (a/b, x.ext), identifiers (camelCase, snake_case, fn())
 // ponytail: regex heuristic; misses plain-word names, fine for a confirm
