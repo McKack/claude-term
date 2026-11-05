@@ -2015,7 +2015,7 @@ async function preset(file, name) {
 }
 
 // ---- settings: GitHub · Connections & Skills · Agents · AI accounts · Notifications ----
-const PAGES = {look: ['sliders', 'Appearance'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], notify: ['bell', 'Notifications']};
+const PAGES = {look: ['sliders', 'Appearance'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], claude: ['shield', 'Claude Code'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
 // GitHub accounts / catalog changed: drop the cache and load again
 const reloadSettings = p => { SET = null; return openSettings(p); };
@@ -2030,7 +2030,7 @@ async function openSettings(p) {
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="body">${page === 'projects' ? '' : `<h2 class="row">${PAGES[page][1]}${page === 'agents' ? `<span class="grow"></span>${sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')}` : ''}</h2>`}
-    ${{look: lookPage, projects: projectsPage, gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
+    ${{look: lookPage, projects: projectsPage, gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, claude: claudePage, notify: notifyPage}[page]()}</div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
 }
 function ghPage() {
@@ -2228,6 +2228,52 @@ function notifyPage() {
     <p><button class="btn" onclick="call('test_notify')">${icon('bell')}Send a test</button></p>`;
 }
 const saveNotify = c => call('set_notify', {notify: {...S.notify, ...c}}).then(refresh);
+// Claude Code settings files (user / project / project-local): permissions lists, defaultMode, env; raw JSON fallback.
+// ponytail: whole-file write after a fresh read per edit; a CLI write in between the read and the click is lost (rare).
+let CS = {scope: 'user'};
+function claudePage() { setTimeout(csLoad); return '<div id="csBody"><p class="dim">Loading…</p></div>'; }
+async function csLoad(scope = CS.scope) {
+  if (scope !== 'user' && !cur) scope = 'user';
+  CS = {scope, ...await call('claude_settings', {scope, pid: cur || ''})};
+  const j = CS.json, perm = j?.permissions || {}, el = $('csBody'); if (!el) return;
+  const sc = {user: 'Everywhere (your user settings)', ...(cur ? {project: `${P().name}: shared (committed)`, local: `${P().name}: only you (not committed)`} : {})};
+  const list = k => `<div class="label">${{allow: 'Allow without asking', ask: 'Always ask', deny: 'Never allow'}[k]}</div>
+    <div class="row" style="flex-wrap:wrap;gap:6px">${(perm[k] || []).map((r, i) => `<span class="pill mono">${esc(r)} <a style="cursor:pointer" title="Remove" onclick="csEdit(j => j.permissions.${k}.splice(${i}, 1))">✕</a></span>`).join('') || '<span class="faint">None</span>'}</div>
+    <div class="row" style="margin-top:6px"><input class="grow mono" placeholder="e.g. Bash(npm test:*), Read(./src/**), WebFetch(domain:github.com)"
+      onkeydown="if (event.key === 'Enter' && this.value.trim()) csAdd('${k}', this.value.trim())"><button class="btn sm" onclick="const v = this.previousElementSibling.value.trim(); if (v) csAdd('${k}', v)">Add</button></div>`;
+  const env = Object.entries(j?.env || {});
+  el.innerHTML = `<p class="dim">Claude Code's own settings files: plain <code>claude</code> in a terminal uses them too.</p>
+    <div class="row"><select class="grow" onchange="csLoad(this.value)">${options(sc, scope)}</select></div>
+    <p class="faint mono" style="font-size:12px">${esc(CS.path)}</p>
+    ${j ? `<div class="label">Default permission mode</div>
+      <select onchange="csEdit(j => this.value ? j.permissions.defaultMode = this.value : delete j.permissions.defaultMode)">${options({'': 'Not set', default: 'Ask', acceptEdits: 'Accept edits', plan: 'Plan', auto: 'Auto (classifier)', dontAsk: "Don't ask (deny unless allowed)", bypassPermissions: 'Bypass (no checks)'}, perm.defaultMode || '')}</select>
+      ${['allow', 'ask', 'deny'].map(list).join('')}
+      <div class="label">Environment variables</div>
+      <div class="box">${env.map(([k, v]) => optRow(`<span class="mono">${esc(k)}</span>`, '', `<input class="mono" value="${esc(String(v))}" onchange="csEdit(j => j.env['${esc(k)}'] = this.value)"><button class="ib" title="Remove" onclick="csEdit(j => delete j.env['${esc(k)}'])">${icon('x')}</button>`)).join('') || '<p class="dim">None.</p>'}</div>
+      <div class="row"><input id="csEk" class="mono" placeholder="NAME" style="width:180px"><input id="csEv" class="grow mono" placeholder="value">
+        <button class="btn sm" onclick="const k = $('csEk').value.trim(); if (k) csEdit(j => (j.env ||= {})[k] = $('csEv').value)">Add</button></div>`
+    : '<p class="warn">This file is not valid JSON. Fix it below; nothing else here writes to it until it parses.</p>'}
+    ${fold('cs-raw', 'Raw JSON', `<textarea id="csRaw" class="mono" style="width:100%;min-height:220px">${esc(CS.text)}</textarea>
+      <p class="row"><button class="btn" onclick="csRaw()">Save JSON</button><span id="csMsg" class="dim"></span></p>`)}`;
+}
+// one edit = fresh read → change → write → redraw; refuses while the file doesn't parse
+async function csEdit(fn) {
+  const r = await call('claude_settings', {scope: CS.scope, pid: cur || ''});
+  if (!r.json) return toast('Settings file is not valid JSON: fix it in Raw JSON');
+  r.json.permissions ||= {};
+  fn(r.json);
+  for (const k of ['allow', 'ask', 'deny']) if (r.json.permissions[k]?.length === 0) delete r.json.permissions[k];
+  if (!Object.keys(r.json.permissions).length) delete r.json.permissions;
+  if (r.json.env && !Object.keys(r.json.env).length) delete r.json.env;
+  await call('claude_settings_set', {scope: CS.scope, pid: cur || '', value: r.json});
+  csLoad();
+}
+const csAdd = (k, rule) => csEdit(j => { const a = j.permissions[k] ||= []; if (!a.includes(rule)) a.push(rule); });
+async function csRaw() {
+  let v; try { v = JSON.parse($('csRaw').value); } catch (e) { return $('csMsg').textContent = 'Not valid JSON: ' + e.message; }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return $('csMsg').textContent = 'Must be a JSON object { … }';
+  await call('claude_settings_set', {scope: CS.scope, pid: cur || '', value: v}); csLoad();
+}
 // Add account: a small window over Settings; sign in, or paste a setup-token
 function addAcctDlg() {
   const d = $('dlg2');

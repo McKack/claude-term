@@ -895,19 +895,32 @@ fn web_view(app: AppHandle, url: String, rect: Option<[f64; 4]>, zoom: f64, nav:
     v.show().map_err(e)
 }
 
-/// Permission card › "Always allow everywhere": tool → ~/.claude/settings.json permissions.allow (plain Claude too).
-/// Unparsable file → error, never overwritten. Key order kept (serde_json preserve_order).
+/// Claude settings file: scope user = ~/.claude/settings.json, project/local = <proj>/.claude/settings(.local).json.
+fn cs_file(st: &St, scope: &str, pid: &str) -> R<std::path::PathBuf> {
+    let dir = |p: &str| std::path::PathBuf::from(p).join(".claude");
+    Ok(match scope {
+        "user" => dirs::home_dir().ok_or("no home")?.join(".claude"),
+        "project" | "local" => dir(&st.project(pid).ok_or("no such project")?.path),
+        _ => return Err("bad scope".into()),
+    }.join(if scope == "local" { "settings.local.json" } else { "settings.json" }))
+}
+
+/// Settings editor: read → {path, text, json}; missing file = {}. Unparsable → json null + raw text (editor shows raw, never overwrites silently).
 #[tauri::command]
-fn allow_global(tool: String) -> R<()> {
-    if tool.is_empty() || !tool.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') { return Err("bad tool name".into()); }
-    let f = dirs::home_dir().ok_or("no home")?.join(".claude/settings.json");
+fn claude_settings(st: St, scope: String, pid: String) -> R<Value> {
+    let f = cs_file(&st, &scope, &pid)?;
     let txt = std::fs::read_to_string(&f).unwrap_or_else(|_| "{}".into());
-    let mut v: Value = serde_json::from_str(txt.trim_start_matches('\u{feff}')).map_err(|e| format!("~/.claude/settings.json: {e}"))?;
-    let o = v.as_object_mut().ok_or("settings.json is not an object")?;
-    let p = o.entry("permissions").or_insert(json!({})).as_object_mut().ok_or("permissions is not an object")?;
-    let a = p.entry("allow").or_insert(json!([])).as_array_mut().ok_or("permissions.allow is not a list")?;
-    if !a.iter().any(|x| x == tool.as_str()) { a.push(json!(tool)); }
-    std::fs::write(&f, serde_json::to_string_pretty(&v).unwrap()).map_err(|e| e.to_string())
+    let v: Option<Value> = serde_json::from_str(txt.trim_start_matches('\u{feff}')).ok().filter(Value::is_object);
+    Ok(json!({"path": f.to_string_lossy(), "text": txt.trim_start_matches('\u{feff}'), "json": v}))
+}
+
+/// Settings editor: write a whole object (key order kept: serde_json preserve_order). Non-object → refused.
+#[tauri::command]
+fn claude_settings_set(st: St, scope: String, pid: String, value: Value) -> R<()> {
+    if !value.is_object() { return Err("settings must be a JSON object".into()); }
+    let f = cs_file(&st, &scope, &pid)?;
+    std::fs::create_dir_all(f.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(&f, serde_json::to_string_pretty(&value).unwrap() + "\n").map_err(|e| e.to_string())
 }
 
 /// Phone preview: does host:port accept a TCP connection (dev server bound to 0.0.0.0, not only localhost)?
@@ -1064,7 +1077,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, gh_login, gh_logout, gh_info, gh_repos, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, allow_global, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {
