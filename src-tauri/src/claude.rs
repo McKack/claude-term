@@ -11,7 +11,8 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot, Notify};
 
-const PONYTAIL_MD: &str = include_str!("../../plugin/skills/ponytail/SKILL.md");
+const LESSONS_MAX: usize = 30; // ponytail: ~30 one-liners ≈ 1k tokens per session; prune in Settings › Accounts
+const PONYTAIL_MD: &str =include_str!("../../plugin/skills/ponytail/SKILL.md");
 
 const APPEND: &str = "You are running inside Clauracle, a desktop app around Claude Code that keeps long work going \
 across fresh sessions through HANDOVER.md. Its tools: mcp__clauracle__ready (the task is done and the handover is \
@@ -221,6 +222,10 @@ fn args(st: &State, p: &Project) -> Vec<String> {
     if !p.gcp.is_empty() || !p.gaccount.is_empty() {
         append += &format!("\n# Google Cloud\ngcloud is already pointed at this project's account ({}) and Cloud project ({}) \
             through env vars: don't run `gcloud config set` or switch accounts.\n", p.gaccount, p.gcp);
+    }
+    if !cfg.lessons.is_empty() {
+        append += "\n# Lessons (never repeat; add one with mcp__clauracle__lesson after a costly mistake)\n- ";
+        append += &cfg.lessons.join("\n- ");
     }
     if p.ponytail {
         append += "\n\n";
@@ -641,6 +646,10 @@ fn tool_list() -> Value {
           (or waits for the user's Continue).", "inputSchema": {"type": "object", "properties": {}}},
         {"name": "ask", "description": "Queue questions for the user (numbered in a card, options with your \
           recommendation, a note field each). Don't wait: the answers arrive later.", "inputSchema": q},
+        {"name": "lesson", "description": "Record a never-again rule after a mistake that cost time (yours or a tool's \
+          quirk), so every future session avoids it. One line, compressed: fragments, symbols (→ = ≠ ∵), ≤ 120 chars. \
+          Not for task notes or project facts.", "inputSchema": {"type": "object", "required": ["rule"],
+          "properties": {"rule": {"type": "string"}}}},
         {"name": "restart", "description": "Restart Clauracle itself, e.g. to try a new build of it. Nothing is lost: \
           every session resumes, this turn continues after the restart, unsent input stays. `exe`: a newly built \
           Clauracle executable to run instead (it's copied first, so the build output stays writable).",
@@ -693,6 +702,18 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                 }
                 live.armed.store(true, SeqCst);
                 text("Armed. When this turn ends the context is cleared and a fresh session continues from HANDOVER.md. End the turn now.")
+            }
+            Some("lesson") => {
+                let rule: String = m["params"]["arguments"]["rule"].as_str().unwrap_or("").trim().chars().take(160).collect();
+                if rule.is_empty() { return text("Empty rule: nothing saved."); }
+                let mut cfg = st.cfg.lock().unwrap();
+                if !cfg.lessons.contains(&rule) {
+                    cfg.lessons.push(rule);
+                    let n = cfg.lessons.len();
+                    if n > LESSONS_MAX { cfg.lessons.drain(..n - LESSONS_MAX); } // oldest go first
+                    store::save(&cfg);
+                }
+                text("Saved. Sessions started from now on get it.")
             }
             Some("restart") => {
                 let exe = m["params"]["arguments"]["exe"].as_str().unwrap_or("").to_string();

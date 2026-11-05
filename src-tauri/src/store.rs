@@ -180,6 +180,7 @@ pub struct Config {
     pub default_account: String,
     pub catalog: Vec<Item>,
     pub off: Vec<String>, // switched off everywhere
+    pub lessons: Vec<String>, // never-again rules (mcp lesson tool / Settings › Accounts), in every session's prompt
     pub notify: Notify,
     pub projects_dir: String, // where clones and new projects go ("" = ~/Clauracle): <root>/<owner>/<repo>, <root>/local/<name>
 }

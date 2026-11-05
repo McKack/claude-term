@@ -138,15 +138,15 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .ednote { position:absolute; width:220px; font-size:12.5px; padding:4px 8px; border:2px solid; border-radius:8px; background:var(--card); }
 .thumbs img { cursor:zoom-in; }
 /* shell commands in chat: a little dark terminal window, same in both themes */
-.termcard { background:#161514; border:1px solid #2e2c2a; border-radius:10px; overflow:hidden; box-shadow:var(--shadow); margin:3px 0; max-width:100%; }
-.termcard .tbar { display:flex; align-items:center; gap:6px; padding:6px 8px 6px 10px; background:#201f1d; color:#8c877e; font-size:11.5px; }
+.termcard { background:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #161514); border:1px solid color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #2e2c2a); border-radius:10px; overflow:hidden; box-shadow:var(--shadow); margin:3px 0; max-width:100%; }
+.termcard .tbar { display:flex; align-items:center; gap:6px; padding:6px 8px 6px 10px; background:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #201f1d); color:#8c877e; font-size:11.5px; }
 .termcard .tbar i { width:10px; height:10px; border-radius:50%; background:#ff5f57; flex:none; } .termcard .tbar i:nth-child(2) { background:#febc2e; } .termcard .tbar i:nth-child(3) { background:#28c840; }
 .termcard .tbar span { flex:1; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .termcard .cp { border:0; border-radius:6px; background:#2e2c2a; color:#d8d4cb; font-size:11px; padding:2px 8px; cursor:pointer; } .termcard .cp:hover { background:#3a3835; }
 .termcard .tbar .ttabs { flex:1; display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; min-width:0; text-align:left; }
 .termcard .ttabs button { flex:none; border:0; background:none; color:#8c877e; font:11.5px ui-monospace,"Cascadia Code",Consolas,monospace; padding:2px 8px; border-radius:6px; cursor:pointer; white-space:nowrap; }
 .termcard .ttabs button:hover { color:#d8d4cb; } .termcard .ttabs button.on { background:#2e2c2a; color:#d8d4cb; } .termcard .ttabs small { margin-left:4px; color:#8c877e; }
-.termcard .tl { padding:7px 0; color:#d8d4cb; font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; max-height:10.5em; overflow:auto; }
+.termcard .tl { padding:7px 0; color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; max-height:10.5em; overflow:auto; }
 .termcard .tl > div { padding:0 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; } .termcard .tl > div:hover { background:#201f1d; }
 .termcard .tl .i { width:12px; height:12px; vertical-align:-2px; color:#8c877e; }
 .termcard pre { margin:0; padding:9px 12px; color:#d8d4cb; font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:9em; overflow:auto; cursor:pointer; }
@@ -181,7 +181,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 .recent .proj { border:1px solid var(--line); margin:6px 0; background:var(--card); }
 .side-sub { padding:12px 10px 4px 9px; font-size:11.5px; color:var(--faint); }
 /* terminal view: the raw stream, CLI style */
-#log.term { background:#151412; color:#d8d4cb; }
+#log.term { background:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #151412); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
 #log.term .col { max-width:none; gap:4px; font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
 #log.term .msg { white-space:pre-wrap; align-self:stretch; background:none; border:0; padding:0; border-radius:0; max-width:none; }
 #log.term .msg.user { color:#fff; font-weight:600; } #log.term .msg.user::before { content:"› "; color:var(--accent); }
@@ -352,7 +352,9 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 .box { border:1px solid var(--line); border-radius:12px; padding:4px 14px; margin:8px 0 14px; }
 .grid2 { display:grid; grid-template-columns:150px 1fr; gap:10px 14px; align-items:center; margin:8px 0 14px; }
 .acct { border:1px solid var(--line); border-radius:12px; margin:10px 0; } .acct > summary { padding:12px 14px; cursor:pointer; list-style:none; display:flex; gap:10px; align-items:center; }
-.acct > div { padding:0 14px 14px; } .acct[open] > summary { border-bottom:1px solid var(--line); margin-bottom:10px; }
+.acct > div { padding:0 14px 14px; } .acct .chev { display:inline-flex; color:var(--faint); transition:rotate .15s; } .acct .chev svg { width:14px; height:14px; } .acct[open] .chev { rotate:90deg; }
+.ordiv { display:flex; align-items:center; gap:10px; margin:14px 0; color:var(--faint); font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+.ordiv::before, .ordiv::after { content:""; flex:1; border-top:1px solid var(--line2); } .acct[open] > summary { border-bottom:1px solid var(--line); margin-bottom:10px; }
 .agent { border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin:10px 0; display:grid; gap:8px; }
 .agent textarea { width:100%; min-height:54px; font-size:13px; }
 </style>
@@ -471,7 +473,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="rrail" class="railbox"></div><div class="grip" data-side="r" title="Drag to resize, double-click to collapse"></div>
 </aside>
 
-<dialog id="dlg"></dialog>
+<dialog id="dlg"></dialog><dialog id="dlg2" class="glass"></dialog><!-- dlg2: a small window over Settings -->
+
 
 <script>
 const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
@@ -1907,10 +1910,11 @@ const saveAgents = () => call('set_agents', {agents: AGENTS}).then(() => openSet
 function aiPage() {
   const pools = [...new Set(S.accounts.map(a => a.pool).filter(Boolean))];
   const meter = (v, l) => v == null ? '' : `<small class="dim">${l} <span class="bar"><i style="width:${v}%"></i></span> ${v}%</small>`;
-  return `<p class="dim">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>
+  return `<div class="row" style="align-items:flex-start;gap:12px"><p class="dim grow" style="margin-top:0">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>
+    <button class="btn primary" onclick="addAcctDlg()">${icon('plus')}Add account</button></div>
     <datalist id="pools">${pools.map(p => `<option value="${esc(p)}">`).join('')}</datalist>`
-    + S.accounts.map(a => { const u = S.usage[a.id] || {}; return `<details class="acct" ${a.id === S.default_account ? 'open' : ''}><summary>
-      ${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : 'setup-token'}</small>
+    + S.accounts.map(a => { const u = S.usage[a.id] || {}; return `<details class="acct"><summary>
+      <span class="chev">${icon('chev')}</span>${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : 'setup-token'}</small>
       ${a.pool ? `<span class="pill">${esc(a.pool)}</span>` : ''}${a.id === S.default_account ? '<span class="pill">default</span>' : ''}<span class="grow"></span>${meter(u.five_hour, '5h')} ${meter(u.seven_day, 'week')}</summary>
       <div><div class="grid2">
         <span>Name</span><input value="${esc(a.nick)}" onchange="this.value.trim() && acct('${esc(a.id)}', {nick:this.value.trim()})">
@@ -1923,9 +1927,10 @@ function aiPage() {
       ${cxFold('a-mcp', 'Connections for new projects', 'mcp', a.id, a)}${cxFold('a-skill', 'Skills for new projects', 'skill', a.id, a)}
       <div class="btns">${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
-    + `<div class="label" style="margin-top:10px">Add an account</div><div class="row" style="margin-top:8px"><input id="nick" class="grow" placeholder="Name (optional), e.g. Work"><button class="btn primary" onclick="addClaude()">Sign in with Claude</button></div>
-    <details style="margin-top:8px"><summary class="dim" style="cursor:pointer">Or paste a token from <code>claude setup-token</code></summary><div class="row" style="margin-top:6px"><input id="token" class="grow mono" placeholder="sk-ant-oat01-…"><button class="btn" onclick="pasteClaude()">Add</button></div></details>
-    <p id="loginMsg" class="dim"></p>`;
+    + `<div class="label" style="margin-top:18px">Lessons</div>
+    <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules Claude records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
+    <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
+      onchange="call('set_lessons', {lessons: this.value.split('\\n')}).then(refresh)">${esc((S.lessons || []).join('\n'))}</textarea>`;
 }
 const limitsOf = id => S.accounts.find(a => a.id === id).limits;
 const acct = (id, changes) => call('update_account', {id, changes}).then(() => openSettings());
@@ -1934,10 +1939,13 @@ const ACCENTS = {Mono: ['#000000', '#ffffff'], Indigo:['#4f5bd5', '#8b93ff'], Bl
   Orange: ['#c8613f', '#e8916f'], Pink: ['#c2255c', '#f783ac'], Graphite: ['#4a4a50', '#b8b8c0']};
 let LOOK = {theme: 'system', accent: 'Indigo', tint: '', tintPct: 30, corners: 'soft', scale: 110, glass: true, motion: true};
 // the stylesheet's surface colours per theme (light, dark), the base the tint mixes into; keep in sync with :root
-const SURF = [{'--bg': '#ffffff', '--side': '#f7f7f8', '--card': '#ffffff', '--line': '#ececee', '--line2': '#dcdce0', '--hover': '#f0f0f2', '--code': '#f6f6f7'},
-  {'--bg': '#161618', '--side': '#1c1c1f', '--card': '#232326', '--line': '#2c2c30', '--line2': '#3a3a3f', '--hover': '#2a2a2e', '--code': '#1c1c1f'}];
-const MONO = [{'--bg': '#fff', '--side': '#fff', '--card': '#fff', '--line': '#bbb', '--line2': '#000', '--hover': '#e8e8e8', '--code': '#f2f2f2'},
-  {'--bg': '#000', '--side': '#000', '--card': '#000', '--line': '#444', '--line2': '#fff', '--hover': '#1c1c1c', '--code': '#0d0d0d'}];
+const SURF = [{'--bg': '#ffffff', '--side': '#f7f7f8', '--card': '#ffffff', '--line': '#ececee', '--line2': '#dcdce0', '--hover': '#f0f0f2', '--code': '#f6f6f7', '--text': '#1d1d1f', '--dim': '#6e6e76', '--faint': '#a1a1a8'},
+  {'--bg': '#161618', '--side': '#1c1c1f', '--card': '#232326', '--line': '#2c2c30', '--line2': '#3a3a3f', '--hover': '#2a2a2e', '--code': '#1c1c1f', '--text': '#ededef', '--dim': '#a0a0a8', '--faint': '#6c6c74'}];
+const MONO = [{'--bg': '#fff', '--side': '#fff', '--card': '#fff', '--line': '#bbb', '--line2': '#000', '--hover': '#e8e8e8', '--code': '#f2f2f2', '--text': '#000', '--dim': '#222', '--faint': '#555'},
+  {'--bg': '#000', '--side': '#000', '--card': '#000', '--line': '#444', '--line2': '#fff', '--hover': '#1c1c1c', '--code': '#0d0d0d', '--text': '#fff', '--dim': '#ddd', '--faint': '#aaa'}];
+// tint weight per colour: dark theme = contrast-like (darks stay dark, lines + text take the colour); light = surfaces
+const TINT_W = [{'--text': .25, '--dim': .4, '--faint': .5},
+  {'--bg': .3, '--side': .35, '--code': .3, '--card': .5, '--hover': .6, '--line': 1.1, '--line2': 1.3, '--text': 1.2, '--dim': 1.4, '--faint': 1.3}];
 // presets (LOOKS) = theme + accent + tint only (scale/glass/motion stay per computer); user's own in localStorage.presets
 const PRESET_KEYS = ['theme', 'accent', 'tint', 'tintPct', 'corners'];
 const LOOKS = {Default: {theme: 'system', accent: 'Indigo', tint: '', tintPct: 30, corners: 'soft'},
@@ -1978,7 +1986,9 @@ function applyLook() {
   ['square', 'round'].forEach(c => h.classList.toggle('c-' + c, LOOK.corners === c));
   // theme tint: surfaces mixed with a colour; slider 100% = TINT_MAX real mix, so text stays readable
   const t = ACCENTS[LOOK.tint]?.[dark ? 1 : 0], m = (LOOK.tintPct ?? 30) * TINT_MAX / 100;
-  for (const [k, base] of Object.entries((mono ? MONO : SURF)[dark ? 1 : 0])) t && m ? h.style.setProperty(k, `color-mix(in srgb, ${t} ${m}%, ${base})`) : h.style.removeProperty(k);
+  for (const [k, base] of Object.entries((mono ? MONO : SURF)[dark ? 1 : 0])) t && m ? h.style.setProperty(k, `color-mix(in srgb, ${t} ${Math.min(90, m * (TINT_W[dark ? 1 : 0][k] ?? 1))}%, ${base})`) : h.style.removeProperty(k);
+  // fixed-colour parts (terminal cards, terminal view) read these
+  if (t && m) { h.style.setProperty('--tint', t); h.style.setProperty('--tintm', m * .6 + '%'); } else ['--tint', '--tintm'].forEach(k => h.style.removeProperty(k));
   h.classList.toggle('noglass', !LOOK.glass); h.classList.toggle('nomotion', !LOOK.motion);
   zoom(LOOK.scale);
 }
@@ -2015,12 +2025,23 @@ function notifyPage() {
     <p><button class="btn" onclick="call('test_notify')">${icon('bell')}Send a test</button></p>`;
 }
 const saveNotify = c => call('set_notify', {notify: {...S.notify, ...c}}).then(refresh);
+// Add account: a small window over Settings; sign in, or paste a setup-token
+function addAcctDlg() {
+  const d = $('dlg2');
+  d.innerHTML = `<div class="small-dlg"><h2 class="row" style="margin:0 0 12px;font-size:17px"><span class="grow">Add an AI account</span><button class="ib" title="Close" onclick="$('dlg2').close()">${icon('x')}</button></h2>
+    <input id="nick" style="width:100%" placeholder="Name (optional), e.g. Work">
+    <button class="btn primary" style="width:100%;justify-content:center;margin-top:10px" onclick="addClaude()">Sign in with Claude</button>
+    <div class="ordiv">or</div>
+    <div class="row"><input id="token" class="grow mono" placeholder="Token from claude setup-token: sk-ant-oat01-…"><button class="btn" onclick="pasteClaude()">Add</button></div>
+    <p id="loginMsg" class="dim" style="font-size:13px"></p></div>`;
+  d.showModal(); $('nick').focus(); // opened after Settings → the topmost modal, so it's the active one
+}
 async function addClaude() {
   $('loginMsg').textContent = 'Starting claude setup-token…';
-  try { await call('claude_login', {nick: $('nick').value}); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; }
+  try { await call('claude_login', {nick: $('nick').value}); $('dlg2').close(); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; }
 }
 async function pasteClaude() {
-  try { await call('claude_add_token', {nick: $('nick').value, token: $('token').value}); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; }
+  try { await call('claude_add_token', {nick: $('nick').value, token: $('token').value}); $('dlg2').close(); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; }
 }
 async function askNewAccount() {
   const known = S.accounts.map(a => a.id);
