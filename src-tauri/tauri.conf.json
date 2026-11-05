@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Clauracle",
-  "version": "0.1.0",
-  "identifier": "no.salnorth.clauracle",
+  "version": "0.1.1",
+  "identifier": "no.arctim.clauracle",
   "build": { "frontendDist": "../ui" },
   "app": {
     "withGlobalTauri": true,

@@ -1318,6 +1318,17 @@ pub fn run() {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
     }
+    // Bundle ID moved no.salnorth → no.arctim (v0.1.1): carry WebView2 data (localStorage drafts/folds) once.
+    // ponytail: Windows only; mac/Linux had no real users before the move. Drop after a few releases.
+    #[cfg(windows)]
+    if let Ok(la) = std::env::var("LOCALAPPDATA") {
+        let (old, new) = (std::path::Path::new(&la).join("no.salnorth.clauracle"), std::path::Path::new(&la).join("no.arctim.clauracle"));
+        // retry ≤3s ∵ old instance's msedgewebview2 children may still hold the folder right after a swap
+        for _ in 0..10 {
+            if !old.is_dir() || new.exists() || std::fs::rename(&old, &new).is_ok() { break; }
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(w) = app.get_webview_window("main") {
