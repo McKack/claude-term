@@ -1544,7 +1544,7 @@ function projectsPage() {
       ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3')}
     ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Cleaned automatically after 14 days without commits.</p>
       <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
-    ${cxFold('p-mcp', 'Connections', 'mcp', 'project:' + p.id, p)}${cxFold('p-skill', 'Skills', 'skill', 'project:' + p.id, p)}
+    ${cxFold('p-mcp', 'Connections', 'mcp', 'project:' + p.id, p)}${cxFold('p-skill', 'Skills', 'skill', 'project:' + p.id, p)}${cxFold('p-plugin', 'Plugins & mods', 'plugin', 'project:' + p.id, p)}
     <div class="btns" style="justify-content:space-between"><button class="btn" onclick="removeProject()">Remove project</button><button class="btn primary" onclick="closeDlg()">Done</button></div></div></div>`;
 }
 const setBuild = (k, v) => setM({build: {...P(mp).build, [k]: v}});
@@ -2061,10 +2061,10 @@ async function pickItems(scope, title, pre) {
   const part = (k, l) => { const xs = all.filter(i => i.kind === k); return xs.length ? `<div class="label" style="margin-top:12px">${l}</div><div class="box" style="max-height:210px;overflow:auto;margin-bottom:0">${xs.map(row).join('')}</div>` : ''; };
   const tick = f => document.querySelectorAll('#dlg input[type=checkbox]').forEach(c => c.checked = f(c.value));
   let last = []; try { last = JSON.parse(localStorage.lastPick || '[]'); } catch {} // per computer, last Save of any picker
-  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(title)}</h2><p class="dim" style="margin:0;font-size:13px">Only what you tick is enabled; everything else on this computer stays off for it. You can change it later in Settings.</p>
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(title)}</h2><p class="dim" style="margin:0;font-size:13px">Only what you tick loads; everything else on this computer doesn't even start for it. You can change it later in Settings.</p>
     <p class="row" style="margin:10px 0 0">${last.length ? `<button class="btn sm" id="pickLast" title="${esc(last.length + ' items')}">${icon('loop')}Use last settings</button>` : ''}
       <button class="btn ghost sm" id="pickAll">All</button><button class="btn ghost sm" id="pickNone">None</button></p>
-    ${part('mcp', 'Connections')}${part('skill', 'Skills')}
+    ${part('mcp', 'Connections')}${part('skill', 'Skills')}${part('plugin', 'Plugins & mods (hooks, their own tools; also on when one of their skills is ticked)')}
     <div class="btns"><button class="btn primary" id="pickSave">Save</button></div>`);
   $('pickAll').onclick = () => tick(() => true); $('pickNone').onclick = () => tick(() => false);
   if ($('pickLast')) $('pickLast').onclick = () => tick(v => last.includes(v));
@@ -2087,7 +2087,7 @@ async function askLegacy(pid) {
 function cxPage() {
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
     <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => reloadSettings())">${icon('loop')}Rescan</button></p>
-    ${cxFold('g-mcp', 'Connections', 'mcp', 'global')}${cxFold('g-skill', 'Skills', 'skill', 'global')}`;
+    ${cxFold('g-mcp', 'Connections', 'mcp', 'global')}${cxFold('g-skill', 'Skills', 'skill', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}`;
 }
 function agentsPage() {
   return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to Claude until you switch them on (top right).'}</p>`
@@ -2117,7 +2117,7 @@ function aiPage() {
         <span>Pool</span><input list="pools" value="${esc(a.pool)}" placeholder="None" onchange="acct('${esc(a.id)}', {pool:this.value.trim()})">
         <span>GitHub for new projects</span><select onchange="acct('${esc(a.id)}', {gh:this.value})">${options({'': 'None', ...Object.fromEntries(ghUsers.map(g => [g, '@' + g]))}, a.gh)}</select>
       </div>
-      ${cxFold('a-mcp', 'Connections for new projects', 'mcp', a.id, a)}${cxFold('a-skill', 'Skills for new projects', 'skill', a.id, a)}
+      ${cxFold('a-mcp', 'Connections for new projects', 'mcp', a.id, a)}${cxFold('a-skill', 'Skills for new projects', 'skill', a.id, a)}${cxFold('a-plugin', 'Plugins & mods for new projects', 'plugin', a.id, a)}
       <div class="btns">${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
     + `<div class="label" style="margin-top:18px">Lessons</div>

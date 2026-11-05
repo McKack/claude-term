@@ -595,6 +595,19 @@ pub fn catalog(plugin_dir: &Path) -> Vec<Item> {
             }
         }
     }
+    // plugins + inline mods as items of their own: one only loads (hooks, MCP, agents, skills) when it or one of its
+    // skills is picked. ponytail@ponytail never: Clauracle bundles its own (else Ponytail is injected twice).
+    let mut plugins: Vec<String> = std::fs::read_to_string(h.join(".claude/plugins/installed_plugins.json")).ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v["plugins"].as_object().map(|o| o.keys().cloned().collect())).unwrap_or_default();
+    plugins.extend(std::fs::read_dir(h.join(".claude/mods")).into_iter().flatten().flatten()
+        .filter(|e| e.path().is_dir()).map(|e| format!("{}@inline", e.file_name().to_string_lossy())));
+    plugins.sort();
+    for k in plugins.into_iter().filter(|k| k != PONYTAIL_PLUGIN) {
+        let name = k.split('@').next().unwrap_or(&k).to_string();
+        let note = if k.ends_with("@inline") { "mod".into() } else { format!("plugin · {}", k.split('@').nth(1).unwrap_or("")) };
+        items.push(Item { id: format!("plugin:{k}"), label: name, kind: "plugin".into(), note });
+    }
     for (prefix, root) in roots {
         let mut names: Vec<String> = std::fs::read_dir(&root).into_iter().flatten().flatten()
             .filter(|e| e.path().join("SKILL.md").is_file())
@@ -611,12 +624,37 @@ pub fn catalog(plugin_dir: &Path) -> Vec<Item> {
 /// Disabled MCP servers become deny rules; skills an allowlist for `initialize` (None = all of them).
 /// A project with `on` gets only what it picked (Clauracle's own skills always); a legacy one (`on` None)
 /// everything but its `off`. The global `off` switches things off for every project.
-pub fn restrictions(cfg: &Config, p: &Project) -> (Vec<String>, Option<Vec<String>>) {
+const PONYTAIL_PLUGIN: &str = "ponytail@ponytail";
+
+/// Picked for this project? (global `off` wins; Clauracle's own skills always on; legacy `on` None = all but `off`)
+fn is_on(cfg: &Config, p: &Project, id: &str) -> bool {
     let has = |l: &[String], id: &str| l.iter().any(|x| x == id);
-    let enabled = |id: &str| !has(&cfg.off, id) && (id.starts_with("skill:clauracle:") || match &p.on {
+    !has(&cfg.off, id) && (id.starts_with("skill:clauracle:") || match &p.on {
         Some(on) => has(on, id),
         None => !has(&p.off, id),
-    });
+    })
+}
+
+/// The project's picks at the source, as CLI `--settings`: unpicked MCP servers (claude.ai connectors too) never start
+/// (deniedMcpServers), unpicked plugins/mods don't load at all (enabledPlugins false: no hooks, MCP, agents, skills).
+/// ponytail: deny-by-name from the catalog → a server added after the last scan runs until a rescan.
+pub fn cli_settings(cfg: &Config, p: &Project) -> serde_json::Value {
+    let denied: Vec<serde_json::Value> = cfg.catalog.iter().filter(|i| i.kind == "mcp" && !is_on(cfg, p, &i.id))
+        .map(|i| serde_json::json!({"serverName": i.label})).collect();
+    let mut plugins = serde_json::Map::new();
+    plugins.insert(PONYTAIL_PLUGIN.into(), false.into());
+    for i in cfg.catalog.iter().filter(|i| i.kind == "plugin") {
+        let key = &i.id["plugin:".len()..];
+        let skill_pre = format!("skill:{}:", key.split('@').next().unwrap_or(key));
+        let on = is_on(cfg, p, &i.id) || cfg.catalog.iter().any(|s| s.id.starts_with(&skill_pre) && is_on(cfg, p, &s.id));
+        if !on { plugins.insert(key.into(), false.into()); }
+    }
+    serde_json::json!({"deniedMcpServers": denied, "enabledPlugins": plugins})
+}
+
+pub fn restrictions(cfg: &Config, p: &Project) -> (Vec<String>, Option<Vec<String>>) {
+    let enabled = |id: &str| is_on(cfg, p, id);
+    let has = |l: &[String], id: &str| l.iter().any(|x| x == id);
     // ponytail: built from the catalog, so a server added after the last scan stays on until a rescan
     let ids: Vec<String> = cfg.catalog.iter().map(|i| i.id.clone()).chain(cfg.off.iter().cloned()).chain(p.off.iter().cloned()).collect();
     let mut deny: Vec<String> = ids.iter().filter(|i| !enabled(i)).filter_map(|i| i.strip_prefix("mcp:")).map(|s| format!("mcp__{s}")).collect();
@@ -1216,6 +1254,19 @@ mod tests {
         p.on = Some(vec!["mcp:gh".into(), "skill:a".into()]);
         cfg.off = vec!["skill:a".into()]; // switched off globally wins over a pick
         assert_eq!(restrictions(&cfg, &p), (vec!["mcp__rea".to_string()], Some(vec!["clauracle:ponytail".to_string()])));
+    }
+
+    #[test]
+    fn cli_settings_load_only_picks() {
+        let mut cfg = Config::default();
+        cfg.catalog = [("mcp:claude_ai_Gmail", "claude.ai Gmail", "mcp"), ("mcp:rea", "rea", "mcp"), ("plugin:unreal@x", "unreal", "plugin"),
+            ("plugin:room@y", "room", "plugin"), ("plugin:cc@inline", "cc", "plugin"), ("skill:room:share", "room:share", "skill")].iter()
+            .map(|(i, l, k)| Item { id: i.to_string(), label: l.to_string(), kind: k.to_string(), ..Default::default() }).collect();
+        let p = Project { on: Some(vec!["mcp:rea".into(), "plugin:cc@inline".into(), "skill:room:share".into()]), ..Default::default() };
+        let s = cli_settings(&cfg, &p);
+        assert_eq!(s["deniedMcpServers"], serde_json::json!([{"serverName": "claude.ai Gmail"}]), "claude.ai connectors by their listed name");
+        assert_eq!(s["enabledPlugins"], serde_json::json!({"ponytail@ponytail": false, "unreal@x": false}),
+                   "picked mod stays; a plugin with a picked skill stays; Clauracle's Ponytail replaces the plugin");
     }
 
     #[test]

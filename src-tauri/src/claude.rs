@@ -239,12 +239,16 @@ fn args(st: &State, p: &Project) -> Vec<String> {
         "--include-partial-messages", "--permission-prompt-tool", "stdio"].iter().map(|s| s.to_string()).collect();
     a.extend(["--append-system-prompt".into(), append, "--permission-mode".into(), p.mode.clone(),
               "--plugin-dir".into(), st.plugin_dir.to_string_lossy().into(), "--mcp-config".into(), mcp.to_string()]);
-    // no AI credit in commits/PRs unless the project turns it on; a settings file, not inline JSON (cmd /c mangles quotes)
+    // per-project CLI settings: only picked connections/plugins load (store::cli_settings), no AI credit unless the
+    // project turns it on. A file, not inline JSON (cmd /c mangles quotes)
+    let mut set = store::cli_settings(&cfg, p);
     if !p.ai_credit {
-        let f = store::home().join("no-credit.json");
-        if std::fs::write(&f, r#"{"includeCoAuthoredBy":false,"attribution":{"commit":"","pr":""}}"#).is_ok() {
-            a.extend(["--settings".into(), f.to_string_lossy().into()]);
-        }
+        set["includeCoAuthoredBy"] = json!(false);
+        set["attribution"] = json!({"commit": "", "pr": ""});
+    }
+    let f = store::home().join(format!("settings-{}.json", p.id));
+    if std::fs::write(&f, set.to_string()).is_ok() {
+        a.extend(["--settings".into(), f.to_string_lossy().into()]);
     }
     if !p.effort.is_empty() {
         a.extend(["--effort".into(), p.effort.clone()]);
