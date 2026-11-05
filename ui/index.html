@@ -745,7 +745,7 @@ function drawAcct() {
     <span class="nm grow">${esc(a.nick)}<small>${gh ? '@' + esc(gh) : 'no GitHub account'}</small></span>`;
 }
 // usage line: icon · title · bar · % on one row; the reset time on its own line underneath, aligned past the icon
-const useRow = (v, l, ic, sub) => `<div style="font-size:12px"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span><span class="bar" style="width:90px"><i style="width:${v || 0}%"></i></span><span style="width:34px;text-align:right">${v == null ? '–' : v + '%'}</span></div>${sub ? `<small class="faint" style="display:block;padding-left:22px">${sub}</small>` : ''}</div>`;
+const useRow = (v, l, ic, sub) => `<div style="font-size:12px"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span><span class="bar" style="width:90px"><i style="width:${v || 0}%"></i></span><span style="width:34px;text-align:right">${v == null ? '?%' : v + '%'}</span></div>${sub ? `<small class="faint" style="display:block;padding-left:22px">${sub}</small>` : ''}</div>`;
 // "Reset: 2h 14m · 14:30" for an account's usage window ('' when unknown)
 function resetIn(id, k) {
   const r = S.resets?.[id]?.[k]; if (!r) return '';
@@ -790,7 +790,7 @@ function statsCard(btn) {
   const p = P(), u = S.usage[p.account] || {}, x = TIMES[cur] || {you: 0, ai: 0, any: 0, start: Date.now()};
   const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
   const bar = (v, l, ic, k) => useRow(v, l, ic, k ? resetIn(p.account, k) : '');
-  card.innerHTML = `<h5>Context</h5>${bar(ctx[cur], 'Used (last seen)', 'doc')}
+  card.innerHTML = `<h5>Context</h5>${bar(ctx[cur], 'Used', 'doc')}
     <label class="row" style="font-size:12px;gap:6px">${icon('loop')}<span class="grow">Hand over at</span><input id="scLim" type="number" min="0" max="95" value="${p.context_limit}" style="width:64px">%</label>
     <h5>Usage · ${esc(nick(p.account))}</h5>${bar(u.five_hour, '5-hour', 'clock', 'five_hour')}${bar(u.seven_day, 'Weekly', 'cal', 'seven_day')}
     <h5>This session <span class="faint">since ${esc(tm(new Date(x.start).toISOString()))}</span></h5>
@@ -863,7 +863,7 @@ function drawChrome() {
   $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? '·' + esc(EFF_S[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}${permN(p.mode)}</button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${MODE_S[p.cont] || ''}</button>`
-    + `<button class="stats" onclick="statsCard(this)" title="Context, usage and session time">${ctx[cur] != null ? `<span>${icon('doc')}${ctx[cur]}%</span>` : ''}${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime" class="lb"></span></button>`
+    + `<button class="stats" onclick="statsCard(this)" title="Context, usage and session time"><span>${icon('doc')}${ctx[cur] ?? '?'}%</span>${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime" class="lb"></span></button>`
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
   drawTimes();
   const sendBtn = $('send');
@@ -1458,7 +1458,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
-  cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session'}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session'}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
   queued: () => refresh(),
