@@ -2859,7 +2859,8 @@ async function planWait(i, accept) {
 }
 async function queueToTeam(btn) {
   const have = new Set(teamTasks(cur).map(x => x.title.trim().toLowerCase()));
-  const todo = (S.queues?.[cur] || []).map(x => x.length > 120 ? x.slice(0, 117) + '…' : x).filter(t => !have.has(t.toLowerCase()));
+  // full text → task_do splits title/body (store::split_task); dedup: an issue title = the task or its lead
+  const todo = (S.queues?.[cur] || []).filter(t => ![...have].some(h => t.toLowerCase().startsWith(h.replace(/…$/, ''))));
   if (!todo.length) return addEntry(cur, {kind: 'note', text: 'Every queued task is already a team task'});
   if (!await sure(`File ${todo.length} task${todo.length === 1 ? '' : 's'} as GitHub issues (Team tasks), in this order?\n\n${todo.map((t, i) => `${i + 1}. ${t}`).join('\n')}`)) return;
   btn.disabled = true;

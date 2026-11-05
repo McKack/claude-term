@@ -1057,7 +1057,8 @@ pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<(), Str
     match action {
         "new" => {
             let _ = gh(&["label", "create", TASK_LABEL, "--color", "D77655", "--description", "Task tracked in Clauracle"]);
-            gh(&["issue", "create", "--title", arg, "--body", "", "--label", TASK_LABEL])
+            let (title, body) = split_task(arg);
+            gh(&["issue", "create", "--title", &title, "--body", &body, "--label", TASK_LABEL])
         }
         "claim" => {
             let _ = gh(&["label", "create", DOING_LABEL, "--color", "4F5BD5", "--description", "Someone is on it"]);
@@ -1067,6 +1068,28 @@ pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<(), Str
         "done" => gh(&["issue", "close", arg]),
         _ => Err("unknown task action".into()),
     }
+}
+
+/// Task text → (issue title, body). Short → title only; long → title = lead up to the first ": " / ". " (≤100 chars,
+/// else cut at a word + "…"), body = full text ∵ issues came truncated with an empty body.
+pub fn split_task(t: &str) -> (String, String) {
+    let t = t.trim();
+    if t.chars().count() <= 100 { return (t.to_string(), String::new()); }
+    let lead = [": ", ". ", " (", " — "].iter().filter_map(|s| t.find(s)).filter(|&i| i >= 8 && t[..i].chars().count() <= 100).min();
+    let title = match lead {
+        Some(i) => t[..i].to_string(),
+        None => { let c: String = t.chars().take(97).collect(); format!("{}…", c.rsplit_once(' ').map_or(c.as_str(), |(a, _)| a)) }
+    };
+    (title, t.to_string())
+}
+
+#[test]
+fn split_task_works() {
+    assert_eq!(split_task("Fix the bug"), ("Fix the bug".into(), String::new()));
+    let long = format!("Tasks from GitHub Issues by default: {}", "x ".repeat(60));
+    assert_eq!(split_task(&long), ("Tasks from GitHub Issues by default".into(), long.trim().into()));
+    let (t, b) = split_task(&"word ".repeat(40));
+    assert!(t.ends_with('…') && t.chars().count() <= 100 && b.len() > 100);
 }
 
 /// Files my work touches: uncommitted changes + commits on this branch since it left the default branch.

@@ -220,7 +220,7 @@ fn args(st: &State, p: &Project) -> Vec<String> {
             \"in progress\"`); close it when done. New work others should see: `gh issue create --label clauracle`.\n";
         if p.team_auto {
             append += "Every task the user gives you is a team task: before starting, `gh issue create --label clauracle \
-                --label \"in progress\" --assignee @me --title <short task>` (one per distinct task; skip questions and chat); \
+                --label \"in progress\" --assignee @me --title <short task> --body <the full task, untruncated>` (one per distinct task; skip questions and chat); \
                 close it with a one-line summary (`gh issue close N -c ...`) when done.\n";
         }
     }
