@@ -93,14 +93,15 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 
 /* main */
 #main { display:flex; flex-direction:column; min-width:0; min-height:0; }
-#head { display:flex; align-items:center; gap:10px; padding:10px 8px; min-height:54px; }
+#head { display:flex; align-items:center; gap:10px; padding:10px 8px; min-height:54px; position:relative; z-index:3; pointer-events:none; }
+#head > * { pointer-events:auto; } /* header floats over the log (chat scrolls up under it, see #log margin/mask) */
 #head .title { font-weight:600; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #branch { cursor:pointer; } #branch:hover { color:var(--text); border-color:var(--line2); }
 #branch { font-size:12px; color:var(--dim); background:var(--side); border:1px solid var(--line); padding:1px 8px; border-radius:99px; white-space:nowrap; }
 .seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
 .seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
 .seg button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
-#log { flex:1; overflow:auto; padding:8px 24px 24px; mask-image:linear-gradient(to bottom, transparent, #000 32px); } /* top fade, like the dock's */
+#log { flex:1; overflow:auto; padding:8px 24px 24px; margin-top:-54px; padding-top:62px; mask-image:linear-gradient(to bottom, transparent 22px, #000 38px); } /* under #head: 16px fade mid-header */
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
 .msg { max-width:100%; }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
