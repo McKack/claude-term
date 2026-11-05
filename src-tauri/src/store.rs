@@ -85,7 +85,8 @@ pub struct Project {
     pub cont: String,         // continue mode: manual | auto | auto_answer
     pub context_limit: f64,   // % of context; past it the session prepares a handover
     pub session: Option<String>,
-    pub ready: bool,          // handover written, waiting for Continue (manual) or the limits (auto)
+    pub prev_session: Option<String>, // the one before the last clear: shown faded above the current after a restart
+    pub ready: bool,         // handover written, waiting for Continue (manual) or the limits (auto)
     pub questions: Vec<Question>, // waiting for the user
     pub answers: String,      // answered, to go into the next message
     pub build: Build,
@@ -108,7 +109,7 @@ impl Default for Project {
         Project {
             id: String::new(), name: String::new(), path: String::new(), account: MAIN.into(), gh: String::new(),
             off: vec![], on: None, mode: "default".into(), model: String::new(), effort: String::new(), ponytail: true, cont: "manual".into(),
-            context_limit: 50.0, session: None, ready: false, questions: vec![], answers: String::new(),
+            context_limit: 50.0, session: None, prev_session: None, ready: false, questions: vec![], answers: String::new(),
             build: Build::default(), hide_env: true, terse: true,
             owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], team_auto: false, allow: vec![], ai_credit: false,
         }

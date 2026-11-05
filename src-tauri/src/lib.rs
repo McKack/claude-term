@@ -46,7 +46,10 @@ fn open_project(app: AppHandle, st: St, pid: String) -> R<Value> {
         store::save(&cfg);
     }
     let live = session(&app, &st, &pid);
-    let history = p.session.as_deref().map(claude::history).unwrap_or_default();
+    // previous session (before the last clear), faded, then the current one
+    let mut history: Vec<Value> = p.prev_session.as_deref().map(claude::history).unwrap_or_default().into_iter()
+        .map(|mut e| { e["old"] = json!(true); e }).collect();
+    history.extend(p.session.as_deref().map(claude::history).unwrap_or_default());
     Ok(json!({"branch": store::git_branch(&p.path), "busy": live.busy.load(SeqCst), "history": history}))
 }
 

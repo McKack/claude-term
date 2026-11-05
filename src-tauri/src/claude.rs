@@ -526,7 +526,7 @@ pub fn fresh(app: &AppHandle, st: &State, pid: &str, live: &Live, cont: bool) {
     live.handing_over.store(false, SeqCst);
     live.first_turn.store(true, SeqCst);
     let answers = st.with_project(pid, |p| {
-        p.session = None;
+        if p.session.is_some() { p.prev_session = p.session.take(); }
         p.ready = false;
         std::mem::take(&mut p.answers)
     }).unwrap_or_default();

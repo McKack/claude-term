@@ -23,7 +23,7 @@
 /* Appearance: no frosted glass (cheaper to draw), no motion */
 .noglass .glass { background:var(--card); backdrop-filter:none; -webkit-backdrop-filter:none; } .noglass dialog::backdrop { backdrop-filter:none; }
 .nomotion *, .nomotion *::before, .nomotion *::after { animation:none !important; transition:none !important; }
-.toast { position:fixed; inset:auto 16px 16px auto; margin:0; padding:10px 14px; border:1px solid var(--line2); border-radius:12px; font-size:13px; color:var(--text); box-shadow:var(--shadow); cursor:pointer; animation:rise .22s ease-out; }
+#log .old { opacity:.45; transition:opacity .2s; } #log .old:hover { opacity:.85; } /* sessions before the last clear */
 .swatch { width:26px; height:26px; border-radius:50%; border:2px solid var(--bg); box-shadow:0 0 0 1px var(--line2); cursor:pointer; padding:0; }
 .swatch.on { box-shadow:0 0 0 2px var(--text); }
 * { box-sizing:border-box; } [hidden] { display:none !important; }
@@ -644,7 +644,7 @@ function acctCard(btn) {
     <div class="btnrow"><button class="btn" data-go="ai">${icon('user')}AI accounts</button><button class="btn" data-go="gh">${icon('gh')}GitHub</button></div>`;
   card.innerHTML += `<hr style="border:0;border-top:1px solid var(--line);margin:0">
     <div class="row" style="gap:4px"><button class="pick grow" data-go="">${icon('gear')}<span class="grow">Settings</span></button>
-    <button class="pick grow" id="acRestart" title="Sessions, running turns and unsent input all come back">${icon('loop')}<span class="grow">Restart</span></button></div>`;
+    <button class="ib" id="acRestart" title="Restart Clauracle: sessions, running turns and unsent input all come back">${icon('loop')}</button></div>`;
   document.body.append(card); card.showPopover();
   card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
   card.querySelectorAll('[data-acct]').forEach(b => b.onclick = () => { card.hidePopover(); setP({account: b.dataset.acct}).then(refresh); });
@@ -896,7 +896,7 @@ function put(box, e) {
     // a run of tool calls = one terminal window; tabs: shell commands, then one per file / other tool; the newest shows
     // (until a tab is clicked); its lines = each call, click one → just that call's details/output
     let g = box.lastElementChild;
-    if (!g?.classList.contains('tools')) { g = document.createElement('div'); g.className = 'tools termcard'; g._tabs = new Map(); box.appendChild(g); hatch(box, g); }
+    if (!g?.classList.contains('tools') || !!g._old !== !!e.old) { g = document.createElement('div'); g.className = 'tools termcard' + (e.old ? ' old' : ''); g._old = e.old; g._tabs = new Map(); box.appendChild(g); hatch(box, g); }
     const d = e.detail || {}, name = toolName(e), sh = /^(Bash|PowerShell)$/.test(name) && typeof d.command === 'string',
       f = d.file_path || d.notebook_path, key = sh ? 'sh' : f ? 'f:' + f : 't:' + name;
     let t = g._tabs.get(key);
@@ -922,6 +922,7 @@ function put(box, e) {
     if (prev?.classList.contains('tools') && e.kind === 'claude') prev = prev.previousElementSibling;
     if (prev?.classList.contains('crow') && prev.classList.contains(e.kind)) el.classList.add('cont');
   }
+  if (e.old) el.classList.add('old');
   const qs = box.querySelector('.qs');
   qs ? box.insertBefore(el, qs) : box.appendChild(el);
   if (e.kind !== 'user' && !box._swap) hatch(box, el);
@@ -1253,7 +1254,9 @@ $('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash();
 // Continue/auto-clear → "Reading handover…" pill (same spot as Working…) until Claude's first own line/tool or turn end
 const reading = {};
 const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading[pid]; if (pid === cur) drawChrome(); };
-function cont_() { hiddenQs[cur] = false; logs[cur] = [{kind: 'note', text: 'Fresh session'}]; readNote(cur, true);
+// a clear keeps the conversation so far above the new one, faded (ponytail: last 300 entries, older ones drop)
+const keepOld = pid => (logs[pid] || []).filter(x => x.text !== READING && x.kind !== 'ask').slice(-300).map(x => ({...x, old: true}));
+function cont_() { hiddenQs[cur] = false; logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session'}]; readNote(cur, true);
   P().ready = false; $('ready').hidden = true; drawLog(); call('continue_now', {pid: cur}); }
 
 // ---- events from Rust ----
@@ -1269,7 +1272,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
-  cleared: () => { logs[d.pid] = [{kind: 'note', text: 'Fresh session'}]; if (reading[d.pid]) readNote(d.pid, true); delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session'}]; // cont_ did it already otherwise if (reading[d.pid]) readNote(d.pid, true); delete ctx[d.pid]; saveCtx(); live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   ready: () => refresh().then(() => d.pid === cur && drawLog()),
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
   queued: () => refresh(),
