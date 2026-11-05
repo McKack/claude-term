@@ -461,6 +461,15 @@ pub fn summary(input: &Value) -> String {
 
 async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, conn: &Conn) {
     let Some(p) = st.project(pid) else { return };
+    if !p.gh.is_empty() {
+        // commits Claude made → pushed in the background (user: no Push button chores); GitHub tab refetches on `pushed`
+        let (app, pid, dir, gh) = (app.clone(), pid.to_string(), p.path.clone(), p.gh.clone());
+        tauri::async_runtime::spawn_blocking(move || match crate::store::auto_push(&dir, &gh) {
+            Ok(0) => {}
+            Ok(n) => { line(&app, &pid, "note", &format!("Pushed {n} commit{}", if n > 1 { "s" } else { "" })); emit(&app, "pushed", json!({"pid": pid})); }
+            Err(e) => line(&app, &pid, "note", &format!("Auto-push failed: {e}")),
+        });
+    }
     if live.armed.swap(false, SeqCst) {
         let was_handover = live.handing_over.swap(false, SeqCst);
         if !was_handover && !p.build.after.is_empty() {

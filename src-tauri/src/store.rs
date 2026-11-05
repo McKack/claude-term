@@ -941,6 +941,17 @@ pub fn git_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<serde_js
     if o.ok { Ok(serde_json::json!(o.stderr.trim())) } else { Err(if o.stderr.trim().is_empty() { o.stdout } else { o.stderr }.trim().to_string()) }
 }
 
+/// After a turn: push the current branch if it's ahead of its upstream → Some(n pushed). Never force.
+/// ponytail: only branches with an upstream (a never-pushed local branch may be private); failure = Err for a note.
+pub fn auto_push(dir: &str, user: &str) -> Result<u32, String> {
+    let env = gh_env(user);
+    let up = run("git", &["rev-list", "--count", "@{u}..HEAD"], Some(dir), &env);
+    let n = if up.ok { up.stdout.trim().parse::<u32>().unwrap_or(0) } else { 0 };
+    if n == 0 { return Ok(0); }
+    let o = run("git", &["push"], Some(dir), &env);
+    if o.ok { Ok(n) } else { Err(o.stderr.trim().lines().last().unwrap_or("").to_string()) }
+}
+
 /// Recent build outputs worth releasing (installers, packages, archives) in the usual output folders, newest first.
 /// ponytail: fixed folder list + depth 5; add a per-project artifact glob in Build if a project hides them elsewhere
 pub fn builds(dir: &str) -> Vec<serde_json::Value> {

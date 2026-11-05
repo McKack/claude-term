@@ -1484,6 +1484,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
   cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session'}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  pushed: () => { delete GHI[d.pid]; if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
   queued: () => refresh(),
@@ -1493,7 +1494,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
-    if (d.step === 'build' && d.done != null) { delete GHI[d.pid]; (d.done && P(d.pid)?.rel_auto ? relAuto(d.pid) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → Release list refetch */
+    if (d.step === 'build' && d.done != null) { delete GHI[d.pid]; const rn = RELNEXT[d.pid]; delete RELNEXT[d.pid]; (d.done && (P(d.pid)?.rel_auto || rn) ? relAuto(d.pid) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → Release list refetch */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
   gh_code: () => { const m = $('ghMsg'); if (m) m.innerHTML = `Enter <b style="font-size:18px" class="sel mono">${esc(d.code)}</b> at <a href="#" data-url="${esc(d.url)}">github.com/login/device</a>`; T.opener.openUrl(d.url); },
@@ -1811,21 +1812,13 @@ function drawGh(g, busy) {
     + fold('prs', 'Pull requests', list(g.prs, 'pr'), g.prs?.length || 0) + fold('issues', 'Issues', list(g.issues, 'issue'), g.issues?.length || 0);
   relReady();
 }
-// uncommitted files → message + Commit & push; committed but unpushed → Push
+// info only (user: no chores): uncommitted files listed; Claude commits, claude::after_turn pushes (store::auto_push)
 function changesSec(s) {
   const f = s.files || [];
   if (!f.length && !s.ahead) return fold('changes', 'Changes', empty('Everything is committed and pushed'));
-  return fold('changes', 'Changes', (f.length ? `<div class="keys">${f.slice(0, 8).map(x => `<div><span>${esc(x)}</span></div>`).join('')}${f.length > 8 ? `<div class="faint">+${f.length - 8} more</div>` : ''}</div>
-      <input id="cmMsg" placeholder="What changed (commit message)" onkeydown="if(event.key==='Enter')commitPush()">
-      <button class="btn primary block" onclick="commitPush()">${icon('up')}Commit ${f.length} file${f.length > 1 ? 's' : ''} and push</button>`
-    : `<button class="btn primary block" onclick="gitDo('push', '').then(() => drawRight(true))">${icon('up')}Push ${s.ahead} commit${s.ahead > 1 ? 's' : ''}</button>`) + '<p id="cmErr" class="err" style="font-size:12.5px;margin:0"></p>',
+  return fold('changes', 'Changes', (f.length ? `<div class="keys">${f.map(x => `<div><span>${esc(x)}</span></div>`).join('')}</div>` : '')
+    + (s.ahead ? `<p class="faint" style="margin:0;font-size:12.5px">${s.ahead} commit${s.ahead > 1 ? 's' : ''} not on GitHub yet: pushed when the turn ends.</p>` : ''),
     f.length || (s.ahead ? `${s.ahead}↑` : 0));
-}
-async function commitPush() {
-  const m = $('cmMsg').value.trim();
-  if (!m) return $('cmMsg').focus();
-  try { await call('git_do', {pid: cur, action: 'commit', arg: m}); addEntry(cur, {kind: 'note', text: `Committed and pushed: ${m}`}); drawRight(true); }
-  catch (e) { $('cmErr').textContent = e; }
 }
 // a GitHub release of picked builds: recent outputs found in the project (newest ticked) + any added by hand;
 // Publish only with at least one file. Tag suggested as the last one +1 patch.
@@ -1840,6 +1833,9 @@ function releaseSec(r, builds = []) {
   const last = r?.tagName || '', pv = RELC[cur]?.c?.version || '',
     next = pv && (!last || vgt(pv, fver(last))) ? 'v' + pv : last ? last.replace(/(\d+)(?!.*\d)/, n => +n + 1) : 'v0.1.0';
   // tick newest build per file type whose version matches the tag (or carries none); builds come newest first
+  // only the newest version's builds (+ versionless) listed: old versions are never released again
+  const vmax = builds.map(b => fver(b.name)).filter(Boolean).reduce((m, v) => !m || vgt(v, m) ? v : m, '');
+  builds = builds.filter(b => !fver(b.name) || fver(b.name) === vmax);
   const pick = new Set(relPick(builds, tver(next))), tick = b => pick.has(b);
   const row = (b, on) => `<label class="check" title="${esc(b.path)}"><input type="checkbox" value="${esc(b.path)}" ${on ? 'checked' : ''} onchange="relReady()">
     <span class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(b.name)}<small class="dim" style="display:block">${b.mtime ? ago(b.mtime) + ' · ' : ''}${b.size ? mb(b.size) : 'added'}</small></span></label>`;
@@ -1878,25 +1874,32 @@ async function relAuto(pid) {
 let relFiles = [];
 const relPicked = () => [...document.querySelectorAll('#relBox input:checked')].map(c => c.value);
 // Publish needs files + tag, and every picked file's version (if it has one) = the tag's: else warn + offer set-version-and-build
+// no build of the tag's version + a build command → Publish = set version → build → publish (relBump; build event → relAuto)
 function relReady() {
   if (!$('relGo')) return;
   const v = tver($('relTag').value.trim()), odd = relPicked().map(f => fver(f.split(/[\\/]/).pop())).filter(x => x && x !== v);
   const none = ![...document.querySelectorAll('#relBox input')].some(c => fver(c.value.split(/[\\/]/).pop()) === v);
-  $('relGo').disabled = !relPicked().length || !v || odd.length > 0;
-  $('relWarn').innerHTML = odd.length || (none && SEMV.test(v))
-    ? `${odd.length ? `Picked files are v${esc([...new Set(odd)].join(', v'))}, the tag is v${esc(v)}. ` : `No build of v${esc(v)} yet. `}${SEMV.test(v) && P().build.build
-      ? `<a style="cursor:pointer;color:var(--accent)" onclick="relBump('${esc(v)}')">Set version to ${esc(v)} and build</a>` : 'Build that version first.'}` : '';
+  const bump = none && SEMV.test(v) && !!P().build.build && !relFiles.length;
+  $('relGo').dataset.bump = bump ? v : '';
+  $('relGo').innerHTML = icon('rocket') + (bump ? `Build and publish v${esc(v)}` : 'Publish');
+  $('relGo').disabled = !bump && (!relPicked().length || !v || odd.length > 0);
+  $('relWarn').innerHTML = bump ? `No build of v${esc(v)} yet: Publish sets the version, builds, then releases it.`
+    : odd.length ? `Picked files are v${esc([...new Set(odd)].join(', v'))}, the tag is v${esc(v)}.${P().build.build ? '' : ' Build that version first.'}` : '';
 }
-async function relBump(v) {
-  if (!await sure(`Set version to ${v} and build?\n\nWrites ${v} into the project's version files, then runs the build command.`, 'Set and build')) return;
-  try { const f = await call('version_set', {pid: cur, v}); addEntry(cur, {kind: 'note', text: `Version ${v} set in ${f.join(', ')}`}); delete RELC[cur]; call('run_step', {pid: cur, step: 'build'}); }
-  catch (e) { $('relErr').textContent = e; }
+const RELNEXT = {}; // pid → version: publish once its build succeeds
+async function relBump(v, btn) {
+  btn.disabled = true;
+  try {
+    const f = await call('version_set', {pid: cur, v}); addEntry(cur, {kind: 'note', text: `Version ${v} set in ${f.join(', ')}: building, then publishing v${v}`});
+    delete RELC[cur]; RELNEXT[cur] = v; call('run_step', {pid: cur, step: 'build'});
+  } catch (e) { $('relErr').textContent = e; btn.disabled = false; }
 }
 async function pickRelFiles() {
   const f = await T.dialog.open({multiple: true, defaultPath: P().path}); if (!f) return;
   relFiles = [...new Set(relFiles.concat(f))]; drawRight();
 }
 async function makeRelease(btn) {
+  if (btn.dataset.bump) return relBump(btn.dataset.bump, btn);
   const files = relPicked(); if (!files.length) return;
   btn.disabled = true;
   try { const url = await call('release', {pid: cur, tag: $('relTag').value.trim(), files}); relFiles = []; addEntry(cur, {kind: 'note', text: 'Released: ' + url}); drawRight(true); }
