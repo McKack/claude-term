@@ -1066,8 +1066,12 @@ pub const IDEA_LABEL: &str = "suggestion"; // Claude's own idea awaiting the use
 
 pub fn tasks(dir: &str, user: &str) -> serde_json::Value {
     let list = |l: &str| gh_json(&["issue", "list", "--label", l, "--state", "open", "--limit", "100",
-              "--json", "number,title,url,assignees,labels,updatedAt"], user, Some(dir));
-    let v = list(OUR_LABEL);
+              "--json", "number,title,url,assignees,labels,updatedAt,author"], user, Some(dir));
+    let v = trusted(list(OUR_LABEL), user, || {
+        // ∵ issue templates can auto-label outsiders' issues → only push-access authors queue work for the AI
+        gh_json(&["api", "repos/{owner}/{repo}/collaborators", "--jq", "[.[] | select(.permissions.push) | .login]"], user, Some(dir))
+            .as_array().into_iter().flatten().filter_map(|l| l.as_str().map(str::to_lowercase)).collect()
+    });
     // ponytail: migration (2026-11-05): none ours yet → tag open `task` issues `clauracle` once; drop later
     if v.as_array().is_some_and(|a| a.is_empty()) {
         let old = list(TASK_LABEL);
@@ -1080,6 +1084,26 @@ pub fn tasks(dir: &str, user: &str) -> serde_json::Value {
         }
     }
     v
+}
+
+/// Keep issues by `me` or a push collaborator. Collaborators fetched only if a stranger's issue shows up (solo repo = 0
+/// extra calls); fetch fails → only mine. ponytail: per-poll fetch then; cache if foreign issues get common.
+fn trusted(v: serde_json::Value, me: &str, collab: impl FnOnce() -> Vec<String>) -> serde_json::Value {
+    let me = me.to_lowercase();
+    let who = |x: &serde_json::Value| x["author"]["login"].as_str().unwrap_or("").to_lowercase();
+    let Some(a) = v.as_array() else { return v };
+    if a.iter().all(|x| who(x) == me) { return v; }
+    let ok = collab();
+    serde_json::Value::Array(a.iter().filter(|x| { let w = who(x); w == me || ok.contains(&w) }).cloned().collect())
+}
+
+#[test]
+fn trusted_works() {
+    let v = serde_json::json!([{"number": 1, "author": {"login": "Me"}}, {"number": 2, "author": {"login": "bob"}}, {"number": 3, "author": {"login": "eve"}}]);
+    let n = |v: serde_json::Value| v.as_array().unwrap().iter().map(|x| x["number"].as_u64().unwrap()).collect::<Vec<_>>();
+    assert_eq!(n(trusted(v.clone(), "me", || vec!["bob".into()])), [1, 2]);
+    assert_eq!(n(trusted(v.clone(), "me", Vec::new)), [1]);
+    assert_eq!(n(trusted(serde_json::json!([{"number": 1, "author": {"login": "me"}}]), "me", || panic!("no fetch"))), [1]);
 }
 
 /// gh issue actions: new (title) | claim | release | done (number).

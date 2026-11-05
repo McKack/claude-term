@@ -181,7 +181,7 @@ pre.diff .ctx { color:var(--faint); }
 .dscroll.wrap pre.diff { white-space:pre-wrap; overflow-wrap:anywhere; }
 .dscroll:not(.wrap) pre.diff:has(> .ctx, > .del, > .add) { display:grid; grid-template-columns:minmax(100%, max-content); } /* nowrap: rows = longest line wide ∴ bg spans the scroll width */
 .msg.tool::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--line2); flex:none; }
-.msg.note { color:var(--dim); font-size:13px; text-align:center; } .msg.note .i { width:13px; height:13px; vertical-align:-2px; }
+.msg.note { color:var(--dim); font-size:13px; text-align:center; } .msg.note[data-ts]::before { content:attr(data-ts); display:block; font-size:11px; color:var(--faint); margin-bottom:2px; } .msg.note .i { width:13px; height:13px; vertical-align:-2px; }
 /* error: red rounded box, monospace; title = where it came from (the tool line before it) */
 .msg.err { color:var(--err); font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; align-self:stretch;
   background:color-mix(in srgb, var(--err) 9%, transparent); border:1px solid color-mix(in srgb, var(--err) 35%, transparent); border-radius:12px; padding:8px 12px; }
@@ -273,11 +273,14 @@ pre.diff .ctx { color:var(--faint); }
 .stepper { list-style:none; padding:0; margin:4px 0; counter-reset:st; font-size:13px; color:var(--dim); }
 .stepper li { position:relative; padding:3px 0 16px 40px; counter-increment:st; }
 .stepper .sn { position:absolute; left:0; top:0; width:28px; height:28px; padding:0; border:0; border-radius:50%; background:var(--soft); color:var(--accent); font-weight:600; font-size:13px; font-family:inherit; display:grid; place-items:center; cursor:pointer; }
-.stepper .sn:hover { outline:1px solid var(--accent); } .stepper li.done .sn { background:var(--accent); color:var(--bg); }
+.stepper .sn:hover { outline:1px solid var(--accent); } .stepper li.done .sn { background:var(--ok); color:#fff; }
 .stepper li.done > :not(.sn) { opacity:.45; transition:opacity .2s; } .stepper .under { margin-top:6px; font-size:12px; overflow-wrap:anywhere; }
 .streset { display:flex; justify-content:flex-end; margin-bottom:2px; }
 .stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
 .stepper b { color:var(--text); font-weight:600; } .stepper .btnrow { margin-top:8px; align-items:center; } .stepper .keys { margin-top:8px; }
+/* stepper buttons never squeeze: nowrap + wrap row; a button alone on its line grows full width; non-buttons go below */
+.stepper .btnrow { display:flex; flex-wrap:wrap; } .stepper .btnrow .btn { flex:1 1 auto; white-space:nowrap; } .stepper .btnrow > :not(.btn) { flex-basis:100%; }
+.keys.st > div { flex-direction:column; gap:2px; } .keys.st small { overflow-wrap:anywhere; }
 .warn a { color:inherit; text-decoration:underline; cursor:pointer; }
 #ready, #suggest { display:flex; gap:12px; align-items:center; padding:9px 10px 9px 16px; border-radius:12px; background:var(--soft); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
@@ -1139,6 +1142,7 @@ function entry(e) {
     : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
   else d.textContent = e.text;
+  if (view === 'chat' && e.kind === 'note' && e.ts) d.dataset.ts = tm(e.ts); // shown above via CSS ::before
   return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
 }
 // chat look: avatar (Clauracle's icon | your GitHub picture) + name · time over the bubble
@@ -1244,7 +1248,7 @@ function addEntry(pid, e) {
   // writing plan/handover/changes = wrapping up → "Preparing plan…"; reading them (every fresh start) ≠ that, and real work after ends it
   const wrap = isProcess(e) && (/^mcp__clauracle__/.test(e.text) || /^(Edit|MultiEdit|Write)\b/.test(toolName(e)));
   if (busy[pid] && (wrap ? !hand[pid] : e.kind === 'tool' && !isProcess(e) && hand[pid] === 'soft')) { hand[pid] = wrap ? 'soft' : false; if (pid === cur) drawChrome(); }
-  if (!e.ts && (e.kind === 'user' || e.kind === 'claude')) e.ts = new Date().toISOString();
+  if (!e.ts && (e.kind === 'user' || e.kind === 'claude' || e.kind === 'note')) e.ts = new Date().toISOString();
   (logs[pid] ||= []).push(e);
   if (e.kind === 'tool' && /^(Edit|MultiEdit|Write|NotebookEdit)\b/.test(toolName(e)) && (e.detail?.file_path || e.detail?.notebook_path)) {
     (EDITS[pid] ||= {})[relOf(pid, e.detail.file_path || e.detail.notebook_path)] = Date.now(); if (pid === cur) badgeFiles();
@@ -1483,7 +1487,7 @@ const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading
 const keepOld = pid => (logs[pid] || []).filter(x => x.kind !== 'ask').slice(-300).map(x => ({...x, old: true}));
 function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); /* first: a drawing error can't swallow the Continue */
   hiddenQs[cur] = false; qsOpen[cur] = true; P().ready = false; $('ready').hidden = true;
-  logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session'}]; readNote(cur, true); drawLog(); }
+  logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; readNote(cur, true); drawLog(); }
 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
@@ -1502,7 +1506,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
-  cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session'}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   pushed: () => { delete GHI[d.pid]; if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
@@ -1839,7 +1843,7 @@ function drawGh(g, busy) {
     + '<div id="atp"></div>' // Plan (issue queue / PLAN.md, drag order, Suggestions, Cleanup): drawAtp fills it
     + `<div id="tasksBox">${tasksHtml()}</div>`
     + (g.remote ? changesSec(g.git || {}) : '')
-    + fold('prs', 'Pull requests', list(g.prs, 'pr'), g.prs?.length || 0) + fold('issues', 'Issues', list(g.issues, 'issue'), g.issues?.length || 0);
+    + fold('prs', 'Pull requests', list(g.prs, 'pr'), g.prs?.length || 0) + (g.issues?.length ? fold('issues', 'Other issues', list(g.issues, 'issue'), g.issues.length) : ''); // non-clauracle only (gh_info)
   drawAtp(); relReady();
 }
 // info only (user: no chores): uncommitted files listed; Claude commits, claude::after_turn pushes (store::auto_push)
@@ -2186,8 +2190,8 @@ const SERVICES = {
       {t: 'Clauracle picks the downloaded **.cer** up from **Downloads** by itself and fills the first four keys', a: () => `<button class="btn sm" onclick="appleCer()">Load .cer…</button><small class="dim" id="cerWait"></small>`},
       {t: 'Make an **App-Specific Password** (under **Sign-In and Security**), then fill **APPLE_ID** (your Apple account email) and **APPLE_PASSWORD**',
         a: () => `<button class="btn sm" data-url="https://account.apple.com/account/manage">App-specific password</button><button class="btn sm" onclick="fillKeys('macsign', ['APPLE_ID', 'APPLE_PASSWORD'])">${icon('key')}Fill in</button>`},
-      {t: 'Send to GitHub: CI then signs and notarizes Mac builds', a: () => `<button class="btn sm" onclick="toSecrets('macsign', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-macsign"></small></button><p class="err" id="secErr-macsign" style="font-size:13px"></p>`},
-      {t: 'Optional: register the **App ID** only if the app uses capabilities like iCloud or push', a: () => bundleRow() + `<div class="btnrow"><button class="btn sm" data-url="https://developer.apple.com/account/resources/identifiers/add/bundleId">Register App ID</button></div>`}]},
+      {t: 'Send to GitHub: CI then signs and notarizes Mac builds', a: () => `<button class="btn sm" onclick="toSecrets('macsign', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets</button><small class="dim" id="sec-macsign"></small><p class="err" id="secErr-macsign" style="font-size:13px"></p>`},
+      {t: 'Optional: register the **App ID** only if the app uses capabilities like iCloud or push', u: () => bundleRow(true) + `<div class="btnrow"><button class="btn sm" data-url="https://developer.apple.com/account/resources/identifiers/add/bundleId">Register App ID</button></div>`}]},
   appstore: {name: 'App Store Connect', note: 'iOS / macOS releases', keys: ['ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_PRIVATE_KEY'],
     steps: ['Identifiers › + › App IDs › App: Explicit, paste the Bundle ID below, tick the capabilities the app uses', 'Certificates › + › Apple Distribution (iOS) or Mac App Distribution + Mac Installer Distribution (macOS)',
       'Profiles › + › App Store Connect: pick the App ID and certificate, download the profile', 'Make the app record with the same Bundle ID', 'Integrations: make an API key (for uploads from CI)'],
@@ -2242,17 +2246,32 @@ function stepSet(id, i, on, extra) {
 }
 const stepTog = (id, i) => stepSet(id, i, !stepOf(id).d.includes(i));
 function stepReset(id) { delete (STEPS[cur] || {})[id]; try { localStorage.steps = JSON.stringify(STEPS); } catch {} drawServices(); }
+// auto-tick from checks: .env keys / repo secrets ⇒ earlier steps done. s.a = auto idx already applied ∴ a manual untick sticks
+const MAC4 = ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_TEAM_ID'];
+function stepAuto(id) {
+  if (id !== 'macsign') return [];
+  const h = k => envKeys.have.has(k), sec = SECRETS[cur];
+  if (sec && SERVICES.macsign.keys.every(k => sec.includes(k))) return [0, 1, 2, 3, 4];
+  return [...(MAC4.every(h) ? [0, 1, 2] : []), ...(h('APPLE_ID') && h('APPLE_PASSWORD') ? [3] : [])];
+}
+function stepSync(id) { // → true if new steps got ticked (persisted)
+  const s = stepOf(id), n = stepAuto(id).filter(i => !(s.a || []).includes(i));
+  if (!n.length) return false;
+  s.a = [...(s.a || []), ...n]; s.d = [...new Set([...s.d, ...n])];
+  try { localStorage.steps = JSON.stringify(STEPS); } catch {}
+  return true;
+}
 function stepper(id, steps) {
-  const s = stepOf(id);
+  stepSync(id); const s = stepOf(id);
   return (s.d.length || s.csr ? `<div class="streset"><button class="btn sm ghost" onclick="stepReset('${id}')">Reset steps</button></div>` : '')
     + `<ol class="stepper">${steps.map((x, i) => { const on = s.d.includes(i);
       return `<li${on ? ' class="done"' : ''}><button class="sn" onclick="stepTog('${id}', ${i})" title="${on ? 'Mark not done' : 'Mark done'}">${on ? icon('check') : i + 1}</button>`
         + `<span>${esc(x.t || x).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}</span>${x.a ? `<div class="btnrow">${x.a()}</div>` : ''}${x.u ? x.u(s) : ''}</li>`; }).join('')}</ol>`;
 }
 // Bundle ID row: current value (copy) + Change (edit dialog w/ live check, suggestion = com.<gh owner>.<app>)
-function bundleRow() {
+function bundleRow(stack) {
   const b = BUNDLE[cur] || {};
-  return `<div class="keys"><div><span>Bundle ID</span><small>${b.id ? `<a href="#" title="Copy" onclick="copy(BUNDLE[cur].id);return false">${esc(b.id)}</a>` : '<span class="faint">not set</span>'}
+  return `<div class="keys${stack ? ' st' : ''}"><div><span>Bundle ID</span><small>${b.id ? `<a href="#" title="Copy" onclick="copy(BUNDLE[cur].id);return false">${esc(b.id)}</a>` : '<span class="faint">not set</span>'}
     ${b.file || b.suggest ? ` <a href="#" onclick="bundleEdit();return false">Change</a>` : ''}</small></div></div>`;
 }
 const BID_OK = s => /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(s);
@@ -2292,7 +2311,8 @@ const SECRETS = {};
 async function secCount(id, fresh) {
   const pid = cur; if (fresh || !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
   const s = SECRETS[pid], el = $('sec-' + id), k = SERVICES[id].keys;
-  if (el) el.textContent = s ? `(${k.filter(x => s.includes(x)).length}/${k.length} on GitHub)` : '';
+  if (el) el.textContent = s ? `${k.filter(x => s.includes(x)).length}/${k.length} on GitHub` : '';
+  if (s && SERVICES[id].steps && stepSync(id) && tab === 'svc') drawServices();
 }
 async function toSecrets(id, btn) {
   btn.disabled = true; $('secErr-' + id).textContent = '';
