@@ -21,7 +21,7 @@ fn state(st: St) -> Value {
     let live = st.live.lock().unwrap();
     let busy: Vec<&String> = live.iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k).collect();
     json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "active": cfg.active, "busy": busy,
-           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "notify": cfg.notify, "drafts": store::drafts(),
+           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "web": !cfg.off.iter().any(|x| x == "web"), "notify": cfg.notify, "drafts": store::drafts(),
            "projects_dir": store::projects_root(&cfg).to_string_lossy(),
            // next steps from HANDOVER.md (ready bar, Tasks tab) + the last few done from CHANGES.md (Tasks tab)
            "queues": cfg.projects.iter().map(|p| (p.id.clone(), json!(claude::queue(&p.path))))

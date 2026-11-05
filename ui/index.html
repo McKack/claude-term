@@ -201,6 +201,9 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 #workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; white-space:nowrap; overflow:hidden; transition:width .4s ease; }
 #worktext { transition:opacity .35s ease; }
 #workpill[hidden], #handpill[hidden] { display:none; }
+.born { animation:hatch .4s ease-out; } /* from the pill's bubble (top-left) out to the full row */
+@keyframes hatch { from { clip-path:inset(0 50% calc(100% - 64px) 0 round 16px); opacity:.5; } to { clip-path:inset(0 0 0 0 round 0); opacity:1; } }
+.respawn { animation:respawn .5s ease-out; } @keyframes respawn { from { opacity:0; translate:0 -12px; } }
 #skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skel .av, #log.term #skel .cm { display:none; }
 #handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:4px 16px 16px 16px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
@@ -260,6 +263,7 @@ pre.diff .add { background:color-mix(in srgb, #3fbf6f 16%, transparent); } pre.d
 .menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
 .menu .mcap { font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; padding:6px 10px 2px; }
+.menu .mact { display:inline-grid; place-items:center; width:24px; height:22px; border-radius:6px; color:var(--dim); } .menu .mact:hover { background:var(--soft); color:var(--accent); } .menu .mact svg { width:14px; height:14px; }
 .menu .mchev { color:var(--faint); display:inline-flex; } .menu .mchev svg { width:14px; height:14px; } .menu .grow { flex:1; }
 
 /* right panel */
@@ -388,7 +392,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4M19 6l1.5-1.5"/></symbol>
   <symbol id="i-search"viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
   <symbol id="i-clock"viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 0 0-5.6-1.5A3 3 0 0 0 4 8a3 3 0 0 0 0 5 3.5 3.5 0 0 0 3 5.5A3 3 0 0 0 12 19zM12 5a3 3 0 0 1 5.6-1.5A3 3 0 0 1 20 8a3 3 0 0 1 0 5 3.5 3.5 0 0 1-3 5.5A3 3 0 0 1 12 19zM12 5v14"/></symbol>
+  <symbol id="i-cal"viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
   <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9a6 6 0 0 1-6 6H6"/></symbol>
@@ -431,7 +436,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
         <button class="ib" id="tPony" title="Ponytail: the simplest code that works" onclick="setP({ponytail:!P().ponytail})"><svg class="i"><use href="#i-feather"/></svg></button>
         <button class="ib" id="tCont" title="Clear & continue mode" onclick="menuAt(this, contItems())"><svg class="i"><use href="#i-loop"/></svg></button>
         <button class="ib" title="Clear & continue now: write the handover, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-sparkle"/></svg></button>
-        <button class="ib" title="New session" onclick="call('new_session', {pid:cur})"><svg class="i"><use href="#i-new"/></svg></button>
+        <button class="ib" id="tWeb" onclick="S.web = !S.web; call('set_off', {item: 'web', off: !S.web, scope: 'global'}); drawChrome()"><svg class="i"><use href="#i-globe"/></svg></button>
         <span class="grow"></span>
         <button class="btn ghost sm" id="cancelEdit" hidden title="Put the queued message back, unchanged, in its place" onclick="cancelEdit()" style="margin-right:6px"><svg class="i"><use href="#i-x"/></svg>Cancel edit</button>
         <button id="send" onclick="busy[cur] && !hasInput() ? call('interrupt', {pid:cur}) : send()" title="Send (Enter)"><svg class="i"><use href="#i-up"/></svg></button>
@@ -502,7 +507,7 @@ function buildMenu(items, r, side, level = 0) {
   const m = document.createElement('div');
   m.className = 'menu glass'; m.dataset.level = level;
   m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
-    <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
+    <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
   document.body.appendChild(m);
   m.style.maxHeight = innerHeight - 16 + 'px'; m.style.overflowY = 'auto';
   const h = m.offsetHeight, w = m.offsetWidth;
@@ -519,7 +524,9 @@ function buildMenu(items, r, side, level = 0) {
   }
   m.querySelectorAll('[data-i]').forEach(b => { const it = items[b.dataset.i];
     b.onmouseenter = () => it.items ? buildMenu(it.items, b.getBoundingClientRect(), true, level + 1) : document.querySelectorAll('.menu').forEach(x => +x.dataset.level > level && x.remove());
-    b.onclick = () => { if (it.run) { closeMenu(); it.run(); } else if (it.items) buildMenu(it.items, b.getBoundingClientRect(), true, level + 1); }; });
+    b.onclick = e => { const a = e.target.closest('.mact'); if (a) return buildMenu(it.acts[a.dataset.a].items, a.getBoundingClientRect(), true, level + 1);
+      if (it.run) { closeMenu(); it.run(); } else if (it.items) buildMenu(it.items, b.getBoundingClientRect(), true, level + 1); };
+    b.querySelectorAll('.mact').forEach(a => a.onmouseenter = () => buildMenu(it.acts[a.dataset.a].items, a.getBoundingClientRect(), true, level + 1)); });
 }
 const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
 function closeMenu() { document.querySelectorAll('.menu').forEach(x => x.remove()); document.removeEventListener('mousedown', outside); }
@@ -672,6 +679,8 @@ function drawChrome() {
   $('tPony').classList.toggle('on', p.ponytail);
   $('tCont').classList.toggle('on', p.cont !== 'off');
   $('tCont').title = 'Clear & continue: ' + MODES[p.cont][0];
+  $('tWeb').classList.toggle('on', S.web !== false);
+  $('tWeb').title = `Web search: ${S.web !== false ? 'on' : 'off'}, in every project (click to switch)`;
   const next = nextUp(cur);
   // idle without a fresh handover: still offer the next task (sent in this session, no clear) or, queue empty, presets
   const idle = !busy[cur] && !p.ready && p.cont !== 'off' && !queue[cur]?.length && !!logs[cur]?.length;
@@ -769,11 +778,13 @@ document.addEventListener('mouseover', e => {
   }, 450);
 });
 ['mousedown', 'wheel', 'keydown'].forEach(t => document.addEventListener(t, hideTip, true));
-// accounts; each has a › submenu: models, divider, effort (picking one also picks that account)
+// accounts; each row has two icons → submenus: model (sparkle), effort (brain); picking one also picks that account
 const acctItems = () => [...S.accounts.map(a => { const on = P().account === a.id;
-  return {check: on, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id}), items: [{title: 'Model'},
-    ...Object.entries(MODELS).map(([k, l]) => ({check: on && P().model === k, label: l, run: () => setP({account: a.id, model: k})})), '-', {title: 'Effort'},
-    ...Object.entries(EFFORTS).map(([k, l]) => ({check: on && (P().effort || '') === k, label: l, run: () => setP({account: a.id, effort: k})}))]}; }), '-',
+  return {check: on, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id}), acts: [
+    {icon: 'sparkle', tip: 'Model' + (on ? ': ' + MODELS[P().model] : ''), items: [{title: 'Model'},
+      ...Object.entries(MODELS).map(([k, l]) => ({check: on && P().model === k, label: l, run: () => setP({account: a.id, model: k})}))]},
+    {icon: 'brain', tip: 'Effort' + (on ? ': ' + EFFORTS[P().effort || ''] : ''), items: [{title: 'Effort'},
+      ...Object.entries(EFFORTS).map(([k, l]) => ({check: on && (P().effort || '') === k, label: l, run: () => setP({account: a.id, effort: k})}))]}]}; }), '-',
   {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}];
 const permItems = () => [{title: 'Permissions (level)'}, ...Object.entries(PERMS).map(([k, l], i) => ({check: P().mode === k, label: `${i + 1}  ${l}`, run: () => setP({mode: k})}))];
 const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
@@ -858,7 +869,7 @@ function put(box, e) {
     // a run of tool calls = one terminal window; tabs: shell commands, then one per file / other tool; the newest shows
     // (until a tab is clicked); its lines = each call, click one → just that call's details/output
     let g = box.lastElementChild;
-    if (!g?.classList.contains('tools')) { g = document.createElement('div'); g.className = 'tools termcard'; g._tabs = new Map(); box.appendChild(g); }
+    if (!g?.classList.contains('tools')) { g = document.createElement('div'); g.className = 'tools termcard'; g._tabs = new Map(); box.appendChild(g); hatch(box, g); }
     const d = e.detail || {}, name = toolName(e), sh = /^(Bash|PowerShell)$/.test(name) && typeof d.command === 'string',
       f = d.file_path || d.notebook_path, key = sh ? 'sh' : f ? 'f:' + f : 't:' + name;
     let t = g._tabs.get(key);
@@ -886,6 +897,13 @@ function put(box, e) {
   }
   const qs = box.querySelector('.qs');
   qs ? box.insertBefore(el, qs) : box.appendChild(el);
+  if (e.kind !== 'user' && !box._swap) hatch(box, el);
+}
+// live log + skeleton showing: the new row grows out of the Working… pill, and the skeleton respawns below it
+function hatch(box, el) {
+  const s = $('skel').firstElementChild;
+  if (!box.isConnected || $('skel').hidden || view !== 'chat') return;
+  el.classList.add('born'); s.classList.remove('respawn'); void s.offsetWidth; s.classList.add('respawn');
 }
 // file → blob URL, cached per path (ponytail: never revoked; fine for a session's handful of screenshots)
 const SHOTS = new Map();
@@ -997,7 +1015,7 @@ function addEntry(pid, e) {
   if (pid !== cur) return;
   const log = $('log'), box = log.querySelector('.col'), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
   box.querySelector('#empty')?.remove(); const lv = $('live'); (lv?.closest('.crow') || lv)?.remove();
-  put(box, e);
+  box._swap = !!lv && e.kind === 'claude'; put(box, e); box._swap = false; // final text replacing the streamed one: hatched already
   if (live[pid]) box.appendChild(liveEl(pid));
   if (e.kind === 'tool') drawRails();
   if (stick) log.scrollTop = log.scrollHeight;
@@ -1209,7 +1227,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if (reading[d.pid] && d.kind !== 'user') readNote(d.pid, false);
     addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of}); if (d.result_of && d.pid === cur) drawAtp(); },
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
-    if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else $('log').querySelector('.col').appendChild(liveEl(d.pid)); const b = $('log'); b.scrollTop = b.scrollHeight; } },
+    if (d.pid === cur) { const el = $('live'); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } const b = $('log'); b.scrollTop = b.scrollHeight; } },
   status: () => { if ('busy' in d) busy[d.pid] = d.busy;
     if (d.busy === false) { if (reading[d.pid]) readNote(d.pid, false); flushQueue(d.pid); refresh(); live[d.pid] = ''; } // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; saveCtx(); }

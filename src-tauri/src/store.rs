@@ -619,6 +619,9 @@ pub fn restrictions(cfg: &Config, p: &Project) -> (Vec<String>, Option<Vec<Strin
     let mut deny: Vec<String> = ids.iter().filter(|i| !enabled(i)).filter_map(|i| i.strip_prefix("mcp:")).map(|s| format!("mcp__{s}")).collect();
     deny.sort();
     deny.dedup();
+    if has(&cfg.off, "web") { // composer's globe: web search off everywhere
+        deny.extend(["WebSearch", "WebFetch"].map(String::from));
+    }
     if p.hide_env {
         deny.extend(["Read(**/.env*)", "Edit(**/.env*)", "Write(**/.env*)", "Bash(cat *.env*)"].map(String::from));
     }
