@@ -670,8 +670,31 @@ fn allowed(allow: &[String], tool: &str, input: &Value, now: u64) -> bool {
     let hit = |inp: &Value| allow.iter().any(|r| rule_hit(r, tool, inp, now));
     if hit(input) { return true; }
     let Some(c) = input["command"].as_str().filter(|_| tool == "Bash") else { return false };
-    let parts: Vec<&str> = c.split("&&").flat_map(|s| s.split("||")).flat_map(|s| s.split([';', '|', '\n'])).map(str::trim).filter(|s| !s.is_empty()).collect();
+    let parts = split_cmd(c);
     parts.len() > 1 && parts.iter().all(|p| hit(&json!({"command": p})))
+}
+
+/// Parts at ; && || | newline outside quotes (= splitCmd in index.html): sed 's/a;b/' stays one part.
+fn split_cmd(c: &str) -> Vec<String> {
+    let (mut out, mut cur, mut q) = (vec![], String::new(), None::<char>);
+    let mut it = c.chars().peekable();
+    while let Some(ch) = it.next() {
+        if let Some(qc) = q {
+            cur.push(ch);
+            if ch == qc { q = None } else if ch == '\\' && qc == '"' { cur.extend(it.next()) }
+            continue;
+        }
+        match ch {
+            '\\' => { cur.push(ch); cur.extend(it.next()); }
+            '\'' | '"' => { q = Some(ch); cur.push(ch); }
+            '&' if it.peek() == Some(&'&') => { it.next(); out.push(std::mem::take(&mut cur)); }
+            '|' if it.peek() == Some(&'|') => { it.next(); out.push(std::mem::take(&mut cur)); }
+            ';' | '|' | '\n' => out.push(std::mem::take(&mut cur)),
+            _ => cur.push(ch),
+        }
+    }
+    out.push(cur);
+    out.into_iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
 }
 
 #[test]
@@ -679,6 +702,7 @@ fn rule_hit_works() {
     let a = |r: &[&str], c: &str| allowed(&r.iter().map(|s| s.to_string()).collect::<Vec<_>>(), "Bash", &json!({"command": c}), 0);
     assert!(a(&["Bash(cd:*)", "Bash(git:*)"], "cd D:/x; git status && git log | git y") && !a(&["Bash(cd:*)"], "cd x; rm -rf /"));
     assert!(!a(&["Bash(cd:*)", "Bash(git:*)"], "cd x; git $(rm y)") && !a(&["Bash(cd:*)"], "cd x & rm y"));
+    assert_eq!(split_cmd("cd x; sed -i 's/a;b|c/' f && git log || echo \"x;y\""), ["cd x", "sed -i 's/a;b|c/' f", "git log", "echo \"x;y\""]);
     let i = json!({"command": "grep -c foo x.txt"});
     assert!(rule_hit("Bash", "Bash", &i, 0) && rule_hit("Bash(grep:*)", "Bash", &i, 0) && rule_hit("Bash(grep -c:*)", "Bash", &i, 0));
     assert!(!rule_hit("Bash(grep -v:*)", "Bash", &i, 0) && !rule_hit("Bash(gre:*)", "Bash", &i, 0) && !rule_hit("Edit", "Bash", &i, 0));
