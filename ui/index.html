@@ -100,7 +100,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
 .seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
 .seg button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
-#log { flex:1; overflow:auto; padding:8px 24px 24px; }
+#log { flex:1; overflow:auto; padding:8px 24px 24px; mask-image:linear-gradient(to bottom, transparent, #000 32px); } /* top fade, like the dock's */
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
 .msg { max-width:100%; }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
@@ -998,14 +998,22 @@ function actLine(e) {
     : typeof d.content === 'string' ? `${lc(d.content)} lines` : d.pattern || d.query || d.url || d.description || d.prompt || (d.offset ? `from line ${d.offset}` : '');
   return `${TICON[n] ? icon(TICON[n]) : icon('term')} <span class="sh-c">${esc(n)}</span> <span class="sh-m">${esc(String(gist).slice(0, 200))}</span>`;
 }
+// consecutive calls of one tool (outside the shell tab) = one row: Edit ±lines summed, ×N; click → all their diffs
+function runLine(es) {
+  if (es.length === 1) return actLine(es[0]);
+  const n = toolName(es[0]), lc = s => (s || '').split('\n').length, ds = es.map(e => e.detail || {});
+  const gist = ds.every(d => 'old_string' in d) ? `−${ds.reduce((a, d) => a + lc(d.old_string), 0)} +${ds.reduce((a, d) => a + lc(d.new_string), 0)}` : '';
+  return `${TICON[n] ? icon(TICON[n]) : icon('term')} <span class="sh-c">${esc(n)}</span> <span class="sh-m">${gist}</span> <small class="sh-m">×${es.length}</small>`;
+}
 function drawAct(g) {
-  const on = g._tabs.get(g._on), last = on.es.at(-1);
+  const on = g._tabs.get(g._on), last = on.es.at(-1), runs = [];
+  on.es.forEach(e => { const r = runs.at(-1); g._on !== 'sh' && r && toolName(r[0]) === toolName(e) ? r.push(e) : runs.push([e]); });
   g.innerHTML = `<div class="tbar"><i></i><i></i><i></i><span class="ttabs">${[...g._tabs].map(([k, t]) =>
       `<button data-k="${esc(k)}" class="${k === g._on ? 'on' : ''}" title="${esc(t.title)}">${esc(t.label)}${t.es.length > 1 ? `<small>×${t.es.length}</small>` : ''}</button>`).join('')}</span>
     ${g._on === 'sh' ? '<button class="cp" title="Copy the last command">Copy</button>' : ''}</div>
-    <div class="tl">${on.es.map((e, i) => `<div data-i="${i}" title="${esc(e.detail?.description || 'Details')}">${actLine(e)}</div>`).join('')}</div>`;
+    <div class="tl">${runs.map((es, i) => `<div data-i="${i}" title="${esc(es[0].detail?.description || 'Details')}">${runLine(es)}</div>`).join('')}</div>`;
   g.querySelectorAll('.ttabs button').forEach(b => b.onclick = () => { g._on = b.dataset.k; g._pin = true; drawAct(g); });
-  g.querySelectorAll('.tl > div').forEach(r => r.onclick = () => toolDlg([on.es[+r.dataset.i]], on.title));
+  g.querySelectorAll('.tl > div').forEach(r => r.onclick = () => toolDlg(runs[+r.dataset.i], on.title));
   const cp = g.querySelector('.cp');
   if (cp) cp.onclick = () => { navigator.clipboard.writeText(last.detail.command); cp.textContent = 'Copied'; setTimeout(() => cp.textContent = 'Copy', 1200); };
   const tl = g.querySelector('.tl'); tl.scrollTop = tl.scrollHeight;
