@@ -1788,7 +1788,7 @@ function relItems(c, p) {
 const HOST = /Windows/.test(navigator.userAgent) ? 'windows' : /Mac/.test(navigator.userAgent) ? 'macos' : 'linux';
 const TGTEXT = {windows: /\.(exe|msi|msix)$/i, macos: /\.(dmg|pkg)$/i, linux: /\.(appimage|deb|rpm)$/i, ios: /\.ipa$/i, android: /\.(apk|aab)$/i};
 const tgtName = id => TGT.flatMap(g => g[1]).find(x => x[0] === id)?.[2] || id;
-const tgtSplit = (p, c, files) => { const t = p.targets || [], here = x => x === HOST || x === 'android' || (x === 'ios' && HOST === 'macos');
+const tgtSplit = (p, c, files) => { const t = (p.targets || []).filter(x => tgtReady(p, x)), here = tgtLocal; // #34: ready targets only
   const ci = t.filter(x => !here(x));
   return {ci, miss: ci.filter(x => !(c.ci_os || []).includes(x)), lack: t.filter(here).filter(x => !files.some(f => TGTEXT[x].test(f.name)))}; };
 // release files for version v: newest build per file type named with v (versionless could be stale); builds via gh_info (GHI)
@@ -1831,6 +1831,7 @@ async function relRelease(to, btn) {
   try {
     addEntry(cur, {kind: 'note', text: 'Released: ' + await call('release', {pid: cur, tag: 'v' + v, files: files.map(f => f.path)})});
     if (P().stage !== SK[to]) await call('update_project', {pid: cur, changes: {stage: SK[to]}});
+    if (P().build.deploy) call('run_step', {pid: cur, step: 'deploy'}); // #34: deploy = part of Release (guessed by build_guess or set in the project)
     delete RELTO[cur]; delete RELC[cur]; delete GHI[cur]; await refresh(); drawRight(true);
   } catch (e) { addEntry(cur, {kind: 'note', text: `Release failed: ${e}`}); btn.disabled = false; }
 }
@@ -1848,13 +1849,28 @@ const relBuild = btn => { btn.disabled = true; RELB[cur] = 1; call('run_step', {
 const TGT = [['Desktop', [['windows', 'win', 'Windows', 'setup .exe (signed*)'], ['macos', 'apple', 'macOS', '.dmg with .app (notarized*)'], ['linux', 'term', 'Linux', '.AppImage']]],
   ['Mobile', [['ios', 'phone', 'iOS', 'App Store / TestFlight'], ['android', 'android', 'Android', '.apk / .aab']]]];
 const macOn = (p, pid) => p.targets?.length ? p.targets.includes('macos') : !!MAC[pid];
+/* #34 readiness: a target is ready when this computer has its tools (local builds; DEPSC) and, from RC up, its signing/store
+   service is set up (TGTSVC). Not ready → faded; click = its fix (Dependencies / add the service), not a pick; picked but
+   not ready → click unpicks. tgtSplit only counts ready targets → release is limited to them. CI-built ones: no local deps. */
+const TGTSVC = {macos: 'macsign', ios: 'appstore', android: 'play'};
+const tgtLocal = x => x === HOST || x === 'android' || (x === 'ios' && HOST === 'macos');
+const strictStage = p => Math.max(SK.indexOf(p.stage), RELTO[cur] ?? -1) >= SK.indexOf('rc');
+function tgtWhy(p, id) { // '' = ready, else [why, fix js]
+  const miss = tgtLocal(id) && DEPSC ? Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].includes(id)) : [];
+  if (miss.length) return [`Needs ${miss.map(k => DEPS[k][0]).join(', ')} on this computer`, `openSettings('cx')`];
+  const s = TGTSVC[id];
+  if (s && strictStage(p) && !(svcOf(p).includes(s) && (svcDone(s) || (s === 'macsign' && SECRETS[cur]?.includes('APPLE_CERTIFICATE')))))
+    return [`Release candidate and up: set up ${SERVICES[s].name} first`, `svcAdd('${s}').then(() => rightTab('svc'))`];
+  return '';
+}
+const tgtReady = (p, id) => !tgtWhy(p, id);
 const tgtHtml = p => { const t = p.targets || [];
   return fold('p-targets', 'Target platforms', (t.length ? '' : '<p class="dim" style="margin:0 0 8px;font-size:13px">Not picked yet: tap what this project ships to.</p>')
-    + TGT.map(([g, xs]) => `<div class="row" style="gap:8px;margin-bottom:6px"><small class="dim" style="width:56px">${g}</small><span class="seg">${xs.map(([id, ic, n, d]) =>
-      `<button class="${t.includes(id) ? 'on' : ''}" data-tip="${esc(d)}" onclick="tgtFlip('${id}')">${icon(ic)}${n}</button>`).join('')}</span></div>`).join('')
-    + (depsMissing(p).length ? `<p style="margin:4px 0 6px;font-size:13px">${icon('info')} Missing on this computer: ${depsMissing(p).map(k => DEPS[k][0]).join(', ')} · <a href="#" onclick="openSettings('cx');return false">Dependencies</a></p>` : '')
-    + '<small class="dim">* optional, needs a developer account (Services tab)</small>', 0,
-    t.length ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${t.length}</span>` : '');
+    + TGT.map(([g, xs]) => `<div class="row" style="gap:8px;margin-bottom:6px"><small class="dim" style="width:56px">${g}</small><span class="seg">${xs.map(([id, ic, n, d]) => { const w = tgtWhy(p, id), on = t.includes(id);
+      return `<button class="${on ? 'on' : ''}" ${w ? 'style="opacity:.4"' : ''} data-tip="${esc(w ? w[0] + (on ? ' · click to unpick' : ' · click to fix') : d)}" onclick="${w && !on ? esc(w[1]) : `tgtFlip('${id}')`}">${icon(ic)}${n}</button>`; }).join('')}</span></div>`).join('')
+    + (t.some(id => !tgtReady(p, id)) ? `<p style="margin:4px 0 6px;font-size:13px">${icon('info')} Not ready, left out of builds and releases: ${t.filter(id => !tgtReady(p, id)).map(tgtName).join(', ')} (hover for why)</p>` : '')
+    + '<small class="dim">* optional for Alpha and Beta; Release candidate and up need it (Services &amp; Secrets)</small>', 0,
+    t.length ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${t.filter(id => tgtReady(p, id)).length}/${t.length}</span>` : '');
 };
 async function tgtFlip(id) {
   const p = P(), t = p.targets || [];
@@ -1866,14 +1882,17 @@ async function tgtFlip(id) {
 async function buildHtml(p, has, live, force) {
   const pid0 = cur, wait = t => sec(t, '<p class="dim" style="margin:0">Checking…</p>');
   if (live && MAC[pid0] === undefined) MAC[pid0] = await call('ships_mac', {pid: pid0}).catch(() => false);
-  if (live && p.targets?.length) await depsGet(); // tgtHtml's "missing tools" line
+  if (live) await depsGet(); // tgtWhy: local tools per target (60s cache)
+  if (live && strictStage(p) && svcOf(p).length) { const files = await call('env_list', {pid: pid0}).catch(() => []); // tgtWhy → svcDone reads envKeys
+    envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))}; }
   const mac = macOn(p, pid0);
   let c = GHI[pid0];
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) GHI[pid0] = c = {g, t: Date.now()}; }
-  return tgtHtml(p) + sec('Commands', has ? `<div class="btnrow b3">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+  // #34: "Manual commands" fold (closed by default); no Deploy button ∵ Release runs the deploy command after publishing
+  return tgtHtml(p) + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>`
-        : live || GUESS[pid0] ? await guessHtml() : '<p class="dim" style="margin:0">Checking…</p>', `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
+        : live || GUESS[pid0] ? await guessHtml() : '<p class="dim" style="margin:0">Checking…</p>', 0, `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
       + (!svcOf(p).includes('macsign') && mac
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
           <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
