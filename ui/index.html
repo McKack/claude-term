@@ -1586,6 +1586,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
   queued: () => refresh(),
+  janitor: () => toast(`Storage Janitor freed ${mb(d.freed)} (old caches, Claude Code versions)`, 'ok'),
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
   usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },

@@ -1205,20 +1205,21 @@ pub fn janitor(projects: &[(String, bool)], keep_sessions: &[String]) -> u64 {
         let total: u64 = caches(d).iter().map(|c| c.1).sum();
         if total > 0 && (*days >= IDLE_CLEAN_DAYS || total > CACHE_CAP || disk_low(d)) { freed += clean(d, &[]); }
     }
-    freed + claude_clean(keep_sessions)
+    let Some(home) = dirs::home_dir() else { return freed };
+    let low = disk_low(&home.to_string_lossy());
+    freed + claude_clean(&home, keep_sessions, low)
 }
 
 /// Claude Code leftovers: installer versions but the newest (it keeps several, ~300 MB each); when the home drive is low,
 /// transcripts (projects/*/<uuid>.jsonl + <uuid>/ dir) untouched 14+ days that no Clauracle project resumes.
-fn claude_clean(keep: &[String]) -> u64 {
-    let Some(home) = dirs::home_dir() else { return 0 };
+fn claude_clean(home: &Path, keep: &[String], low: bool) -> u64 {
     let mut freed = 0;
     let mut vs: Vec<_> = std::fs::read_dir(home.join(".local/share/claude/versions")).into_iter().flatten().flatten()
         .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path()))).collect();
     vs.sort();
     vs.pop(); // newest stays (a running older one fails to delete on Windows: fine)
     for (_, p) in vs { let n = p.metadata().map_or(0, |m| m.len()); if std::fs::remove_file(&p).is_ok() { freed += n; } }
-    if !disk_low(&home.to_string_lossy()) { return freed; }
+    if !low { return freed; }
     let old = |p: &Path| p.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|e| e.as_secs() > 14 * 86400);
     for proj in std::fs::read_dir(home.join(".claude/projects")).into_iter().flatten().flatten() {
         for f in std::fs::read_dir(proj.path()).into_iter().flatten().flatten().map(|e| e.path()) {
@@ -1485,6 +1486,30 @@ mod tests {
         assert!(super::move_dir(&b.join("p"), &b.join("p/inner")).is_err());
         let mut perm = std::fs::metadata(b.join("p/.git/objects/ab/cd")).unwrap().permissions(); #[allow(clippy::permissions_set_readonly_false)] perm.set_readonly(false);
         let _ = std::fs::set_permissions(b.join("p/.git/objects/ab/cd"), perm); let _ = std::fs::remove_dir_all(&b);
+    }
+    /// #79: janitor beyond versions: idle project's ignored cache cleaned, busy one untouched; transcripts only when low + not kept + old.
+    #[test]
+    fn janitor_cleans_idle_and_old_transcripts() {
+        let d = std::env::temp_dir().join("clauracle-janitor-test");
+        let _ = std::fs::remove_dir_all(&d);
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(20 * 86400);
+        let age = |p: &std::path::Path| std::fs::File::options().write(true).open(p).unwrap().set_modified(old).unwrap();
+        let mk = |n: &str| { let p = d.join(n); std::fs::create_dir_all(p.join("target")).unwrap();
+            std::fs::write(p.join("target/f"), "12345").unwrap(); std::fs::write(p.join(".gitignore"), "target/\n").unwrap();
+            let s = p.to_string_lossy().to_string();
+            assert!(super::run("git", &["init", "-q"], Some(&s), &[]).ok && super::run("git", &["add", ".gitignore"], Some(&s), &[]).ok);
+            age(&p.join(".git/index")); s };
+        let (idle, busy) = (mk("idle"), mk("busy"));
+        super::janitor(&[(idle.clone(), false), (busy.clone(), true)], &[]);
+        assert!(!d.join("idle/target").exists() && d.join("busy/target/f").exists());
+        let h = d.join("home"); let pj = h.join(".claude/projects/x");
+        std::fs::create_dir_all(pj.join("gone")).unwrap(); std::fs::write(pj.join("gone/sub"), "s").unwrap();
+        for f in ["gone", "kept", "fresh"] { std::fs::write(pj.join(format!("{f}.jsonl")), "{}").unwrap(); }
+        age(&pj.join("gone.jsonl")); age(&pj.join("kept.jsonl"));
+        assert_eq!(super::claude_clean(&h, &[], false), 0); // drive fine → transcripts stay
+        assert_eq!(super::claude_clean(&h, &["kept".into()], true), 3); // gone.jsonl (2) + gone/sub (1)
+        assert!(!pj.join("gone").exists() && pj.join("kept.jsonl").exists() && pj.join("fresh.jsonl").exists());
+        let _ = std::fs::remove_dir_all(&d);
     }
     #[test]
     fn is_dep_spots_sdks_not_projects() {

@@ -1448,15 +1448,18 @@ pub fn run() {
             let st2 = st.clone();
             // housekeeping: old update download; Storage Janitor now + every JANITOR_EVERY (rules: store::janitor)
             let st3 = st.clone();
+            let app3 = app.handle().clone();
             std::thread::spawn(move || {
                 let _ = std::fs::remove_dir_all(std::env::temp_dir().join("clauracle-update"));
+                std::thread::sleep(std::time::Duration::from_secs(60)); // page listening by then → toast not lost
                 loop {
                     let (ps, keep): (Vec<(String, bool)>, Vec<String>) = {
                         let c = st3.cfg.lock().unwrap();
                         (c.projects.iter().map(|p| (p.path.clone(), p.working)).collect(),
                          c.projects.iter().flat_map(|p| [p.session.clone(), p.prev_session.clone()]).flatten().collect())
                     };
-                    store::janitor(&ps, &keep);
+                    let freed = store::janitor(&ps, &keep);
+                    if freed >= 100 << 20 { claude::emit(&app3, "janitor", serde_json::json!({"freed": freed})); } // ≥100 MB → toast; less = noise
                     std::thread::sleep(std::time::Duration::from_secs(store::JANITOR_EVERY));
                 }
             });
