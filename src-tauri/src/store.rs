@@ -1293,9 +1293,9 @@ fn trusted_works() {
 }
 
 /// gh issue actions: new (title) | claim | release | done (number).
-pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<(), String> {
+pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<String, String> { // → gh stdout ("new": issue URL)
     let env = gh_env(user);
-    let gh = |a: &[&str]| { let o = run("gh", a, Some(dir), &env); if o.ok { Ok(()) } else { Err(o.stderr.trim().to_string()) } };
+    let gh = |a: &[&str]| { let o = run("gh", a, Some(dir), &env); if o.ok { Ok(o.stdout.trim().to_string()) } else { Err(o.stderr.trim().to_string()) } };
     match action {
         "new" => {
             let _ = gh(&["label", "create", OUR_LABEL, "--color", "D77655", "--description", "Tracked in Clauracle"]);

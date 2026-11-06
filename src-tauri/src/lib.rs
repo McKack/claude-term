@@ -786,7 +786,7 @@ async fn disk_clean(st: St<'_>, pid: String, dirs: Vec<String>) -> R<u64> {
 }
 
 #[tauri::command]
-async fn task_do(st: St<'_>, pid: String, action: String, arg: String) -> R<()> {
+async fn task_do(st: St<'_>, pid: String, action: String, arg: String) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
     tauri::async_runtime::spawn_blocking(move || store::task_do(&p.path, &p.gh, &action, &arg)).await.map_err(|e| e.to_string())?
 }
