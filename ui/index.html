@@ -1739,13 +1739,15 @@ const RELAI = { // fix prompts: Claude writes/judges, never template
   changelog: 'Write CHANGELOG.md from git history since the last tag: user-facing changes only, newest first, grouped by version.',
   bump: 'Bump the version for the next release (patch for fixes, minor for features, judge from git log since the last tag) in every config file that carries it.',
   ci: 'Add or fix a GitHub Actions workflow that builds and runs the tests on push, then push so it runs.',
+  get ci_targets() { const c = RELC[cur]?.c || {}, m = tgtSplit(P(), c, []).miss.map(tgtName).join(', ');
+    return `Extend the GitHub Actions release workflow so a v* tag push also builds ${m} and attaches the files to that tag's GitHub release (existing jobs untouched). Push when done.`; },
   icon: 'Make an app icon for this project (SVG source + the sizes its platform needs) and wire it into the config.',
   review: 'Release review: read the project and list release blockers for a public release (crashes, missing error handling, secrets in repo, debug leftovers, broken first-run). Plan only, don\'t change files.',
   store: 'Store/compliance check for publishing: privacy policy, data collection disclosure, licences of bundled deps, store listing text/screenshots, age rating. List what\'s missing, plan only.',
 };
 function relItems(c, p) {
   const v = (c.version || '').replace(/^v/, ''), tv = (c.tag || '').replace(/^v/, ''), ci = c.ci;
-  const sign = SECRETS[cur]?.includes('APPLE_CERTIFICATE'), files = relFilesFor(cur, v);
+  const sign = SECRETS[cur]?.includes('APPLE_CERTIFICATE'), files = relFilesFor(cur, v), {ci: cit, miss, lack} = tgtSplit(p, c, files);
   // array order = display order (filter keeps it) → Build stays last whatever the stage
   return [
     {s: 0, id: 'readme', t: 'README written', ok: c.readme >= 10, d: c.readme ? `${c.readme} lines` : 'none'},
@@ -1760,10 +1762,20 @@ function relItems(c, p) {
     ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: 'Mac signing secrets on GitHub', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
     {s: 2, id: 'review', t: 'Release review by AI', ai: true},
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
-    {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0, d: files.length ? files.map(f => f.name).join(', ') : v ? `no build of v${v} yet` : '',
+    ...(miss.length ? [{s: 0, id: 'ci_targets', t: 'CI builds the other platforms', ok: false, d: `not in CI: ${miss.map(tgtName).join(', ')}`}] : []),
+    {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length,
+      d: lack.length && files.length ? `missing: ${lack.map(tgtName).join(', ')}` : files.length ? files.map(f => f.name).join(', ') + (cit.length ? ` · CI: ${cit.map(tgtName).join(', ')}` : '') : v ? `no build of v${v} yet` : '',
       go: p.build.build ? 'relBuild(this)' : 'openManager(cur)', gl: p.build.build ? 'Build' : 'Set up'},
   ];
 }
+/* #27 per-target builds: this OS builds its own desktop target + Android (macOS also iOS); the rest come from CI (tag push).
+   ponytail: file type = platform, no arch check */
+const HOST = /Windows/.test(navigator.userAgent) ? 'windows' : /Mac/.test(navigator.userAgent) ? 'macos' : 'linux';
+const TGTEXT = {windows: /\.(exe|msi|msix)$/i, macos: /\.(dmg|pkg)$/i, linux: /\.(appimage|deb|rpm)$/i, ios: /\.ipa$/i, android: /\.(apk|aab)$/i};
+const tgtName = id => TGT.flatMap(g => g[1]).find(x => x[0] === id)?.[2] || id;
+const tgtSplit = (p, c, files) => { const t = p.targets || [], here = x => x === HOST || x === 'android' || (x === 'ios' && HOST === 'macos');
+  const ci = t.filter(x => !here(x));
+  return {ci, miss: ci.filter(x => !(c.ci_os || []).includes(x)), lack: t.filter(here).filter(x => !files.some(f => TGTEXT[x].test(f.name)))}; };
 // release files for version v: newest build per file type named with v (versionless could be stale); builds via gh_info (GHI)
 const relFilesFor = (pid, v) => v ? relPick(GHI[pid]?.g?.builds || [], v).filter(b => fver(b.name) === v) : [];
 async function relWizard(p, force, cached) { // cached → draw RELC as is (caller ensures it exists)

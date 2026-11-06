@@ -985,7 +985,12 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
         let tag = git(&["describe", "--tags", "--abbrev=0"]);
         let icon = ["src-tauri/icons/icon.png", "public/favicon.ico", "public/favicon.svg", "assets/icon.png", "assets/icon.svg", "icon.png", "app/src/main/res"].iter().any(|f| root.join(f).exists());
         let remote = store::repo_of(&p.path).is_some();
-        json!({"readme": readme, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
+        // target platforms the CI workflows build (#27): plain text match on runner/target names. ponytail: no YAML parse
+        let wf: String = std::fs::read_dir(root.join(".github/workflows")).into_iter().flatten().flatten()
+            .filter_map(|e| std::fs::read_to_string(e.path()).ok()).collect::<Vec<_>>().join("\n").to_lowercase();
+        let ci_os: Vec<&str> = [("windows", "windows-"), ("macos", "macos-"), ("linux", "ubuntu-"), ("ios", "ios"), ("android", "android")]
+            .into_iter().filter(|(_, k)| wf.contains(k)).map(|(t, _)| t).collect();
+        json!({"readme": readme, "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
                "version": ver.as_ref().map(|v| &v.0), "vfile": ver.as_ref().map(|v| v.1), "tag": if tag.ok { tag.stdout.trim() } else { "" },
                "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon, "remote": remote,
                "ci": if remote { store::gh_json(&["run", "list", "--limit", "1", "--json", "conclusion,status,workflowName,url"], &p.gh, Some(&p.path)).get(0).cloned() } else { None }})
