@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Issues list: hover a task for a pencil button to edit its title, description, labels and assignees.
 - Your message shows in the chat right away, with a gray ✓ once sent and a blue ✓✓ when the AI has picked it up (a red ! and a notice if it did not go through).
 - Continue ribbon: lifts a little on hover; it only expands when the next task is cut off (shown with …), so it no longer jumps.
 - Questions are answered, not filed: a plain question ("…?" or "btw …") gets a short answer plus proposed tasks as cards with Accept / Dismiss and an optional note; Confirm files the accepted ones as issues.

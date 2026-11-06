@@ -1378,7 +1378,24 @@ pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<String,
         "done" => gh(&["issue", "close", arg]),
         "accept" => gh(&["issue", "edit", arg, "--remove-label", IDEA_LABEL]), // suggestion → queued task
         "dismiss" => gh(&["issue", "close", arg, "--reason", "not planned"]),
-        _ => Err("unknown task action".into()),
+        // #112 edit modal: view = issue fields; meta = repo labels + assignable people (page caches); edit = JSON diff
+        "view" => gh(&["issue", "view", arg, "--json", "number,title,body,labels,assignees"]),
+        "meta" => Ok(serde_json::json!({
+            "labels": gh_json(&["label", "list", "--limit", "200", "--json", "name,color"], user, Some(dir)),
+            "people": gh_json(&["api", "repos/{owner}/{repo}/assignees?per_page=100", "--jq", "[.[].login]"], user, Some(dir)),
+        }).to_string()),
+        "edit" => {
+            let v: serde_json::Value = serde_json::from_str(arg).map_err(|e| e.to_string())?;
+            let s = |k: &str| v[k].as_str().unwrap_or("").to_string();
+            let n = v["n"].as_u64().ok_or("no issue number")?.to_string();
+            let (title, body) = (s("title"), s("body"));
+            let mut a: Vec<String> = ["issue", "edit", &n, "--title", &title, "--body", &body].map(String::from).to_vec();
+            for (k, flag) in [("addL", "--add-label"), ("rmL", "--remove-label"), ("addA", "--add-assignee"), ("rmA", "--remove-assignee")] {
+                for x in v[k].as_array().into_iter().flatten().filter_map(|x| x.as_str()) { a.extend([flag.to_string(), x.to_string()]); }
+            }
+            gh(&a.iter().map(String::as_str).collect::<Vec<_>>())
+        }
+        _ =>Err("unknown task action".into()),
     }
 }
 
