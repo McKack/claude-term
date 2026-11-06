@@ -637,7 +637,14 @@ async fn move_folder(st: St<'_>, from: String, to: String) -> R<String> {
         tokio::time::sleep(std::time::Duration::from_millis(1500)).await; // child exits, releases the folder
     }
     let (f, t) = (std::path::PathBuf::from(&from), std::path::PathBuf::from(&to));
-    tauri::async_runtime::spawn_blocking(move || store::move_dir(&f, &t)).await.map_err(|e| e.to_string())??;
+    let dep = t.parent().is_some_and(|p| p.file_name().is_some_and(|n| n == "dependencies"));
+    let (f2, t2) = (f.clone(), t.clone());
+    tauri::async_runtime::spawn_blocking(move || store::move_dir(&f2, &t2)).await.map_err(|e| e.to_string())??;
+    // #51 SDKs: link left at the old path ∵ PATH/JAVA_HOME/ANDROID_HOME point there. Windows junction = no admin needed
+    if dep {
+        #[cfg(windows)] { let _ = store::run("cmd", &["/c", "mklink", "/J", &from, &to], None, &[]); }
+        #[cfg(unix)] { let _ = std::os::unix::fs::symlink(&t, &f); }
+    }
     if let Some((pid, _)) = pid { st.with_project(&pid, |p| p.path = to.clone()); }
     Ok(to)
 }

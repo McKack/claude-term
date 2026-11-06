@@ -598,12 +598,33 @@ pub fn repo_of(cwd: &str) -> Option<(String, String)> {
 
 // ---- organize (#35): every project under root as <owner>/<repo> (GitHub origin) or local/<name> ----
 
-/// Where `dir` belongs under `root`.
+/// Where `dir` belongs under `root`: SDK/tool → dependencies/<name>; GitHub clone named like its repo → <owner>/<repo>;
+/// else local/<name> (#51: a renamed clone, e.g. AseShop from aseprite/aseprite = own project on someone's code).
 pub fn place_of(root: &Path, dir: &str) -> PathBuf {
+    let name = Path::new(dir).file_name().unwrap_or_default();
+    if is_dep(Path::new(dir)) { return root.join("dependencies").join(name); }
     match repo_of(dir) {
-        Some((o, r)) => root.join(o).join(r),
-        None => root.join("local").join(Path::new(dir).file_name().unwrap_or_default()),
+        Some((o, r)) if r.eq_ignore_ascii_case(&name.to_string_lossy()) => root.join(o).join(r),
+        _ => root.join("local").join(name),
     }
+}
+
+/// #51 SDK / tool install, not a project. ponytail: known names + "no project file and only binaries/one versioned
+/// folder/bin"; misses → user's Move to….
+pub fn is_dep(d: &Path) -> bool {
+    const KNOWN: &[&str] = &["android-sdk", "flutter", "jdk", "ghidra", "nuget", "vcpkg", "emsdk", "depot_tools", "gradle", "maven",
+        "llvm", "mingw64", "msys64", "cmake", "ue5", "unreal", "dotnet", ".gradle", ".pub-cache"];
+    let n = d.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+    if KNOWN.contains(&n.as_str()) || n.starts_with("jdk-") || n.starts_with("android-sdk") { return true; }
+    if d.join(".git").exists() { return false; }
+    let kids: Vec<PathBuf> = std::fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path()).collect();
+    const PROJ: &[&str] = &["package.json", "cargo.toml", "pyproject.toml", "go.mod", "cmakelists.txt", "makefile", "pubspec.yaml",
+        "build.gradle", "build.gradle.kts", "src", "readme.md", "index.html"];
+    let lower = |p: &PathBuf| p.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+    if kids.is_empty() || kids.iter().any(|k| { let l = lower(k); PROJ.contains(&l.as_str()) || [".sln", ".csproj", ".uproject"].iter().any(|e| l.ends_with(e)) }) { return false; }
+    let ver = Regex::new(r"\d+\.\d+").unwrap();
+    let bin = |k: &PathBuf| k.is_file() && [".exe", ".dll", ".zip", ".nupkg", ".msi", ".jar"].iter().any(|e| lower(k).ends_with(e));
+    kids.iter().all(bin) || (kids.len() == 1 && kids[0].is_dir() && ver.is_match(&lower(&kids[0]))) || d.join("bin").is_dir()
 }
 pub fn same_path(a: &Path, b: &Path) -> bool {
     let n = |p: &Path| { let s = p.to_string_lossy().replace('\\', "/").trim_end_matches('/').to_string(); if cfg!(windows) { s.to_lowercase() } else { s } };
@@ -620,7 +641,8 @@ pub fn scan_projects(root: &Path) -> Vec<PathBuf> {
         for k in kids {
             if k.join(".git").exists() { out.push(k); any = true; continue; }
             let below = depth < 3 && walk(&k, depth + 1, root, out);
-            let loose = (depth == 1 && k.file_name().is_some_and(|n| n != "local")) || (depth == 2 && same_path(d, &root.join("local")));
+            let loose = (depth == 1 && k.file_name().is_some_and(|n| n != "local" && n != "dependencies"))
+                || (depth == 2 && (same_path(d, &root.join("local")) || same_path(d, &root.join("dependencies"))));
             if !below && loose { out.push(k); }
             any |= below;
         }
@@ -1428,6 +1450,16 @@ pub fn push_phone(topic: &str, title: &str, body: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn is_dep_spots_sdks_not_projects() {
+        let d = std::env::temp_dir().join("clauracle-dep-test");
+        let _ = std::fs::remove_dir_all(&d);
+        let mk = |p: &str| { let f = d.join(p); std::fs::create_dir_all(f.parent().unwrap()).unwrap(); if p.ends_with('/') { std::fs::create_dir_all(&f).unwrap() } else { std::fs::write(&f, "").unwrap() } };
+        mk("ghidra2/ghidra_12.1.4_PUBLIC/"); mk("nug/nuget.exe"); mk("app/package.json"); mk("app/bin/x.exe"); mk("jdk/x/");
+        assert!(super::is_dep(&d.join("ghidra2")) && super::is_dep(&d.join("nug")) && super::is_dep(&d.join("jdk")));
+        assert!(!super::is_dep(&d.join("app")));
+        let _ = std::fs::remove_dir_all(&d);
+    }
     #[test]
     fn guess_build_picks_most_specific() {
         let d = std::env::temp_dir().join("clauracle-guess-test");
