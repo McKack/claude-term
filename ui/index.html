@@ -2107,10 +2107,14 @@ function workOf(pid, drop) {
   const iq = issueQ(pid); if (!iq) return;
   const was = WORK[pid], open = iq.some(x => x.number === was);
   if (drop || !busy[pid] && was && !open) delete WORK[pid];
-  else if (busy[pid] && !was && iq[0]?.number) WORK[pid] = iq[0].number;
+  else if (busy[pid] && !was && iq[0]?.number && !askOf(pid)) WORK[pid] = iq[0].number;
   if (was !== WORK[pid]) try { localStorage.workOn = JSON.stringify(WORK); } catch {}
   return WORK[pid];
 }
+/* direct ask = the turn runs on a user's own prompt, not a queued task → Issues list shows "Working on: <prompt>".
+   ponytail: last user entry not like Carry on/continue/#N = direct ask; a Continue message worded otherwise misreads */
+const askOf = pid => { const t = (logs[pid] || []).findLast(e => e.kind === 'user')?.text?.trim() || '';
+  return t && !/^(carry on|continue)|#\d+/i.test(t) && !t.startsWith('New from the user') ? t : ''; };
 function issueQ(pid) {
   if (!issueOn(pid) || !team[pid]?.repo) return null;
   const me = P(pid).gh.toLowerCase(), ord = P(pid).order || [], at = n => { const i = ord.indexOf(n); return !n ? 2e9 : i < 0 ? 1e9 + n : i; }; // n 0 = optimistic "#…" row → end
@@ -3129,7 +3133,8 @@ function drawAtp() {
         ${!iq && (pl.length > 1 || pl[0].file !== 'PLAN.md') ? `<button class="ib" title="Merge every plan file into PLAN.md\n${estTok()}" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
         ${P().gh && (iq ? S.queues?.[cur]?.length : q.length) ? `<button class="ib" title="File ${iq ? 'PLAN.md\'s leftover tasks' : 'the queue'} as GitHub issues${iq ? ' (removed from PLAN.md after)' : ' (Team tasks)'}" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
-        + L([...(closing ? [tli(`Finishing up #${w}…`, {done: 1, cls: 'working'})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
+        + L([...(closing ? [tli(`Finishing up #${w}…`, {done: 1, cls: 'working'})] : []),
+          ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
             end: `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⠿</button>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"')
         + (iq ? issuesRest() : '')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}${iq ? ' · not issues yet' : ''}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
