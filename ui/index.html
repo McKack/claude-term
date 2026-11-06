@@ -1931,6 +1931,12 @@ function tabDots() {
     if (c) { b.dataset.dot = ''; b.style.setProperty('--dotc', c); } else delete b.dataset.dot; });
 }
 function rightTab(t) { tab = UI.tab = t; try { localStorage.ui = JSON.stringify(UI); } catch {} drawRight(); } // restored at start (UI.tab)
+/* #114 tab right-click: Refresh = drop that tab's caches + redraw (opens the tab), Settings… = related page if any */
+const TABREF = {gh: () => { ghiStale(cur); delete COLLAB[cur]; delete IMETA[cur]; }, build: () => { delete RELC[cur]; delete SECRETS[cur]; ghiStale(cur); },
+  svc: () => { delete SECRETS[cur]; delete BUNDLE[cur]; }, web: () => { BROWSERS = null; HOMEPG = undefined; }, code: () => {}, agents: () => { AGENTS = null; }};
+const TABSET = {gh: () => openSettings('ai'), agents: () => openSettings('cx'), build: () => openManager(cur), svc: () => openManager(cur)};
+$('rtabs').oncontextmenu = e => { const b = e.target.closest('button[data-t]'); if (!b || !cur) return; e.preventDefault(); const t = b.dataset.t;
+  menuAt(b, [{icon: 'loop', label: 'Refresh', run: () => { TABREF[t](); tab === t ? drawRight(true) : rightTab(t); }}, ...(TABSET[t] ? [{icon: 'gear', label: 'Settings…', run: TABSET[t]}] : [])]); };
 // Build auto-setup: commands guessed from project files (Rust build_guess, no tokens) → confirm; cached per project
 const GUESS = {};
 const MAC = {}; // pid → ships for macOS (ships_mac), once per app run
