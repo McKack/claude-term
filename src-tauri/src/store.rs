@@ -434,6 +434,21 @@ pub fn which(name: &str) -> Option<PathBuf> {
     dirs.iter().flat_map(|d| exts.iter().map(move |e| d.join(format!("{name}{e}")))).find(|p| p.is_file())
 }
 
+/// Toolchains for local builds (#28): id → found. Only ones this OS can use; other OSes build in CI (#27).
+/// ponytail: presence only, no version checks; Android paths = Android Studio defaults.
+pub fn deps() -> serde_json::Value {
+    let h = dirs::home_dir().unwrap_or_default();
+    let env = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_dir());
+    let sdk = env("ANDROID_HOME").or_else(|| env("ANDROID_SDK_ROOT")).or_else(|| [dirs::data_local_dir().unwrap_or_default().join("Android/Sdk"),
+        h.join("Library/Android/sdk"), h.join("Android/Sdk")].into_iter().find(|p| p.is_dir()));
+    let ndk = env("NDK_HOME").is_some() || sdk.as_ref().is_some_and(|s| std::fs::read_dir(s.join("ndk")).is_ok_and(|mut r| r.next().is_some()));
+    let mut m = serde_json::json!({"node": which("node").is_some(), "rust": which("cargo").is_some() || h.join(".cargo/bin").is_dir(),
+        "jdk": which("java").is_some() || env("JAVA_HOME").is_some(), "android_sdk": sdk.is_some(), "android_ndk": ndk});
+    if cfg!(target_os = "macos") { m["xcode"] = run("xcode-select", &["-p"], None, &[]).ok.into(); }
+    if cfg!(target_os = "linux") { m["webkit"] = run("pkg-config", &["--exists", "webkit2gtk-4.1"], None, &[]).ok.into(); }
+    m
+}
+
 pub fn command(program: &Path) -> Command {
     // .cmd shims (npm installs) must go through cmd
     let mut c = if program.extension().map_or(false, |e| e == "cmd" || e == "bat") {

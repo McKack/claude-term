@@ -500,6 +500,9 @@ fn test_notify(app: AppHandle, st: St) {
     claude::notify(&app, &st, "Clauracle", "Notifications work.");
 }
 
+#[tauri::command(async)]
+fn deps() -> Value { store::deps() }
+
 #[tauri::command]
 async fn install(what: String) -> R<()> {
     tauri::async_runtime::spawn_blocking(move || match what.as_str() {
@@ -1416,7 +1419,7 @@ pub fn run() {
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
-            test_notify, install, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
+            test_notify, install, deps, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");

@@ -1837,6 +1837,7 @@ const tgtHtml = p => { const t = p.targets || [];
   return fold('p-targets', 'Target platforms', (t.length ? '' : '<p class="dim" style="margin:0 0 8px;font-size:13px">Not picked yet: tap what this project ships to.</p>')
     + TGT.map(([g, xs]) => `<div class="row" style="gap:8px;margin-bottom:6px"><small class="dim" style="width:56px">${g}</small><span class="seg">${xs.map(([id, ic, n, d]) =>
       `<button class="${t.includes(id) ? 'on' : ''}" data-tip="${esc(d)}" onclick="tgtFlip('${id}')">${icon(ic)}${n}</button>`).join('')}</span></div>`).join('')
+    + (depsMissing(p).length ? `<p style="margin:4px 0 6px;font-size:13px">${icon('info')} Missing on this computer: ${depsMissing(p).map(k => DEPS[k][0]).join(', ')} · <a href="#" onclick="openSettings('cx');return false">Dependencies</a></p>` : '')
     + '<small class="dim">* optional, needs a developer account (Services tab)</small>', 0,
     t.length ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${t.length}</span>` : '');
 };
@@ -1850,6 +1851,7 @@ async function tgtFlip(id) {
 async function buildHtml(p, has, live, force) {
   const pid0 = cur, wait = t => sec(t, '<p class="dim" style="margin:0">Checking…</p>');
   if (live && MAC[pid0] === undefined) MAC[pid0] = await call('ships_mac', {pid: pid0}).catch(() => false);
+  if (live && p.targets?.length) await depsGet(); // tgtHtml's "missing tools" line
   const mac = macOn(p, pid0);
   let c = GHI[pid0];
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) GHI[pid0] = c = {g, t: Date.now()}; }
@@ -2436,7 +2438,7 @@ async function preset(file, name) {
 }
 
 // ---- settings: GitHub · Connections & Skills · Agents · AI accounts · Notifications ----
-const PAGES = {look: ['sliders', 'Appearance'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], claude: ['shield', 'Claude Code'], notify: ['bell', 'Notifications']};
+const PAGES = {look: ['sliders', 'Appearance'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections & Skills'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], claude: ['shield', 'Claude Code'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
 // GitHub accounts / catalog changed: drop the cache and load again
 const reloadSettings = p => { SET = null; return openSettings(p); };
@@ -2535,9 +2537,34 @@ async function askLegacy(pid) {
   pickItems('project:' + pid, `Choose what your AI can use in ${p.name}`, onOf(p));
 }
 function cxPage() {
+  setTimeout(depsFill);
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
     <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => reloadSettings())">${icon('loop')}Rescan</button></p>
-    ${cxFold('g-mcp', 'Connections', 'mcp', 'global')}${cxFold('g-skill', 'Skills', 'skill', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}`;
+    ${cxFold('g-mcp', 'Connections', 'mcp', 'global')}${cxFold('g-skill', 'Skills', 'skill', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}
+    ${fold('g-deps', 'Dependencies', '<div id="depsBox"><p class="dim" style="margin:0">Checking…</p></div>', 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}`;
+}
+/* Dependencies (#28): toolchains for local builds of the picked target platforms (store::deps, 60s cache). Missing → AI installs it
+   in the current project's session (official installer/package manager) or the download page. Other OSes build in CI (#27). */
+const DEPS = {node: ['Node.js', [], 'https://nodejs.org/en/download'], rust: ['Rust', [], 'https://rustup.rs'],
+  jdk: ['Java JDK 17+', ['android'], 'https://adoptium.net'], android_sdk: ['Android SDK', ['android'], 'https://developer.android.com/studio'],
+  android_ndk: ['Android NDK', ['android'], 'https://developer.android.com/ndk/downloads'], xcode: ['Xcode', ['macos', 'ios'], 'https://developer.apple.com/xcode/'],
+  webkit: ['WebKitGTK 4.1 dev', ['linux'], 'https://v2.tauri.app/start/prerequisites/#linux']};
+let DEPSC = null;
+const depsGet = async () => (DEPSC && Date.now() - DEPSC.t < 60e3) ? DEPSC.d : (DEPSC = {d: await call('deps').catch(() => ({})), t: Date.now()}).d;
+// missing deps for project p's picked targets (only ids this OS reports)
+const depsMissing = p => !DEPSC ? [] : Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].some(t => (p.targets || []).includes(t)));
+async function depsFill() {
+  const d = await depsGet(), box = $('depsBox'); if (!box) return;
+  const want = new Set(S.projects.flatMap(p => p.targets || []));
+  box.innerHTML = `<p class="dim" style="margin:0 0 8px;font-size:13px">Tools this computer needs to build the target platforms your projects pick (Build &amp; Release › Target platforms). Other systems build on GitHub's CI.</p><div class="box">`
+    + Object.keys(DEPS).filter(k => k in d).map(k => { const [n, ts, url] = DEPS[k], need = ts.filter(t => want.has(t));
+      return optRow(esc(n), d[k] ? 'Installed' : (ts.length ? (need.length ? 'Needed for ' + need.map(tgtName).join(', ') : 'Only for ' + ts.map(tgtName).join(', ')) : 'Not found'),
+        d[k] ? `<span style="color:var(--ok)">${icon('check')}</span>` : `${cur ? `<button class="btn sm" onclick="depsAi('${k}')">${icon('sparkle')}Install with AI</button>` : ''}<button class="btn ghost sm" data-url="${url}">Download</button>`); }).join('') + '</div>';
+}
+async function depsAi(k) {
+  const [n, ts] = DEPS[k], text = `Install ${n} on this computer${ts.length ? ` (to build for ${ts.map(tgtName).join(', ')})` : ''}: official installer or package manager, per user if possible, set any env vars it needs, then check it's found. Ask me before large downloads.`;
+  if (!await sure(`Ask Claude in ${P().name}?\n\n${text}\n${estTok()}`)) return;
+  closeDlg(); DEPSC = null; sendNow(cur, {text, atts: []});
 }
 function agentsPage() {
   return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to your AI until you switch them on (top right).'}</p>`
