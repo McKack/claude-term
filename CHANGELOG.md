@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Your message shows in the chat right away, with a gray ✓ once sent and a blue ✓✓ when the AI has picked it up (a red ! and a notice if it did not go through).
 - Continue ribbon: lifts a little on hover; it only expands when the next task is cut off (shown with …), so it no longer jumps.
 - Questions are answered, not filed: a plain question ("…?" or "btw …") gets a short answer plus proposed tasks as cards with Accept / Dismiss and an optional note; Confirm files the accepted ones as issues.
 - Smart builds: new projects build and relaunch themselves after a task when the change is big or a fix (doc-only and tiny edits skip it); build steps are guessed when unset, and failures go back to the AI. Pick "Smart" under Build → After each task on existing projects.

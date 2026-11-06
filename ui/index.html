@@ -107,6 +107,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
 .msg { max-width:100%; }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
+.msg.user .tk { margin-left:6px; font-size:11px; color:var(--faint); white-space:nowrap; } .msg.user .tk.read { color:#34b7f1; letter-spacing:-3px; padding-right:3px; } .msg.user .tk.fail { color:var(--err); font-weight:700; } .msg.user .tk .i { width:11px; height:11px; vertical-align:-1px; }
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
 /* thumbnails: fixed tiles, cropped (the viewer shows the whole image); wrap, never wider than the bubble */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
@@ -1216,6 +1217,7 @@ function entry(e) {
     : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
   else if (e.kind === 'user' && view === 'chat') { d.textContent = bare(e.text); for (const [, n] of e.text.matchAll(new RegExp(FILED_RE, 'g'))) d.insertAdjacentHTML('beforeend', `<span class="filedtag" data-tip="Filed as task #${n}">#${n}</span>`); }
+  if (e.kind === 'user' && e.st && view === 'chat') { d.insertAdjacentHTML('beforeend', tickHtml(e)); USEREL.set(e, d); }
   else d.textContent = e.text;
   if (view === 'chat' && e.kind === 'note' && e.ts) d.dataset.ts = tm(e.ts); // shown above via CSS ::before
   return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
@@ -1469,13 +1471,16 @@ function send() {
   // #93: a plain question (ends "?", not "can you…/please"; or "btw …") → not filed: answered + ```tasks cards (sugCards)
   const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && (/\?\s*$/.test(t) && !/\b(can|could|would|will) you\b|\bplease\b/i.test(t) || /^\s*btw\b/i.test(t));
   const file = issueOn(pid) && !isQ && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
+  // #101: bubble shows now (⏱ while filing) unless it'd queue/triage anyway; the chain re-checks below
+  const opt = !busy[pid] && !RESTARTING && !ed && !(contWaiting(pid) && !a.length) ? userEntry(pid, t, a) : null;
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
     const n = file ? await fileAsk(pid, t, a) : 0, text = isQ ? t + QNOTE : n ?`${t}\n\n(Filed as issue #${n} by Clauracle with the raw prompt: first retitle it and write a task summary, the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done. Not a task after all (a question, test leftover, already done) → answer it and \`gh issue close ${n} --reason "not planned"\` so it drops out of the list.)` : t; // #69 ∵ raw prompt as title/body read badly in the issue list
     const q = queue[pid] ||= [];
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
+    if (opt && (busy[pid] || RESTARTING || contWaiting(pid) && !a.length)) unEntry(pid, opt); // a turn started while filing → normal way
     if (contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
     if (busy[pid] || RESTARTING) q.splice(ed ? ed.i : q.length, 0, {text, atts: a}); // an edited one goes back to its place
-    else sendNow(pid, {text, atts: a});
+    else sendNow(pid, {text, atts: a}, opt?.log && opt);
     if (pid === cur) drawQueue(); keepDraft(pid, true);
   });
 }
@@ -1546,10 +1551,24 @@ function toTasks(pid, texts) {
 // ready → clear + continue; idle bar → next task in this session
 const contGo = pid => P(pid).ready ? (pid === cur ? cont_() : call('continue_now', {pid, extra: null}))
   : nextUp(pid).length && sendNow(pid, {text: (issueQ(pid) ? 'Carry on with the next task (GitHub issue): ' : S.queues?.[pid]?.length ?'Carry on with the next task in PLAN.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(pid)[0], atts: []});
-function sendNow(pid, {text: t, atts: a}) {
+// #101 ticks: e.st pend ⏱ → sent ✓ (in the session's inbox) → read blue ✓✓ (its turn started) | fail !
+const UNREAD = {}, USEREL = new WeakMap(); // pid → entries awaiting ✓✓; entry → its bubble (WeakMap ∵ logs stay plain data)
+const utext = (t, a) => { const f = a.filter(x => x.path); return t + (f.length ? `\n📎 ${f.map(x => x.name).join(', ')}` : ''); };
+const userEntry = (pid, t, a, e = {}) => { addEntry(pid, Object.assign(e, {kind: 'user', st: 'pend', text: utext(t, a), images: a.filter(x => x.data).map(x => ({url: x.url, name: x.name}))}));
+  e.log = !!logs[pid]?.includes(e); return e; }; // log false = a handover turn hid it
+const unEntry = (pid, e) => { logs[pid] = (logs[pid] || []).filter(x => x !== e); (USEREL.get(e)?.closest('.crow') || USEREL.get(e))?.remove(); e.log = false; };
+const TK = {pend: [icon('clock'), 'Sending…'], sent: ['✓', 'Sent'], read: ['✓✓', 'Received by the AI'], fail: ['!', 'Not sent']};
+const tickHtml = e => `<span class="tk ${e.st}" data-tip="${TK[e.st][1]}">${TK[e.st][0]}</span>`;
+function tick(e, st) { e.st = st; const k = USEREL.get(e)?.querySelector('.tk'); if (k) k.outerHTML = tickHtml(e); }
+const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tick(e, 'read')); UNREAD[pid] = []; };
+function sendNow(pid, {text: t, atts: a}, e) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
-  addEntry(pid, {kind: 'user', text: t + (files.length ? `\n📎 ${files.map(f => f.split(/[\\/]/).pop()).join(', ')}` : ''), images: images.map(x => ({url: x.url, name: x.name}))});
-  call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files});
+  if (e) { e.text = utext(t, a); const old = USEREL.get(e)?.closest('.crow'), n = old && entry(e); // filed note → #N chip
+    if (n) { n.className = old.className; old.replaceWith(n); } }
+  else e = userEntry(pid, t, a);
+  (UNREAD[pid] ||= []).push(e);
+  call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files})
+    .then(() => e.st === 'pend' && tick(e, 'sent'), err => { tick(e, 'fail'); toast(`Message not sent: ${err}`, 'err'); });
 }
 // one row of pills (first words; click = edit), ‹ › scroll it when it overflows
 function drawQueue() {
@@ -1615,7 +1634,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
-  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
+  status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
     if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid] || contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) contGo(d.pid); else flushQueue(d.pid); }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
