@@ -1646,7 +1646,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
   cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
-  pushed: () => { delete GHI[d.pid]; if (d.pid === cur && tab === 'gh') drawRight(true); },
+  pushed: () => { ghiStale(d.pid); if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
   queued: () => refresh(),
@@ -1658,7 +1658,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.step === 'build' && d.done) { BUILT[d.pid] = 1; if (d.pid === cur) tabDots(); } /* green dot till Build & Release is opened */
-    if (d.step === 'build' && d.done != null) { delete GHI[d.pid]; delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
+    if (d.step === 'build' && d.done != null) { ghiStale(d.pid); delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
   gh_code: () => { const m = $('ghMsg'); if (m) m.innerHTML = `Enter <b style="font-size:18px" class="sel mono">${esc(d.code)}</b> at <a href="#" data-url="${esc(d.url)}">github.com/login/device</a>`; T.opener.openUrl(d.url); },
@@ -2016,7 +2016,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   return sec('Release', `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}${gi?.release?.tagName ? ` · latest <a data-url="${esc(gi.release.url)}" style="cursor:pointer;color:var(--accent)">${esc(gi.release.tagName)}</a>` : ''}</p>${seg}
     <div>${items.map(row).join('')}</div><div class="btnrow col">${act}${ask}</div>`, (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re);
 }
-const relRefresh = () => { delete RELC[cur]; delete SECRETS[cur]; delete GHI[cur]; drawRight(); };
+const relRefresh = () => { delete RELC[cur]; delete SECRETS[cur]; ghiStale(cur); drawRight(); };
 async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
   const text = id === 'summary' ? `Release prep: in a few lines, what this project is and does, then what's missing for an MVP release (open checks: ${open || 'none'}). Plan only, don't change files.` : RELAI[id];
@@ -2031,7 +2031,7 @@ async function relRelease(to, btn) {
     addEntry(cur, {kind: 'note', text: 'Released: ' + await call('release', {pid: cur, tag: 'v' + v, files: files.map(f => f.path)})});
     if (P().stage !== SK[to]) await call('update_project', {pid: cur, changes: {stage: SK[to]}});
     if (P().build.deploy) call('run_step', {pid: cur, step: 'deploy'}); // #34: deploy = part of Release (guessed by build_guess or set in the project)
-    delete RELTO[cur]; delete RELC[cur]; delete GHI[cur]; await refresh(); drawRight(true);
+    delete RELTO[cur]; delete RELC[cur]; ghiStale(cur); await refresh(); drawRight(true);
   } catch (e) { addEntry(cur, {kind: 'note', text: `Release failed: ${e}`}); btn.disabled = false; }
 }
 // Bump: next patch in every config file that carries the version
@@ -2086,7 +2086,7 @@ async function buildHtml(p, has, live, force) {
     envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))}; }
   const mac = macOn(p, pid0);
   let c = GHI[pid0];
-  if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) GHI[pid0] = c = {g, t: Date.now()}; }
+  if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) { ghiSet(pid0, g); c = GHI[pid0]; } }
   // #34: "Manual commands" fold (closed by default); no Deploy button ∵ Release runs the deploy command after publishing
   return tgtHtml(p) + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
@@ -2130,14 +2130,16 @@ async function drawRight(force) {
   if (c) drawGh(c.g, stale); else { box.innerHTML = '<div id="atp"></div><p class="dim">Loading…</p>'; drawAtp(); } // Plan needs no gh: show it at once
   if (!stale) return;
   const before = c && formVals(box), g = await call('gh_info', {pid}).catch(e => c?.g || {err: String(e)});
-  GHI[pid] = {g, t: Date.now()};
+  if (!g.err) ghiSet(pid, g);
   if (pid !== cur || tab !== 'gh' || $('right').hidden || UI.rc || qDragging) return; // mid-drag re-render would drop the row; GHI already fresh
   const mine = before && formVals(box), focus = document.activeElement?.id;
   drawGh(g, false);
   if (mine) for (const [k, v] of Object.entries(mine)) if (v !== before[k]) { const el = formEl(box, k); if (el) el.type === 'checkbox' ? el.checked = v : el.value = v; }
   if (focus && $(focus)) $(focus).focus();
 }
-const GHI = {};
+/* #104 GHI persisted (localStorage) ∴ GitHub tab draws at once after restart too; restored/invalidated = t:0 → shown + refetched (stale-while-revalidate) */
+const GHI = (() => { try { const o = JSON.parse(localStorage.ghi || "{}"); for (const k in o) o[k].t = 0; return o; } catch { return {}; } })();
+const ghiSet = (pid, g) => { GHI[pid] = {g, t: Date.now()}; try { localStorage.ghi = JSON.stringify(GHI); } catch {} }, ghiStale = pid => GHI[pid] && (GHI[pid].t = 0);
 // form state in the panel: id → value, unnamed checkboxes keyed by their value
 const formVals = box => Object.fromEntries([...box.querySelectorAll('input, select, textarea')].map(e => [e.id || 'v:' + e.value, e.type === 'checkbox' ? e.checked : e.value]));
 const formEl = (box, k) => k.startsWith('v:') ? [...box.querySelectorAll('input[type=checkbox]')].find(e => !e.id && e.value === k.slice(2)) : box.querySelector('#' + CSS.escape(k));
