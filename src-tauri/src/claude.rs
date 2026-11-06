@@ -42,7 +42,7 @@ const HANDOVER_RULES: &str = "
 const ISSUE_RULES: &str = "
 # Handover (Clauracle)
 - Tasks = open GitHub issues labelled `clauracle`: the ONE task list (no PLAN.md). Clauracle's continue message lists
-  them in order (first = next); `gh issue view N` for details. Skip issues someone else is assigned to.
+  them in order (first = next; work on that one, not a later one); `gh issue view N` for details. Skip issues someone else is assigned to.
 - Each new user request becomes an issue at once (`gh issue create --label clauracle --label <type> --title <short>
   --body <full request>`, type = task | feature | fix; `gh label create` it if missing), so nothing is lost across
   sessions. Your own ideas needing the user's yes: add `--label suggestion` (rare, only
@@ -92,7 +92,8 @@ pub const CONTINUE: &str = "continue\n\nThis is a fresh session (Clauracle clear
 PLAN.md at the project root and carry on with the next step.";
 // same first 60 chars as CONTINUE (history() matches that prefix)
 const CONTINUE_ISSUES: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md and \
-carry on with the next open task (GitHub issues labelled `clauracle`, first = next):";
+carry on with the next open task (GitHub issues labelled `clauracle`, first = next). Work on the FIRST one only; \
+the rest wait until it's closed:"; // #74: "first = next" alone → AI drifted to a later issue; UI highlights the first
 
 /// The "continue" message for a fresh session, or None when nothing is queued. Issue mode: one `gh issue list`
 /// (blocking, ~1s) → ordered "#N title" lines; gh failing → generic text (a network blip mustn't stop a run).

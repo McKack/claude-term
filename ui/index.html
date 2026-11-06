@@ -2175,6 +2175,7 @@ function workOf(pid, drop) {
   const was = WORK[pid], open = iq.some(x => x.number === was);
   if (drop || !busy[pid] && was && !open) delete WORK[pid];
   else if (busy[pid] && filedOf(pid) && was !== filedOf(pid)) WORK[pid] = filedOf(pid); // #56: the ask's own issue wins
+  else if (busy[pid] && contOf(pid) && was !== contOf(pid)) WORK[pid] = contOf(pid); // #74: the #N the Continue named, not a guess
   else if (busy[pid] && !was && iq[0]?.number && !askOf(pid)) WORK[pid] = iq[0].number;
   if (was !== WORK[pid]) try { localStorage.workOn = JSON.stringify(WORK); } catch {}
   return WORK[pid];
@@ -2185,6 +2186,8 @@ const lastUser = pid => (logs[pid] || []).findLast(e => e.kind === 'user')?.text
 const askOf = pid => { const t = lastUser(pid);
   return t && !/^(carry on|continue)|#\d+/i.test(t) && !t.startsWith('New from the user') ? t : ''; };
 const filedOf = pid => +(lastUser(pid).match(FILED_RE)?.[1] || 0); // #56 issue Clauracle filed for the last ask
+// #74 first #N of a Continue message (button "…(GitHub issue): #N" or clear-continue "- #N" list) = the task it hands over
+const contOf = pid => { const t = lastUser(pid); return /^(carry on|continue)/i.test(t) ? +(t.match(/#(\d+)/)?.[1] || 0) : 0; };
 function issueQ(pid) {
   if (!issueOn(pid) || !team[pid]?.repo) return null;
   const me = P(pid).gh.toLowerCase(), ord = P(pid).order || [], at = n => { const i = ord.indexOf(n); return !n ? 2e9 : i < 0 ? 1e9 + n : i; }; // n 0 = optimistic "#…" row → end
