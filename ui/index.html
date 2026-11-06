@@ -1472,19 +1472,21 @@ function send() {
   const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && (/\?\s*$/.test(t) && !/\b(can|could|would|will) you\b|\bplease\b/i.test(t) || /^\s*btw\b/i.test(t));
   const file = issueOn(pid) && !isQ && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
   // #101: bubble shows now (⏱ while filing) unless it'd queue/triage anyway; the chain re-checks below
-  const opt = !busy[pid] && !RESTARTING && !ed && !(contWaiting(pid) && !a.length) ? userEntry(pid, t, a) : null;
+  // #103: queued (turn running) → bubble now too, ⏱ Queued; QB ties it to its queue item
+  const opt = !(contWaiting(pid) && !a.length) ? userEntry(pid, t, a, {st: busy[pid] || RESTARTING ? 'queue' : 'pend'}) : null;
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
     const n = file ? await fileAsk(pid, t, a) : 0, text = isQ ? t + QNOTE : n ?`${t}\n\n(Filed as issue #${n} by Clauracle with the raw prompt: first retitle it and write a task summary, the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done. Not a task after all (a question, test leftover, already done) → answer it and \`gh issue close ${n} --reason "not planned"\` so it drops out of the list.)` : t; // #69 ∵ raw prompt as title/body read badly in the issue list
     const q = queue[pid] ||= [];
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
-    if (opt && (busy[pid] || RESTARTING || contWaiting(pid) && !a.length)) unEntry(pid, opt); // a turn started while filing → normal way
+    if (opt && contWaiting(pid) && !a.length) unEntry(pid, opt); // a Continue came up while filing → triage shows its own
     if (contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
-    if (busy[pid] || RESTARTING) q.splice(ed ? ed.i : q.length, 0, {text, atts: a}); // an edited one goes back to its place
-    else sendNow(pid, {text, atts: a}, opt?.log && opt);
+    const m = {text, atts: a};
+    if (busy[pid] || RESTARTING) { q.splice(ed ? ed.i : q.length, 0, m); /* an edited one goes back to its place */ if (opt?.log) { reBub(opt, text, a); tick(opt, 'queue'); QB.set(m, opt); } }
+    else sendNow(pid, m, opt?.log && opt);
     if (pid === cur) drawQueue(); keepDraft(pid, true);
   });
 }
-const WSEEN = new Set(), sendChain = {}, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A question, not a task \(Clauracle\)/;
+const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A question, not a task \(Clauracle\)/;
 // #98: Clauracle's appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
 // #100: notes = one line each → strip per note (triage batch keeps later bullets); triage preamble hidden too
 const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A question, not a task \(Clauracle\))[^\n]*/g, '');
@@ -1499,7 +1501,7 @@ async function fileAsk(pid, t, a) {
 const editing = {}; // pid → {i: its place, m: the original, prev: what the composer held before}
 function cancelEdit() {
   const e = editing[cur]; if (!e) return;
-  delete editing[cur]; queue[cur].splice(e.i, 0, e.m);
+  delete editing[cur]; queue[cur].splice(e.i, 0, e.m); qBub(cur, e.m);
   $('prompt').value = e.prev.text; atts[cur] = e.prev.atts;
   drawQueue(); drawAtts(); grow(); drawEditBar(); keepDraft(); flushQueue(cur);
 }
@@ -1508,11 +1510,11 @@ let RESTARTING = false; // Claude asked for a restart: hold everything in the sa
 function flushQueue(pid) {
   if (RESTARTING || busy[pid] || editing[pid] || !queue[pid]?.length) return;
   if (contWaiting(pid)) { // a Continue is up: text messages become tasks, then the Continue runs; attachments stay queued
-    const tasks = queue[pid].filter(m => !m.atts.length); queue[pid] = queue[pid].filter(m => m.atts.length);
+    const tasks = queue[pid].filter(m => !m.atts.length); queue[pid] = queue[pid].filter(m => m.atts.length); tasks.forEach(m => qDrop(pid, m)); // toTasks shows its own
     if (pid === cur) drawQueue(); keepDraft(pid, true);
     if (tasks.length) return toTasks(pid, tasks.map(m => m.text));
   }
-  sendNow(pid, queue[pid].shift()); if (pid === cur) drawQueue(); keepDraft(pid, true);
+  const m = queue[pid].shift(); qDrop(pid, m); sendNow(pid, m) /* fresh bubble at the end ∵ the AI sees it now */; if (pid === cur) drawQueue(); keepDraft(pid, true);
 }
 // Continue waiting = handover written (ready), or the idle bar offering the next task (current project only: it's drawn)
 const contWaiting = pid => !busy[pid] && !RESTARTING && P(pid)?.cont !== 'off' && (P(pid)?.ready || (pid === cur && !$('ready').hidden && !$('contBtn').hidden));
@@ -1556,17 +1558,20 @@ const contGo = pid => P(pid).ready ? (pid === cur ? cont_() : call('continue_now
 // #101 ticks: e.st pend ⏱ → sent ✓ (in the session's inbox) → read blue ✓✓ (its turn started) | fail !
 const UNREAD = {}, USEREL = new WeakMap(); // pid → entries awaiting ✓✓; entry → its bubble (WeakMap ∵ logs stay plain data)
 const utext = (t, a) => { const f = a.filter(x => x.path); return t + (f.length ? `\n📎 ${f.map(x => x.name).join(', ')}` : ''); };
-const userEntry = (pid, t, a, e = {}) => { addEntry(pid, Object.assign(e, {kind: 'user', st: 'pend', text: utext(t, a), images: a.filter(x => x.data).map(x => ({url: x.url, name: x.name}))}));
+const userEntry = (pid, t, a, e = {}) => { addEntry(pid, Object.assign(e, {kind: 'user', st: e.st || 'pend', text: utext(t, a), images: a.filter(x => x.data).map(x => ({url: x.url, name: x.name}))}));
   e.log = !!logs[pid]?.includes(e); return e; }; // log false = a handover turn hid it
 const unEntry = (pid, e) => { logs[pid] = (logs[pid] || []).filter(x => x !== e); (USEREL.get(e)?.closest('.crow') || USEREL.get(e))?.remove(); e.log = false; };
-const TK = {pend: [icon('clock'), 'Sending…'], sent: ['✓', 'Sent'], read: ['✓✓', 'Received by the AI'], fail: ['!', 'Not sent']};
+const qBub = (pid, m) => { const e = userEntry(pid, m.text, m.atts, {st: 'queue'}); if (e.log) QB.set(m, e); };
+const qDrop = (pid, m) => { const e = m && QB.get(m); if (e) { unEntry(pid, e); QB.delete(m); } };
+// filed note → #N chip: re-render the bubble with the final text
+function reBub(e, t, a) { e.text = utext(t, a); const old = USEREL.get(e)?.closest('.crow'), n = old && entry(e); if (n) { n.className = old.className; old.replaceWith(n); } }
+const TK = {queue: [icon('clock'), 'Queued: sends when this turn ends'], pend: [icon('clock'), 'Sending…'], sent: ['✓', 'Sent'], read: ['✓✓', 'Received by the AI'], fail: ['!', 'Not sent']};
 const tickHtml = e => `<span class="tk ${e.st}" data-tip="${TK[e.st][1]}">${TK[e.st][0]}</span>`;
 function tick(e, st) { e.st = st; const k = USEREL.get(e)?.querySelector('.tk'); if (k) k.outerHTML = tickHtml(e); }
 const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tick(e, 'read')); UNREAD[pid] = []; };
 function sendNow(pid, {text: t, atts: a}, e) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
-  if (e) { e.text = utext(t, a); const old = USEREL.get(e)?.closest('.crow'), n = old && entry(e); // filed note → #N chip
-    if (n) { n.className = old.className; old.replaceWith(n); } }
+  if (e) { reBub(e, t, a); if (e.st !== 'pend') tick(e, 'pend'); }
   else e = userEntry(pid, t, a);
   (UNREAD[pid] ||= []).push(e);
   call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files})
@@ -1579,14 +1584,14 @@ function drawQueue() {
   $('qrow').innerHTML = q.map((m, i) => `<span class="qp" title="${esc(bare(m.text))}" onclick="editQueued(${i})"><span class="qi">${icon('clock')}</span>${m.atts?.length ? `<span class="qa" data-tip="${esc(m.atts.map(x => x.name).join(', '))}">${icon('file')}${m.atts.length > 1 ? m.atts.length : ''}</span>` : ''}<span class="qt">${esc(words(m))}</span>
     <button class="ib" title="Edit (↑ in an empty box)" onclick="event.stopPropagation(); editQueued(${i})">${icon('new')}</button>
     <button class="ib" title="Send next: first in line when this turn ends" onclick="event.stopPropagation(); queue[cur].unshift(...queue[cur].splice(${i},1)); drawQueue(); keepDraft(cur, true); flushQueue(cur)">${icon('up')}</button>
-    <button class="ib" title="Remove" onclick="event.stopPropagation(); queue[cur].splice(${i},1); drawQueue(); keepDraft()">${icon('x')}</button></span>`).join('');
+    <button class="ib" title="Remove" onclick="event.stopPropagation(); qDrop(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft()">${icon('x')}</button></span>`).join('');
   requestAnimationFrame(() => { const r = $('qrow'); $('queue').classList.toggle('over', r.scrollWidth > r.clientWidth + 1); });
 }
 const qscroll = d => $('qrow').scrollBy({left: d * $('qrow').clientWidth * .8, behavior: 'smooth'});
 // into the composer; what was there comes back after send/cancel
 function editQueued(i) {
   if (editing[cur]) cancelEdit();
-  const [m] = queue[cur].splice(i, 1), p = $('prompt');
+  const [m] = queue[cur].splice(i, 1), p = $('prompt'); qDrop(cur, m);
   editing[cur] = {i, m, prev: {text: p.value, atts: atts[cur] || []}};
   p.value = m.text; atts[cur] = [...m.atts];
   drawQueue(); drawAtts(); grow(); drawEditBar(); keepDraft(); p.focus();
