@@ -1432,7 +1432,7 @@ function send() {
   // Chained per project → order kept while gh runs. Edited queued ones were filed already (text carries the note)
   const file = issueOn(pid) && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
-    const n = file ? await fileAsk(pid, t, a) : 0, text = n ? `${t}\n\n(Filed as issue #${n} by Clauracle: close it with a one-line summary when done.)` : t;
+    const n = file ? await fileAsk(pid, t, a) : 0, text = n ? `${t}\n\n(Filed as issue #${n} by Clauracle with the raw prompt: first retitle it and write a task summary, the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done.)` : t; // #69 ∵ raw prompt as title/body read badly in the issue list
     const q = queue[pid] ||= [];
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
     if (contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
