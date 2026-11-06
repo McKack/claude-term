@@ -489,6 +489,9 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-clock"viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5l8-1.2V11H3zM13 4l8-1.2V11h-8zM3 13h8v6.7l-8-1.2zM13 13h8v8.2L13 20z"/></symbol>
+  <symbol id="i-apple" viewBox="0 0 24 24"><path d="M12 7c-1.5-1-5-1.5-6.5 1.5S5 16 7.5 19c1.5 1.8 3 1.5 4.5.8 1.5.7 3 1 4.5-.8 1.3-1.5 2-3.2 2.3-4.5-2.5-1-2.8-4.8-.3-6-1.5-2.2-4.5-2-6.5-1.5zM12 7c0-2 1-3.5 3-4"/></symbol>
+  <symbol id="i-android" viewBox="0 0 24 24"><path d="M5 18v-5a7 7 0 0 1 14 0v5zM7 6l1.5 2.5M17 6l-1.5 2.5"/><path d="M9.5 13v.5M14.5 13v.5"/></symbol>
   <symbol id="i-go" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-brain"viewBox="0 0 24 24"><path d="M12 5a3 3 0 0 0-5.6-1.5A3 3 0 0 0 4 8a3 3 0 0 0 0 5 3.5 3.5 0 0 0 3 5.5A3 3 0 0 0 12 19zM12 5a3 3 0 0 1 5.6-1.5A3 3 0 0 1 20 8a3 3 0 0 1 0 5 3.5 3.5 0 0 1-3 5.5A3 3 0 0 1 12 19zM12 5v14"/></symbol>
   <symbol id="i-cal"viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
@@ -1754,7 +1757,7 @@ function relItems(c, p) {
     {s: 1, id: 'ci', t: 'CI green', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}` : 'no workflow runs',
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.url},
     {s: 2, id: 'icon', t: 'App icon', ok: c.icon},
-    ...(MAC[cur] ? [{s: 2, id: 'sign', t: 'Mac signing secrets on GitHub', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
+    ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: 'Mac signing secrets on GitHub', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
     {s: 2, id: 'review', t: 'Release review by AI', ai: true},
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
     {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0, d: files.length ? files.map(f => f.name).join(', ') : v ? `no build of v${v} yet` : '',
@@ -1768,7 +1771,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   if (!cached && (force || !RELC[pid] || Date.now() - RELC[pid].t > 60e3)) {
     const c = await call('release_check', {pid}).catch(e => ({err: String(e)}));
     RELC[pid] = {c, t: Date.now()};
-    if (MAC[pid] && c.remote && !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
+    if (macOn(p, pid) && c.remote && !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
   }
   const c = RELC[pid].c, re = `<button class="ib" title="Check again" onclick="relRefresh()">${icon('loop')}</button>`;
   const ask = `<button class="btn${k < 0 ? ' primary' : ''}" onclick="relAsk('summary')">${icon('sparkle')}What's missing for MVP?</button>`;
@@ -1814,14 +1817,31 @@ async function relBumpPatch(btn) {
 // Build from the wizard: on success the build event commits + pushes what it changed (Cargo.lock…) ∵ else "Everything committed" flips red again
 const RELB = {};
 const relBuild = btn => { btn.disabled = true; RELB[cur] = 1; call('run_step', {pid: cur, step: 'build'}); };
+// Target platforms (#25): p.targets; [] = not picked → Mac follows ships_mac (MAC). *signing/notarizing optional
+const TGT = [['Desktop', [['windows', 'win', 'Windows', 'setup .exe (signed*)'], ['macos', 'apple', 'macOS', '.dmg with .app (notarized*)'], ['linux', 'term', 'Linux', '.AppImage']]],
+  ['Mobile', [['ios', 'phone', 'iOS', 'App Store / TestFlight'], ['android', 'android', 'Android', '.apk / .aab']]]];
+const macOn = (p, pid) => p.targets?.length ? p.targets.includes('macos') : !!MAC[pid];
+const tgtHtml = p => { const t = p.targets || [];
+  return fold('p-targets', 'Target platforms', (t.length ? '' : '<p class="dim" style="margin:0 0 8px;font-size:13px">Not picked yet: tap what this project ships to.</p>')
+    + TGT.map(([g, xs]) => `<div class="row" style="gap:8px;margin-bottom:6px"><small class="dim" style="width:56px">${g}</small><span class="seg">${xs.map(([id, ic, n, d]) =>
+      `<button class="${t.includes(id) ? 'on' : ''}" data-tip="${esc(d)}" onclick="tgtFlip('${id}')">${icon(ic)}${n}</button>`).join('')}</span></div>`).join('')
+    + '<small class="dim">* optional, needs a developer account (Services tab)</small>', 0,
+    t.length ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${t.length}</span>` : '');
+};
+async function tgtFlip(id) {
+  const p = P(), t = p.targets || [];
+  p.targets = t.includes(id) ? t.filter(x => x !== id) : [...t, id];
+  await call('update_project', {pid: cur, changes: {targets: p.targets}}).catch(e => addEntry(cur, {kind: 'note', text: `Targets not saved: ${e}`}));
+  drawRight();
+}
 // Build tab body. live=false → cache only (no git/gh calls), live=true → refetch what's stale (force → all)
 async function buildHtml(p, has, live, force) {
   const pid0 = cur, wait = t => sec(t, '<p class="dim" style="margin:0">Checking…</p>');
-  let mac = MAC[pid0];
-  if (live && mac === undefined) mac = MAC[pid0] = await call('ships_mac', {pid: pid0}).catch(() => false);
+  if (live && MAC[pid0] === undefined) MAC[pid0] = await call('ships_mac', {pid: pid0}).catch(() => false);
+  const mac = macOn(p, pid0);
   let c = GHI[pid0];
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) GHI[pid0] = c = {g, t: Date.now()}; }
-  return sec('Commands', has ? `<div class="btnrow b3">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+  return tgtHtml(p) + sec('Commands', has ? `<div class="btnrow b3">${[['build', 'hammer'], ['run', 'play'], ['deploy', 'rocket']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>`
         : live || GUESS[pid0] ? await guessHtml() : '<p class="dim" style="margin:0">Checking…</p>', `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
