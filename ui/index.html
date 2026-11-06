@@ -1082,9 +1082,11 @@ function drawLog() {
   l.forEach(e => put(box, e));
   if (live[cur]) box.appendChild(liveEl(cur));
   // manual clear-continue: questions show only after the Continue (spec), never next to a waiting Continue; N? pill opens them any time
-  if (P().questions.length && !hiddenQs[cur] && (qsOpen[cur] || P().cont === 'auto' || P().cont === 'off')) box.appendChild(questionCard(cur));
+  if (P().questions.length && !hiddenQs[cur] && (qsOpen[cur] || P().cont === 'auto' || P().cont === 'off')) box.appendChild(qsKeep(cur));
   const lg = $('log'), same = drawLog.pid === cur, stick = !same || atEnd(), top = lg.scrollTop; drawLog.pid = cur;
+  const f = document.activeElement?.closest?.('.card.qs') && document.activeElement, sel = f && [f.selectionStart, f.selectionEnd];
   lg.replaceChildren(box, $('skel'));
+  if (f?.isConnected) { f.focus({preventScroll: true}); if (sel?.[0] != null) f.setSelectionRange(...sel); } // moved card = blurred → typing goes on
   if (stick) toEnd(true); else lg.scrollTop = top; // redraw while scrolled up: stay put (no jump)
 }
 // follow new output only when within 50px of the bottom; else count it on the ↓ button (click/scroll down = back to following)
@@ -1609,6 +1611,16 @@ function questionCard(pid) {
   d.onchange = e => { const q = e.target.closest('.q'); if (q && e.target.type !== 'text') q.querySelector('.note').placeholder =
     q.querySelector('[value=__other]').checked ? 'Your own answer' : 'Note (optional)'; };
   return d;
+}
+// #65: drawLog runs on every event while the AI works → reuse the card element (picks + typed notes survive);
+// new questions → fresh card, but already-shown .q blocks (same id) move over with their state
+const QC = {};
+function qsKeep(pid) {
+  const key = P(pid).questions.map(q => q.id).join('\n'), old = QC[pid];
+  if (old?.key === key) return old.el;
+  const el = questionCard(pid);
+  if (old) el.querySelectorAll('.q').forEach(n => { const o = [...old.el.querySelectorAll('.q')].find(x => x.dataset.id === n.dataset.id); if (o) n.replaceWith(o); });
+  return (QC[pid] = {key, el}).el;
 }
 function confirmQs(pid, card) {
   const answers = [...card.querySelectorAll('.q')].map(q => { const t = q.querySelector('.note').value, other = q.querySelector('[value=__other]').checked;
