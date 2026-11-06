@@ -1724,7 +1724,7 @@ function projectsPage() {
     ${fold('p-save', 'Options', `<div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
-      ${(p.allow || []).length ? optRow('Always allowed', 'Tools this project runs without asking', `<span class="row wrap" style="gap:4px">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ✕</span>`).join('')}</span>`) : ''}
+      ${(p.allow || []).length ? /* 3 rows: title / tags / description (#53) ∵ side-by-side squeezed the text */ `<div class="opt-row" style="display:block"><div>Always allowed</div><span class="row wrap" style="gap:4px;margin:6px 0">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ✕</span>`).join('')}</span><small class="dim">Tools this project runs without asking</small></div>` : ''}
       ${optRow('Credit the AI in commits', 'Off: no Co-Authored-By or "Generated with" lines; the AI never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
       ${optRow('Keep .env away from the AI', 'The AI can\'t read or edit .env files; manage them in Services &amp; Secrets › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on')}
