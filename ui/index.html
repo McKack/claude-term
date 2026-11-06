@@ -2132,7 +2132,8 @@ function issueGuess(pid, d) {
     const labels = ghArg(seg, /(?:--label|-l)\s+("([^"]*)"|'([^']*)'|(\S+))/g).flatMap(l => l.split(',')).map(name => ({name: name.trim(), color: '888'}));
     t.tasks.push({number: 0, title, url: '', labels, assignees: [], pending: d.id});
   }
-  for (const m of cmd.matchAll(/\bgh\s+issue\s+close\s+#?(\d+)/g)) t.tasks = t.tasks.filter(x => x.number !== +m[1]);
+  for (const m of cmd.matchAll(/\bgh\s+issue\s+close\s+#?(\d+)/g)) { WDONE.add(+m[1]); t.tasks = t.tasks.filter(x => x.number !== +m[1]); }
+  for (const m of cmd.matchAll(/\bgh\s+issue\s+reopen\s+#?(\d+)/g)) WDONE.delete(+m[1]);
   issueRedraw(pid);
 }
 const ISSUE_TOOL = {}; // tool_use id → pid, so its result fills numbers + syncs
@@ -2167,6 +2168,7 @@ const issueOn = pid => !!(P(pid)?.owner && P(pid)?.gh);
 const isIdea = x => x.labels.some(l => l.name === 'suggestion');
 /* #41 issue a turn works on, per project; localStorage ∵ app swap mid-turn → resumed turn still finishes it. Set on
    first busy sight (= first open issue), dropped when idle + closed or on clear-continue → "Finishing up #N…" while busy+closed */
+const WDONE = new Set(); // #71 issues the AI closed this run: hidden even if a gh poll lags (else the new turn re-picked them → "Finishing up #N" forever)
 const WORK = (() => { try { return JSON.parse(localStorage.workOn || '{}'); } catch { return {}; } })();
 function workOf(pid, drop) {
   const iq = issueQ(pid); if (!iq) return;
@@ -2186,7 +2188,7 @@ const filedOf = pid => +(lastUser(pid).match(FILED_RE)?.[1] || 0); // #56 issue 
 function issueQ(pid) {
   if (!issueOn(pid) || !team[pid]?.repo) return null;
   const me = P(pid).gh.toLowerCase(), ord = P(pid).order || [], at = n => { const i = ord.indexOf(n); return !n ? 2e9 : i < 0 ? 1e9 + n : i; }; // n 0 = optimistic "#…" row → end
-  return teamTasks(pid).filter(x => !isIdea(x) && (!x.assignees.length || x.assignees.some(a => a.login.toLowerCase() === me))).sort((a, b) => at(a.number) - at(b.number));
+  return teamTasks(pid).filter(x => !isIdea(x) && !WDONE.has(x.number) &&(!x.assignees.length || x.assignees.some(a => a.login.toLowerCase() === me))).sort((a, b) => at(a.number) - at(b.number));
 }
 // Issues list (#15): row = #N link + title + type pills (GitHub colour; `clauracle` hidden ∵ every row has it)
 const issueHtml = x => (x.number ? `<a data-url="${esc(x.url)}">#${x.number}</a> ` : '<span class="faint">#…</span> ') + esc(x.title)

@@ -1300,7 +1300,10 @@ pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<String,
         "new" => {
             let _ = gh(&["label", "create", OUR_LABEL, "--color", "D77655", "--description", "Tracked in Clauracle"]);
             let (title, body) = split_task(arg);
-            gh(&["issue", "create", "--title", &title, "--body", &body, "--label", OUR_LABEL, "--label", TASK_LABEL])
+            let mut a = vec!["issue", "create", "--title", &title, "--body", &body, "--label", OUR_LABEL, "--label", TASK_LABEL];
+            let tags = hash_tags(arg); // #71: written #Tags → labels (made if missing; color = gh default)
+            for t in &tags { let _ = gh(&["label", "create", t]); a.extend(["--label", t.as_str()]); }
+            gh(&a)
         }
         "claim" => {
             let _ = gh(&["label", "create", DOING_LABEL, "--color", "4F5BD5", "--description", "Someone is on it"]);
@@ -1339,6 +1342,21 @@ pub fn task_queue(list: &serde_json::Value, me: &str, order: &[u64]) -> Vec<serd
     let n = |x: &serde_json::Value| x["number"].as_u64().unwrap_or(0);
     q.sort_by_key(|x| (order.iter().position(|&o| o == n(x)).unwrap_or(usize::MAX), n(x)));
     q
+}
+
+/// `#Critical` → "critical": # after start/space, then a letter (∴ #62 refs, C#, `# heading` skipped); deduped.
+pub fn hash_tags(s: &str) -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    for w in s.split_whitespace().filter_map(|w| w.strip_prefix('#')) {
+        let t: String = w.chars().take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect::<String>().to_lowercase();
+        if t.starts_with(|c: char| c.is_alphabetic()) && !v.contains(&t) { v.push(t); }
+    }
+    v
+}
+
+#[test]
+fn hash_tags_works() {
+    assert_eq!(hash_tags("#Critical fix #62, C# and #bug-fix. # head #critical"), ["critical", "bug-fix"]);
 }
 
 #[test]
