@@ -256,6 +256,9 @@ pre.diff .ctx { color:var(--faint); }
 #handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:4px 16px 16px 16px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
+/* #105 skeleton bar: text-line height (13.5px font) ∴ swap-in ≈ no jump */
+.sk { display:block; height:12px; margin:5px 0; border-radius:6px; background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
+.sk.b { height:30px; border-radius:8px; } /* button/row height */
 #readytext b { font-weight:600; } #readytext:has(.btn) { white-space:normal; line-height:2.2; } #readytext .btn { margin-left:6px; padding:2px 10px; font-size:12.5px; border:1px solid color-mix(in srgb, var(--accent) 35%, transparent); color:var(--accent); background:var(--soft); }
 #readytext .btn:hover { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 24%, var(--bg)); } #readytext .btn.primary { background:var(--accent); color:#fff; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
 #readytext.full { white-space:pre-wrap; max-height:40vh; overflow:auto; } /* click: the whole next task, line breaks kept */
@@ -1781,6 +1784,8 @@ const folds = (() => { try { return JSON.parse(localStorage.folds || '{}'); } ca
 const fold = (key, title, body, count = 0, actions = '') => `<details class="sec fold" ${(folds[key] ?? !!count) ? 'open' : ''}>
   <summary class="sh" onclick="setTimeout(() => { folds['${key}'] = this.parentNode.open; try { localStorage.folds = JSON.stringify(folds); } catch {} })">${icon('chev')}<span class="label">${title}</span>
   ${count ? `<span class="pill">${count}</span>` : ''}<span onclick="event.preventDefault()">${actions}</span></summary><div class="sc">${body}</div></details>`;
+// #105 skeleton: skel(60, 40) = bars at those % widths; 'b60' = button-height bar
+const skel = (...ws) => ws.map(w => `<i class="sk${String(w)[0] === 'b' ? ' b' : ''}" style="width:${String(w).replace('b', '')}%"></i>`).join('');
 const sec = (title, body, actions = '') => `<section class="sec"><div class="sh"><span class="label">${title}</span>${actions}</div><div class="sc">${body}</div></section>`;
 const field = (label, control) => `<label class="fl"><span>${label}</span>${control}</label>`;
 // empty state + its next step (CLAUDE.md: never dead-end); act = button html
@@ -1878,7 +1883,7 @@ async function moveProj(to) {
 }
 // Organize: scan (root or a picked folder) → tick list of what isn't in place → moves one by one (projects keep working)
 async function organize(dir) {
-  dlg('<p class="dim" style="padding:20px">Scanning…</p>');
+  dlg(`<div style="padding:20px">${skel(50, 'b100', 'b100', 'b100')}</div>`);
   const l = (await call('scan_folder', {dir}).catch(() => [])).filter(x => !x.placed);
   if (!l.length) { await say('Everything there is already in place.'); return openSettings('projects'); }
   dlg(`<h2 style="margin:0 0 4px;font-size:17px">Organize</h2><p class="dim" style="margin:0 0 10px;font-size:13px">GitHub repos go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> (renamed to the repo's name), everything else to <span class="mono">local/</span> in your projects folder. Untick what should stay.</p>
@@ -2079,7 +2084,7 @@ async function tgtFlip(id) {
 }
 // Build tab body. live=false → cache only (no git/gh calls), live=true → refetch what's stale (force → all)
 async function buildHtml(p, has, live, force) {
-  const pid0 = cur, wait = t => sec(t, '<p class="dim" style="margin:0">Checking…</p>');
+  const pid0 = cur, wait = t => sec(t, skel(70, 45, 'b100'));
   if (live && MAC[pid0] === undefined) MAC[pid0] = await call('ships_mac', {pid: pid0}).catch(() => false);
   if (live) await depsGet(); // tgtWhy: local tools per target (60s cache)
   if (live && strictStage(p) && svcOf(p).length) { const files = await call('env_list', {pid: pid0}).catch(() => []); // tgtWhy → svcDone reads envKeys
@@ -2091,7 +2096,7 @@ async function buildHtml(p, has, live, force) {
   return tgtHtml(p) + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>`
-        : live || GUESS[pid0] ? await guessHtml() : '<p class="dim" style="margin:0">Checking…</p>', 0, `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
+        : live || GUESS[pid0] ? await guessHtml() : skel('b45'), 0, `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
       + (!svcOf(p).includes('macsign') && mac
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
           <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
@@ -2104,6 +2109,7 @@ async function drawRight(force) {
   document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
   tabDots();
   const box = $('rbody'), p = P();
+  if (box.dataset.t !== tab + cur) { box.dataset.t = tab + cur; if (['code', 'web', 'svc'].includes(tab)) box.innerHTML = sec('', skel(60, 'b100', 90, 75, 'b100')); } // #105: async tabs paint a skeleton on switch
   if (tab === 'agents') { box.innerHTML = '<div id="atp"></div>'; return drawAtp(); }
   if (tab === 'code') return drawCode();
   if (tab === 'web') return drawWeb();
@@ -2127,7 +2133,7 @@ async function drawRight(force) {
   /* GHI cache: last gh_info per project → drawn at once, refetch only if >30s old or forced (Refresh/actions).
      While fetching: refresh icon pulses; inputs the user changed meanwhile are re-applied onto the fresh render (same → drop). */
   const pid = cur, c = GHI[pid], stale = force === true || !c || Date.now() - c.t > 30000;
-  if (c) drawGh(c.g, stale); else { box.innerHTML = '<div id="atp"></div><p class="dim">Loading…</p>'; drawAtp(); } // Plan needs no gh: show it at once
+  if (c) drawGh(c.g, stale); else { box.innerHTML = sec('Repository', skel(55)) + '<div id="atp"></div>' + skel('b100', 'b100'); drawAtp(); } // Plan needs no gh: show it at once
   if (!stale) return;
   const before = c && formVals(box), g = await call('gh_info', {pid}).catch(e => c?.g || {err: String(e)});
   if (!g.err) ghiSet(pid, g);
@@ -2573,7 +2579,7 @@ async function drawServices() {
     return envJump(files);
   }
   box.innerHTML = ids.map(id => { const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k));
-    return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px"><p class="dim">Asking gcloud…</p></div>' : '')
+    return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px">' + skel(60, 'b100') + '</div>' : '')
       + (id === 'website' ? siteHtml() : '')
       + (x.steps ? stepper(id, x.steps) : '')
       + (x.links ? `<div class="btnrow">${x.links.map(([l, u]) => `<button class="btn sm" data-url="${esc(u)}">${esc(l)}</button>`).join('')}</div>` : '')
@@ -2810,7 +2816,7 @@ const reloadSettings = p => { SET = null; return openSettings(p); };
 async function openSettings(p) {
   const same = !p || p === page; // re-render of the same tab keeps its scroll
   if (p) page = {gh: 'ai', agents: 'cx'}[p] || p;
-  if (!$('dlg').open) dlg('<p class="dim" style="padding:20px">Loading… (the first time asks Claude Code which connections it has)</p>', 'prefs');
+  if (!$('dlg').open) dlg(`<div style="padding:20px">${skel(30, 'b100', 'b100', 'b100', 70, 'b100', 'b100')}<small class="dim">The first time asks Claude Code which connections it has</small></div>`, 'prefs');
   if (!SET || !AGENTS) [SET, AGENTS] = await Promise.all([call('settings'), call('agents')]);
   else if (same) await refresh(); // after a change: state is a cheap in-process read
   ghUsers = SET.gh_users;
@@ -2916,7 +2922,7 @@ function cxPage() {
     ${cxGroup('g-cx', 'Connections &amp; Skills', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}
     ${fold('g-agents', 'Helper agents', optRow('Give helper agents to your AI', '', sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')) + agentsPage(),
       S.agents_on ? `${AGENTS.filter(a => a.on).length}/${AGENTS.length}` : 'off')}
-    ${fold('g-deps', 'Dependencies', '<div id="depsBox"><p class="dim" style="margin:0">Checking…</p></div>', 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}`;
+    ${fold('g-deps', 'Dependencies', `<div id="depsBox">${skel(90, 60, 'b100', 'b100', 'b100')}</div>`, 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}`;
 }
 /* Dependencies (#28): toolchains for local builds of the picked target platforms (store::deps, 60s cache). Missing → AI installs it
    in the current project's session (official installer/package manager) or the download page. Other OSes build in CI (#27). */
@@ -3081,7 +3087,7 @@ let CS = {scope: 'user'};
 function csAcct(id) {
   const d = $('dlg2'), a = S.accounts.find(x => x.id === id);
   d.innerHTML = `<div class="small-dlg" style="width:min(640px,92vw)"><h2 class="row" style="margin:0 0 12px;font-size:17px"><span class="grow">Advanced AI settings · ${esc(a.nick)}</span><button class="ib" title="Close" onclick="$('dlg2').close()">${icon('x')}</button></h2>
-    <div id="csBody" style="max-height:70vh;overflow:auto"><p class="dim">Loading…</p></div></div>`;
+    <div id="csBody" style="max-height:70vh;overflow:auto">${skel(40, 'b100', 'b100', 'b100', 'b100')}</div></div>`;
   d.showModal(); CS = {scope: 'account:' + id, acct: id}; csLoad();
 }
 async function csLoad(scope = CS.scope) {
@@ -3164,7 +3170,7 @@ async function rmGh(u) { if (await sure(`Log @${u} out of gh?`)) { await call('g
 async function openClone() {
   SET ||= await call('settings'); ghUsers = SET.gh_users;
   dlg(`<div class="row"><h2 class="grow">Clone from GitHub</h2><button class="ib" onclick="closeDlg()">${icon('x')}</button></div>${ghUsers.length ? `<div class="row"><select id="cloneUser">${ghUsers.map(u => `<option>${esc(u)}</option>`).join('')}</select>
-    <input id="cloneFilter" class="grow" placeholder="Filter, or owner/repo"></div><small class="dim">Into <span class="mono">${esc(S.projects_dir)}/&lt;owner&gt;/&lt;repo&gt;</span></small><div id="repoList" class="dim" style="height:340px;overflow:auto;margin-top:8px">Loading…</div>`
+    <input id="cloneFilter" class="grow" placeholder="Filter, or owner/repo"></div><small class="dim">Into <span class="mono">${esc(S.projects_dir)}/&lt;owner&gt;/&lt;repo&gt;</span></small><div id="repoList" class="dim" style="height:340px;overflow:auto;margin-top:8px">${skel(...Array(8).fill('b100'))}</div>`
     : '<p class="dim">Add a GitHub account first (Settings › GitHub).</p>'}`);
   if (!ghUsers.length) return;
   let repos = [];
@@ -3172,7 +3178,7 @@ async function openClone() {
     const list = repos.filter(r => r.nameWithOwner.toLowerCase().includes(fl)).slice(0, 100);
     if (f.includes('/') && !list.some(r => r.nameWithOwner.toLowerCase() === fl)) list.unshift({nameWithOwner: f});
     $('repoList').innerHTML = list.map(r => `<div class="item"><a onclick="pickRepo('${esc(r.nameWithOwner)}', '${esc(r.branch || '')}')">${esc(r.nameWithOwner)}</a><div class="dim" style="font-size:12px">${esc(r.description)}</div></div>`).join('') || 'No repos here. Type owner/repo to clone any repo.'; };
-  const load = async () => { const u = $('cloneUser').value; $('repoList').textContent = 'Loading…'; repos = REPOS[u] ||= await call('gh_repos', {user: u}) || []; draw(); };
+  const load = async () => { const u = $('cloneUser').value; $('repoList').innerHTML = skel(...Array(8).fill('b100')); repos = REPOS[u] ||= await call('gh_repos', {user: u}) || []; draw(); };
   $('cloneUser').onchange = load; $('cloneFilter').oninput = draw; cloneBack = draw; load();
 }
 const REPOS = {}; // gh user → repo list, per app run ∵ paginated gh api call
