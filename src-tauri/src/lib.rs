@@ -323,8 +323,13 @@ fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
             st.with_project(&pid, |p| p.account = n);
         }
     }
-    let msg = claude::cont_text(&st.project(&pid).unwrap()); // after a pool switch: same path/gh anyway
-    claude::fresh(&app, &st, &pid, &live, Some(msg.unwrap_or_else(|| claude::CONTINUE.into())));
+    let p = st.project(&pid).unwrap(); // after a pool switch: same path/gh anyway
+    // #87: no open task + no user text → no fresh turn (was: old PLAN.md "continue" → AI found nothing, stopped)
+    let Some(msg) = claude::cont_text(&p).or_else(|| (!p.answers.is_empty()).then(|| claude::CONTINUE_BARE.into())) else {
+        claude::line(&app, &pid, "note", "No open tasks: nothing to continue. Send a new request to start again.");
+        return;
+    };
+    claude::fresh(&app, &st, &pid, &live, Some(msg));
 }
 
 /// Clear & continue on demand: Claude writes the handover first, then it's ready.

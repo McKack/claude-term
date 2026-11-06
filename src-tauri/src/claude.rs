@@ -90,6 +90,9 @@ Clauracle restarted while you were working (a restart you asked for, an update, 
 
 pub const CONTINUE: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md and \
 PLAN.md at the project root and carry on with the next step.";
+// #87: nothing queued but user text rides along (answers) → no PLAN.md/task wording ∵ issue mode has no PLAN.md
+pub const CONTINUE_BARE: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md \
+for context; no tasks are open, so handle the message below.";
 // same first 60 chars as CONTINUE (history() matches that prefix)
 const CONTINUE_ISSUES: &str = "continue\n\nThis is a fresh session (Clauracle cleared the context). Read HANDOVER.md and \
 carry on with the next open task (GitHub issues labelled `clauracle`, first = next). Work on the FIRST one only; \
@@ -224,7 +227,7 @@ pub fn emit(app: &AppHandle, event: &str, data: Value) {
     let _ = app.emit("clauracle", json!({"event": event, "data": data}));
 }
 
-fn line(app: &AppHandle, pid: &str, kind: &str, text: &str) {
+pub fn line(app: &AppHandle, pid: &str, kind: &str, text: &str) {
     emit(app, "line", json!({"pid": pid, "kind": kind, "text": text}));
 }
 
@@ -620,7 +623,7 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
         notify(app, st, &format!("{}: done", p.name), &format!("The Queue is empty. {} question(s) waiting.", p.questions.len()));
         return; // ready stays: Continue still works if tasks get added
     }
-    fresh(app, st, pid, live, Some(msg.unwrap_or_else(|| CONTINUE.into())));
+    fresh(app, st, pid, live, Some(msg.unwrap_or_else(|| CONTINUE_BARE.into())));
 }
 
 fn label(window: &str) -> &str {

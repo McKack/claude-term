@@ -547,7 +547,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   </div>
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
     <div class="col" id="skel" hidden><div class="crow claude"><img class="av" src="icon.svg" alt=""><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div>
-      <div id="handpill" hidden>Preparing plan…</div>
+      <div id="handpill" hidden>Preparing handover…</div>
       <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div></div>
   <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
@@ -561,7 +561,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
         <button class="ib" title="Attach files" onclick="pickFiles()"><svg class="i"><use href="#i-clip"/></svg></button>
         <button class="ib" id="tPony" title="Ponytail: the simplest code that works" onclick="setP({ponytail:!P().ponytail})"><svg class="i"><use href="#i-feather"/></svg></button>
         <button class="ib" id="tCont" title="Clear & continue mode" onclick="menuAt(this, contItems())"><svg class="i"><use href="#i-loop"/></svg></button>
-        <button class="ib" title="Clear & continue now: write the plan, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-eraser"/></svg></button>
+        <button class="ib" title="Clear & continue now: write the handover, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-eraser"/></svg></button>
         <button class="ib" id="tWeb" onclick="S.web = !S.web; call('set_off', {item: 'web', off: !S.web, scope: 'global'}); drawChrome()"><svg class="i"><use href="#i-globe"/></svg></button>
         <span class="grow"></span>
         <button class="btn ghost sm" id="cancelEdit" hidden title="Put the queued message back, unchanged, in its place" onclick="cancelEdit()" style="margin-right:6px"><svg class="i"><use href="#i-x"/></svg>Cancel edit</button>
@@ -922,17 +922,16 @@ function drawChrome() {
   // #63: task done, Continue waiting → pop up once per ready; tucks back by the usual rules (4s timer, click elsewhere, focus)
   if (p.ready && !readyWas[cur] && !$('ready').hidden) { const r = $('ready'); r.classList.remove('tuck', 'shine'); void r.offsetWidth; r.classList.add('shine'); readyLater(9000); } /* #70: 9s ≠ 4s ∵ easy to miss; reflow restarts the shine */
   readyWas[cur] = !!p.ready;
-  $('contBtn').hidden = !p.ready && !next.length && !triaging[cur];
+  $('contBtn').hidden = !next.length && !triaging[cur]; /* #87: ready + no task ≠ Continue (fresh turn would find nothing) */
   // plan being re-sorted → Wait…; turn running → Queue (contQ: Continue runs when it ends) → Queued
   $('contBtn').disabled = !!triaging[cur] || !!contQ[cur]; $('contBtn').textContent = triaging[cur] ? 'Wait…' : contQ[cur] ? 'Queued' : busy[cur] ? 'Queue' : 'Continue';
   $('contBtn').title = busy[cur] ? 'Runs once the current turn ends' : '';
   // questions never block a Continue: they open in the fresh session (qsOpen), the bar keeps showing the next task
   $('readytext').innerHTML = next.length ? `<input type="checkbox" disabled style="vertical-align:-2px;margin:0 6px 0 0;opacity:.55">Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
-    : p.ready ? 'Plan written. Continue clears the context and carries on.'
     : `All tasks done! What next? ${(([l, ic, js]) => `<button class="btn primary" onclick="${js}">${icon(ic)}${l}</button>`)(nextStep(p))}${NEXT_IDEAS.map(([l, ic], i) => `<button class="btn" onclick="askNext(${i})">${icon(ic)}${l}</button>`).join('')}`;
   $('ready').title = ''; $('readytext').title = next.length ? 'Click to show the whole task' : ''; // hover = nothing extra; click toggles .full
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
-  $('handpill').textContent = reading[cur] ? 'Reading plan…' : 'Preparing plan…';
+  $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
   const sk = $('skel'), skOn = !$('workpill').hidden || !$('handpill').hidden;
   if (sk.hidden && skOn) { $('skelts').textContent = tm(new Date().toISOString()); const stick = atEnd();
