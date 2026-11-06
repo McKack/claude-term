@@ -895,7 +895,7 @@ function statsCard(btn) {
   card.innerHTML = `<h5>Context</h5>${bar(ctx[cur], 'Used', 'doc')}
     <label class="row" style="font-size:12px;gap:6px">${icon('loop')}<span class="grow">Hand over at</span><input id="scLim" type="number" min="0" max="95" value="${p.context_limit}" style="width:64px">%</label>
     ${tk(cur).now ? `<div class="row" style="font-size:12px;gap:6px">${icon('doc')}<span class="grow">In context now</span>${kt(tk(cur).now)} tokens</div>` : ''}
-    ${tk(cur).saved ? `<div class="row" style="font-size:12px;gap:6px" title="Clear-continue: each turn after a clear would otherwise re-read the cleared context. Counted once per turn (tool calls re-read it too), so the real saving is higher.">${icon('loop')}<span class="grow">Saved by clearing (est.)</span>${kt(tk(cur).saved)} tokens</div>` : ''}
+    ${tk(cur).saved ? `<div class="row" style="font-size:12px;gap:6px" title="Clear-continue: each turn after a clear would otherwise re-read the cleared context. Counted once per turn (tool calls re-read it too), so the real saving is higher.">${icon('loop')}<span class="grow">Saved by Clauracle (est.)</span>${kt(tk(cur).saved)} tokens</div>` : ''}
     <h5>Usage · ${esc(nick(p.account))}</h5>${bar(u.five_hour, '5-hour', 'clock', 'five_hour')}${bar(u.seven_day, 'Weekly', 'cal', 'seven_day')}
     <h5>This session <span class="faint">since ${esc(tm(new Date(x.start).toISOString()))}</span></h5>
     <div class="row" style="font-size:12px;gap:6px">${icon('timer')}<span class="grow">You, active</span>${dur(x.you)}</div>
