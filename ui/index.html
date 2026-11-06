@@ -109,7 +109,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 /* thumbnails: fixed tiles, cropped (the viewer shows the whole image); wrap, never wider than the bubble */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
 .msg .thumbs img { width:96px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
-.crow .cb, .msg.user { min-width:0; } #log { overflow-x:hidden; }
+.crow .cb, .msg.user { min-width:0; } #log { overflow-x:hidden; } #log::-webkit-scrollbar-track { margin:52px 0 40px; } /* thumb stops short of the top mask (52px) + #dock overlap (40px) */
 .crow { display:flex; gap:10px; align-items:flex-start; } .crow.user { flex-direction:row-reverse; }
 .crow > .av { border-color:var(--bg); } /* 26px = the name row's height: avatar sits in line with name + time */
 .crow .cm { min-height:26px; } .crow.claude .msg.claude { background:var(--card); border:1px solid var(--line); padding:9px 14px; border-radius:4px 16px 16px 16px; }
