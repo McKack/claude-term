@@ -587,8 +587,9 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
             }
         }
     }
-    // #9: a pending blocking question pauses the run (auto only; auto_answer holds them by design) → answer resumes it
-    if p.cont == "auto" && p.questions.iter().any(|q| q.blocking) {
+    // #9/#67: ANY open question pauses the run (auto only; auto_answer holds them by design) ∵ a clear while the card
+    // is up = card gone + work goes on without the user → answering the last one resumes it
+    if p.cont == "auto" && !p.questions.is_empty() {
         line(app, pid, "note", "Paused: a question needs you. Answering it carries on.");
         emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
         return; // ready stays: answer_questions → continue_now
@@ -970,7 +971,7 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                     "auto" => {
                         emit(app, "questions", json!({"pid": pid, "questions": st.project(pid).map(|p| p.questions)}));
                         notify(app, st, &format!("{name}: questions"), &format!("{} question(s) need your answer.", qs.len()));
-                        text("Queued and the user was notified. Carry on with the next task that doesn't depend on them; answers arrive in a later message.")
+                        text("Queued and the user was notified. Finish the current task where it doesn't depend on them; the run pauses after this turn (no clear) until they answer.")
                     }
                     "auto_answer" => text("Held until the user is back. Carry on with other tasks."),
                     _ => text("Queued: the user sees them after the next Continue (never blocks it). Finish what doesn't depend on them first."),
