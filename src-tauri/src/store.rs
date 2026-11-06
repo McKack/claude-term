@@ -1468,6 +1468,24 @@ pub fn push_phone(topic: &str, title: &str, body: &str) {
 
 #[cfg(test)]
 mod tests {
+    /// #77: temp (C:) → target/ (D: here) = cross-drive copy path; same drive elsewhere = rename path. Read-only file ≈ git objects.
+    #[test]
+    fn move_dir_moves_across_drives() {
+        let (a, b) = (std::env::temp_dir().join("clauracle-move-src"), std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/clauracle-move-dst"));
+        let _ = std::fs::remove_dir_all(&a); let _ = std::fs::remove_dir_all(&b);
+        std::fs::create_dir_all(a.join(".git/objects/ab")).unwrap();
+        let ro = a.join(".git/objects/ab/cd");
+        std::fs::write(&ro, "obj").unwrap();
+        let mut perm = std::fs::metadata(&ro).unwrap().permissions(); perm.set_readonly(true); std::fs::set_permissions(&ro, perm).unwrap();
+        std::fs::write(a.join("main.rs"), "fn main(){}").unwrap();
+        super::move_dir(&a, &b.join("p")).unwrap();
+        assert!(!a.exists(), "source left behind");
+        assert_eq!(std::fs::read_to_string(b.join("p/main.rs")).unwrap(), "fn main(){}");
+        assert!(b.join("p/.git/objects/ab/cd").is_file());
+        assert!(super::move_dir(&b.join("p"), &b.join("p/inner")).is_err());
+        let mut perm = std::fs::metadata(b.join("p/.git/objects/ab/cd")).unwrap().permissions(); #[allow(clippy::permissions_set_readonly_false)] perm.set_readonly(false);
+        let _ = std::fs::set_permissions(b.join("p/.git/objects/ab/cd"), perm); let _ = std::fs::remove_dir_all(&b);
+    }
     #[test]
     fn is_dep_spots_sdks_not_projects() {
         let d = std::env::temp_dir().join("clauracle-dep-test");
