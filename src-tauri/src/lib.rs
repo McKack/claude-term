@@ -1192,6 +1192,10 @@ fn web_view(app: AppHandle, url: String, rect: Option<[f64; 4]>, zoom: f64, nav:
 /// Claude settings file: scope user = ~/.claude/settings.json, project/local = <proj>/.claude/settings(.local).json.
 fn cs_file(st: &St, scope: &str, pid: &str) -> R<std::path::PathBuf> {
     let dir = |p: &str| std::path::PathBuf::from(p).join(".claude");
+    if let Some(id) = scope.strip_prefix("account:") {
+        if !st.cfg.lock().unwrap().accounts.iter().any(|a| a.id == id) { return Err("no such account".into()); }
+        return store::account_settings(id).ok_or_else(|| "bad account id".into());
+    }
     Ok(match scope {
         "user" => dirs::home_dir().ok_or("no home")?.join(".claude"),
         "project" | "local" => dir(&st.project(pid).ok_or("no such project")?.path),
@@ -1214,7 +1218,13 @@ fn claude_settings_set(st: St, scope: String, pid: String, value: Value) -> R<()
     if !value.is_object() { return Err("settings must be a JSON object".into()); }
     let f = cs_file(&st, &scope, &pid)?;
     std::fs::create_dir_all(f.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(&f, serde_json::to_string_pretty(&value).unwrap() + "\n").map_err(|e| e.to_string())
+    std::fs::write(&f, serde_json::to_string_pretty(&value).unwrap() + "\n").map_err(|e| e.to_string())?;
+    // account file is read at spawn → its sessions reconnect after the current reply (user/project files: the CLI reads them live)
+    if let Some(id) = scope.strip_prefix("account:") {
+        let pids: Vec<String> = st.cfg.lock().unwrap().projects.iter().filter(|p| p.account == id).map(|p| p.id.clone()).collect();
+        for (pid, l) in st.live.lock().unwrap().iter() { if pids.contains(pid) { l.inbox.front(vec![claude::Input::Reconnect]); } }
+    }
+    Ok(())
 }
 
 /// Phone preview: does host:port accept a TCP connection (dev server bound to 0.0.0.0, not only localhost)?

@@ -2438,7 +2438,7 @@ async function preset(file, name) {
 }
 
 // ---- settings: GitHub · Connections & Skills · Agents · AI accounts · Notifications ----
-const PAGES = {look: ['sliders', 'Appearance'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections & Skills'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], claude: ['shield', 'Claude Code'], notify: ['bell', 'Notifications']};
+const PAGES = {look: ['sliders', 'Appearance'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections & Skills'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
 // GitHub accounts / catalog changed: drop the cache and load again
 const reloadSettings = p => { SET = null; return openSettings(p); };
@@ -2453,7 +2453,7 @@ async function openSettings(p) {
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="body">${page === 'projects' ? '' : `<h2 class="row">${PAGES[page][1]}${page === 'agents' ? `<span class="grow"></span>${sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')}` : ''}</h2>`}
-    ${{look: lookPage, projects: projectsPage, gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, claude: claudePage, notify: notifyPage}[page]()}</div>`, 'prefs');
+    ${{look: lookPage, projects: projectsPage, gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
 }
 function ghPage() {
@@ -2595,7 +2595,7 @@ function aiPage() {
         <span>GitHub for new projects</span><select onchange="acct('${esc(a.id)}', {gh:this.value})">${options({'': 'None', ...Object.fromEntries(ghUsers.map(g => [g, '@' + g]))}, a.gh)}</select>
       </div>
       ${cxFold('a-mcp', 'Connections for new projects', 'mcp', a.id, a)}${cxFold('a-skill', 'Skills for new projects', 'skill', a.id, a)}${cxFold('a-plugin', 'Plugins & mods for new projects', 'plugin', a.id, a)}
-      <div class="btns">${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
+      <div class="btns"><button class="btn" onclick="csAcct('${esc(a.id)}')">${icon('sliders')}Advanced AI settings</button><span class="grow"></span>${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
     + `<div class="label" style="margin-top:18px">Lessons</div>
     <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules your AI records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
@@ -2700,19 +2700,27 @@ function notifyPage() {
 const saveNotify = c => call('set_notify', {notify: {...S.notify, ...c}}).then(refresh);
 // Claude Code settings files (user / project / project-local): permissions lists, defaultMode, env; raw JSON fallback.
 // ponytail: whole-file write after a fresh read per edit; a CLI write in between the read and the click is lost (rare).
+// #29: opened per AI account from Accounts (modal in dlg2); scope account:<id> = ~/.clauracle/account-<id>.json, layered via --settings
 let CS = {scope: 'user'};
-function claudePage() { setTimeout(csLoad); return '<div id="csBody"><p class="dim">Loading…</p></div>'; }
+function csAcct(id) {
+  const d = $('dlg2'), a = S.accounts.find(x => x.id === id);
+  d.innerHTML = `<div class="small-dlg" style="width:min(640px,92vw)"><h2 class="row" style="margin:0 0 12px;font-size:17px"><span class="grow">Advanced AI settings · ${esc(a.nick)}</span><button class="ib" title="Close" onclick="$('dlg2').close()">${icon('x')}</button></h2>
+    <div id="csBody" style="max-height:70vh;overflow:auto"><p class="dim">Loading…</p></div></div>`;
+  d.showModal(); CS = {scope: 'account:' + id, acct: id}; csLoad();
+}
 async function csLoad(scope = CS.scope) {
-  if (scope !== 'user' && !cur) scope = 'user';
-  CS = {scope, ...await call('claude_settings', {scope, pid: cur || ''})};
+  if ((scope === 'project' || scope === 'local') && !cur) scope = 'account:' + CS.acct;
+  const acct = CS.acct, a = S.accounts.find(x => x.id === acct);
+  CS = {scope, acct, ...await call('claude_settings', {scope, pid: cur || ''})};
   const j = CS.json, perm = j?.permissions || {}, el = $('csBody'); if (!el) return;
-  const sc = {user: 'Everywhere (your user settings)', ...(cur ? {project: `${P().name}: shared (committed)`, local: `${P().name}: only you (not committed)`} : {})};
+  const sc = {['account:' + acct]: `${a?.nick || acct} only (Clauracle sessions on this account)`, user: 'Every account (+ plain claude in a terminal)',
+    ...(cur ? {project: `${P().name}: shared (committed)`, local: `${P().name}: only you (not committed)`} : {})};
   const list = k => `<div class="label">${{allow: 'Allow without asking', ask: 'Always ask', deny: 'Never allow'}[k]}</div>
     <div class="row" style="flex-wrap:wrap;gap:6px">${(perm[k] || []).map((r, i) => `<span class="pill mono">${esc(r)} <a style="cursor:pointer" title="Remove" onclick="csEdit(j => j.permissions.${k}.splice(${i}, 1))">✕</a></span>`).join('') || '<span class="faint">None</span>'}</div>
     <div class="row" style="margin-top:6px"><input class="grow mono" placeholder="e.g. Bash(npm test:*), Read(./src/**), WebFetch(domain:github.com)"
       onkeydown="if (event.key === 'Enter' && this.value.trim()) csAdd('${k}', this.value.trim())"><button class="btn sm" onclick="const v = this.previousElementSibling.value.trim(); if (v) csAdd('${k}', v)">Add</button></div>`;
   const env = Object.entries(j?.env || {});
-  el.innerHTML = `<p class="dim">Claude Code's own settings files: plain <code>claude</code> in a terminal uses them too.</p>
+  el.innerHTML = `<p class="dim" style="margin-top:0">Claude Code settings: permissions and environment. The account file applies only to this AI account; the others are Claude Code's own files.</p>
     <div class="row"><select class="grow" onchange="csLoad(this.value)">${options(sc, scope)}</select></div>
     <p class="faint mono" style="font-size:12px">${esc(CS.path)}</p>
     ${j ? `<div class="label">Default permission mode</div>

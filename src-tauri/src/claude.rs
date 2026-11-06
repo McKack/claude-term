@@ -279,7 +279,10 @@ fn args(st: &State, p: &Project) -> Vec<String> {
               "--plugin-dir".into(), st.plugin_dir.to_string_lossy().into(), "--mcp-config".into(), mcp.to_string()]);
     // per-project CLI settings: only picked connections/plugins load (store::cli_settings), no AI credit unless the
     // project turns it on. A file, not inline JSON (cmd /c mangles quotes)
-    let mut set = store::cli_settings(&cfg, p);
+    // base = the AI account's own settings (Accounts › Advanced AI settings), project restrictions on top
+    let mut set = store::account_settings(&p.account).and_then(|f| std::fs::read_to_string(f).ok())
+        .and_then(|t| serde_json::from_str::<Value>(t.trim_start_matches('\u{feff}')).ok()).filter(Value::is_object).unwrap_or_else(|| json!({}));
+    store::merge_settings(&mut set, &store::cli_settings(&cfg, p));
     if !p.ai_credit {
         set["includeCoAuthoredBy"] = json!(false);
         set["attribution"] = json!({"commit": "", "pr": ""});

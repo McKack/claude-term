@@ -199,6 +199,28 @@ pub fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".clauracle")
 }
 
+/// Per AI account Claude Code settings (#29): layered into each session's --settings file (claude::args). Id → filename: safe chars only.
+pub fn account_settings(id: &str) -> Option<PathBuf> {
+    (!id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || "-_".contains(c))).then(|| home().join(format!("account-{id}.json")))
+}
+
+/// a ← b: b wins; objects merge one level deep, arrays concat (permissions.allow from account + project both apply).
+pub fn merge_settings(a: &mut serde_json::Value, b: &serde_json::Value) {
+    let (Some(a), Some(b)) = (a.as_object_mut(), b.as_object()) else { return };
+    for (k, v) in b {
+        match (a.get_mut(k), v) {
+            (Some(serde_json::Value::Object(x)), serde_json::Value::Object(y)) => for (k2, v2) in y {
+                match (x.get_mut(k2), v2) {
+                    (Some(serde_json::Value::Array(p)), serde_json::Value::Array(q)) => p.extend(q.iter().cloned()),
+                    _ => { x.insert(k2.clone(), v2.clone()); }
+                }
+            },
+            (Some(serde_json::Value::Array(p)), serde_json::Value::Array(q)) => p.extend(q.iter().cloned()),
+            _ => { a.insert(k.clone(), v.clone()); }
+        }
+    }
+}
+
 static SAVE: Mutex<()> = Mutex::new(());
 
 pub fn load() -> Config {
@@ -1371,6 +1393,13 @@ mod tests {
         assert_eq!(super::clean(&s, &[]), 5);
         assert!(!d.join("target").exists() && d.join("dist/keep").exists());
         let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn merge_settings_layers() {
+        let mut a = serde_json::json!({"permissions": {"allow": ["A"], "defaultMode": "plan"}, "env": {"X": "1"}, "model": "a"});
+        super::merge_settings(&mut a, &serde_json::json!({"permissions": {"allow": ["B"]}, "env": {"Y": "2"}, "model": "b"}));
+        assert_eq!(a, serde_json::json!({"permissions": {"allow": ["A", "B"], "defaultMode": "plan"}, "env": {"X": "1", "Y": "2"}, "model": "b"}));
+        assert!(super::account_settings("../x").is_none() && super::account_settings("Main").is_some());
     }
     #[test]
     fn disk_free_reads_the_drive() {
