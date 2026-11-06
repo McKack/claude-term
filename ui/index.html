@@ -190,9 +190,8 @@ pre.diff .ctx { color:var(--faint); }
   background:color-mix(in srgb, var(--err) 9%, transparent); border:1px solid color-mix(in srgb, var(--err) 35%, transparent); border-radius:12px; padding:8px 12px; }
 .msg.err .et { display:block; font:700 12px system-ui,sans-serif; margin-bottom:4px; opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #log.term .msg.err { border:0; background:none; padding:0; }
-/* HAL nod (#8): glowing red eye on permission cards */
-.i.hal { width:16px; height:16px; vertical-align:-3px; margin-right:6px; filter:drop-shadow(0 0 3px #f22) drop-shadow(0 0 6px #f228); }
-.msg.err .et .edot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--err); margin-right:7px; vertical-align:0; }
+/* #107/#108: solid red dot before error + permission titles */
+.edot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--err); margin-right:7px; vertical-align:0; }
 .card.perm { border-color:color-mix(in srgb, var(--err) 35%, transparent); }
 .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
 .card.qs { border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); padding:12px 14px; }
@@ -481,7 +480,6 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
-  <symbol id="i-hal" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".5"/><circle cx="12" cy="12" r="6.5" fill="#300"/><circle cx="12" cy="12" r="3.2" fill="#f22"/><circle cx="12" cy="12" r="1.2" fill="#fd6"/></symbol>
   <symbol id="i-stop"viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
   <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
@@ -616,8 +614,6 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
 const P = (id = cur) => S.projects.find(p => p.id === id);
-// HAL eye (#8): permission cards (error cards: red dot, #107)
-const HALI = '<svg class="i hal"><use href="#i-hal"/></svg>';
 const nick = id => (S.accounts.find(a => a.id === id) || {nick: id}).nick;
 const MODES = {off: ['Off', 'Plain chat; only the context limit hands over'], manual: ['Manual', 'Stops when a task is done; you press Continue'],
   auto: ['Auto', 'Clears and continues by itself until a limit'], auto_answer: ['Auto + answers', 'Also answers what it can; holds only real decisions']};
@@ -1740,7 +1736,7 @@ function askCard(e) {
     rules = [[[e.tool], e.tool === 'Bash' ? 'Bash (any command)' : e.tool], ...(parts.length ? [lvl(1)] : []), ...(parts.some(w => w.length > 1) ? [lvl(2)] : [])];
     rule = rules[Math.min(1, rules.length - 1)][0];
     d.classList.add('perm');
-    d.innerHTML = `<h4>${HALI}Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
+    d.innerHTML = `<h4><span class="edot"></span>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
       <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-m>Allow…</button><button class="btn primary" data-a="1">Allow now</button></div>`;
     // Allow… = dropdown: duration → (Bash only) what to allow, as a hover submenu
     const pick = (a, r) => () => { rule = r; answer(a); };
