@@ -1661,15 +1661,17 @@ async function pickRoot() {
 function projectsPage() {
   if (!P(mp)) mp = cur || S.projects[0]?.id;
   const root = `<div class="grid2" style="grid-template-columns:120px 1fr;margin-top:0"><span>Projects folder</span><span class="row">
-      <input class="grow mono" value="${esc(S.projects_dir)}" onchange="call('set_projects_dir', {dir:this.value.trim()}).then(refresh)"><button class="btn" onclick="pickRoot()">Choose…</button></span>
+      <input class="grow mono" value="${esc(S.projects_dir)}" onchange="call('set_projects_dir', {dir:this.value.trim()}).then(refresh)"><button class="btn" onclick="pickRoot()">Choose…</button>
+      <button class="btn" title="Sort folders into owner/repo and local/" onclick="menuAt(this, [{label: 'Organize the projects folder', run: () => organize('')}, {label: 'Scan another folder…', run: async () => { const d = await T.dialog.open({directory: true, title: 'Folder to organize'}); if (d) organize(d); }}])">${icon('brush')}Organize…</button></span>
       <span></span><small class="dim" style="margin-top:-6px">Clones go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> in here (others' repos under their owner), new projects to <span class="mono">local/</span>.</small></div>`;
   if (!mp) return root + empty('No projects yet', startProj);
   const p = P(mp);
   const items = kind => cxList(kind, 'project:' + p.id, p);
-  return root + `<div class="split"><div class="plist">${recent().map(x => `<button class="${x.id === mp ? 'on' : ''}" onclick="openManager('${x.id}')">${icon(x.shared ? 'gh' : 'folder')}<span>${esc(x.name)}</span></button>`).join('')}
-    <button onclick="closeDlg(); menuAt($('projects'), addItems())">${icon('plus')}<span>Add project</span></button></div>
+  setTimeout(placeFill); setTimeout(availFill);
+  return root + `<div class="split"><div class="plist"><div class="label" style="padding:0 10px">Active projects</div>${recent().map(x => `<button class="${x.id === mp ? 'on' : ''}" onclick="openManager('${x.id}')">${icon(x.shared ? 'gh' : 'folder')}<span>${esc(x.name)}</span></button>`).join('')}
+    <button onclick="closeDlg(); menuAt($('projects'), addItems())">${icon('plus')}<span>Add project</span></button><div id="availBox"></div></div>
     <div><div class="row"><input value="${esc(p.name)}" onchange="this.value.trim() ? setM({name:this.value.trim()}) : (this.value = this.defaultValue)" title="Display name in Clauracle only; the folder and repo keep their names" placeholder="Project name" style="font-size:17px;font-weight:600" class="grow"></div>
-    <small class="dim sel mono">${esc(p.path)}</small>
+    <small class="dim sel mono">${esc(p.path)}</small><div id="placeBox" class="row" style="gap:6px;margin:6px 0 0;min-height:30px"></div>
     <p class="dim">The project is the source of truth: these stay with it whichever AI account runs it.</p>
     <div class="grid2">
       <span>GitHub account</span><select onchange="setM({gh:this.value})">${options({'': 'None', ...Object.fromEntries(SET.gh_users.map(u => [u, '@' + u]))}, p.gh)}</select>
@@ -1709,6 +1711,55 @@ async function cleanDisk(dirs) {
   const n = await call('disk_clean', {pid: mp, dirs}).catch(e => ($('diskBox').textContent = e, null)); if (n == null) return;
   await drawDisk(); $('diskBox').insertAdjacentHTML('afterbegin', `<p class="dim" style="margin:0 0 6px">Freed ${mb(n)}.</p>`);
 }
+/* #35/#36 organize: every project under the projects folder as <owner>/<repo> (GitHub origin) or local/<name>.
+   PLACE pid → where it belongs (place_of runs git → cached per app run); SCAN = scan_folder(root), 60s */
+const PLACE = {}; let SCAN = null;
+const scanGet = force => (!force && SCAN && Date.now() - SCAN.t < 60e3) ? Promise.resolve(SCAN.l) : call('scan_folder', {dir: ''}).catch(() => []).then(l => (SCAN = {l, t: Date.now()}).l);
+const samePath = (a, b) => { const n = s => s.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase(); return n(a) === n(b); };
+async function placeFill() {
+  const pid = mp, p = P(pid), box = $('placeBox'); if (!box || !p) return;
+  const t = PLACE[pid] ??= await call('place_of', {path: p.path}).catch(() => '');
+  if ($('placeBox') !== box) return;
+  box.innerHTML = !t || samePath(t, p.path) ? `<small class="ok grow">${icon('check')} In place in the projects folder</small><button class="btn ghost sm" onclick="moveTo()">Move to…</button>`
+    : `<small class="dim grow">Belongs in <span class="mono">${esc(t)}</span></small><button class="btn sm" onclick="moveProj(PLACE[mp])">Move there</button><button class="btn ghost sm" onclick="moveTo()">Move to…</button>`;
+}
+async function moveTo() {
+  const dir = await T.dialog.open({directory: true, title: 'Move the project into this folder'}); if (!dir) return;
+  moveProj(dir.replace(/[\\/]$/, '') + (dir.includes('\\') ? '\\' : '/') + P(mp).path.split(/[\\/]/).filter(Boolean).pop());
+}
+async function moveProj(to) {
+  const p = P(mp), pid = mp;
+  if (!await sure(`Move ${p.name}?\n\n${p.path}\n→ ${to}\n\nIts session closes and reopens (history kept).`, 'Move')) return openSettings('projects');
+  try { await call('move_folder', {from: p.path, to}); } catch (e) { await say(e); return openSettings('projects'); }
+  delete PLACE[pid]; SCAN = null; await refresh();
+  if (pid === cur) { cur = null; await openProject(pid); }
+  openSettings('projects');
+}
+// Organize: scan (root or a picked folder) → tick list of what isn't in place → moves one by one (projects keep working)
+async function organize(dir) {
+  dlg('<p class="dim" style="padding:20px">Scanning…</p>');
+  const l = (await call('scan_folder', {dir}).catch(() => [])).filter(x => !x.placed);
+  if (!l.length) { await say('Everything there is already in place.'); return openSettings('projects'); }
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">Organize</h2><p class="dim" style="margin:0 0 10px;font-size:13px">GitHub repos go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> (renamed to the repo's name), everything else to <span class="mono">local/</span> in your projects folder. Untick what should stay.</p>
+    <div class="box" style="max-height:50vh;overflow:auto">${l.map((x, i) => `<label class="check"><input type="checkbox" value="${i}" checked><span class="grow mono" style="font-size:12px">${esc(x.path)}${x.project ? ' <span class="pill">active</span>' : ''}<small class="dim" style="display:block">→ ${esc(x.target)}</small></span></label>`).join('')}</div>
+    <p id="orgMsg" class="err" style="font-size:13px"></p><div class="btns"><button class="btn ghost" onclick="openSettings('projects')">Cancel</button><button class="btn primary" id="orgGo">Move</button></div>`);
+  $('orgGo').onclick = async () => {
+    const pick = [...document.querySelectorAll('#dlg input[type=checkbox]:checked')].map(c => l[+c.value]), errs = [];
+    $('orgGo').disabled = true;
+    for (const [i, x] of pick.entries()) { $('orgGo').textContent = `Moving ${i + 1}/${pick.length}…`;
+      try { await call('move_folder', {from: x.path, to: x.target}); if (x.project) delete PLACE[x.project]; } catch (e) { errs.push(`${x.name}: ${e}`); } }
+    SCAN = null; await refresh();
+    if (pick.some(x => x.project === cur)) { const c = cur; cur = null; await openProject(c); }
+    if (errs.length) { $('orgMsg').textContent = errs.join('\n'); $('orgGo').textContent = 'Done with errors'; } else openSettings('projects');
+  };
+}
+// Available projects (#36): folders in the projects folder not added yet; faded, folded; click adds it
+async function availFill() {
+  const l = (await scanGet()).filter(x => !x.project), box = $('availBox'); if (!box) return;
+  box.innerHTML = l.length ? fold('p-avail', 'Available projects', l.map(x => `<button style="opacity:.55" title="${esc(x.path)}" onclick="availAdd('${esc(x.path.replace(/\\/g, '\\\\'))}')">${icon('folder')}<span>${esc(x.name)}</span></button>`).join(''), 0,
+    `<span class="pill" style="background:var(--hover);color:var(--dim)">${l.length}</span>`) : '';
+}
+async function availAdd(path) { const p = await call('add_project', {path}); SCAN = null; await refresh(); mp = p.id; openSettings('projects'); askProject(P(p.id)); }
 async function removeProject() {
   if (!await sure(`Remove ${P(mp).name} from Clauracle? The folder stays on disk.`)) return;
   await call('remove_project', {pid: mp}); closeDlg();

@@ -595,6 +595,70 @@ pub fn repo_of(cwd: &str) -> Option<(String, String)> {
     parse_remote(&run("git", &["remote", "get-url", "origin"], Some(cwd), &[]).stdout)
 }
 
+// ---- organize (#35): every project under root as <owner>/<repo> (GitHub origin) or local/<name> ----
+
+/// Where `dir` belongs under `root`.
+pub fn place_of(root: &Path, dir: &str) -> PathBuf {
+    match repo_of(dir) {
+        Some((o, r)) => root.join(o).join(r),
+        None => root.join("local").join(Path::new(dir).file_name().unwrap_or_default()),
+    }
+}
+pub fn same_path(a: &Path, b: &Path) -> bool {
+    let n = |p: &Path| { let s = p.to_string_lossy().replace('\\', "/").trim_end_matches('/').to_string(); if cfg!(windows) { s.to_lowercase() } else { s } };
+    n(a) == n(b)
+}
+
+/// Folders under `root` that look like projects: git repos (depth ≤ 3, not descended into) + plain folders straight in
+/// root or root/local. Owner folders (holding repos) are containers, not projects. ponytail: depth cap 3.
+pub fn scan_projects(root: &Path) -> Vec<PathBuf> {
+    fn walk(d: &Path, depth: u8, root: &Path, out: &mut Vec<PathBuf>) -> bool { // → found a repo below
+        let kids: Vec<PathBuf> = std::fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path())
+            .filter(|p| p.symlink_metadata().is_ok_and(|m| m.is_dir()) && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'))).collect();
+        let mut any = false;
+        for k in kids {
+            if k.join(".git").exists() { out.push(k); any = true; continue; }
+            let below = depth < 3 && walk(&k, depth + 1, root, out);
+            let loose = (depth == 1 && k.file_name().is_some_and(|n| n != "local")) || (depth == 2 && same_path(d, &root.join("local")));
+            if !below && loose { out.push(k); }
+            any |= below;
+        }
+        any
+    }
+    let mut out = vec![];
+    walk(root, 1, root, &mut out);
+    out
+}
+
+/// Claude Code keeps a project's transcripts in ~/.claude/projects/<path, every non-alphanumeric char → '-'>.
+pub fn claude_dir_of(path: &Path) -> PathBuf {
+    let enc: String = path.to_string_lossy().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    dirs::home_dir().unwrap_or_default().join(".claude/projects").join(enc)
+}
+
+/// Move a folder: rename (same drive, atomic) else copy then delete (other drive; a failed copy is removed, source kept).
+/// Claude's transcript folder follows so sessions still resume. Caches git ignores are dropped first (rebuilt anyway).
+pub fn move_dir(from: &Path, to: &Path) -> Result<(), String> {
+    if !from.is_dir() { return Err(format!("{} is not a folder", from.display())); }
+    if to.exists() { return Err(format!("{} already exists", to.display())); }
+    if to.starts_with(from) { return Err("can't move a folder into itself".into()); }
+    std::fs::create_dir_all(to.parent().ok_or("bad target")?).map_err(|e| e.to_string())?;
+    if std::fs::rename(from, to).is_err() {
+        clean(&from.to_string_lossy(), &[]);
+        let (f, t) = (from.to_string_lossy().to_string(), to.to_string_lossy().to_string());
+        let ok = if cfg!(windows) {
+            // robocopy exit < 8 = copied; /SL keeps links as links; /NFL /NDL /NJH /NJS quiet
+            command(Path::new("robocopy")).args([f.as_str(), t.as_str(), "/E", "/SL", "/COPY:DAT", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS"])
+                .status().is_ok_and(|s| s.code().is_some_and(|c| c < 8))
+        } else { run("cp", &["-a", &f, &t], None, &[]).ok };
+        if !ok { let _ = std::fs::remove_dir_all(to); return Err("copy failed (a file in use?); nothing moved".into()); }
+        let _ = std::fs::remove_dir_all(from); // ponytail: a locked leftover stays behind; the copy is complete
+    }
+    let (a, b) = (claude_dir_of(from), claude_dir_of(to));
+    if a.is_dir() && !b.exists() { let _ = std::fs::rename(&a, &b); }
+    Ok(())
+}
+
 /// Who should run a repo, by code: the gh account that owns it, else the first with push access;
 /// then the AI account tied to that gh (else the default). shared = owner isn't one of ours.
 #[derive(Serialize, Debug, PartialEq)]
@@ -1393,6 +1457,21 @@ mod tests {
         assert_eq!(super::clean(&s, &[]), 5);
         assert!(!d.join("target").exists() && d.join("dist/keep").exists());
         let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn scan_and_move_projects() {
+        let r = std::env::temp_dir().join("clauracle-scan-test");
+        let _ = std::fs::remove_dir_all(&r);
+        for d in ["McKack/app/.git", "loose", "local/old", "deep/a/b/.git", ".hidden"] { std::fs::create_dir_all(r.join(d)).unwrap(); }
+        let mut got: Vec<String> = super::scan_projects(&r).iter().map(|p| p.strip_prefix(&r).unwrap().to_string_lossy().replace('\\', "/")).collect();
+        got.sort();
+        assert_eq!(got, ["McKack/app", "deep/a/b", "local/old", "loose"]); // owner/deep folders = containers, not projects
+        assert!(super::same_path(&super::place_of(&r, &r.join("loose").to_string_lossy()), &r.join("local/loose")));
+        super::move_dir(&r.join("loose"), &r.join("local/loose")).unwrap();
+        assert!(r.join("local/loose").is_dir() && !r.join("loose").exists());
+        assert!(super::move_dir(&r.join("local"), &r.join("local/x")).is_err()); // into itself
+        assert!(super::claude_dir_of(std::path::Path::new("D:\\Dev\\a-b")).ends_with("D--Dev-a-b"));
+        let _ = std::fs::remove_dir_all(&r);
     }
     #[test]
     fn merge_settings_layers() {

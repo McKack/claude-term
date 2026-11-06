@@ -225,8 +225,8 @@ pub fn session(app: &AppHandle, st: &Arc<State>, pid: &str) -> Arc<Live> {
 
 async fn run(app: AppHandle, st: Arc<State>, pid: String, live: Arc<Live>) {
     loop {
-        if st.project(&pid).is_none() {
-            return; // removed
+        if st.project(&pid).is_none() || !st.live.lock().unwrap().get(&pid).is_some_and(|l| Arc::ptr_eq(l, &live)) {
+            return; // removed, or its live entry dropped/replaced (move_folder): a new session starts on open
         }
         if let Err(e) = connect_and_serve(&app, &st, &pid, &live).await {
             *live.conn.lock().unwrap() = None;

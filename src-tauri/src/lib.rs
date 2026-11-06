@@ -604,6 +604,44 @@ fn set_projects_dir(st: St, dir: String) {
     store::save(&cfg);
 }
 
+/// #35: where a folder belongs under the projects root (<owner>/<repo> or local/<name>).
+#[tauri::command(async)]
+fn place_of(st: St, path: String) -> String {
+    let root = store::projects_root(&st.cfg.lock().unwrap());
+    store::place_of(&root, &path).to_string_lossy().into()
+}
+
+/// #35/#36: projects found under `dir` ("" = projects root): path, where it belongs, and its project id if added.
+#[tauri::command(async)]
+fn scan_folder(st: St, dir: String) -> Vec<Value> {
+    let root = store::projects_root(&st.cfg.lock().unwrap());
+    let base = if dir.trim().is_empty() { root.clone() } else { std::path::PathBuf::from(dir.trim()) };
+    let ps: Vec<(String, String)> = st.cfg.lock().unwrap().projects.iter().map(|p| (p.id.clone(), p.path.clone())).collect();
+    store::scan_projects(&base).into_iter().map(|d| {
+        let s = d.to_string_lossy().to_string();
+        let t = store::place_of(&root, &s);
+        let pid = ps.iter().find(|(_, p)| store::same_path(std::path::Path::new(p), &d)).map(|x| x.0.clone());
+        json!({"path": s, "name": d.file_name().map(|n| n.to_string_lossy().to_string()), "target": t.to_string_lossy(), "placed": store::same_path(&t, &d), "project": pid})
+    }).collect()
+}
+
+/// #35: move a folder; if it's a project: refused mid-turn, its session is closed first (Windows locks a running cwd),
+/// path updated after. The page reopens it.
+#[tauri::command]
+async fn move_folder(st: St<'_>, from: String, to: String) -> R<String> {
+    let pid = st.cfg.lock().unwrap().projects.iter().find(|p| store::same_path(std::path::Path::new(&p.path), std::path::Path::new(&from))).map(|p| (p.id.clone(), p.working));
+    if let Some((pid, working)) = &pid {
+        if *working { return Err("a turn is running in this project: move it when it's idle".into()); }
+        if let Some(l) = st.live.lock().unwrap().remove(pid) { l.inbox.front(vec![Input::Reconnect]); } // loop ends (like remove_project)
+        claude::stop_run(pid);
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await; // child exits, releases the folder
+    }
+    let (f, t) = (std::path::PathBuf::from(&from), std::path::PathBuf::from(&to));
+    tauri::async_runtime::spawn_blocking(move || store::move_dir(&f, &t)).await.map_err(|e| e.to_string())??;
+    if let Some((pid, _)) = pid { st.with_project(&pid, |p| p.path = to.clone()); }
+    Ok(to)
+}
+
 /// A new, local-only project: <root>/local/<name> (publish it to GitHub later from the GitHub tab).
 #[tauri::command(async)]
 fn new_local(st: St, name: String) -> R<Value> {
@@ -1429,7 +1467,7 @@ pub fn run() {
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
-            test_notify, install, deps, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
+            test_notify, install, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
