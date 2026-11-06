@@ -295,7 +295,7 @@ pre.diff .ctx { color:var(--faint); }
 /* Continue ribbon: 4% narrower, bottom 14px tucked behind the composer (z above → its shadow falls on it); .tuck = half
    hidden (readyPeek: slides up on show, tucks after 4s w/o hover; click while tucked = pull up) */
 #ready { margin:0 2% -22px; padding:5px 6px 19px 14px; gap:10px; font-size:13.5px; transition:margin-bottom .3s ease; }
-#ready.tuck { margin-bottom:-41px; cursor:pointer; } #ready #contBtn { padding:3px 14px; font-size:13px; min-height:0; }
+#ready.tuck { margin-bottom:-34px; align-items:flex-start; padding-top:4px; cursor:pointer; } #ready.tuck #readytext { padding-top:1px; } /* top-aligned ∵ centred text got cut mid-line */ #ready #contBtn { padding:3px 14px; font-size:13px; min-height:0; }
 #composer { position:relative; z-index:1; }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
 #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 60%, var(--line2)); }
