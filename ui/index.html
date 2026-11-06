@@ -379,12 +379,12 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
 .msg .tlist .ti { font-size:inherit; }
-.qdrag { flex:none; border:0; background:none; color:var(--faint); cursor:grab; padding:0 2px; font-size:14px; line-height:1.2; opacity:0; touch-action:none; }
+.qdrag { flex:none; align-self:center; border:0; background:none; color:var(--faint); cursor:grab; padding:0 2px; font-size:14px; line-height:1.2; opacity:0; touch-action:none; }
 .ti:hover > .qdrag, .ti.sortable-fallback > .qdrag { opacity:1; }
 /* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
 .ti.qghost { background:color-mix(in srgb, var(--accent) 14%, transparent); outline:1px dashed var(--accent); outline-offset:-1px; border-radius:6px; }
 .ti.qghost > * { opacity:.35; } .ti.sortable-fallback { opacity:.95 !important; background:var(--card); box-shadow:0 6px 18px #0004; border-radius:6px; cursor:grabbing; }
-.ti.sug > input { display:none; } .ti.sug > .ib { flex:none; padding:0 2px; }
+.ti.sug > svg:first-child { flex:none; color:var(--accent); margin-top:calc((1lh - 16px) / 2); } .ti.sug > .ib { flex:none; padding:0 2px; } /* sparkle centred on line 1 */
 .ti.working .tt { color:transparent; background:linear-gradient(90deg, var(--accent) 25%, color-mix(in srgb, var(--accent) 35%, var(--text)) 50%, var(--accent) 75%) 0 0/200% 100%;
   -webkit-background-clip:text; background-clip:text; animation:shimmer 1.8s linear infinite; } /* Claude works on it: Working… pill's shimmer, on the text */
 .ti.working > input { outline:1.5px solid var(--accent); outline-offset:-1.5px; border-radius:3px; } /* unchecked box ignores accent-color → outline tints it */
@@ -630,7 +630,7 @@ function md(src) {
       .split(/\n{2,}/).map(p => p.trim() && (p.startsWith('<div class="tlist"') ? p : `<p>${p.trim().replace(/\n/g, '<br>')}</p>`)).join('')).join('');
 }
 // one task row everywhere (chat lists, Plan tab, Next pill, team tasks): h = HTML; checkable only when `on` (onchange code)
-const tli = (h, {done, on, cls = '', tip, end = ''} = {}) => `<div class="ti ${cls}"${tip ? ` title="${esc(tip)}"` : ''}><input type="checkbox"${done ? ' checked' : ''}${on ? ` onchange="${on}"` : ' disabled'}><span class="tt">${h}</span>${end}</div>`; // end: unclamped tail (buttons)
+const tli = (h, {done, on, cls = '', tip, end = ''} = {}) => `<div class="ti ${cls}"${tip ? ` title="${esc(tip)}"` : ''}>${/\bsug\b/.test(cls) ? icon('sparkle') /* AI suggestion mark ≠ checkbox */ : `<input type="checkbox"${done ? ' checked' : ''}${on ? ` onchange="${on}"` : ' disabled'}>`}<span class="tt">${h}</span>${end}</div>`; // end: unclamped tail (buttons)
 document.addEventListener('click', e => { const r = e.target.closest('.ti'); if (r && !e.target.closest('input,a,button') && !getSelection().toString()) r.classList.toggle('open'); });
 // shell cmd → parts at ; && || | newline OUTSIDE quotes (same as claude::split_cmd; sed 's/a;b/' stays one part)
 function splitCmd(c) {
