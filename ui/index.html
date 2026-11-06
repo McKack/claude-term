@@ -2711,15 +2711,16 @@ async function preset(file, name) {
   drawEnv();
 }
 
-// ---- settings: GitHub · Connections & Skills · Agents · AI accounts · Notifications ----
-// #38 order: who + what (Accounts, Projects, GitHub) | what the AI gets + Clauracle itself (divider before cx)
-const PAGES = {ai: ['user', 'Accounts'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Extensions'], agents: ['bot', 'Agents'], look: ['sliders', 'Appearance'], notify: ['bell', 'Notifications']};
+// ---- settings: Accounts (AI + GitHub) · Projects | Extensions (cx, agents, deps) · Appearance · Notifications ----
+// #38 order: who + what | what the AI gets + Clauracle itself (divider before cx)
+// #59: GitHub folded into Accounts, Agents into Extensions; old page keys still open their new home
+const PAGES = {ai: ['user', 'Accounts'], projects: ['folder', 'Projects'], cx: ['plug', 'Extensions'], look: ['sliders', 'Appearance'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
 // GitHub accounts / catalog changed: drop the cache and load again
 const reloadSettings = p => { SET = null; return openSettings(p); };
 async function openSettings(p) {
   const same = !p || p === page; // re-render of the same tab keeps its scroll
-  if (p) page = p;
+  if (p) page = {gh: 'ai', agents: 'cx'}[p] || p;
   if (!$('dlg').open) dlg('<p class="dim" style="padding:20px">Loading… (the first time asks Claude Code which connections it has)</p>', 'prefs');
   if (!SET || !AGENTS) [SET, AGENTS] = await Promise.all([call('settings'), call('agents')]);
   else if (same) await refresh(); // after a change: state is a cheap in-process read
@@ -2727,8 +2728,8 @@ async function openSettings(p) {
   const scroll = $('dlg').querySelector('.body')?.scrollTop;
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `${k === 'cx' ? '<i class="rsep"></i>' : ''}<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
-    <div class="body">${page === 'projects' ? '' : `<h2 class="row">${PAGES[page][1]}${page === 'agents' ? `<span class="grow"></span>${sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')}` : ''}</h2>`}
-    ${{look: lookPage, projects: projectsPage, gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
+    <div class="body">${page === 'projects' ? '' : `<h2 class="row">${PAGES[page][1]}</h2>`}
+    ${{look: lookPage, projects: projectsPage, cx: cxPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
 }
 function ghPage() {
@@ -2824,6 +2825,8 @@ function cxPage() {
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
     <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => reloadSettings())">${icon('loop')}Rescan</button></p>
     ${cxGroup('g-cx', 'Connections &amp; Skills', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}
+    ${fold('g-agents', 'Helper agents', optRow('Give helper agents to your AI', '', sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')) + agentsPage(),
+      S.agents_on ? `${AGENTS.filter(a => a.on).length}/${AGENTS.length}` : 'off')}
     ${fold('g-deps', 'Dependencies', '<div id="depsBox"><p class="dim" style="margin:0">Checking…</p></div>', 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}`;
 }
 /* Dependencies (#28): toolchains for local builds of the picked target platforms (store::deps, 60s cache). Missing → AI installs it
@@ -2850,7 +2853,7 @@ async function depsAi(k) {
   closeDlg(); DEPSC = null; sendNow(cur, {text, atts: []});
 }
 function agentsPage() {
-  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to your AI until you switch them on (top right).'}</p>`
+  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to your AI until you switch them on above.'}</p>`
     + `<div style="${S.agents_on ? '' : 'opacity:.5'}">` + AGENTS.map((a, i) => `<div class="agent"><div class="row">${sw(a.on, `agentSet(${i}, 'on', this.checked)`)}<input class="mono" value="${esc(a.name)}" style="width:160px" onchange="agentSet(${i}, 'name', this.value.trim())">
         <select onchange="agentSet(${i}, 'model', this.value)">${options({haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus', inherit: 'Same as session'}, a.model || 'inherit')}</select>
         <span class="grow"></span><button class="ib" title="Remove" onclick="AGENTS.splice(${i},1); saveAgents()">${icon('x')}</button></div>
@@ -2880,7 +2883,8 @@ function aiPage() {
       ${cxGroup('a-cx', 'Connections &amp; Skills for new projects', a.id, a)}${cxFold('a-plugin', 'Plugins & mods for new projects', 'plugin', a.id, a)}
       <div class="btns"><button class="btn" onclick="csAcct('${esc(a.id)}')">${icon('sliders')}Advanced AI settings</button><span class="grow"></span>${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
-    + `<div class="label" style="margin-top:18px">Lessons</div>
+    + `<div class="label" style="margin-top:18px">GitHub accounts</div>${ghPage()}
+    <div class="label" style="margin-top:18px">Lessons</div>
     <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules your AI records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
     <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
       onchange="call('set_lessons', {lessons: this.value.split('\\n')}).then(refresh)">${esc((S.lessons || []).join('\n'))}</textarea>`;
