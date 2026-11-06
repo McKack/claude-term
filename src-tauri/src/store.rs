@@ -984,8 +984,8 @@ pub fn builds(dir: &str) -> Vec<serde_json::Value> {
 }
 
 // ---- disk: build/cache folders a build regenerates. Safety: only fixed names AND git-ignored (no git → never touched) ----
-const CACHE_DIRS: [&str; 12] = ["target", "src-tauri/target", "dist", "build", "out", ".next", ".nuxt", ".turbo", ".parcel-cache",
-    ".gradle", "node_modules/.cache", ".pytest_cache"];
+const CACHE_DIRS: [&str; 17] = ["target", "src-tauri/target", "dist", "build", "out", ".next", ".nuxt", ".turbo", ".parcel-cache",
+    ".gradle", "node_modules/.cache", ".pytest_cache", ".mypy_cache", ".ruff_cache", "coverage", "test-results", "playwright-report"];
 pub const IDLE_CLEAN_DAYS: u64 = 14; // ponytail: fixed; a setting if someone wants caches kept longer
 
 fn dir_size(p: &Path) -> u64 {
@@ -1046,6 +1046,67 @@ pub fn clean(dir: &str, which: &[String]) -> u64 {
 pub fn idle_days(dir: &str) -> Option<u64> {
     let m = std::fs::metadata(Path::new(dir).join(".git/index")).ok()?.modified().ok()?;
     Some(m.elapsed().ok()?.as_secs() / 86400)
+}
+
+// ---- Storage Janitor (#26): startup + every JANITOR_EVERY. Rules: idle ≥ IDLE_CLEAN_DAYS → clean; caches > CACHE_CAP → clean;
+// drive low (free < max(10 GB, 10%)) → clean most-idle projects first till not low, then old Claude transcripts. ----
+pub const JANITOR_EVERY: u64 = 6 * 3600;
+const CACHE_CAP: u64 = 10 << 30; // ponytail: fixed caps; settings if someone needs other numbers
+const GB: u64 = 1 << 30;
+
+/// (free, total) bytes of the drive holding `dir`.
+#[cfg(windows)]
+pub fn disk_free(dir: &str) -> Option<(u64, u64)> {
+    use std::os::windows::ffi::OsStrExt;
+    let w: Vec<u16> = std::ffi::OsStr::new(dir).encode_wide().chain([0]).collect();
+    let (mut free, mut total) = (0u64, 0u64);
+    // SAFETY: w is NUL-terminated; out-params are valid u64s
+    let ok = unsafe { windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(w.as_ptr(), &mut free, &mut total, std::ptr::null_mut()) };
+    (ok != 0).then_some((free, total))
+}
+#[cfg(not(windows))]
+pub fn disk_free(dir: &str) -> Option<(u64, u64)> {
+    let o = run("df", &["-Pk", dir], None, &[]); // POSIX: 2nd line = fs total used avail …, in KiB
+    let f: Vec<u64> = o.stdout.lines().nth(1)?.split_whitespace().skip(1).take(3).filter_map(|x| x.parse().ok()).collect();
+    (f.len() == 3).then(|| (f[2] * 1024, f[0] * 1024))
+}
+pub fn disk_low(dir: &str) -> bool { disk_free(dir).is_some_and(|(f, t)| f < (10 * GB).max(t / 10)) }
+
+/// One janitor pass over (path, turn running → left alone); keep = session ids Clauracle resumes. Returns bytes freed.
+pub fn janitor(projects: &[(String, bool)], keep_sessions: &[String]) -> u64 {
+    let mut freed = 0;
+    let mut idle: Vec<(u64, &String)> = projects.iter().filter(|(_, busy)| !busy).map(|(d, _)| (idle_days(d).unwrap_or(0), d)).collect();
+    idle.sort_by(|a, b| b.0.cmp(&a.0)); // most idle first
+    for (days, d) in &idle {
+        let total: u64 = caches(d).iter().map(|c| c.1).sum();
+        if total > 0 && (*days >= IDLE_CLEAN_DAYS || total > CACHE_CAP || disk_low(d)) { freed += clean(d, &[]); }
+    }
+    freed + claude_clean(keep_sessions)
+}
+
+/// Claude Code leftovers: installer versions but the newest (it keeps several, ~300 MB each); when the home drive is low,
+/// transcripts (projects/*/<uuid>.jsonl + <uuid>/ dir) untouched 14+ days that no Clauracle project resumes.
+fn claude_clean(keep: &[String]) -> u64 {
+    let Some(home) = dirs::home_dir() else { return 0 };
+    let mut freed = 0;
+    let mut vs: Vec<_> = std::fs::read_dir(home.join(".local/share/claude/versions")).into_iter().flatten().flatten()
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path()))).collect();
+    vs.sort();
+    vs.pop(); // newest stays (a running older one fails to delete on Windows: fine)
+    for (_, p) in vs { let n = p.metadata().map_or(0, |m| m.len()); if std::fs::remove_file(&p).is_ok() { freed += n; } }
+    if !disk_low(&home.to_string_lossy()) { return freed; }
+    let old = |p: &Path| p.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|e| e.as_secs() > 14 * 86400);
+    for proj in std::fs::read_dir(home.join(".claude/projects")).into_iter().flatten().flatten() {
+        for f in std::fs::read_dir(proj.path()).into_iter().flatten().flatten().map(|e| e.path()) {
+            let Some(id) = f.file_stem().map(|s| s.to_string_lossy().to_string()) else { continue };
+            if f.extension().is_none_or(|x| x != "jsonl") || keep.contains(&id) || !old(&f) { continue; }
+            let n = f.metadata().map_or(0, |m| m.len());
+            if std::fs::remove_file(&f).is_ok() { freed += n; }
+            let sub = proj.path().join(&id); // subagent transcripts / tool results of that session
+            if sub.is_dir() { freed += dir_size(&sub); let _ = std::fs::remove_dir_all(sub); }
+        }
+    }
+    freed
 }
 
 /// GitHub release `tag` with `files` attached and notes generated from the commits since the last one.
@@ -1295,6 +1356,11 @@ mod tests {
         assert_eq!(super::clean(&s, &[]), 5);
         assert!(!d.join("target").exists() && d.join("dist/keep").exists());
         let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn disk_free_reads_the_drive() {
+        let (f, t) = super::disk_free(&std::env::temp_dir().to_string_lossy()).expect("free space");
+        assert!(f > 0 && f <= t);
     }
     #[test]
     fn default_nicks_count_up() {

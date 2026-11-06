@@ -27,7 +27,7 @@ dirs = "5"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] } # Browser tab: phone-preview QR
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects"] } # already in the tree via tauri: kill-on-close job for children
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_Storage_FileSystem"] } # already in the tree via tauri: kill-on-close job for children
 
 [profile.release]
 opt-level = "s"

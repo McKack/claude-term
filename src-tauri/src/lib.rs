@@ -1372,11 +1372,19 @@ pub fn run() {
             claude::resume_interrupted(app.handle(), &st);
             // warm the slow lookups so Settings opens instantly: gh accounts, and the catalog on a first run
             let st2 = st.clone();
-            // housekeeping: old update download; caches of projects idle ≥ IDLE_CLEAN_DAYS (a build regenerates them)
-            let dirs: Vec<String> = st.cfg.lock().unwrap().projects.iter().map(|p| p.path.clone()).collect();
-            tauri::async_runtime::spawn_blocking(move || {
+            // housekeeping: old update download; Storage Janitor now + every JANITOR_EVERY (rules: store::janitor)
+            let st3 = st.clone();
+            std::thread::spawn(move || {
                 let _ = std::fs::remove_dir_all(std::env::temp_dir().join("clauracle-update"));
-                for d in dirs.iter().filter(|d| store::idle_days(d).map_or(false, |n| n >= store::IDLE_CLEAN_DAYS)) { store::clean(d, &[]); }
+                loop {
+                    let (ps, keep): (Vec<(String, bool)>, Vec<String>) = {
+                        let c = st3.cfg.lock().unwrap();
+                        (c.projects.iter().map(|p| (p.path.clone(), p.working)).collect(),
+                         c.projects.iter().flat_map(|p| [p.session.clone(), p.prev_session.clone()]).flatten().collect())
+                    };
+                    store::janitor(&ps, &keep);
+                    std::thread::sleep(std::time::Duration::from_secs(store::JANITOR_EVERY));
+                }
             });
             tauri::async_runtime::spawn(async move {
                 let _ = tauri::async_runtime::spawn_blocking(store::gh_users).await;

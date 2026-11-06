@@ -1688,7 +1688,7 @@ function projectsPage() {
       <span>After each task</span><select onchange="setBuild('after', this.value)">${options({'': 'Nothing', build: 'Build', build_run: 'Build + run', build_deploy: 'Build + deploy'}, p.build.after)}</select>
       <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to the AI to fix</small></label></div>`,
       ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3')}
-    ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Cleaned automatically after 14 days without commits.</p>
+    ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Storage Janitor cleans them on its own: after 14 days without commits, over 10 GB, or when the drive runs low (also old Claude Code versions and, on a low drive, Claude transcripts older than 14 days).</p>
       <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
     ${cxFold('p-mcp', 'Connections', 'mcp', 'project:' + p.id, p)}${cxFold('p-skill', 'Skills', 'skill', 'project:' + p.id, p)}${cxFold('p-plugin', 'Plugins & mods', 'plugin', 'project:' + p.id, p)}
     <div class="btns" style="justify-content:space-between"><button class="btn" onclick="removeProject()">Remove project</button><button class="btn primary" onclick="closeDlg()">Done</button></div></div></div>`;
