@@ -573,7 +573,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <script src="sortable.min.js"></script>
 <script>
 const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
-let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'gh', mp = null;
+let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'ai', mp = null;
 const ctx = (() => { try { return JSON.parse(localStorage.ctx || '{}'); } catch { return {}; } })();
 const saveCtx = () => { try { localStorage.ctx = JSON.stringify(ctx); localStorage.tok = JSON.stringify(TOK); } catch {} };
 // token estimates per pid: now = context tokens (get_context_usage), drop = Σ context cleared by clear-continue,
@@ -2570,7 +2570,8 @@ async function preset(file, name) {
 }
 
 // ---- settings: GitHub · Connections & Skills · Agents · AI accounts · Notifications ----
-const PAGES = {look: ['sliders', 'Appearance'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections & Skills'], agents: ['bot', 'Agents'], ai: ['user', 'Accounts'], notify: ['bell', 'Notifications']};
+// #38 order: who + what (Accounts, Projects, GitHub) | what the AI gets + Clauracle itself (divider before cx)
+const PAGES = {ai: ['user', 'Accounts'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections & Skills'], agents: ['bot', 'Agents'], look: ['sliders', 'Appearance'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
 // GitHub accounts / catalog changed: drop the cache and load again
 const reloadSettings = p => { SET = null; return openSettings(p); };
@@ -2582,7 +2583,7 @@ async function openSettings(p) {
   else if (same) await refresh(); // after a change: state is a cheap in-process read
   ghUsers = SET.gh_users;
   const scroll = $('dlg').querySelector('.body')?.scrollTop;
-  dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
+  dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `${k === 'cx' ? '<i class="rsep"></i>' : ''}<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="body">${page === 'projects' ? '' : `<h2 class="row">${PAGES[page][1]}${page === 'agents' ? `<span class="grow"></span>${sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')}` : ''}</h2>`}
     ${{look: lookPage, projects: projectsPage, gh: ghPage, cx: cxPage, agents: agentsPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
