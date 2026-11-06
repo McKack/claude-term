@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Continue ribbon: when a task finishes it stays up longer (9 s) and shimmers twice so it is hard to miss.
 
 - Question cards no longer reset or lose your typing while the AI keeps working.
 - Settings has fewer tabs: GitHub accounts now sit on the Accounts page, helper agents under Extensions.
