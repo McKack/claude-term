@@ -1541,7 +1541,9 @@ function readyPeek() { // drawChrome: just shown
   readyTuck(r);
 }
 const contQ = {}; // pid → Continue clicked mid-turn; runs on turn end (status busy:false)
-const contClick = pid => busy[pid] ? (contQ[pid] = true, drawChrome()) : contGo(pid);
+// #102: click → instant 'Continue: <task>' bubble, display only (never sent); idle-bar path skips it ∵ sendNow already shows its Carry-on bubble
+const contNote = pid => nextUp(pid)[0] && addEntry(pid, {kind: 'user', text: 'Continue: ' + nextUp(pid)[0]});
+const contClick = pid => { const r = busy[pid] || P(pid).ready; busy[pid] ? (contQ[pid] = true, drawChrome()) : contGo(pid); if (r) contNote(pid); };
 function toTasks(pid, texts) {
   triaging[pid] = true;
   call('send', {pid, text: (issueOn(pid) ? TRIAGE_ISSUES : TRIAGE) /* issueOn ∵ issueQ = null until team loads → wrongly PLAN.md */ + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n'), images: [], files: []});
