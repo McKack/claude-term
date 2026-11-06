@@ -1516,14 +1516,14 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
-  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); } /* Plan row 0 Working look on/off */ }
+  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); } /* Plan row 0 Working look on/off */ }
     if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid]; delete triaging[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) contGo(d.pid); else flushQueue(d.pid); }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
-  cleared: () => { if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   pushed: () => { delete GHI[d.pid]; if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
@@ -2089,6 +2089,17 @@ function nextStep(p) {
 // others' (same rule as store::task_queue), in P.order (local; unlisted → after, by number). null → PLAN.md mode / not loaded
 const issueOn = pid => !!(P(pid)?.owner && P(pid)?.gh);
 const isIdea = x => x.labels.some(l => l.name === 'suggestion');
+/* #41 issue a turn works on, per project; localStorage ∵ app swap mid-turn → resumed turn still finishes it. Set on
+   first busy sight (= first open issue), dropped when idle + closed or on clear-continue → "Finishing up #N…" while busy+closed */
+const WORK = (() => { try { return JSON.parse(localStorage.workOn || '{}'); } catch { return {}; } })();
+function workOf(pid, drop) {
+  const iq = issueQ(pid); if (!iq) return;
+  const was = WORK[pid], open = iq.some(x => x.number === was);
+  if (drop || !busy[pid] && was && !open) delete WORK[pid];
+  else if (busy[pid] && !was && iq[0]?.number) WORK[pid] = iq[0].number;
+  if (was !== WORK[pid]) try { localStorage.workOn = JSON.stringify(WORK); } catch {}
+  return WORK[pid];
+}
 function issueQ(pid) {
   if (!issueOn(pid) || !team[pid]?.repo) return null;
   const me = P(pid).gh.toLowerCase(), ord = P(pid).order || [], at = n => { const i = ord.indexOf(n); return !n ? 2e9 : i < 0 ? 1e9 + n : i; }; // n 0 = optimistic "#…" row → end
@@ -3035,6 +3046,7 @@ function drawAtp() {
   const ag = agentsOf(cur), t = todos(cur), run = ag.filter(a => a.running), dn = S.done?.[cur] || [];
   const q = iq ? iq.map(x => `#${x.number} ${x.title}`) : S.queues?.[cur] || [], pl = iq ? [{file: 'Issues', items: q}, ...(S.plans?.[cur] || []).filter(o => o.items.length)] : S.plans?.[cur] || [];
   const open = t.filter(x => x.status !== 'completed'), fin = t.filter(x => x.status === 'completed');
+  const w = workOf(cur), closing = busy[cur] && w && !iq.some(x => x.number === w); // #41 closed but turn still verifying
   const L = a => `<div class="tlist">${a.join('')}</div>`;
   const wt = iq ? teamTasks(cur).filter(isIdea).map(x => `#${x.number} ${x.title}`) : S.waits?.[cur] || [];
   const tasks = ((wt.length && !iq ? `<div class="label" title="${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: your AI noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
@@ -3046,8 +3058,8 @@ function drawAtp() {
         ${!iq && (pl.length > 1 || pl[0].file !== 'PLAN.md') ? `<button class="ib" title="Merge every plan file into PLAN.md\n${estTok()}" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
         ${P().gh && (iq ? S.queues?.[cur]?.length : q.length) ? `<button class="ib" title="File ${iq ? 'PLAN.md\'s leftover tasks' : 'the queue'} as GitHub issues${iq ? ' (removed from PLAN.md after)' : ' (Team tasks)'}" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
-        + L(q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: !i && busy[cur] ? 'working' : '',
-            end: `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⠿</button>`}))).replace('class="tlist"', 'class="tlist" id="qlist"')
+        + L([...(closing ? [tli(`Finishing up #${w}…`, {done: 1, cls: 'working'})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
+            end: `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⠿</button>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"')
         + (iq ? issuesRest() : '')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}${iq ? ' · not issues yet' : ''}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
