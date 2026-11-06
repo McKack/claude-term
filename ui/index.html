@@ -241,6 +241,7 @@ pre.diff .ctx { color:var(--faint); }
 .qp { display:inline-flex; gap:2px; align-items:center; flex:none; max-width:300px; padding:2px 2px 2px 3px; border:1px dashed var(--line2); border-radius:99px; font-size:12.5px; background:var(--card); cursor:pointer; }
 .qp:hover { border-color:var(--accent); } .qp .ib { width:22px; height:22px; } .qp .ib svg { width:13px; height:13px; }
 .qp .qi { display:inline-grid; place-items:center; width:24px; height:20px; border-radius:99px; background:var(--soft); color:var(--accent); flex:none; } .qp .qi svg { width:12px; height:12px; }
+.qp .qa { display:inline-flex; align-items:center; gap:1px; flex:none; color:var(--dim); font-size:11px; } .qp .qa svg { width:13px; height:13px; }
 .qp .qt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; padding:0 4px; }
 #workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; white-space:nowrap; overflow:hidden; } #worktext { font-variant-numeric:tabular-nums; }
 #workpill[hidden], #handpill[hidden] { display:none; }
@@ -1456,7 +1457,7 @@ function sendNow(pid, {text: t, atts: a}) {
 function drawQueue() {
   const q = queue[cur] || [], words = m => (m.text.trim().split(/\s+/).slice(0, 5).join(' ') || m.atts.map(x => x.name).join(', ')) + (m.text.trim().split(/\s+/).length > 5 ? '…' : '');
   $('queue').hidden = !q.length;
-  $('qrow').innerHTML = q.map((m, i) => `<span class="qp" title="${esc(m.text)}" onclick="editQueued(${i})"><span class="qi">${icon('clock')}</span><span class="qt">${esc(words(m))}</span>
+  $('qrow').innerHTML = q.map((m, i) => `<span class="qp" title="${esc(m.text)}" onclick="editQueued(${i})"><span class="qi">${icon('clock')}</span>${m.atts?.length ? `<span class="qa" data-tip="${esc(m.atts.map(x => x.name).join(', '))}">${icon('file')}${m.atts.length > 1 ? m.atts.length : ''}</span>` : ''}<span class="qt">${esc(words(m))}</span>
     <button class="ib" title="Edit (↑ in an empty box)" onclick="event.stopPropagation(); editQueued(${i})">${icon('new')}</button>
     <button class="ib" title="Send now (joins the running turn's inbox)" onclick="event.stopPropagation(); sendNow(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft()">${icon('up')}</button>
     <button class="ib" title="Remove" onclick="event.stopPropagation(); queue[cur].splice(${i},1); drawQueue(); keepDraft()">${icon('x')}</button></span>`).join('');
