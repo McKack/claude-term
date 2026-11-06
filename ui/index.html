@@ -1502,6 +1502,7 @@ function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   line: () => { if (d.kind === 'claude') live[d.pid] = '';
+    if (d.kind === 'tool') issueGuess(d.pid, d); else if (d.result_of) issueResult(d);
     if (d.kind === 'tool' && !d.parent) setDoing(d.pid, 'Running: ' + d.text.replace(/\s+/g, ' ').slice(0, 60), d.id);
     else if (d.result_of && d.result_of === doing[d.pid]?.id) setDoing(d.pid, 'Thinking');
     if (reading[d.pid] && /^(claude|tool|err)$/.test(d.kind)) readNote(d.pid, false); // notes/system lines of the reconnect ≠ the reply
@@ -1965,6 +1966,32 @@ async function pollTeam() {
   if ($('tasksBox')) $('tasksBox').innerHTML = tasksHtml();
 }
 setInterval(pollTeam, 60000);
+/* #33 optimistic issues: the AI's `gh issue create … clauracle …` adds a "#…" row at once (title/labels from the command),
+   its output URL gives the number; `gh issue close N` drops the row at once. Result → pollTeam 3s later replaces all.
+   ponytail: regex over the command text; titles in shell variables ($t) show as the variable until the sync */
+const ghArg = (s, re) => [...s.matchAll(re)].map(m => m[2] ?? m[3] ?? m[4]);
+function issueGuess(pid, d) {
+  const cmd = String(d.detail?.command || ''), t = team[pid];
+  if (!/\bgh\s+issue\s+(create|close|edit|reopen)\b/.test(cmd) || !Array.isArray(t?.tasks)) return;
+  ISSUE_TOOL[d.id] = pid;
+  for (const seg of cmd.split(/\bgh\s+issue\s+create\b/).slice(1)) {
+    if (!/clauracle/.test(seg)) continue;
+    const title = ghArg(seg, /(?:--title|-t)\s+("([^"]*)"|'([^']*)'|(\S+))/g)[0]; if (!title) continue;
+    const labels = ghArg(seg, /(?:--label|-l)\s+("([^"]*)"|'([^']*)'|(\S+))/g).flatMap(l => l.split(',')).map(name => ({name: name.trim(), color: '888'}));
+    t.tasks.push({number: 0, title, url: '', labels, assignees: [], pending: d.id});
+  }
+  for (const m of cmd.matchAll(/\bgh\s+issue\s+close\s+#?(\d+)/g)) t.tasks = t.tasks.filter(x => x.number !== +m[1]);
+  issueRedraw(pid);
+}
+const ISSUE_TOOL = {}; // tool_use id → pid, so its result fills numbers + syncs
+function issueResult(d) {
+  const pid = ISSUE_TOOL[d.result_of]; if (!pid) return; delete ISSUE_TOOL[d.result_of];
+  const nums = [...String(d.text).matchAll(/\/issues\/(\d+)/g)].map(m => +m[1]);
+  (team[pid]?.tasks || []).filter(x => x.pending === d.result_of).forEach((x, i) => { if (nums[i]) x.number = nums[i]; });
+  issueRedraw(pid);
+  setTimeout(() => pid === cur && pollTeam(), 3000);
+}
+const issueRedraw = pid => { if (pid !== cur) return; drawAtp(); if ($('tasksBox')) $('tasksBox').innerHTML = tasksHtml(); };
 const teamTasks = pid => Array.isArray(team[pid]?.tasks) ? team[pid].tasks : [];
 const isDoing = x => x.labels.some(l => l.name === 'in progress') || x.assignees.length;
 // what's next: HANDOVER.md's queue, else free team tasks
@@ -1979,11 +2006,11 @@ const issueOn = pid => !!(P(pid)?.owner && P(pid)?.gh);
 const isIdea = x => x.labels.some(l => l.name === 'suggestion');
 function issueQ(pid) {
   if (!issueOn(pid) || !team[pid]?.repo) return null;
-  const me = P(pid).gh.toLowerCase(), ord = P(pid).order || [], at = n => { const i = ord.indexOf(n); return i < 0 ? 1e9 + n : i; };
+  const me = P(pid).gh.toLowerCase(), ord = P(pid).order || [], at = n => { const i = ord.indexOf(n); return !n ? 2e9 : i < 0 ? 1e9 + n : i; }; // n 0 = optimistic "#…" row → end
   return teamTasks(pid).filter(x => !isIdea(x) && (!x.assignees.length || x.assignees.some(a => a.login.toLowerCase() === me))).sort((a, b) => at(a.number) - at(b.number));
 }
 // Issues list (#15): row = #N link + title + type pills (GitHub colour; `clauracle` hidden ∵ every row has it)
-const issueHtml = x => `<a data-url="${esc(x.url)}">#${x.number}</a> ${esc(x.title)}`
+const issueHtml = x => (x.number ? `<a data-url="${esc(x.url)}">#${x.number}</a> ` : '<span class="faint">#…</span> ') + esc(x.title)
   + x.labels.filter(l => l.name !== 'clauracle').map(l => ` <span class="pill lbl" style="--lc:#${esc(l.color || '888')}">${esc(l.name)}</span>`).join('');
 // after the drag queue: suggestions (Accept/Dismiss), others' issues (who), new-issue field
 const issuesRest = () => { const iq = issueQ(cur), me = (team[cur]?.me || '').toLowerCase();
