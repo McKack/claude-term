@@ -1178,14 +1178,25 @@ pub fn smart_why(dir: &str, base: &str) -> String {
     smart_pick(&stat, &log)
 }
 
+/// Not code: docs and meta files (smart build skip, #92 stale-build check).
+pub fn is_doc(f: &str) -> bool { f.starts_with("docs/") || [".md", ".txt", ".rst", ".adoc", "LICENSE", ".gitignore"].iter().any(|x| f.ends_with(x)) }
+
+/// #92: unix time of the newest commit touching code (≠ docs, ≠ lock files: the post-build commit only bumps Cargo.lock…), 0 = none.
+/// ponytail: last 200 commits; older code change → 0 → no stale warning.
+pub fn code_time(dir: &str) -> u64 {
+    let lock = |f: &str| f.ends_with(".lock") || f.ends_with("-lock.json") || f.ends_with("-lock.yaml");
+    let out = run("git", &["log", "-n", "200", "--format=%x01%ct", "--name-only"], Some(dir), &[]).stdout;
+    out.split('\u{1}').find_map(|c| { let mut l = c.lines(); let t = l.next()?.trim().parse::<u64>().ok()?;
+        l.any(|f| !f.is_empty() && !is_doc(f) && !lock(f)).then_some(t) }).unwrap_or(0)
+}
+
 /// Doc-only → skip; a fix (commit subject words) → build; else ≥30 changed lines or ≥3 code files.
 /// ponytail: heuristic on numstat + subjects; untracked files unseen (Claude commits). Tune thresholds if it nags.
 pub fn smart_pick(numstat: &str, log: &str) -> String {
-    let doc = |f: &str| f.starts_with("docs/") || [".md", ".txt", ".rst", ".adoc", "LICENSE", ".gitignore"].iter().any(|x| f.ends_with(x));
     let (mut files, mut lines) = (0u64, 0u64);
     for l in numstat.lines() {
         let c: Vec<&str> = l.split('\t').collect();
-        if c.len() < 3 || doc(c[2]) { continue; }
+        if c.len() < 3 || is_doc(c[2]) { continue; }
         files += 1;
         lines += c[0].parse::<u64>().unwrap_or(1) + c[1].parse::<u64>().unwrap_or(0); // binary "-" = 1
     }

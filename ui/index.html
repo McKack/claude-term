@@ -1891,6 +1891,7 @@ const RELAI = { // fix prompts: Claude writes/judges, never template
 function relItems(c, p) {
   const v = (c.version || '').replace(/^v/, ''), tv = (c.tag || '').replace(/^v/, ''), ci = c.ci;
   const sign = SECRETS[cur]?.includes('APPLE_CERTIFICATE'), files = relFilesFor(cur, v), {ci: cit, miss, lack} = tgtSplit(p, c, files);
+  const stale = files.filter(f => f.mtime && f.mtime < (c.code_t || 0)); // #92: built before the newest code commit → rebuild before release
   // array order = display order (filter keeps it) → Build stays last whatever the stage
   return [
     {s: 0, id: 'readme', t: 'README written', ok: c.readme >= 10, d: c.readme ? `${c.readme} lines` : 'none'},
@@ -1910,8 +1911,8 @@ function relItems(c, p) {
     {s: 2, id: 'review', t: 'Release review by AI', ai: true},
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
     ...(miss.length ? [{s: 0, id: 'ci_targets', t: 'CI builds the other platforms', ok: false, d: `not in CI: ${miss.map(tgtName).join(', ')}`}] : []),
-    {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length,
-      d: lack.length && files.length ? `missing: ${lack.map(tgtName).join(', ')}` : files.length ? files.map(f => f.name).join(', ') + (cit.length ? ` · CI: ${cit.map(tgtName).join(', ')}` : '') : v ? `no build of v${v} yet` : '',
+    {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length && !stale.length,
+      d: stale.length ? `older than the last code change: ${stale.map(f => f.name).join(', ')}` : lack.length && files.length ? `missing: ${lack.map(tgtName).join(', ')}` : files.length ? files.map(f => f.name).join(', ') + (cit.length ? ` · CI: ${cit.map(tgtName).join(', ')}` : '') : v ? `no build of v${v} yet` : '',
       go: p.build.build ? 'relBuild(this)' : 'openManager(cur)', gl: p.build.build ? 'Build' : 'Set up'},
   ];
 }

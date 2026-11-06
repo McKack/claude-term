@@ -1056,7 +1056,7 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
             .into_iter().filter(|(_, k)| wf.contains(k)).map(|(t, _)| t).collect();
         json!({"readme": readme, "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
                "version": ver.as_ref().map(|v| &v.0), "vfile": ver.as_ref().map(|v| v.1), "tag": if tag.ok { tag.stdout.trim() } else { "" },
-               "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon, "remote": remote,
+               "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon, "remote": remote, "code_t": store::code_time(&p.path),
                "ci": if remote { store::gh_json(&["run", "list", "--limit", "1", "--json", "conclusion,status,workflowName,url"], &p.gh, Some(&p.path)).get(0).cloned() } else { None }})
     }).await.map_err(|e| e.to_string())
 }
