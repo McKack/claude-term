@@ -915,6 +915,9 @@ function drawChrome() {
   const idle = !busy[cur] && !p.ready && p.cont !== 'off' && !queue[cur]?.length && !!logs[cur]?.length;
   const wasHid = $('ready').hidden; if (wasHid) $('ready').classList.add('tuck'); $('ready').hidden = !(p.ready || idle || triaging[cur]);
   if (wasHid && !$('ready').hidden) readyPeek();
+  // #63: task done, Continue waiting → pop up once per ready; tucks back by the usual rules (4s timer, click elsewhere, focus)
+  if (p.ready && !readyWas[cur] && !$('ready').hidden) { $('ready').classList.remove('tuck'); readyLater(4000); }
+  readyWas[cur] = !!p.ready;
   $('contBtn').hidden = !p.ready && !next.length && !triaging[cur];
   // plan being re-sorted → Wait…; turn running → Queue (contQ: Continue runs when it ends) → Queued
   $('contBtn').disabled = !!triaging[cur] || !!contQ[cur]; $('contBtn').textContent = triaging[cur] ? 'Wait…' : contQ[cur] ? 'Queued' : busy[cur] ? 'Queue' : 'Continue';
@@ -1472,7 +1475,7 @@ const triaging = {}; // pid → plan-only turn running; Continue follows it
 /* ribbon: shows tucked (half under the composer); click = pull up; tucks again on any click elsewhere, composer focus,
    4s off it or 8s on it without moving. Tucked = children pointer-events:none (CSS) → a click only reveals.
    --tk from live height ∵ text/wrap changes it; tucking also folds .full (a kept .full once blocked tucking for good) */
-let readyT = 0;
+let readyT = 0; const readyWas = {}; // pid → p.ready at last draw (#63 pop-up edge)
 function readyTuck(r = $('ready')) { clearTimeout(readyT); if (r.hidden) return r.classList.add('tuck'); /* height 0 → bad --tk */ $('readytext').classList.remove('full'); r.style.setProperty('--tk', `${17 - r.offsetHeight}px`) /* 25px showing: -(h - 25) - 8px gap; h same tucked or not ∴ same depth from any trigger */; r.classList.add('tuck'); }
 const readyLater = ms => { clearTimeout(readyT); readyT = setTimeout(() => !$('ready').hidden && readyTuck(), ms); };
 function readyPeek() { // drawChrome: just shown
