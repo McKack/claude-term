@@ -2146,7 +2146,7 @@ function issueResult(d) {
   setTimeout(() => pid === cur && pollTeam(), 3000);
 }
 const issueRedraw = pid => { if (pid !== cur) return; drawAtp(); if ($('tasksBox')) $('tasksBox').innerHTML = tasksHtml(); };
-const teamTasks = pid => Array.isArray(team[pid]?.tasks) ? team[pid].tasks : [];
+const teamTasks = pid => Array.isArray(team[pid]?.tasks) ? team[pid].tasks.filter(x => !WDONE.has(x.number)) : []; // #80 closed here → gone now, gh list lags
 const isDoing = x => x.labels.some(l => l.name === 'in progress') || x.assignees.length;
 // what's next: HANDOVER.md's queue, else free team tasks
 // "All tasks done" presets: [button, prompt sent]
@@ -2223,7 +2223,7 @@ function tasksHtml() {
 }
 async function taskDo(action, arg) {
   if (!String(arg).trim()) return;
-  try { await call('task_do', {pid: cur, action, arg: String(arg)}); } catch (e) { $('tasksBox') ? $('tasksBox').insertAdjacentHTML('afterbegin', `<div class="warn">${esc(e)}</div>`) : addEntry(cur, {kind: 'err', text: String(e)}); return; }
+  try { await call('task_do', {pid: cur, action, arg: String(arg)}); if (/^(done|dismiss)$/.test(action)) WDONE.add(+arg); } catch (e) { $('tasksBox') ? $('tasksBox').insertAdjacentHTML('afterbegin', `<div class="warn">${esc(e)}</div>`) : addEntry(cur, {kind: 'err', text: String(e)}); return; }
   await pollTeam(); drawAtp();
 }
 // claim it on GitHub (others see it's taken), then hand it to Claude
