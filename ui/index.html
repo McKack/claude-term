@@ -347,6 +347,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .stat { text-align:center; line-height:1.15; padding:2px 0; } .stat b { display:block; font-size:14px; font-weight:600; }
 .stat small { font-size:10px; color:var(--faint); }
 #rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
+[data-dot] { position:relative; } [data-dot]::after { content:''; position:absolute; top:3px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--dotc, var(--accent)); box-shadow:0 0 0 2px var(--side); }
 .ptabs { display:inline-flex; gap:2px; }
 .rsep { flex:none; width:1px; margin:4px 4px; background:var(--line2); }
 #rtabs button, #stabs button, .ptabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; flex:none; }
@@ -554,8 +555,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="rtabs">
     <button data-t="gh" onclick="rightTab('gh')" title="GitHub: plan, tasks, repo"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
     <button data-t="agents" onclick="rightTab('agents')" title="Agents"><svg class="i"><use href="#i-bot"/></svg><span>Agents</span></button>
-    <button data-t="env" onclick="rightTab('env')" title=".env"><svg class="i"><use href="#i-key"/></svg><span>.env</span></button>
-    <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
+    <button data-t="svc" onclick="rightTab('svc')" title="Services &amp; Secrets"><svg class="i"><use href="#i-layers"/></svg><span>Services &amp; Secrets</span></button>
     <button data-t="build" onclick="rightTab('build')" title="Build &amp; Release"><svg class="i"><use href="#i-hammer"/></svg><span>Build &amp; Release</span></button>
     <i class="rsep"></i><!-- workspace group (Code, Browser) always behind this line -->
     <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
@@ -1509,7 +1509,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
-  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; if (!cur) drawHome(); else if (flip && d.pid === cur) drawAtp(); /* Plan row 0 Working look on/off */ }
+  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); } /* Plan row 0 Working look on/off */ }
     if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid]; delete triaging[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) contGo(d.pid); else flushQueue(d.pid); }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
@@ -1527,6 +1527,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
+    if (d.step === 'build' && d.done) { BUILT[d.pid] = 1; if (d.pid === cur) tabDots(); } /* green dot till Build & Release is opened */
     if (d.step === 'build' && d.done != null) { delete GHI[d.pid]; delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
@@ -1716,6 +1717,19 @@ async function removeProject() {
 
 // ---- right panel: GitHub · Build · .env · Code · Browser ----
 function toggleRight() { UI.rc = !UI.rc; layout(); drawRight(); }
+/* #30 tab dots (tabs + collapsed rail, by data-t): gh = a turn is working (issue/task in progress); build = a build
+   finished OK and Build & Release not opened since (BUILT); svc = a service step/key still open (SVCDOT, from env_list once) */
+const BUILT = {}, SVCDOT = {};
+function tabDots() {
+  const p = cur && P(); if (!p) return;
+  if (tab === 'build' && !$('right').hidden && !UI.rc) delete BUILT[cur];
+  if (SVCDOT[cur] === undefined && svcOf(p).length) { SVCDOT[cur] = false; const pid = cur;
+    call('env_list', {pid}).then(files => { if (pid !== cur) return delete SVCDOT[pid];
+      envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))}; SVCDOT[pid] = svcOf(p).some(id => !svcDone(id)); tabDots(); }).catch(() => {}); }
+  const dot = {gh: busy[cur] && 'var(--accent)', build: BUILT[cur] && 'var(--ok)', svc: SVCDOT[cur] && 'var(--err)'};
+  document.querySelectorAll('#rtabs button[data-t], #rrail button[data-t]').forEach(b => { const c = dot[b.dataset.t];
+    if (c) { b.dataset.dot = ''; b.style.setProperty('--dotc', c); } else delete b.dataset.dot; });
+}
 function rightTab(t) { tab = UI.tab = t; try { localStorage.ui = JSON.stringify(UI); } catch {} drawRight(); } // restored at start (UI.tab)
 // Build auto-setup: commands guessed from project files (Rust build_guess, no tokens) → confirm; cached per project
 const GUESS = {};
@@ -1867,13 +1881,13 @@ async function buildHtml(p, has, live, force) {
 }
 async function drawRight(force) {
   if ($('right').hidden || !cur) return;
-  if (UI.rc) return drawRRail();
+  if (UI.rc) { drawRRail(); return tabDots(); }
   document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+  tabDots();
   const box = $('rbody'), p = P();
   if (tab === 'agents') { box.innerHTML = '<div id="atp"></div>'; return drawAtp(); }
   if (tab === 'code') return drawCode();
   if (tab === 'web') return drawWeb();
-  if (tab === 'env') return drawEnv();
   if (tab === 'svc') return drawServices();
   if (tab === 'build') {
     /* 2 passes like GHI: cached-only render at once (stale ok, missing → "Checking…"), then fetch what's stale
@@ -2073,7 +2087,7 @@ function badgeFiles() {
 }
 let envAt = null;
 function previewFile(rel) {
-  if (/^\.env(\.|$)/.test(rel.split('/').pop())) { envAt = rel; expandRight('env'); return; }
+  if (/^\.env(\.|$)/.test(rel.split('/').pop())) { envAt = rel; expandRight('svc'); return; }
   codeAt[cur] = {file: rel}; expandRight('code'); drawFiles();
 }
 async function drawCode() {
@@ -2218,8 +2232,9 @@ async function drawServices() {
   const add = `<button class="ib" title="Add a service" onclick="svcMenu(this)">${icon('plus')}</button>`;
   if (!ids.length) {
     box.innerHTML = sec('Services', `<p class="dim">What this project signs in with, takes payments through or ships to. Each one keeps its links, steps and keys together, and fills .env for you.</p>
-      <button class="btn primary block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`, add);
-    return;
+      <button class="btn primary block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`, add) + secretsFold(files);
+    SVCDOT[cur] = false; tabDots();
+    return envJump(files);
   }
   box.innerHTML = ids.map(id => { const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k));
     return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px"><p class="dim">Asking gcloud…</p></div>' : '')
@@ -2231,7 +2246,7 @@ async function drawServices() {
       + (x.gh === true ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
       `<span class="pill" ${miss.length ? 'style="background:var(--hover);color:var(--dim)"' : ''}>${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
-    + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`
+    + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>` + secretsFold(files)
     // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
     + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services set up.</p><button class="btn primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button></div>
       <button class="newpill" id="newPill" onclick="$('nextStep').scrollIntoView({behavior: 'smooth', block: 'end'})">${icon('down')}New!</button>` : '');
@@ -2239,6 +2254,14 @@ async function drawServices() {
   if (ids.includes('google')) drawCloud();
   ids.filter(id => SERVICES[id].gh).forEach(id => secCount(id));
   if (ids.includes('macsign') && !envKeys.have.has('APPLE_CERTIFICATE') && !cerT) cerWatch();
+  SVCDOT[cur] = ids.some(id => !svcDone(id)); tabDots();
+  envJump(files);
+}
+// opened from a .env file in the tree (previewFile): open Secrets, scroll to + mark that file
+function envJump(files) {
+  if (!envAt) return;
+  const i = files.findIndex(f => f.file === envAt), el = $('rbody').querySelectorAll('.envfile')[i];
+  if (el) { el.closest('details').open = true; el.scrollIntoView({block: 'start'}); el.style.borderColor = 'var(--accent)'; } envAt = null;
 }
 // step wizards: progress per project+service in localStorage `steps` {pid: {svc: {d: [done idx], csr}}} ∵ UI-only state, survives restarts
 const STEPS = (() => { try { return JSON.parse(localStorage.steps || '{}'); } catch { return {}; } })();
@@ -2407,9 +2430,12 @@ const PRESETS = {
   'Database': ['DATABASE_URL'],
 };
 const shown = {};
-async function drawEnv() {
-  const files = await call('env_list', {pid: cur}), box = $('rbody');
-  box.innerHTML = `<p class="dim" style="margin-top:0;font-size:13px">Values stay hidden until you show them${P().hide_env ? '. Your AI can\'t read these files' : ''}.</p>`
+// #31: .env lives in Services & Secrets as the "Secrets" fold (closed by default); redraw = the whole Services tab
+const drawEnv = () => drawServices();
+const secretsFold = files => fold('svc-secrets', 'Secrets', envHtml(files), 0,
+  `<span class="pill" style="background:var(--hover);color:var(--dim)">${files.length} file${files.length === 1 ? '' : 's'}</span>`);
+function envHtml(files) {
+  return `<p class="dim" style="margin-top:0;font-size:13px">.env files. Values stay hidden until you show them${P().hide_env ? '. Your AI can\'t read these files' : ''}.</p>`
     + files.map(f => `<div class="envfile"><div class="row"><b class="grow mono">${esc(f.file)}</b>
       ${f.ignored === false ? `<span class="pill" style="color:var(--err)">not git-ignored</span><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="call('env_ignore', {pid:cur, file:'${esc(f.file)}'}).then(drawEnv)">Ignore it</button>` : f.ignored ? '<small class="ok">git-ignored</small>' : ''}</div>
       ${f.keys.map(([k, v]) => { const id = f.file + ':' + k; return `<div class="kv"><span class="k sel">${esc(k)}</span>
@@ -2418,12 +2444,10 @@ async function drawEnv() {
       <div class="row" style="margin-top:8px"><input class="grow mono" placeholder="NEW_KEY" id="nk-${esc(f.file)}"><button class="btn" onclick="editKey('${esc(f.file)}', $('nk-${esc(f.file)}').value)">Add</button>
       <select onchange="preset('${esc(f.file)}', this.value); this.value=''"><option value="">Preset…</option>${Object.keys(PRESETS).map(k => `<option>${k}</option>`).join('')}</select></div></div>`).join('')
     + `<div class="row"><input id="newEnv" class="mono" value="${files.length ? '.env.local' : '.env'}" style="width:130px"><button class="btn" onclick="setKey($('newEnv').value, 'EXAMPLE_KEY', '')">New file</button></div>`;
-  if (envAt) { const i = files.findIndex(f => f.file === envAt), el = box.querySelectorAll('.envfile')[i];
-    if (el) { el.scrollIntoView({block: 'start'}); el.style.borderColor = 'var(--accent)'; } envAt = null; }
 }
 async function setKey(file, key, value) {
   try { await call('env_set', {pid: cur, file, key, value}); } catch (e) { say(e); }
-  tab === 'env' ? drawEnv() : drawRight();
+  drawRight();
 }
 function editKey(file, key) {
   if (!key) return;
@@ -2836,7 +2860,7 @@ function barMin(id) {
 const rMin = () => barMin('rtabs'), lMin = () => Math.max(180, barMin('shead'));
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
-if (UI.tab) tab = UI.tab === 'tasks' ? 'gh' : UI.tab; // old Plan tab → GitHub
+if (UI.tab) tab = {tasks: 'gh', env: 'svc'}[UI.tab] || UI.tab; // old Plan tab → GitHub, old .env tab → Services & Secrets
 applyLook();
 function layout() {
   try { localStorage.ui = JSON.stringify(UI); } catch {}
@@ -3016,8 +3040,8 @@ function drawRRail() {
     + (ctx[cur] != null ? stat(ctx[cur] + '%', 'context', 'Context window used') : '')
     + (u.five_hour != null ? stat(u.five_hour + '%', '5h', '5-hour usage') : '')
     + (u.seven_day != null ? stat(u.seven_day + '%', '7d', 'Weekly usage') : '')
-    + '<hr>' + [['gh', 'gh', 'GitHub'], ['agents', 'bot', 'Agents'], ['build', 'hammer', 'Build'], ['env', 'key', '.env'], ['svc', 'layers', 'Services'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
-      .map(([k, i, l]) => `<button class="ib" title="${l}" onclick="expandRight('${k}')">${icon(i)}</button>`).join('');
+    + '<hr>' + [['gh', 'gh', 'GitHub'], ['agents', 'bot', 'Agents'], ['build', 'hammer', 'Build'], ['svc', 'layers', 'Services & Secrets'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
+      .map(([k, i, l]) => `<button class="ib" data-t="${k}" title="${l}" onclick="expandRight('${k}')">${icon(i)}</button>`).join('');
 }
 function expandRight(t) { tab = t; UI.rc = false; layout(); drawRight(); }
 function openFile(abs) {
