@@ -296,9 +296,9 @@ pre.diff .ctx { color:var(--faint); }
    hidden (readyPeek: slides up on show, tucks after 4s w/o hover; click while tucked = pull up) */
 #ready { margin:0 2% -22px; padding:5px 6px 19px 14px; gap:10px; font-size:13.5px; transition:margin-bottom .3s ease, opacity .3s; }
 /* tucked: 26px showing, top-aligned ∵ centred text got cut mid-line; faded + masked toward the composer */
-#ready.tuck { margin-bottom:var(--tk, -34px); align-items:flex-start; padding-top:4px; cursor:pointer; opacity:.7;
+#ready.tuck { margin-bottom:var(--tk, -34px); align-items:flex-start; padding-top:2px; cursor:pointer; opacity:.7;
   -webkit-mask-image:linear-gradient(#000 35%, transparent 72%); mask-image:linear-gradient(#000 35%, transparent 72%); }
-#ready.tuck > * { pointer-events:none; } #ready.tuck #readytext { padding-top:1px; } #ready.tuck > svg { margin-top:4px; }
+#ready.tuck > * { pointer-events:none; } #ready.tuck #readytext { padding-top:1px; } #ready.tuck > svg { margin-top:3px; } #ready.tuck #contBtn { margin-top:8px; } /* button half under the composer */
 #ready > svg { flex:none; } #ready #contBtn { padding:3px 14px; font-size:13px; min-height:0; }
 #composer { position:relative; z-index:1; }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
@@ -1455,7 +1455,7 @@ const triaging = {}; // pid → plan-only turn running; Continue follows it
    4s off it or 8s on it without moving. Tucked = children pointer-events:none (CSS) → a click only reveals.
    --tk from live height ∵ text/wrap changes it; tucking also folds .full (a kept .full once blocked tucking for good) */
 let readyT = 0;
-function readyTuck(r = $('ready')) { clearTimeout(readyT); if (r.hidden) return r.classList.add('tuck'); /* height 0 → bad --tk */ $('readytext').classList.remove('full'); r.style.setProperty('--tk', `${18 - r.offsetHeight}px`) /* 26px showing: -(h - 26) - 8px gap */; r.classList.add('tuck'); }
+function readyTuck(r = $('ready')) { clearTimeout(readyT); if (r.hidden) return r.classList.add('tuck'); /* height 0 → bad --tk */ $('readytext').classList.remove('full'); r.style.setProperty('--tk', `${14 - r.offsetHeight}px`) /* 22px showing: -(h - 22) - 8px gap */; r.classList.add('tuck'); }
 const readyLater = ms => { clearTimeout(readyT); readyT = setTimeout(() => !$('ready').hidden && readyTuck(), ms); };
 function readyPeek() { // drawChrome: just shown
   const r = $('ready');
