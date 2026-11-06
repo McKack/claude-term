@@ -805,7 +805,7 @@ static UI_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0)
 /// then report the top open dialog/popover text (or `show` selector's). Page answers via `ui_reply`. Cards (permission/question) refused.
 async fn ui_tool(app: &AppHandle, a: &Value) -> String {
     use tauri::Manager;
-    let Some(w) = app.get_webview_window("main") else { return "No window.".into() };
+    let Some(w) = app.get_webview("main") else { return "No window.".into() }; // ≠ get_webview_window: None once the Web tab adds its child webview
     let id = UI_N.fetch_add(1, SeqCst);
     let (tx, rx) = tokio::sync::oneshot::channel();
     UI_WAIT.lock().unwrap().push((id, tx));

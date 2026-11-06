@@ -1305,7 +1305,7 @@ fn homepage(exe: String, profile: String) -> String {
 /// Start `exe` (detached, it outlives us) and quit; the new instance resumes cut-off turns (claude::resume_interrupted).
 /// Main window geometry → config (close, quit, restart). Maximized keeps the last normal rect ∵ restore needs it.
 fn save_win(app: &AppHandle) {
-    let (Some(w), Some(st)) = (app.get_webview_window("main"), app.try_state::<Arc<State>>()) else { return };
+    let (Some(w), Some(st)) = (app.get_window("main"), app.try_state::<Arc<State>>()) else { return };
     if w.is_minimized().unwrap_or(false) { return; }
     let max = w.is_maximized().unwrap_or(false);
     let mut cfg = st.cfg.lock().unwrap();
@@ -1319,7 +1319,7 @@ fn save_win(app: &AppHandle) {
 
 /// Saved geometry back, unless its top-left is on no monitor any more (unplugged screen).
 fn restore_win(app: &tauri::App, r: [i32; 5]) {
-    let Some(w) = app.get_webview_window("main") else { return };
+    let Some(w) = app.get_window("main") else { return };
     let on = w.available_monitors().unwrap_or_default().iter().any(|m| {
         let (p, s) = (m.position(), m.size());
         (p.x..p.x + s.width as i32).contains(&(r[0] + 40)) && (p.y..p.y + s.height as i32).contains(&(r[1] + 10))
@@ -1426,7 +1426,7 @@ pub fn run() {
     }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(w) = app.get_webview_window("main") {
+            if let Some(w) = app.get_window("main") {
                 let _ = w.unminimize();
                 let _ = w.show();
                 let _ = w.set_focus();

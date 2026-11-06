@@ -3123,7 +3123,7 @@ async function pickRepo(repo, def) {
 async function clone(repo) {
   const branch = $('cloneBranch')?.value, new_branch = $('cloneNew')?.value.trim() || null;
   $('repoList').textContent = `Cloning ${repo}…`;
-  try { const p = await call('clone_repo', {user: $('cloneUser').value, repo, branch: branch === 'default' ? null : branch, new_branch}); closeDlg(); await refresh(); await openProject(p.id); askProject(P(p.id)); }
+  try { const p = await call('clone_repo', {user: $('cloneUser').value, repo, branch: branch === 'default' ? null : branch, newBranch: new_branch /* Tauri 2 args = camelCase; snake key silently → None */}); closeDlg(); await refresh(); await openProject(p.id); askProject(P(p.id)); }
   catch (e) { $('repoList').textContent = e; }
 }
 
