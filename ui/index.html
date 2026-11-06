@@ -1613,7 +1613,8 @@ function showQuestions(pid) { hiddenQs[pid] = false; qsOpen[pid] = true; drawLog
 function askCard(e) {
   const d = document.createElement('div'), i = e.input;
   d.className = 'card';
-  if (e.done) { d.className = 'msg note'; d.innerHTML = `${icon('shield')} ${esc(e.tool)}: ${esc(e.done)}`; return d; }
+  // answered permission → note: "<shield> Tool: Allowed for 24 h" + answer time on top like other notes (#54)
+  if (e.done) { d.className = 'msg note'; d.innerHTML = `${icon('shield')} ${esc(e.tool)}: ${esc(e.done)}`; if (e.doneAt || e.ts) d.dataset.ts = tm(e.doneAt || e.ts); return d; }
   if (e.tool === 'AskUserQuestion') {
     d.classList.add('qs');
     d.innerHTML = `<h4>Your AI asks</h4>` + (i.questions || []).map((q, n) => `<div class="q"><div><span class="num">${n + 1}</span><b>${esc(q.question)}</b></div>
@@ -1656,7 +1657,8 @@ function askCard(e) {
       .map(x => x.value === '__other' ? x.closest('.q').querySelector('.other').value : x.value).join(', '));
     call('answer_ask', {id: e.id, answer: {allow, answers, session: a === '3', rule, note: d.querySelector('.deny')?.value || ''}});
     if (i.questions && allow) { e.kind = 'answered'; e.qa = i.questions.map(q => [q.question, answers[q.question], '']); d.replaceWith(answeredCard(e)); return; } // #9
-    e.done = allow ? 'allowed' : 'denied';
+    e.done = {0: 'Denied', 1: 'Allowed once', 3: 'Allowed for this session', 5: 'Allowed for 24 h', 2: 'Always allowed'}[a] || 'Allowed';
+    e.doneAt = new Date().toISOString();
     d.replaceWith(askCard(e));
   }
   return d;
