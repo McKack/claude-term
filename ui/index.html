@@ -107,6 +107,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
 .msg { max-width:100%; }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
+.filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
 /* thumbnails: fixed tiles, cropped (the viewer shows the whole image); wrap, never wider than the bubble */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
 .msg .thumbs img { width:96px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
@@ -1208,12 +1209,13 @@ function entry(e) {
     const imgs = e.images.map((x, k) => typeof x === 'string' ? {url: x, name: `image ${k + 1}`} : x);
     d.innerHTML = `<div class="thumbs">${imgs.map(x => `<img src="${x.url}" title="${esc(x.name)}">`).join('')}</div>`;
     d.querySelectorAll('.thumbs img').forEach((im, k) => im.onclick = () => openViewer(imgs, k, null));
-    d.append(e.text);
+    d.append(bare(e.text));
   }
   else if (view === 'term') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')'
     // tool output: drop reminder blocks + blank-line runs (else a one-liner renders as a tall empty box)
     : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
+  else if (e.kind === 'user' && view === 'chat') { d.textContent = bare(e.text); const n = e.text.match(FILED_RE)?.[1]; if (n) d.insertAdjacentHTML('beforeend', `<span class="filedtag" data-tip="Filed as task #${n}">#${n}</span>`); }
   else d.textContent = e.text;
   if (view === 'chat' && e.kind === 'note' && e.ts) d.dataset.ts = tm(e.ts); // shown above via CSS ::before
   return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
@@ -1468,7 +1470,7 @@ function send() {
   const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && (/\?\s*$/.test(t) && !/\b(can|could|would|will) you\b|\bplease\b/i.test(t) || /^\s*btw\b/i.test(t));
   const file = issueOn(pid) && !isQ && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
-    const n = file ? await fileAsk(pid, t, a) : 0, text = isQ ? t + QNOTE : n ?`${t}\n\n(Filed as issue #${n} by Clauracle with the raw prompt: first retitle it and write a task summary, the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done.)` : t; // #69 ∵ raw prompt as title/body read badly in the issue list
+    const n = file ? await fileAsk(pid, t, a) : 0, text = isQ ? t + QNOTE : n ?`${t}\n\n(Filed as issue #${n} by Clauracle with the raw prompt: first retitle it and write a task summary, the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done. Not a task after all (a question, test leftover, already done) → answer it and \`gh issue close ${n} --reason "not planned"\` so it drops out of the list.)` : t; // #69 ∵ raw prompt as title/body read badly in the issue list
     const q = queue[pid] ||= [];
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
     if (contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
@@ -1478,6 +1480,8 @@ function send() {
   });
 }
 const WSEEN = new Set(), sendChain = {}, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A question, not a task \(Clauracle\)/;
+// #98: Clauracle's appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
+const bare = t => t.replace(/\n*\((Filed as issue #\d+ by Clauracle|A question, not a task \(Clauracle\))[\s\S]*$/, '');
 const QNOTE = '\n\n(A question, not a task (Clauracle): answer it briefly; change no files, file no issues, start no work. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
 // → issue number, 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
@@ -1548,9 +1552,9 @@ function sendNow(pid, {text: t, atts: a}) {
 }
 // one row of pills (first words; click = edit), ‹ › scroll it when it overflows
 function drawQueue() {
-  const q = queue[cur] || [], words = m => (m.text.trim().split(/\s+/).slice(0, 5).join(' ') || m.atts.map(x => x.name).join(', ')) + (m.text.trim().split(/\s+/).length > 5 ? '…' : '');
+  const q = queue[cur] || [], words = m => (bare(m.text).trim().split(/\s+/).slice(0, 5).join(' ') || m.atts.map(x => x.name).join(', ')) + (bare(m.text).trim().split(/\s+/).length > 5 ? '…' : '');
   $('queue').hidden = !q.length;
-  $('qrow').innerHTML = q.map((m, i) => `<span class="qp" title="${esc(m.text)}" onclick="editQueued(${i})"><span class="qi">${icon('clock')}</span>${m.atts?.length ? `<span class="qa" data-tip="${esc(m.atts.map(x => x.name).join(', '))}">${icon('file')}${m.atts.length > 1 ? m.atts.length : ''}</span>` : ''}<span class="qt">${esc(words(m))}</span>
+  $('qrow').innerHTML = q.map((m, i) => `<span class="qp" title="${esc(bare(m.text))}" onclick="editQueued(${i})"><span class="qi">${icon('clock')}</span>${m.atts?.length ? `<span class="qa" data-tip="${esc(m.atts.map(x => x.name).join(', '))}">${icon('file')}${m.atts.length > 1 ? m.atts.length : ''}</span>` : ''}<span class="qt">${esc(words(m))}</span>
     <button class="ib" title="Edit (↑ in an empty box)" onclick="event.stopPropagation(); editQueued(${i})">${icon('new')}</button>
     <button class="ib" title="Send next: first in line when this turn ends" onclick="event.stopPropagation(); queue[cur].unshift(...queue[cur].splice(${i},1)); drawQueue(); keepDraft(cur, true); flushQueue(cur)">${icon('up')}</button>
     <button class="ib" title="Remove" onclick="event.stopPropagation(); queue[cur].splice(${i},1); drawQueue(); keepDraft()">${icon('x')}</button></span>`).join('');
