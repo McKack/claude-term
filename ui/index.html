@@ -1691,7 +1691,7 @@ function projectsPage() {
       ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3')}
     ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Storage Janitor cleans them on its own: after 14 days without commits, over 10 GB, or when the drive runs low (also old Claude Code versions and, on a low drive, Claude transcripts older than 14 days).</p>
       <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
-    ${cxFold('p-mcp', 'Connections', 'mcp', 'project:' + p.id, p)}${cxFold('p-skill', 'Skills', 'skill', 'project:' + p.id, p)}${cxFold('p-plugin', 'Plugins & mods', 'plugin', 'project:' + p.id, p)}
+    ${cxGroup('p-cx', 'Connections &amp; Skills', 'project:' + p.id, p)}${cxFold('p-plugin', 'Plugins & mods', 'plugin', 'project:' + p.id, p)}
     <div class="btns" style="justify-content:space-between"><button class="btn" onclick="removeProject()">Remove project</button><button class="btn primary" onclick="closeDlg()">Done</button></div></div></div>`;
 }
 const setBuild = (k, v) => setM({build: {...P(mp).build, [k]: v}});
@@ -2248,7 +2248,7 @@ async function drawServices() {
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>` + secretsFold(files)
     // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
-    + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services set up.</p><button class="btn primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button></div>
+    + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services and secrets set up.</p><button class="btn primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button></div>
       <button class="newpill" id="newPill" onclick="$('nextStep').scrollIntoView({behavior: 'smooth', block: 'end'})">${icon('down')}New!</button>` : '');
   if ($('nextStep')) new IntersectionObserver(([e]) => { if (e.isIntersecting && $('newPill')) $('newPill').hidden = true; }).observe($('nextStep'));
   if (ids.includes('google')) drawCloud();
@@ -2496,6 +2496,11 @@ const cxCount = (kind, scope, x) => { const xs = cxItems(kind, scope);
 // settings section that folds; title + "on/total" pill; key unique per page/scope
 const cxFold = (key, title, kind, scope, x) => fold(key, title, `<div class="box">${cxList(kind, scope, x)}</div>`, cxCount(kind, scope, x),
   cxItems(kind, scope).length > 1 ? ['All', 'None'].map(l => `<button class="btn ghost sm" onclick="cxAll(this, '${kind}', '${esc(scope)}', ${l === 'All'})">${l}</button>`).join('') : '');
+// #32: Connections + Skills = one fold, a sub-section each (own All/None); pill = both summed
+const cxGroup = (key, title, scope, x) => { const n = ['mcp', 'skill'].map(k => cxCount(k, scope, x).split('/').map(Number));
+  return fold(key, title, [['mcp', 'Connections'], ['skill', 'Skills']].map(([k, l]) => `<div class="cxsub"><div class="label row" style="margin:6px 0 4px"><span class="grow">${l}</span>
+    ${cxItems(k, scope).length > 1 ? ['All', 'None'].map(b => `<button class="btn ghost sm" onclick="cxAll(this, '${k}', '${esc(scope)}', ${b === 'All'})">${b}</button>`).join('') : ''}</div>
+    <div class="box">${cxList(k, scope, x)}</div></div>`).join(''), `${n[0][0] + n[1][0]}/${n[0][1] + n[1][1]}`); };
 // fold pill = on/total of its switches, redrawn in place (toggles don't re-render the page)
 const cxLive = el => { const d = el.closest('details.fold'), xs = [...d.querySelectorAll('.sc .sw input')], p = d.querySelector(':scope > summary .pill');
   if (p) p.textContent = `${xs.filter(c => c.checked).length}/${xs.length}`; };
@@ -2506,7 +2511,7 @@ async function cxAll(el, kind, scope, on) {
     const x = scope.startsWith('project:') ? P(scope.slice(8)) : S.accounts.find(a => a.id === scope);
     await call('set_items', {scope, items: onOf(x).filter(i => !ids.includes(i)).concat(on ? ids : [])}); await refresh();
   }
-  const d = el.closest('details.fold'); d.querySelectorAll('.sc .sw input').forEach(c => c.checked = on); cxLive(d);
+  const d = el.closest('.cxsub') || el.closest('details.fold'); d.querySelectorAll('.sw input').forEach(c => c.checked = on); cxLive(d);
 }
 // MCP status from `claude mcp list` (note); not connected → how to fix: claude.ai connectors sign in on claude.ai
 // (CLI can't run their OAuth headless), others via /mcp in an interactive CLI. Rescan after.
@@ -2564,7 +2569,7 @@ function cxPage() {
   setTimeout(depsFill);
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
     <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => reloadSettings())">${icon('loop')}Rescan</button></p>
-    ${cxFold('g-mcp', 'Connections', 'mcp', 'global')}${cxFold('g-skill', 'Skills', 'skill', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}
+    ${cxGroup('g-cx', 'Connections &amp; Skills', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}
     ${fold('g-deps', 'Dependencies', '<div id="depsBox"><p class="dim" style="margin:0">Checking…</p></div>', 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}`;
 }
 /* Dependencies (#28): toolchains for local builds of the picked target platforms (store::deps, 60s cache). Missing → AI installs it
@@ -2618,7 +2623,7 @@ function aiPage() {
           ${pools.length ? `<button class="ib" title="Pick a pool" onclick="poolMenu(this, '${esc(a.id)}')">${icon('chev')}</button>` : ''}</span>
         <span>GitHub for new projects</span><select onchange="acct('${esc(a.id)}', {gh:this.value})">${options({'': 'None', ...Object.fromEntries(ghUsers.map(g => [g, '@' + g]))}, a.gh)}</select>
       </div>
-      ${cxFold('a-mcp', 'Connections for new projects', 'mcp', a.id, a)}${cxFold('a-skill', 'Skills for new projects', 'skill', a.id, a)}${cxFold('a-plugin', 'Plugins & mods for new projects', 'plugin', a.id, a)}
+      ${cxGroup('a-cx', 'Connections &amp; Skills for new projects', a.id, a)}${cxFold('a-plugin', 'Plugins & mods for new projects', 'plugin', a.id, a)}
       <div class="btns"><button class="btn" onclick="csAcct('${esc(a.id)}')">${icon('sliders')}Advanced AI settings</button><span class="grow"></span>${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
     + `<div class="label" style="margin-top:18px">Lessons</div>
