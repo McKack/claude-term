@@ -304,7 +304,8 @@ pre.diff .ctx { color:var(--faint); }
 /* tucked: 25px showing (readyTuck --tk), faded + masked toward the composer (px stops ∵ card height varies) */
 #ready.tuck { margin-bottom:var(--tk, -35px); cursor:pointer; opacity:.7;
   -webkit-mask-image:linear-gradient(#000 12px, transparent 42px); mask-image:linear-gradient(#000 12px, transparent 42px); }
-#ready.tuck > * { pointer-events:none; }
+#ready.tuck > * { pointer-events:none; } #ready.tuck:hover { margin-bottom:calc(var(--tk, -35px) + 6px); opacity:.85; } /* #95 lift */
+#ready #readytext.more { cursor:pointer; } #ready #readytext:not(.more) { cursor:default; } /* .more = truncated or .full (readyMore) */
 /* #70 pop: Working… pill shimmer ×2 over the soft bg (transparent stops keep --soft) */
 #ready.shine { background-image:linear-gradient(90deg, transparent 25%, color-mix(in srgb, var(--accent) 22%, transparent) 50%, transparent 75%); background-size:200% 100%; animation:shimmer 1.8s linear 2 forwards; }
 #composer { position:relative; z-index:1; }
@@ -554,7 +555,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
-    <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
+    <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onmouseenter="readyMore(this)" onclick="if (!event.target.closest('button') &amp;&amp; readyMore(this)) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
     <div id="composer">
       <div id="slash" hidden></div>
       <div id="atts"></div>
@@ -960,7 +961,7 @@ function drawChrome() {
   // questions never block a Continue: they open in the fresh session (qsOpen), the bar keeps showing the next task
   $('readytext').innerHTML = next.length ? `<input type="checkbox" disabled style="vertical-align:-2px;margin:0 6px 0 0;opacity:.55">Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
     : `All tasks done! What next? ${(([l, ic, js]) => `<button class="btn primary" onclick="${js}">${icon(ic)}${l}</button>`)(nextStep(p))}${NEXT_IDEAS.map(([l, ic], i) => `<button class="btn" onclick="askNext(${i})">${icon(ic)}${l}</button>`).join('')}`;
-  $('ready').title = ''; $('readytext').title = next.length ? 'Click to show the whole task' : ''; // hover = nothing extra; click toggles .full
+  $('ready').title = ''; // #95: click toggles .full only when truncated (readyMore), title set there
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
   $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
   $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
@@ -1517,6 +1518,8 @@ const triaging = {}; // pid → plan-only turn running; Continue follows it
 let readyT = 0; const readyWas = {}; // pid → p.ready at last draw (#63 pop-up edge)
 function readyTuck(r = $('ready')) { clearTimeout(readyT); if (r.hidden) return r.classList.add('tuck'); /* height 0 → bad --tk */ $('readytext').classList.remove('full'); r.style.setProperty('--tk', `${17 - r.offsetHeight}px`) /* 25px showing: -(h - 25) - 8px gap; h same tucked or not ∴ same depth from any trigger */; r.classList.add('tuck'); }
 const readyLater = ms => { clearTimeout(readyT); readyT = setTimeout(() => !$('ready').hidden && readyTuck(), ms); };
+// #95: anything to expand? (nowrap ellipsis cut it, or already .full) → pointer + title; else click = no-op (no jump)
+function readyMore(t) { const m = t.classList.contains('full') || t.scrollWidth > t.clientWidth + 1; t.classList.toggle('more', m); t.title = m ? (t.classList.contains('full') ? 'Click to collapse' : 'Click to show the whole task') : ''; return m; }
 function readyPeek() { // drawChrome: just shown
   const r = $('ready');
   if (!r.onmouseleave) { // wire once
