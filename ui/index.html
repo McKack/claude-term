@@ -535,7 +535,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
-    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contGo(cur)">Continue</button></div>
+    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
     <div id="composer">
       <div id="slash" hidden></div>
       <div id="atts"></div>
@@ -902,7 +902,9 @@ function drawChrome() {
   const idle = !busy[cur] && !p.ready && p.cont !== 'off' && !queue[cur]?.length && !!logs[cur]?.length;
   $('ready').hidden = !(p.ready || idle || triaging[cur]);
   $('contBtn').hidden = !p.ready && !next.length && !triaging[cur];
-  $('contBtn').disabled = !!triaging[cur]; $('contBtn').textContent = triaging[cur] ? 'Wait…' : 'Continue'; // plan being re-sorted
+  // plan being re-sorted → Wait…; turn running → Queue (contQ: Continue runs when it ends) → Queued
+  $('contBtn').disabled = !!triaging[cur] || !!contQ[cur]; $('contBtn').textContent = triaging[cur] ? 'Wait…' : contQ[cur] ? 'Queued' : busy[cur] ? 'Queue' : 'Continue';
+  $('contBtn').title = busy[cur] ? 'Runs once the current turn ends' : '';
   // questions never block a Continue: they open in the fresh session (qsOpen), the bar keeps showing the next task
   $('readytext').innerHTML = next.length ? `<input type="checkbox" disabled style="vertical-align:-2px;margin:0 6px 0 0;opacity:.55">Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
     : p.ready ? 'Plan written. Continue clears the context and carries on.'
@@ -1439,6 +1441,8 @@ const TRIAGE = 'New from the user while a Continue waited. Only update PLAN.md n
 // ponytail: new issues land at the Queue's end (order is local, P.order); user drags urgent ones up
 const TRIAGE_ISSUES = 'New from the user while a Continue waited. Only file it now: each task → `gh issue create --label clauracle --label <task|feature|fix>` (or add it to a matching open issue with `gh issue comment`); a plain question → answer it briefly. Don\'t start the work and don\'t call mcp__clauracle__ready: Clauracle continues with the first open task when this turn ends.\n\n';
 const triaging = {}; // pid → plan-only turn running; Continue follows it
+const contQ = {}; // pid → Continue clicked mid-turn; runs on turn end (status busy:false)
+const contClick = pid => busy[pid] ? (contQ[pid] = true, drawChrome()) : contGo(pid);
 function toTasks(pid, texts) {
   triaging[pid] = true;
   call('send', {pid, text: (issueOn(pid) ? TRIAGE_ISSUES : TRIAGE) /* issueOn ∵ issueQ = null until team loads → wrongly PLAN.md */ + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n'), images: [], files: []});
@@ -1517,8 +1521,8 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
-  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); } /* Plan row 0 Working look on/off */ }
-    if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid]; delete triaging[d.pid];
+  status: () => { if ('busy' in d) { if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
+    if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid] || contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) contGo(d.pid); else flushQueue(d.pid); }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
