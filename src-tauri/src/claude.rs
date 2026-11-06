@@ -189,6 +189,7 @@ pub struct Live {
     first_turn: AtomicBool,   // a fresh session already past the context limit must not hand over forever
     pin: AtomicU64,           // #83: issue this session was started on (0 = none); ready refuses once while it's open
     nagged: AtomicBool,       // pin refusal already sent → 2nd ready goes through (AI insists: blocked/waiting)
+    built: Mutex<String>,     // #89 smart build: HEAD at session start / last good smart build = diff base
 }
 
 /// #83: the issue a continue message pins = its first "- #N" line (task_queue order, taken ones skipped).
@@ -246,6 +247,10 @@ pub fn session(app: &AppHandle, st: &Arc<State>, pid: &str) -> Arc<Live> {
 }
 
 async fn run(app: AppHandle, st: Arc<State>, pid: String, live: Arc<Live>) {
+    if let Some(p) = st.project(&pid) {
+        let head = tauri::async_runtime::spawn_blocking(move || store::head(&p.path)).await.unwrap_or_default();
+        *live.built.lock().unwrap() = head;
+    }
     loop {
         if st.project(&pid).is_none() || !st.live.lock().unwrap().get(&pid).is_some_and(|l| Arc::ptr_eq(l, &live)) {
             return; // removed, or its live entry dropped/replaced (move_folder): a new session starts on open
@@ -537,10 +542,31 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
     }
     if live.armed.swap(false, SeqCst) {
         let was_handover = live.handing_over.swap(false, SeqCst);
-        if !was_handover && !p.build.after.is_empty() {
+        let mut p = p;
+        let mut smart = false;
+        if !was_handover && p.build.after == "smart" {
+            // #89: build + run only when the diff since the last good smart build matters (code, big or a fix)
+            let (dir, base) = (p.path.clone(), live.built.lock().unwrap().clone());
+            let why = tauri::async_runtime::spawn_blocking(move || store::smart_why(&dir, &base)).await.unwrap_or_default();
+            smart = !why.is_empty();
+            if smart && p.build.build.is_empty() && p.build.run.is_empty() {
+                let g = store::guess_build(&p.path); // unset steps → guessed once, saved so the Build tab shows them
+                st.with_project(pid, |q| { q.build.build = g.build.clone(); q.build.run = g.run.clone(); if q.build.deploy.is_empty() { q.build.deploy = g.deploy.clone(); } });
+                p = st.project(pid).unwrap_or(p);
+                emit(app, "project", json!(p));
+            }
+            if smart && (p.build.build.is_empty() && p.build.run.is_empty()) {
+                smart = false;
+                line(app, pid, "note", "Smart build: no build/run step found; set one in the Build tab.");
+            } else if smart {
+                line(app, pid, "note", &format!("Smart build: {why} → build + run."));
+            }
+        }
+        if !was_handover && (smart || !p.build.after.is_empty() && p.build.after != "smart") {
             // a task finished: build (and run/deploy) in plain code; a failure can go back to Claude
             let mut steps = vec!["build"];
-            steps.extend(match p.build.after.as_str() { "build_run" => vec!["run"], "build_deploy" => vec!["deploy"], _ => vec![] });
+            steps.extend(match p.build.after.as_str() { "build_run" | "smart" => vec!["run"], "build_deploy" => vec!["deploy"], _ => vec![] });
+            let mut good = true;
             for step in steps {
                 let (ok, tail) = run_step(app, st, pid, step).await;
                 if !ok && p.build.fix {
@@ -551,8 +577,14 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
                     return;
                 }
                 if !ok {
+                    good = false;
                     break;
                 }
+            }
+            if smart && good {
+                let dir = p.path.clone();
+                let head = tauri::async_runtime::spawn_blocking(move || store::head(&dir)).await.unwrap_or_default();
+                *live.built.lock().unwrap() = head;
             }
         }
         let auto = p.cont.starts_with("auto") || (p.cont == "off" && was_handover);

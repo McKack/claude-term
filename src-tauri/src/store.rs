@@ -57,7 +57,7 @@ pub struct Question {
     pub blocking: bool,
 }
 
-/// Build steps Clauracle runs itself (plain code, no tokens). after: "" | build | build_run | build_deploy
+/// Build steps Clauracle runs itself (plain code, no tokens). after: "" | smart (#89, new projects) | build | build_run | build_deploy
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default)]
 pub struct Build {
@@ -115,7 +115,7 @@ impl Default for Project {
             id: String::new(), name: String::new(), path: String::new(), account: MAIN.into(), gh: String::new(),
             off: vec![], on: None, mode: "default".into(), model: String::new(), effort: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, prev_session: None, ready: false, questions: vec![], answers: String::new(),
-            build: Build::default(), hide_env: true, terse: true,
+            build: Build { after: "smart".into(), fix: true, ..Default::default() }, hide_env: true, terse: true,
             owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], allow: vec![], ai_credit: false, stage: String::new(), rel_auto: false, order: vec![], targets: vec![], site: serde_json::Value::Null,
         }
     }
@@ -1163,6 +1163,47 @@ pub fn guess_build(dir: &str) -> Build {
         set(&mut b, "make", if target("run") { "make run" } else { "" }, if target("deploy") { "make deploy" } else { "" });
     }
     b
+}
+
+/// HEAD sha ("" outside git / no commits).
+pub fn head(dir: &str) -> String {
+    run("git", &["rev-parse", "HEAD"], Some(dir), &[]).stdout.trim().to_string()
+}
+
+/// #89 smart build: why the changes since `base` (sha; "" = HEAD) deserve build + run, "" = skip.
+pub fn smart_why(dir: &str, base: &str) -> String {
+    let base = if base.is_empty() { "HEAD" } else { base };
+    let stat = run("git", &["diff", "--numstat", base], Some(dir), &[]).stdout;
+    let log = run("git", &["log", "--format=%s", &format!("{base}..HEAD")], Some(dir), &[]).stdout;
+    smart_pick(&stat, &log)
+}
+
+/// Doc-only → skip; a fix (commit subject words) → build; else ≥30 changed lines or ≥3 code files.
+/// ponytail: heuristic on numstat + subjects; untracked files unseen (Claude commits). Tune thresholds if it nags.
+pub fn smart_pick(numstat: &str, log: &str) -> String {
+    let doc = |f: &str| f.starts_with("docs/") || [".md", ".txt", ".rst", ".adoc", "LICENSE", ".gitignore"].iter().any(|x| f.ends_with(x));
+    let (mut files, mut lines) = (0u64, 0u64);
+    for l in numstat.lines() {
+        let c: Vec<&str> = l.split('\t').collect();
+        if c.len() < 3 || doc(c[2]) { continue; }
+        files += 1;
+        lines += c[0].parse::<u64>().unwrap_or(1) + c[1].parse::<u64>().unwrap_or(0); // binary "-" = 1
+    }
+    if files == 0 { return String::new(); }
+    let low = log.to_lowercase();
+    if ["fix", "crash", "critical", "broken", "bug", "regression"].iter().any(|w| low.contains(w)) {
+        return format!("a fix in {files} code file{}", if files > 1 { "s" } else { "" });
+    }
+    if lines >= 30 || files >= 3 { format!("{lines} changed lines in {files} code files") } else { String::new() }
+}
+
+#[test]
+fn smart_pick_works() {
+    assert_eq!(smart_pick("3\t1\tREADME.md\n200\t0\tdocs/a.html\n", "Fix typo"), "");
+    assert_eq!(smart_pick("2\t1\tsrc/a.rs\n", "Tweak label"), "");
+    assert!(!smart_pick("2\t1\tsrc/a.rs\n", "Fix crash on open").is_empty());
+    assert!(!smart_pick("25\t10\tsrc/a.rs\n", "Add thing").is_empty());
+    assert!(!smart_pick("1\t0\ta.rs\n1\t0\tb.rs\n-\t-\tc.png\n", "x").is_empty());
 }
 
 /// (folder relative to the project, bytes) for each cache folder present and git-ignored.

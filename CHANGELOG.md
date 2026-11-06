@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Smart builds: new projects build and relaunch themselves after a task when the change is big or a fix (doc-only and tiny edits skip it); build steps are guessed when unset, and failures go back to the AI. Pick "Smart" under Build → After each task on existing projects.
 - Continue ribbon: when a task finishes it stays up longer (9 s) and shimmers twice so it is hard to miss.
 
 - Question cards no longer reset or lose your typing while the AI keeps working.
