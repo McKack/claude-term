@@ -294,8 +294,12 @@ pre.diff .ctx { color:var(--faint); }
 #ready, #suggest { display:flex; gap:12px; align-items:center; padding:9px 10px 9px 16px; border-radius:12px; background:var(--soft); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
 /* Continue ribbon: 4% narrower, bottom 14px tucked behind the composer (z above → its shadow falls on it); .tuck = half
    hidden (readyPeek: slides up on show, tucks after 4s w/o hover; click while tucked = pull up) */
-#ready { margin:0 2% -22px; padding:5px 6px 19px 14px; gap:10px; font-size:13.5px; transition:margin-bottom .3s ease; }
-#ready.tuck { margin-bottom:-34px; align-items:flex-start; padding-top:4px; cursor:pointer; } #ready.tuck #readytext { padding-top:1px; } /* top-aligned ∵ centred text got cut mid-line */ #ready #contBtn { padding:3px 14px; font-size:13px; min-height:0; }
+#ready { margin:0 2% -22px; padding:5px 6px 19px 14px; gap:10px; font-size:13.5px; transition:margin-bottom .3s ease, opacity .3s; }
+/* tucked: 26px showing, top-aligned ∵ centred text got cut mid-line; faded + masked toward the composer */
+#ready.tuck { margin-bottom:var(--tk, -34px); align-items:flex-start; padding-top:4px; cursor:pointer; opacity:.7;
+  -webkit-mask-image:linear-gradient(#000 35%, transparent 72%); mask-image:linear-gradient(#000 35%, transparent 72%); }
+#ready.tuck > * { pointer-events:none; } #ready.tuck #readytext { padding-top:1px; } #ready.tuck > svg { margin-top:4px; }
+#ready > svg { flex:none; } #ready #contBtn { padding:3px 14px; font-size:13px; min-height:0; }
 #composer { position:relative; z-index:1; }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
 #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 60%, var(--line2)); }
@@ -1447,17 +1451,20 @@ const TRIAGE = 'New from the user while a Continue waited. Only update PLAN.md n
 // ponytail: new issues land at the Queue's end (order is local, P.order); user drags urgent ones up
 const TRIAGE_ISSUES = 'New from the user while a Continue waited. Only file it now: each task → `gh issue create --label clauracle --label <task|feature|fix>` (or add it to a matching open issue with `gh issue comment`); a plain question → answer it briefly. Don\'t start the work and don\'t call mcp__clauracle__ready: Clauracle continues with the first open task when this turn ends.\n\n';
 const triaging = {}; // pid → plan-only turn running; Continue follows it
-// ribbon peek: show tucked → slide up → 4s idle (no hover) → tuck halfway. Click while tucked only pulls it up
+/* ribbon peek: show tucked → slide up → tuck halfway after 4s off it, or 8s on it without moving. Tucked = children
+   pointer-events:none (CSS) → any click lands on #ready = pull up only. --tk from live height ∵ text/wrap changes it */
 let readyT = 0;
-function readyPeek(up = true) {
-  const r = $('ready'); clearTimeout(readyT);
-  if (!r.onmouseenter) { // wire once
-    r.onmouseenter = () => clearTimeout(readyT); r.onmouseleave = () => { clearTimeout(readyT); readyT = setTimeout(() => r.classList.add('tuck'), 4000); };
-    r.addEventListener('click', e => { if (r.classList.contains('tuck')) { e.stopPropagation(); e.preventDefault(); readyPeek(); } }, true);
+function readyTuck(r = $('ready')) { r.style.setProperty('--tk', `${34 - r.offsetHeight}px`); r.classList.add('tuck'); }
+const readyLater = ms => { clearTimeout(readyT); readyT = setTimeout(() => { const r = $('ready'); if (!r.hidden && !r.querySelector('.full')) readyTuck(r); }, ms); };
+function readyPeek() {
+  const r = $('ready');
+  if (!r.onmouseleave) { // wire once
+    r.onmouseleave = () => readyLater(4000); r.onmousemove = () => !r.classList.contains('tuck') && readyLater(8000);
+    r.onclick = e => { if (e.target === r && r.classList.contains('tuck')) readyPeek(); };
   }
-  if (r.hidden) return r.classList.add('tuck');
+  if (r.hidden) return readyTuck(r);
   void r.offsetHeight; // flush the tucked start → the un-tuck transitions
-  requestAnimationFrame(() => { r.classList.remove('tuck'); if (!r.matches(':hover')) readyT = setTimeout(() => r.classList.add('tuck'), 4000); });
+  requestAnimationFrame(() => { r.classList.remove('tuck'); readyLater(r.matches(':hover') ? 8000 : 4000); });
 }
 const contQ = {}; // pid → Continue clicked mid-turn; runs on turn end (status busy:false)
 const contClick = pid => busy[pid] ? (contQ[pid] = true, drawChrome()) : contGo(pid);
