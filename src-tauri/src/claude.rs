@@ -47,8 +47,11 @@ const ISSUE_RULES: &str = "
   --body <full request>`, type = task | feature | fix; `gh label create` it if missing), so nothing is lost across
   sessions. Your own ideas needing the user's yes: add `--label suggestion` (rare, only
   clearly high-value ones); the user accepts or dismisses them. Every issue must be finishable work, never a standing rule.
-- If PLAN.md, TASKS.md, TODO.md or HANDOVER.md still list open tasks, file them as issues (same order) and remove them there.
-- HANDOVER.md lets a fresh session resume: goal, current state, how to build and test, gotchas, rules; no task list;
+- Open work never lives in files: follow-ups, unverified checks, \"next: …\", things waiting on the user's input or
+  restatement each become an issue (user's decision → `--label suggestion`). If PLAN.md, TASKS.md, TODO.md or
+  HANDOVER.md still list open tasks, file them as issues (same order) and remove them there.
+- HANDOVER.md lets a fresh session resume: goal, current state, how to build and test, gotchas, rules; no task list,
+  no open items;
   under ~50 lines. Finished work goes to CHANGES.md (newest first, one line per change). In a git repo where these
   aren't tracked, add them to .git/info/exclude.
 - Finishing a task: verify it, `gh issue close N -c <one-line summary>`, update HANDOVER.md and CHANGES.md, commit if
@@ -79,7 +82,7 @@ every fact (why, constraint, edge case, upgrade path). Example: `// cache: 5m TT
 
 const PREPARE: &str = "Pause here; don't start anything new{why}. Update HANDOVER.md so a fresh session can pick up \
 exactly where you are (goal, what you were doing and how far it got, what is verified and what isn't, gotchas \
-learned) and the task list (PLAN.md's Queue, or GitHub issues when tasks live there: next steps in order), move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
+learned) and the task list (PLAN.md's Queue, or GitHub issues when tasks live there: next steps in order; there every open follow-up, unverified check or wait on the user = an issue, not a HANDOVER.md line), move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
 
 const RESUMED: &str = "continue
 
@@ -1090,10 +1093,15 @@ const PLAN_FILES: [&str; 4] = ["PLAN.md", "HANDOVER.md", "TASKS.md", "TODO.md"];
 
 /// Open tasks of a plan file, in order: its "## Queue" list if it has one; else (not HANDOVER.md: its bullets are
 /// state, not tasks) every top-level list item that isn't checked off.
-fn items(dir: &str, file: &str) -> Vec<String> {
+/// `wide` (plans() only): HANDOVER.md open-work headings count too; queue() stays Queue-only (Continue text).
+fn items(dir: &str, file: &str, wide: bool) -> Vec<String> {
     let text = std::fs::read_to_string(std::path::Path::new(dir).join(file)).unwrap_or_default();
     let item = regex::Regex::new(r"^(\s*)(?:\d+[.)]|[-*])\s+(?:\[ \]\s*)?(.+)").unwrap();
-    let has_q = text.lines().any(|l| l.starts_with('#') && l.trim_start_matches('#').trim().eq_ignore_ascii_case("queue"));
+    // HANDOVER.md: its bullets = state, but open-work sections (#58: follow-ups that should be issues) count as tasks
+    let ho = wide && file == "HANDOVER.md";
+    let open = regex::Regex::new(r"(?i)^(queue|to-?do|tasks?|next( steps)?|open( items| questions)?|follow.?ups?|waiting on the user|not (yet )?verified( live)?)\b").unwrap();
+    let is_q = |l: &str| { let h = l.trim_start_matches('#').trim(); if ho { open.is_match(h) } else { h.eq_ignore_ascii_case("queue") } };
+    let has_q = text.lines().any(|l| l.starts_with('#') && is_q(l));
     if !has_q && file == "HANDOVER.md" {
         return vec![];
     }
@@ -1103,7 +1111,7 @@ fn items(dir: &str, file: &str) -> Vec<String> {
     for l in text.lines() {
         if l.starts_with('#') {
             last = false;
-            if has_q { on = l.trim_start_matches('#').trim().eq_ignore_ascii_case("queue"); } // exact: "## Waiting (not queue items)" ≠ queue
+            if has_q { on = is_q(l); } // non-HANDOVER exact: "## Waiting (not queue items)" ≠ queue
         } else if on {
             match item.captures(l) {
                 Some(c) if (has_q || c[1].is_empty()) && !c[2].starts_with("[x]") && !c[2].starts_with("[X]") =>
@@ -1127,7 +1135,7 @@ fn primary(dir: &str) -> &'static str {
 
 /// Next tasks (ready bar, Tasks tab): the primary plan's open items.
 pub fn queue(dir: &str) -> Vec<String> {
-    items(dir, primary(dir))
+    items(dir, primary(dir), false)
 }
 
 /// Plan tab drag: moves open Queue task `from` to slot `to` (indexes as `queue()` gives them) in the primary plan.
@@ -1229,7 +1237,7 @@ pub fn wait_take(dir: &str, i: usize, accept: bool) -> Result<(), String> {
 pub fn plans(dir: &str) -> Vec<Value> {
     let p = primary(dir);
     std::iter::once(p).chain(PLAN_FILES.into_iter().filter(|f| *f != p))
-        .map(|f| (f, items(dir, f))).filter(|(f, i)| *f == p || !i.is_empty())
+        .map(|f| (f, items(dir, f, true))).filter(|(f, i)| *f == p || !i.is_empty())
         .map(|(f, i)| json!({"file": f, "items": i})).collect()
 }
 
@@ -1350,8 +1358,12 @@ mod tests {
         std::fs::write(d.join("PLAN.md"), "## Queue\n1. P\n").unwrap();
         let ds = d.to_str().unwrap();
         assert_eq!(queue(ds), ["P"]);
-        assert_eq!(plans(ds), [json!({"file": "PLAN.md", "items": ["P"]}), json!({"file": "HANDOVER.md", "items": ["A"]}),
+        assert_eq!(plans(ds), [json!({"file": "PLAN.md", "items": ["P"]}), json!({"file": "HANDOVER.md", "items": ["A", "B"]}),
             json!({"file": "TODO.md", "items": ["One", "Two"]})]);
+        // #58: HANDOVER.md open-work sections (no Queue) → plans() sees them, queue() doesn't
+        std::fs::write(d.join("HANDOVER.md"), "## State\n- x\n## Not verified live\n- #37 look\n## Gotchas\n- g\n").unwrap();
+        assert_eq!(plans(ds)[1], json!({"file": "HANDOVER.md", "items": ["#37 look"]}));
+        assert!(queue(ds).len() == 1); // PLAN.md's P
         for f in ["TODO.md", "PLAN.md"] { std::fs::remove_file(d.join(f)).unwrap(); }
     }
 

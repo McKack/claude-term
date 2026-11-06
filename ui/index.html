@@ -3185,7 +3185,8 @@ function drawAtp() {
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...(issueQ(cur) ? [{label: 'GitHub issues (clauracle)', hint: issueQ(cur).length + ' open', run: () => expandRight('gh')}] : []), ...S.plans[cur].filter(o => !issueQ(cur) || o.items.length).map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
         ${!iq && (pl.length > 1 || pl[0].file !== 'PLAN.md') ? `<button class="ib" title="Merge every plan file into PLAN.md\n${estTok()}" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
-        ${P().gh && (iq ? S.queues?.[cur]?.length : q.length) ? `<button class="ib" title="File ${iq ? 'PLAN.md\'s leftover tasks' : 'the queue'} as GitHub issues${iq ? ' (removed from PLAN.md after)' : ' (Team tasks)'}" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
+        ${iq && pl.length > 1 ? `<button class="btn sm" title="Turn ${pl.slice(1).map(o => o.file).join(', ')} into task issues (removed from the files after)\n${estTok()}" onclick="plansToIssues()">${icon('gh')}File as issues</button>`
+          : !iq && P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
         + L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
           ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
             end: `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⠿</button>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"')
@@ -3210,6 +3211,13 @@ async function mergePlans() {
   if (!from.length && pl[0]?.file === 'PLAN.md') return;
   if (!await sure(`Merge into PLAN.md?\n\n${from.map(o => `${o.file}: ${o.items.length} task${o.items.length === 1 ? '' : 's'}`).join('\n') || 'Creates PLAN.md'}\n\nClaude moves them into PLAN.md's Queue (by priority, duplicates merged) and removes them from those files.\n${estTok()}`)) return;
   sendNow(cur, {text: `Merge the open tasks of ${from.map(o => o.file).join(', ') || 'HANDOVER.md'} into PLAN.md's "## Queue" (by priority, merge duplicates; things needing the user's yes under "## Waiting on the user"), then remove them from those files (in HANDOVER.md drop its Queue section). Don't start any task.`, atts: []});
+}
+// #58 issue mode: plan files' open items (PLAN/TASKS/TODO, HANDOVER open-work sections) → issues. AI ∵ HANDOVER items
+// are prose (merge dups vs open issues, pick type/suggestion, trim the files); ponytail: deterministic path = queueToTeam
+async function plansToIssues() {
+  const from = (S.plans?.[cur] || []).filter(o => o.items.length); if (!from.length) return;
+  if (!await sure(`File these as GitHub issues?\n\n${from.map(o => `${o.file}: ${o.items.length} item${o.items.length === 1 ? '' : 's'}`).join('\n')}\n\nClaude files each open item as a task issue (skipping ones already filed), then removes them from those files.\n${estTok()}`)) return;
+  sendNow(cur, {text: `File the open items of ${from.map(o => o.file).join(', ')} as GitHub issues labelled \`clauracle\` (+ task|feature|fix; needs the user's decision → \`suggestion\`), in their order; skip or merge ones an open issue already covers. Then remove them from those files (HANDOVER.md keeps only state/how-to/gotchas; delete PLAN.md/TASKS.md/TODO.md if left empty). Don't start any task.`, atts: []});
 }
 // cleanup: Claude proposes a tidier Queue (merge/drop/reorder vs project state) → user confirms in chat before it writes
 async function cleanPlan() {
