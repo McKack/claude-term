@@ -521,6 +521,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-info"viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
   <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14 4l6 6-7 7-6-6zM7 11l-3 3c-1 1-1 4-1 6 2 0 5 0 6-1l3-3"/></symbol>
   <symbol id="i-sparkle"viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
+  <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21M22 21H7M5 11l9 9"/></symbol>
 </svg>
 
 <aside id="side">
@@ -549,7 +550,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
-    <div id="ready" hidden><svg class="i ok"><use href="#i-sparkle"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
+    <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onclick="if (!event.target.closest('button')) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
     <div id="composer">
       <div id="slash" hidden></div>
       <div id="atts"></div>
@@ -558,7 +559,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
         <button class="ib" title="Attach files" onclick="pickFiles()"><svg class="i"><use href="#i-clip"/></svg></button>
         <button class="ib" id="tPony" title="Ponytail: the simplest code that works" onclick="setP({ponytail:!P().ponytail})"><svg class="i"><use href="#i-feather"/></svg></button>
         <button class="ib" id="tCont" title="Clear & continue mode" onclick="menuAt(this, contItems())"><svg class="i"><use href="#i-loop"/></svg></button>
-        <button class="ib" title="Clear & continue now: write the plan, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-sparkle"/></svg></button>
+        <button class="ib" title="Clear & continue now: write the plan, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-eraser"/></svg></button>
         <button class="ib" id="tWeb" onclick="S.web = !S.web; call('set_off', {item: 'web', off: !S.web, scope: 'global'}); drawChrome()"><svg class="i"><use href="#i-globe"/></svg></button>
         <span class="grow"></span>
         <button class="btn ghost sm" id="cancelEdit" hidden title="Put the queued message back, unchanged, in its place" onclick="cancelEdit()" style="margin-right:6px"><svg class="i"><use href="#i-x"/></svg>Cancel edit</button>
