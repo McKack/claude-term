@@ -1492,7 +1492,7 @@ function drawQueue() {
   $('queue').hidden = !q.length;
   $('qrow').innerHTML = q.map((m, i) => `<span class="qp" title="${esc(m.text)}" onclick="editQueued(${i})"><span class="qi">${icon('clock')}</span>${m.atts?.length ? `<span class="qa" data-tip="${esc(m.atts.map(x => x.name).join(', '))}">${icon('file')}${m.atts.length > 1 ? m.atts.length : ''}</span>` : ''}<span class="qt">${esc(words(m))}</span>
     <button class="ib" title="Edit (↑ in an empty box)" onclick="event.stopPropagation(); editQueued(${i})">${icon('new')}</button>
-    <button class="ib" title="Send now (joins the running turn's inbox)" onclick="event.stopPropagation(); sendNow(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft()">${icon('up')}</button>
+    <button class="ib" title="Send next: first in line when this turn ends" onclick="event.stopPropagation(); queue[cur].unshift(...queue[cur].splice(${i},1)); drawQueue(); keepDraft(cur, true); flushQueue(cur)">${icon('up')}</button>
     <button class="ib" title="Remove" onclick="event.stopPropagation(); queue[cur].splice(${i},1); drawQueue(); keepDraft()">${icon('x')}</button></span>`).join('');
   requestAnimationFrame(() => { const r = $('qrow'); $('queue').classList.toggle('over', r.scrollWidth > r.clientWidth + 1); });
 }
