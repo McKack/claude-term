@@ -1384,6 +1384,16 @@ pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<String,
             "labels": gh_json(&["label", "list", "--limit", "200", "--json", "name,color"], user, Some(dir)),
             "people": gh_json(&["api", "repos/{owner}/{repo}/assignees?per_page=100", "--jq", "[.[].login]"], user, Some(dir)),
         }).to_string()),
+        // #113 collaborators: list (+ role) and pending invites; invite = PUT (gh login chars only ∵ goes into a URL path)
+        "collab" => Ok(serde_json::json!({
+            "people": gh_json(&["api", "repos/{owner}/{repo}/collaborators?per_page=100", "--jq", "[.[] | {login, role: .role_name}]"], user, Some(dir)),
+            "invites": gh_json(&["api", "repos/{owner}/{repo}/invitations?per_page=100", "--jq", "[.[].invitee.login]"], user, Some(dir)),
+        }).to_string()),
+        "invite" => {
+            let u = arg.trim().trim_start_matches('@');
+            if u.is_empty() || !u.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') { return Err("not a GitHub username".into()); }
+            gh(&["api", "-X", "PUT", &format!("repos/{{owner}}/{{repo}}/collaborators/{u}"), "--silent"])
+        }
         "edit" => {
             let v: serde_json::Value = serde_json::from_str(arg).map_err(|e| e.to_string())?;
             let s = |k: &str| v[k].as_str().unwrap_or("").to_string();

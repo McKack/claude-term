@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- GitHub tab: Collaborators section lists who has access (and pending invites) and invites people by GitHub username.
 - Issues list: hover a task for a pencil button to edit its title, description, labels and assignees.
 - Your message shows in the chat right away, with a gray ✓ once sent and a blue ✓✓ when the AI has picked it up (a red ! and a notice if it did not go through).
 - Continue ribbon: lifts a little on hover; it only expands when the next task is cut off (shown with …), so it no longer jumps.

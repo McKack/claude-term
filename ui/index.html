@@ -1822,6 +1822,7 @@ function projectsPage() {
     <p class="dim">The project is the source of truth: these stay with it whichever AI account runs it.</p>
     <div class="grid2">
       <span>GitHub account</span><select onchange="setM({gh:this.value})">${options({'': 'None', ...Object.fromEntries(SET.gh_users.map(u => [u, '@' + u]))}, p.gh)}</select>
+      ${p.gh && mp === cur ? `<span>Collaborators</span><span><button class="btn ghost sm" onclick="collabGo()">${icon('user')}List & invite…</button></span>` : '' /* #113: lives in the GitHub tab (open project only) */}
       <span>AI account</span><select onchange="setM({account:this.value})">${options(Object.fromEntries(S.accounts.map(a => [a.id, a.nick])), p.account)}</select>
       <span>Model</span><select onchange="setM({model:this.value})">${options(MODELS, p.model)}</select>
       <span>Permissions</span><select onchange="setM({mode:this.value})">${options(PERMS, p.mode)}</select>
@@ -2159,10 +2160,34 @@ function drawGh(g, busy) {
       : g.err ? `<p class="err">${esc(g.err)}</p>` : publishForm(p, g.users || []), `<button class="ib${busy ? ' upd' : ''}" title="${busy ? 'Updating…' : 'Refresh'}" onclick="drawRight(true)">${icon('loop')}</button>`)
     + '<div id="atp"></div>' // Plan (issue queue / PLAN.md, drag order, Suggestions, Cleanup): drawAtp fills it
     + `<div id="tasksBox">${tasksHtml()}</div>`
+    + (g.repo ? fold('collab', 'Collaborators', `<div id="collabBox">${collabHtml(cur)}</div>`, COLLAB[cur]?.people?.length || 0) : '')
     + (g.remote ? changesSec(g.git || {}) : '')
     + fold('prs', 'Pull requests', list(g.prs, 'pr'), g.prs?.length || 0) + (g.issues?.length ? fold('issues', 'Other issues', list(g.issues, 'issue'), g.issues.length) : ''); // non-clauracle only (gh_info)
   drawAtp();
+  if (g.repo) collabLoad();
 }
+/* #113 collaborators: task_do collab (people+role, pending invites), cached 10 min per pid ∵ rarely change; invite = PUT
+   (GitHub sends the invite mail). IMETA (assignees) dropped on invite ∵ invitee becomes assignable once accepted */
+const COLLAB = {};
+const collabHtml = pid => { const c = COLLAB[pid]; if (!c) return skel(60, 40);
+  return `<div class="tlist">${(c.people || []).map(x => tli(`@${esc(x.login)}`, {end: `<span class="pill">${esc(x.role || '')}</span>`})).join('')
+    + (c.invites || []).map(l => tli(`@${esc(l)}`, {cls: 'in_progress', end: '<span class="pill">invited</span>'})).join('')}</div>`
+    + (c.err ? `<div class="warn">${esc(c.err)}</div>` : '')
+    + `<div class="row"><input id="collabU" class="grow" placeholder="Invite by GitHub username" onkeydown="if(event.key==='Enter')collabInvite()"><button class="ib" title="Invite" onclick="collabInvite()">${icon('plus')}</button></div>`; };
+async function collabLoad(force) {
+  const pid = cur;
+  if (!force && COLLAB[pid]?.t > Date.now() - 6e5) return;
+  try { COLLAB[pid] = {...JSON.parse(await call('task_do', {pid, action: 'collab', arg: ''})), t: Date.now()}; } catch (e) { COLLAB[pid] = {err: String(e), t: 0}; }
+  if (pid === cur && $('collabBox')) $('collabBox').innerHTML = collabHtml(pid);
+}
+async function collabInvite() {
+  const u = $('collabU')?.value.trim(), pid = cur;
+  if (!u) return;
+  try { await call('task_do', {pid, action: 'invite', arg: u}); delete IMETA[pid]; await collabLoad(true); toast(`Invited @${u.replace(/^@/, '')}`, 'ok'); }
+  catch (e) { toast(String(e), 'err'); }
+}
+// assignee picker → GitHub tab, Collaborators open + field focused
+function collabGo() { closeDlg(); folds.collab = true; expandRight('gh'); setTimeout(() => $('collabU')?.focus(), 300); }
 // info only (user: no chores): uncommitted files listed; Claude commits, claude::after_turn pushes (store::auto_push)
 function changesSec(s) {
   const f = s.files || [];
@@ -2312,7 +2337,7 @@ async function editIssue(n) {
     <label class="fl">Title<input id="eiT" value="${esc(x.title)}"></label>
     <label class="fl" style="margin-top:8px">Description<textarea id="eiB" rows="8">${esc(x.body)}</textarea></label>
     <div class="fl" style="margin-top:8px">Labels<div class="chips">${labels.map(l => chip('L', l.name, L.has(l.name), l.color || '888')).join('') || '<span class="faint">No labels in this repo</span>'}</div></div>
-    <div class="fl" style="margin-top:8px">Assignees<div class="chips">${people.map(p => chip('A', p, A.has(p))).join('') || '<span class="faint">Nobody can be assigned</span>'}</div></div>
+    <div class="fl" style="margin-top:8px">Assignees<div class="chips">${people.map(p => chip('A', p, A.has(p))).join('') }<span class="pill" title="Invite a collaborator (GitHub tab)" onclick="collabGo()">${icon('plus')}Invite…</span></div></div>
     <div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button><button class="btn primary" id="eiGo">Save</button></div>`);
   $('eiGo').onclick = async () => {
     const on = k => new Set([...$('dlg').querySelectorAll(`.chips .pill.on[data-k="${k}"]`)].map(e => e.dataset.v)), nl = on('L'), na = on('A');
