@@ -188,11 +188,11 @@ pre.diff .ctx { color:var(--faint); }
 /* error: red rounded box, monospace; title = where it came from (the tool line before it) */
 .msg.err { color:var(--err); font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; align-self:stretch;
   background:color-mix(in srgb, var(--err) 9%, transparent); border:1px solid color-mix(in srgb, var(--err) 35%, transparent); border-radius:12px; padding:8px 12px; }
-.msg.err .et { display:block; font:600 12px system-ui,sans-serif; margin-bottom:4px; opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.msg.err .et { display:block; font:700 12px system-ui,sans-serif; margin-bottom:4px; opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #log.term .msg.err { border:0; background:none; padding:0; }
-/* HAL nod (#8): glowing red eye on error + permission cards */
+/* HAL nod (#8): glowing red eye on permission cards */
 .i.hal { width:16px; height:16px; vertical-align:-3px; margin-right:6px; filter:drop-shadow(0 0 3px #f22) drop-shadow(0 0 6px #f228); }
-.msg.err .et .dim { font-weight:400; margin-left:6px; }
+.msg.err .et .edot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--err); margin-right:7px; vertical-align:0; }
 .card.perm { border-color:color-mix(in srgb, var(--err) 35%, transparent); }
 .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
 .card.qs { border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); padding:12px 14px; }
@@ -613,11 +613,8 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
 const P = (id = cur) => S.projects.find(p => p.id === id);
-// HAL nod (#8): name = OS login (#21, capitalised), none → plain line; blocked by permission/safety rules → the full line
-const BLOCKED = /permission|denied|not allowed|blocked|refus/i;
+// HAL eye (#8): permission cards (error cards: red dot, #107)
 const HALI = '<svg class="i hal"><use href="#i-hal"/></svg>';
-const hal = can => { const u = S.os_user || '';
-  return `${HALI}I'm sorry${u ? ', ' + esc(u[0].toUpperCase() + u.slice(1)) : ''}.${can ? " I'm afraid I can't do that." : ''}`; };
 const nick = id => (S.accounts.find(a => a.id === id) || {nick: id}).nick;
 const MODES = {off: ['Off', 'Plain chat; only the context limit hands over'], manual: ['Manual', 'Stops when a task is done; you press Continue'],
   auto: ['Auto', 'Clears and continues by itself until a limit'], auto_answer: ['Auto + answers', 'Also answers what it can; holds only real decisions']};
@@ -1152,9 +1149,9 @@ function put(box, e) {
     if (name === 'Read' && /\.(png|jpe?g|gif|webp|bmp)$/i.test(f || '')) (box._shots ||= []).includes(f) || box._shots.push(f);
     return drawAct(g);
   }
-  if (e.kind === 'err' && view === 'chat') { // HAL title + what failed (most recent tool call), else "Error"
+  if (e.kind === 'err' && view === 'chat') { // #107: red dot + bold "what → tool failed" (most recent tool call), else "Error"
     const g = box.lastElementChild?.classList.contains('tools') && box.lastElementChild, t = g && g._tabs.get(g._last);
-    el.innerHTML = `<span class="et">${hal(BLOCKED.test(e.text || ''))}<span class="dim">${t ? esc(t.title) + ' · ' + esc(toolName(t.es.at(-1))) + ' failed' : 'Error'}</span></span>`;
+    el.innerHTML = `<span class="et"><span class="edot"></span>${t ? esc(t.title) + ' → ' + esc(toolName(t.es.at(-1))) + ' failed' : 'Error'}</span>`;
     el.append(e.text);
   }
   if (e.kind === 'claude' && box._shots?.length) { // images Claude read since its last message → thumbs on this one

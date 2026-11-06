@@ -98,8 +98,6 @@ fn state(st: St) -> Value {
     json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "resets": resets,"active": cfg.active, "busy": busy,
            "default_account": cfg.default_account, "agents_on": cfg.agents_on, "web": !cfg.off.iter().any(|x| x == "web"), "lessons": cfg.lessons,"notify": cfg.notify, "drafts": store::drafts(),
            "projects_dir": store::projects_root(&cfg).to_string_lossy(),
-           // ponytail: login name only (HAL line #21); full display name = OS API (GetUserNameExW/getpwuid gecos) if wanted
-           "os_user": std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default(),
            // next steps from PLAN.md (ready bar, Tasks tab), every plan file with tasks (Plan tab ⓘ / merge)
            // + the last few done from CHANGES.md (Plan tab)
            "queues": cfg.projects.iter().map(|p| (p.id.clone(), json!(claude::queue(&p.path))))
