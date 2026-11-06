@@ -198,7 +198,8 @@ pre.diff .ctx { color:var(--faint); }
 .q .ans { margin:4px 0 0 28px; white-space:pre-wrap; } .q .ans.dim { font-size:13px; }
 .card h4 { margin:0 0 4px; font-size:14px; }
 .q { padding:12px 0; border-top:1px solid var(--line); } .q:first-of-type { border-top:0; }
-.q .num { display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%; background:var(--soft); color:var(--accent); font-size:12px; font-weight:700; margin-right:8px; }
+.q > div:first-child { display:flex; align-items:baseline; } /* #68: wrapped question lines align with the text, not under the number */
+.q .num { flex:none; display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%; background:var(--soft); color:var(--accent); font-size:12px; font-weight:700; margin-right:8px; }
 .choice { display:flex; gap:10px; align-items:flex-start; padding:7px 10px; margin:4px 0 0 28px; border:1px solid var(--line); border-radius:10px; cursor:pointer; transition:.12s; }
 .choice:hover { border-color:var(--line2); background:var(--bg); } .choice:has(input:checked) { border-color:var(--accent); background:var(--soft); }
 .choice input { margin-top:3px; } .choice small { display:block; }
