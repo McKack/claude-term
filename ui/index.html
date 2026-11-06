@@ -308,7 +308,7 @@ pre.diff .ctx { color:var(--faint); }
 /* tucked: 25px showing (readyTuck --tk), faded + masked toward the composer (px stops ∵ card height varies) */
 #ready.tuck { margin-bottom:var(--tk, -35px); cursor:pointer; opacity:.7;
   -webkit-mask-image:linear-gradient(#000 12px, transparent 42px); mask-image:linear-gradient(#000 12px, transparent 42px); }
-#ready.tuck > * { pointer-events:none; } #ready.tuck:hover { margin-bottom:calc(var(--tk, -35px) + 6px); opacity:.85; } /* #95 lift */
+#ready.tuck > * { pointer-events:none; } /* #109: hover un-tucks (readyPeek onmouseenter) */
 #ready #readytext.more { cursor:pointer; } #ready #readytext:not(.more) { cursor:default; } /* .more = truncated or .full (readyMore) */
 /* #70 pop: Working… pill shimmer ×2 over the soft bg (transparent stops keep --soft) */
 #ready.shine { background-image:linear-gradient(90deg, transparent 25%, color-mix(in srgb, var(--accent) 22%, transparent) 50%, transparent 75%); background-size:200% 100%; animation:shimmer 1.8s linear 2 forwards; }
@@ -1520,19 +1520,21 @@ const TRIAGE = 'New from the user while a Continue waited. Only update PLAN.md n
 // ponytail: new issues land at the Queue's end (order is local, P.order); user drags urgent ones up
 const TRIAGE_ISSUES = 'New from the user while a Continue waited. Only file it now: one marked "Filed as issue #N" is filed already (fix its title/labels if needed, merge into a matching open issue and close the dupe); others → `gh issue create --label clauracle --label <task|feature|fix>` (or add it to a matching open issue with `gh issue comment`); a plain question → answer it briefly. Don\'t start the work and don\'t call mcp__clauracle__ready: Clauracle continues with the first open task when this turn ends.\n\n';
 const triaging = {}; // pid → plan-only turn running; Continue follows it
-/* ribbon: shows tucked (half under the composer); click = pull up; tucks again on any click elsewhere, composer focus,
+/* ribbon: shows tucked (half under the composer); hover/click = pull up; tucks again on any click elsewhere, composer focus,
    4s off it or 8s on it without moving. Tucked = children pointer-events:none (CSS) → a click only reveals.
    --tk from live height ∵ text/wrap changes it; tucking also folds .full (a kept .full once blocked tucking for good) */
-let readyT = 0; const readyWas = {}; // pid → p.ready at last draw (#63 pop-up edge)
-function readyTuck(r = $('ready')) { clearTimeout(readyT); if (r.hidden) return r.classList.add('tuck'); /* height 0 → bad --tk */ $('readytext').classList.remove('full'); r.style.setProperty('--tk', `${17 - r.offsetHeight}px`) /* 25px showing: -(h - 25) - 8px gap; h same tucked or not ∴ same depth from any trigger */; r.classList.add('tuck'); }
+let readyT = 0, readyHold = false; const readyWas = {}; // pid → p.ready at last draw (#63 pop-up edge)
+function readyTuck(r = $('ready')) { clearTimeout(readyT); readyHold = false; if (r.hidden) return r.classList.add('tuck'); /* height 0 → bad --tk */ $('readytext').classList.remove('full'); r.style.setProperty('--tk', `${17 - r.offsetHeight}px`) /* 25px showing: -(h - 25) - 8px gap; h same tucked or not ∴ same depth from any trigger */; r.classList.add('tuck'); }
 const readyLater = ms => { clearTimeout(readyT); readyT = setTimeout(() => !$('ready').hidden && readyTuck(), ms); };
 // #95: anything to expand? (nowrap ellipsis cut it, or already .full) → pointer + title; else click = no-op (no jump)
 function readyMore(t) { const m = t.classList.contains('full') || t.scrollWidth > t.clientWidth + 1; t.classList.toggle('more', m); t.title = m ? (t.classList.contains('full') ? 'Click to collapse' : 'Click to show the whole task') : ''; return m; }
 function readyPeek() { // drawChrome: just shown
   const r = $('ready');
   if (!r.onmouseleave) { // wire once
-    r.onmouseleave = () => !r.classList.contains('tuck') && readyLater(4000); r.onmousemove = () => !r.classList.contains('tuck') && readyLater(8000);
-    r.onclick = e => { if (e.target === r && r.classList.contains('tuck')) { r.classList.remove('tuck'); readyLater(8000); } };
+    // #109: hover = slide up (no click); click while up = hold (20s timers) until it tucks
+    r.onmouseenter = () => { if (r.classList.contains('tuck')) { r.classList.remove('tuck'); readyLater(8000); } };
+    r.onmouseleave = () => !r.classList.contains('tuck') && readyLater(readyHold ? 20000 : 4000); r.onmousemove = () => !r.classList.contains('tuck') && readyLater(readyHold ? 20000 : 8000);
+    r.onclick = () => { if (!r.classList.contains('tuck')) { readyHold = true; readyLater(20000); } else { r.classList.remove('tuck'); readyLater(8000); } };
     document.addEventListener('pointerdown', e => !r.contains(e.target) && !r.classList.contains('tuck') && readyTuck(r), true);
     $('composer').addEventListener('focusin', () => readyTuck(r));
   }
