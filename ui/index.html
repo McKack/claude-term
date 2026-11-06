@@ -51,6 +51,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .dim { color:var(--dim); } .faint { color:var(--faint); } .err { color:var(--err); } .ok { color:var(--ok); } small { font-size:12px; }
 .row { display:flex; gap:8px; align-items:center; } .wrap { flex-wrap:wrap; } .grow { flex:1; min-width:0; }
 .label { font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); }
+.btn.cxab { font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); } .btn.cxab:hover { color:var(--accent); }
 .pill { font-size:11.5px; padding:1px 8px; border-radius:99px; background:var(--soft); color:var(--accent); white-space:nowrap; }
 .pill.lbl { font-size:10.5px; padding:0 6px; vertical-align:1px; color:color-mix(in srgb, var(--lc) 70%, var(--text)); background:color-mix(in srgb, var(--lc) 16%, transparent); border:1px solid color-mix(in srgb, var(--lc) 45%, transparent); }
 .mono { font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
@@ -2692,7 +2693,7 @@ async function preset(file, name) {
 
 // ---- settings: GitHub · Connections & Skills · Agents · AI accounts · Notifications ----
 // #38 order: who + what (Accounts, Projects, GitHub) | what the AI gets + Clauracle itself (divider before cx)
-const PAGES = {ai: ['user', 'Accounts'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Connections & Skills'], agents: ['bot', 'Agents'], look: ['sliders', 'Appearance'], notify: ['bell', 'Notifications']};
+const PAGES = {ai: ['user', 'Accounts'], projects: ['folder', 'Projects'], gh: ['gh', 'GitHub'], cx: ['plug', 'Extensions'], agents: ['bot', 'Agents'], look: ['sliders', 'Appearance'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
 // GitHub accounts / catalog changed: drop the cache and load again
 const reloadSettings = p => { SET = null; return openSettings(p); };
@@ -2724,18 +2725,21 @@ const cxItems = (kind, scope) => SET.catalog.filter(i => i.kind === kind && (sco
 const cxCount = (kind, scope, x) => { const xs = cxItems(kind, scope);
   return `${xs.filter(i => scope === 'global' ? !SET.off.includes(i.id) : onOf(x).includes(i.id)).length}/${xs.length}`; };
 // settings section that folds; title + "on/total" pill; key unique per page/scope
-const cxFold = (key, title, kind, scope, x) => fold(key, title, `<div class="box">${cxList(kind, scope, x)}</div>`, cxCount(kind, scope, x),
-  cxItems(kind, scope).length > 1 ? ['All', 'None'].map(l => `<button class="btn ghost sm" onclick="cxAll(this, '${kind}', '${esc(scope)}', ${l === 'All'})">${l}</button>`).join('') : '');
-// #32: Connections + Skills = one fold, a sub-section each (own All/None); pill = both summed
+// All/None pair, one look everywhere (#55: label style, like the sub-section ones); kind 'cx' = mcp + skill
+const cxKinds = k => k === 'cx' ? ['mcp', 'skill'] : [k];
+const cxAB = (kind, scope) => cxKinds(kind).flatMap(k => cxItems(k, scope)).length > 1
+  ? ['All', 'None'].map(l => `<button class="btn ghost sm cxab" onclick="event.preventDefault(); cxAll(this, '${kind}', '${esc(scope)}', ${l === 'All'})">${l}</button>`).join('') : '';
+const cxFold = (key, title, kind, scope, x) => fold(key, title, `<div class="box">${cxList(kind, scope, x)}</div>`, cxCount(kind, scope, x), cxAB(kind, scope));
+// #32: Connections + Skills = one fold, a sub-section each (own All/None) + All/None for both; pill = both summed
 const cxGroup = (key, title, scope, x) => { const n = ['mcp', 'skill'].map(k => cxCount(k, scope, x).split('/').map(Number));
   return fold(key, title, [['mcp', 'Connections'], ['skill', 'Skills']].map(([k, l]) => `<div class="cxsub"><div class="label row" style="margin:6px 0 4px"><span class="grow">${l}</span>
-    ${cxItems(k, scope).length > 1 ? ['All', 'None'].map(b => `<button class="btn ghost sm" onclick="cxAll(this, '${k}', '${esc(scope)}', ${b === 'All'})">${b}</button>`).join('') : ''}</div>
-    <div class="box">${cxList(k, scope, x)}</div></div>`).join(''), `${n[0][0] + n[1][0]}/${n[0][1] + n[1][1]}`); };
+    ${cxAB(k, scope)}</div>
+    <div class="box">${cxList(k, scope, x)}</div></div>`).join(''), `${n[0][0] + n[1][0]}/${n[0][1] + n[1][1]}`, cxAB('cx', scope)); };
 // fold pill = on/total of its switches, redrawn in place (toggles don't re-render the page)
 const cxLive = el => { const d = el.closest('details.fold'), xs = [...d.querySelectorAll('.sc .sw input')], p = d.querySelector(':scope > summary .pill');
   if (p) p.textContent = `${xs.filter(c => c.checked).length}/${xs.length}`; };
 async function cxAll(el, kind, scope, on) {
-  const ids = cxItems(kind, scope).map(i => i.id);
+  const ids = cxKinds(kind).flatMap(k => cxItems(k, scope)).map(i => i.id);
   if (scope === 'global') { for (const id of ids) if (SET.off.includes(id) === on) await setGlobalOff(id, !on); }
   else {
     const x = scope.startsWith('project:') ? P(scope.slice(8)) : S.accounts.find(a => a.id === scope);
