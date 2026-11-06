@@ -457,6 +457,18 @@ pub fn which(name: &str) -> Option<PathBuf> {
     dirs.iter().flat_map(|d| exts.iter().map(move |e| d.join(format!("{name}{e}")))).find(|p| p.is_file())
 }
 
+/// #88: app launched from Start/Finder lacks shell PATH additions (rustup's ~/.cargo/bin…) → build steps/terminals
+/// can't find cargo. Append existing toolchain dirs once at startup (before threads) → every child inherits.
+pub fn fix_path() {
+    let h = dirs::home_dir().unwrap_or_default();
+    let mut p: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    for d in [h.join(".cargo/bin"), h.join(".local/bin"), h.join(".bun/bin"), h.join("go/bin"),
+              "/opt/homebrew/bin".into(), "/usr/local/bin".into()] {
+        if d.is_dir() && !p.contains(&d) { p.push(d); }
+    }
+    if let Ok(v) = std::env::join_paths(p) { std::env::set_var("PATH", v); }
+}
+
 /// Toolchains for local builds (#28): id → found. Only ones this OS can use; other OSes build in CI (#27).
 /// ponytail: presence only, no version checks; Android paths = Android Studio defaults.
 pub fn deps() -> serde_json::Value {

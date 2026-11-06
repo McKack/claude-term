@@ -1411,6 +1411,7 @@ pub fn run() {
     if args.get(1).map(String::as_str) == Some("--swap-into") {
         return swap_into(std::path::Path::new(args.get(2).map_or("", String::as_str)));
     }
+    store::fix_path();
     // relaunched: old instance still exiting (≤3s hard exit) → wait ≤10s, else the guard below would hand off to it and quit
     if let Some(old) = args.iter().position(|a| a == "--after").and_then(|i| args.get(i + 1)?.parse::<u32>().ok()) {
         for _ in 0..50 {
