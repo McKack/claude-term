@@ -872,7 +872,7 @@ function acctCard(btn) {
   card.innerHTML = !a ? `<button class="btn primary block" onclick="openSettings('ai')">Add an AI account</button>` : `
     <div class="who">${p?.gh ? avGh(p.gh, 'lg') : avAI(a, 'lg')}<span class="grow" style="min-width:0"><b>${esc(a.nick)}</b><small class="dim">${p?.gh ? '@' + esc(p.gh) + ' on GitHub' : 'No GitHub account'}${p ? ' · ' + esc(p.name) : ''}</small></span></div>
     ${bar(u.five_hour, '5-hour', 'clock', 'five_hour')}${bar(u.seven_day, 'Weekly', 'cal', 'seven_day')}
-    ${p ? `<h5>AI account for ${esc(p.name)}</h5>${S.accounts.map(x => `<button class="pick ${x === a ? 'on' : ''}" data-acct="${esc(x.id)}">${avAI(x)}<span class="grow">${esc(x.nick)}${x === a ? '' : `<small class="dim" style="display:block">${esc(usageText(x.id))}</small>`}</span></button>`).join('')}` : ''}
+    ${p ? `<h5>AI account for ${esc(p.name)}</h5>${S.accounts.map(x => `<button class="pick ${x === a ? 'on' : ''}" data-acct="${esc(x.id)}">${avAI(x)}<span class="grow">${esc(x.nick)}<small class="dim" style="display:block">${esc(usageText(x.id))}</small></span></button>`).join('')}` : ''}
     ${p?.gh ? `<h5>GitHub for ${esc(p.name)}</h5><div class="pick on">${avGh(p.gh)}<span class="grow">@${esc(p.gh)}</span></div>` : ''}
     ${ghKnown().filter(g => g !== p?.gh).length ? `<h5>Signed in, not used here</h5><div class="row wrap" style="gap:4px;opacity:.6">${ghKnown().filter(g => g !== p?.gh).map(g => `<span class="pill" style="display:inline-flex;gap:5px;align-items:center;padding:2px 8px 2px 2px">${avGh(g)}@${esc(g)}</span>`).join('')}</div>` : ''}
     <div class="btnrow"><button class="btn" data-go="ai">${icon('user')}AI accounts</button><button class="btn" data-go="gh">${icon('gh')}GitHub</button></div>`;
@@ -1649,7 +1649,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   pushed: () => { ghiStale(d.pid); if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
-  project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { drawChrome(); drawLog(); } },
+  project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { if (d.keep) $('suggest').hidden = true; drawChrome(); drawLog(); } },
   queued: () => refresh(),
   janitor: () => toast(`Storage Janitor freed ${mb(d.freed)} (old caches, Claude Code versions)`, 'ok'),
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),

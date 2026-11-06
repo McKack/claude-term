@@ -423,7 +423,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
             m = msgs.recv() => {
                 let m = m.ok_or("claude stopped")?;
                 // between-turn noise (late result, system notices other than a turn's init) → show, stay idle
-                if m["type"] == "result" || (m["type"] == "system" && m["subtype"] != "init") { show(app, st, pid, &m); continue; }
+                if m["type"] == "result" || (m["type"] == "system" && m["subtype"] != "init") { show(app, st, pid, &p.account, &m); continue; }
                 live.busy.store(true, SeqCst);
                 st.with_project(pid, |p| p.working = true);
                 emit(app, "status", json!({"pid": pid, "busy": true, "handover": false}));
@@ -432,7 +432,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
         };
         loop {
             let m = match first.take() { Some(m) => m, None => msgs.recv().await.ok_or("claude stopped")? };
-            show(app, st, pid, &m);
+            show(app, st, pid, &p.account, &m);
             if m["type"] == "result" {
                 break;
             }
@@ -448,7 +448,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
     }
 }
 
-fn show(app: &AppHandle, st: &State, pid: &str, m: &Value) {
+fn show(app: &AppHandle, st: &State, pid: &str, acct: &str, m: &Value) { // acct = the account this CLI was spawned with
     // the id is known from the start: a first turn cut off by a crash can still be resumed
     if m["type"] == "system" && m["subtype"] == "init" {
         if let Some(sid) = m["session_id"].as_str() {
@@ -505,7 +505,7 @@ fn show(app: &AppHandle, st: &State, pid: &str, m: &Value) {
             }
         }
         Some("rate_limit_event") => {
-            let acct = st.project(pid).map(|p| p.account).unwrap_or_default();
+            // #111: spawn-time account, ≠ p.account ∵ a pool switch changes p.account before the reconnect
             let mut cfg = st.cfg.lock().unwrap();
             store::record_usage(&mut cfg, &acct, &m["rate_limit_info"]);
             store::save(&cfg);
@@ -623,7 +623,8 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
         match next {
             Some(n) => {
                 let nick = store::account_or_main(&st.cfg.lock().unwrap(), &n).nick.clone();
-                st.with_project(pid, |p| p.account = n.clone());
+                // #111: keep = gh stays as set in the project, no "Keep current / Use these" suggestion
+                st.with_project(pid, |p| { p.account = n.clone(); p.keep = true; });
                 line(app, pid, "note", &format!("{} reached its {} limit: switched to {nick}.", p.account, label(&window)));
                 emit(app, "project", json!(st.project(pid)));
             }
