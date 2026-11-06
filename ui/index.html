@@ -382,6 +382,8 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
 .msg .tlist .ti { font-size:inherit; }
+.sugs { margin:6px 0; } .sugs .ti { align-items:center; } .sugs .ti.completed { opacity:.55; } .sugs .ti > .btn { flex:none; }
+.sugnote { margin:0 0 4px 24px; width:calc(100% - 24px); font-size:12px; } .sugs .btns { margin-top:6px; }
 .qdrag { flex:none; align-self:center; border:0; background:none; color:var(--faint); cursor:grab; padding:0 2px; font-size:14px; line-height:1.2; opacity:0; touch-action:none; }
 .ti:hover > .qdrag, .ti.sortable-fallback > .qdrag { opacity:1; }
 /* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
@@ -626,7 +628,7 @@ const MODE_S = {off: '', manual: 'M', auto: 'A', auto_answer: 'A+'};
 
 // ponytail: tiny markdown (fences, inline code, bold, headings, lists, links); a library when tables matter
 function md(src) {
-  return src.split(/```[^\n]*\n?/).map((part, i) => i % 2 ? `<pre><code>${esc(part)}</code></pre>` :
+  return src.split(/```([^\n]*)\n?/).map((part, i, a) => i % 2 ? '' /* fence lang */ : i % 4 ? (a[i - 1].trim() === 'tasks' ? sugCards(part) : `<pre><code>${esc(part)}</code></pre>`) :
     esc(part).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
       .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="#" data-url="$2">$1</a>')
       .replace(/^#{1,4} (.*)$/gm, '<b>$1</b>')
@@ -635,6 +637,35 @@ function md(src) {
 }
 // one task row everywhere (chat lists, Plan tab, Next pill, team tasks): h = HTML; checkable only when `on` (onchange code)
 const tli = (h, {done, on, cls = '', tip, end = ''} = {}) => `<div class="ti ${cls}"${tip ? ` title="${esc(tip)}"` : ''}>${/\bsug\b/.test(cls) ? icon('sparkle') /* AI suggestion mark ≠ checkbox */ : `<input type="checkbox"${done ? ' checked' : ''}${on ? ` onchange="${on}"` : ' disabled'}>`}<span class="tt">${h}</span>${end}</div>`; // end: unclamped tail (buttons)
+// #93 question answers: ```tasks fence ("- Title: summary" lines) → cards w/ Accept|Dismiss switch (re-click clears) + Note;
+// Confirm files accepted ones (unpicked = dismissed). State per fence content hash, localStorage ∴ survives reload/redraw
+const SUGS = (() => { try { return JSON.parse(localStorage.sugs || '{}'); } catch { return {}; } })();
+const saveSugs = () => { try { localStorage.sugs = JSON.stringify(SUGS); } catch {} };
+function sugCards(code) {
+  const t = code.split('\n').map(l => l.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)/)?.[1]).filter(Boolean);
+  if (!t.length) return '';
+  const k = [...code].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7).toString(36);
+  SUGS[k] ||= {t, p: {}, n: {}};
+  return `<div class="sugs" data-k="${k}">${sugBox(k)}</div>`;
+}
+function sugBox(k) {
+  const s = SUGS[k], done = s.done, any = Object.keys(s.p).length;
+  const b = (i, v, l) => `<button class="btn sm${s.p[i] === v ? ' primary' : ''}" onclick="sugPick(this, ${i}, '${v}')">${l}</button>`;
+  return s.t.map((t, i) => { const off = done ? !done[i] : s.p[i] === 'd';
+    return tli(esc(t) + (done?.[i] ? ` <span class="pill">#${done[i]}</span>` : ''), {cls: 'sug' + (off ? ' completed' : ''), end: done ? '' : b(i, 'a', 'Accept') + b(i, 'd', 'Dismiss')})
+      + (done ? '' : `<input class="sugnote" placeholder="Note (optional)" value="${esc(s.n[i] || '')}" oninput="SUGS['${k}'].n[${i}]=this.value; saveSugs()">`); }).join('')
+    + (done ? '' : `<div class="btns"><button class="btn sm primary" onclick="sugGo(this)">${any ? 'Confirm' : 'Dismiss all'}</button></div>`);
+}
+function sugPick(el, i, v) { const box = el.closest('.sugs'), s = SUGS[box.dataset.k];
+  if (s.p[i] === v) delete s.p[i]; else s.p[i] = v; saveSugs(); box.innerHTML = sugBox(box.dataset.k); }
+async function sugGo(el) {
+  const box = el.closest('.sugs'), k = box.dataset.k, s = SUGS[k], done = {};
+  el.disabled = true;
+  for (const [i, t] of s.t.entries()) if (s.p[i] === 'a') { const n = (s.n[i] || '').trim();
+    try { done[i] = +(String(await call('task_do', {pid: cur, action: 'new', arg: t + (n ? `\n\nNote: ${n}` : '')})).match(/\/issues\/(\d+)/)?.[1] || 0) || '?'; }
+    catch (e) { toast(`Couldn't file "${t}": ${e}`, 'warn'); } }
+  s.done = done; saveSugs(); box.innerHTML = sugBox(k); pollTeam();
+}
 document.addEventListener('click', e => { const r = e.target.closest('.ti'); if (r && !e.target.closest('input,a,button') && !getSelection().toString()) r.classList.toggle('open'); });
 // shell cmd → parts at ; && || | newline OUTSIDE quotes (same as claude::split_cmd; sed 's/a;b/' stays one part)
 function splitCmd(c) {
@@ -1432,9 +1463,11 @@ function send() {
   const pid = cur;
   // #56: every direct ask (issue mode) is filed by Clauracle before it goes anywhere ∴ never lost, never unfiled.
   // Chained per project → order kept while gh runs. Edited queued ones were filed already (text carries the note)
-  const file = issueOn(pid) && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t);
+  // #93: a plain question (ends "?", not "can you…/please"; or "btw …") → not filed: answered + ```tasks cards (sugCards)
+  const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && (/\?\s*$/.test(t) && !/\b(can|could|would|will) you\b|\bplease\b/i.test(t) || /^\s*btw\b/i.test(t));
+  const file = issueOn(pid) && !isQ && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
-    const n = file ? await fileAsk(pid, t, a) : 0, text = n ? `${t}\n\n(Filed as issue #${n} by Clauracle with the raw prompt: first retitle it and write a task summary, the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done.)` : t; // #69 ∵ raw prompt as title/body read badly in the issue list
+    const n = file ? await fileAsk(pid, t, a) : 0, text = isQ ? t + QNOTE : n ?`${t}\n\n(Filed as issue #${n} by Clauracle with the raw prompt: first retitle it and write a task summary, the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done.)` : t; // #69 ∵ raw prompt as title/body read badly in the issue list
     const q = queue[pid] ||= [];
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
     if (contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
@@ -1443,7 +1476,8 @@ function send() {
     if (pid === cur) drawQueue(); keepDraft(pid, true);
   });
 }
-const WSEEN = new Set(), sendChain = {}, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/;
+const WSEEN = new Set(), sendChain = {}, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A question, not a task \(Clauracle\)/;
+const QNOTE = '\n\n(A question, not a task (Clauracle): answer it briefly; change no files, file no issues, start no work. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
 // → issue number, 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
   const body = t + (a.length ? `\n\n(+${a.length} attachment${a.length > 1 ? 's' : ''}: ${a.map(x => x.name).join(', ')})` : '');

@@ -1386,6 +1386,9 @@ pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<String,
 /// else cut at a word + "…"), body = full text ∵ issues came truncated with an empty body.
 pub fn split_task(t: &str) -> (String, String) {
     let t = t.trim();
+    if let Some((h, _)) = t.split_once('\n') { // multi-line: line 1 = title (#93 card "Title: summary\n\nNote: …")
+        if !h.trim().is_empty() && h.chars().count() <= 100 { return (h.trim().to_string(), t.to_string()); }
+    }
     if t.chars().count() <= 100 { return (t.to_string(), String::new()); }
     let lead = [": ", ". ", " (", " — "].iter().filter_map(|s| t.find(s)).filter(|&i| i >= 8 && t[..i].chars().count() <= 100).min();
     let title = match lead {
@@ -1441,6 +1444,7 @@ fn task_queue_works() {
 #[test]
 fn split_task_works() {
     assert_eq!(split_task("Fix the bug"), ("Fix the bug".into(), String::new()));
+    assert_eq!(split_task("Fix it\n\nNote: soon"), ("Fix it".into(), "Fix it\n\nNote: soon".into()));
     let long = format!("Tasks from GitHub Issues by default: {}", "x ".repeat(60));
     assert_eq!(split_task(&long), ("Tasks from GitHub Issues by default".into(), long.trim().into()));
     let (t, b) = split_task(&"word ".repeat(40));
