@@ -190,7 +190,7 @@ fn remove_project(st: St, pid: String) {
 /// current reply, same session).
 #[tauri::command]
 fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Value> {
-    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage", "rel_auto", "order", "targets"]; // read live per call: no reconnect
+    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage", "rel_auto", "order", "targets", "site"]; // read live per call: no reconnect
     let p = st.with_project(&pid, |p| {
         let mut v = json!(p);
         for (k, val) in changes.as_object().cloned().unwrap_or_default() {
@@ -994,8 +994,19 @@ fn bundle_id(st: St, pid: String) -> R<serde_json::Value> {
     // app name: last part of the current ID (keeps "clauracle" over repo "claude-term") → repo name → folder
     let name = found.as_ref().and_then(|f| f.1.rsplit('.').next().map(seg)).filter(|s| !s.is_empty())
         .unwrap_or(if name.is_empty() { seg(&root.file_name().unwrap_or_default().to_string_lossy()) } else { name });
-    let suggest = if owner.is_empty() { format!("com.example.{name}") } else { format!("com.{owner}.{name}") };
+    // #40: website domain (clauracle.arctim.no) wins → reversed (no.arctim.clauracle); a bare domain gets the app name appended
+    let dom: Vec<String> = p.site["domain"].as_str().unwrap_or("").split('.').map(seg).filter(|s| !s.is_empty()).rev().collect();
+    let suggest = if dom.len() >= 3 { dom.join(".") } else if dom.len() == 2 { format!("{}.{name}", dom.join(".")) }
+        else if owner.is_empty() { format!("com.example.{name}") } else { format!("com.{owner}.{name}") };
     Ok(serde_json::json!({"id": found.as_ref().map(|f| &f.1), "file": found.as_ref().map(|f| f.0), "suggest": suggest}))
+}
+
+/// #40: HTTP status per URL (0 = unreachable); the release check uses it for /privacy + /terms being live.
+#[tauri::command(async)]
+fn site_check(urls: Vec<String>) -> Vec<u16> {
+    let a = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(8)).build();
+    urls.iter().map(|u| match a.get(u).set("User-Agent", "Clauracle").call() {
+        Ok(r) => r.status(), Err(ureq::Error::Status(c, _)) => c, Err(_) => 0 }).collect()
 }
 
 /// App version + the file it's in: package.json / tauri.conf.json "version", Cargo.toml / pyproject.toml `version = "…"`.
@@ -1468,7 +1479,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

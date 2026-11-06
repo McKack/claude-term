@@ -1815,6 +1815,7 @@ const RELAI = { // fix prompts: Claude writes/judges, never template
     return `Extend the GitHub Actions release workflow so a v* tag push also builds ${m} and attaches the files to that tag's GitHub release (existing jobs untouched). Push when done.`; },
   icon: 'Make an app icon for this project (SVG source + the sizes its platform needs) and wire it into the config.',
   review: 'Release review: read the project and list release blockers for a public release (crashes, missing error handling, secrets in repo, debug leftovers, broken first-run). Plan only, don\'t change files.',
+  get site_legal() { return sitePrompt(); },
   store: 'Store/compliance check for publishing: privacy policy, data collection disclosure, licences of bundled deps, store listing text/screenshots, age rating. List what\'s missing, plan only.',
 };
 function relItems(c, p) {
@@ -1832,6 +1833,10 @@ function relItems(c, p) {
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.url},
     {s: 2, id: 'icon', t: 'App icon', ok: c.icon},
     ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: 'Mac signing secrets on GitHub', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
+    // #40 stores (Play/App Store) want privacy + terms URLs: RC up, mobile targets only; c.site = HTTP statuses (relWizard)
+    ...((p.targets || []).some(x => x === 'ios' || x === 'android') ? [{s: 2, id: 'site_legal', t: 'Privacy policy and terms online',
+      ok: !!c.site && c.site.every(x => x >= 200 && x < 400), d: siteOf(p).domain ? ['privacy', 'terms'].map((k, i) => `${SITEPG[k][1]} ${c.site?.[i] || 'unreachable'}`).join(' · ') : 'no website yet',
+      ...(siteReady() ? {} : {go: `svcAdd('website').then(() => rightTab('svc'))`, gl: 'Set up'})}] : []),
     {s: 2, id: 'review', t: 'Release review by AI', ai: true},
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
     ...(miss.length ? [{s: 0, id: 'ci_targets', t: 'CI builds the other platforms', ok: false, d: `not in CI: ${miss.map(tgtName).join(', ')}`}] : []),
@@ -1854,6 +1859,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const pid = cur, k = p.stage ? SK.indexOf(p.stage) : -1, to = RELTO[pid] ?? Math.max(k, 0);
   if (!cached && (force || !RELC[pid] || Date.now() - RELC[pid].t > 60e3)) {
     const c = await call('release_check', {pid}).catch(e => ({err: String(e)}));
+    if (siteOf(p).domain && (p.targets || []).some(x => x === 'ios' || x === 'android')) c.site = await call('site_check', {urls: ['privacy', 'terms'].map(k => siteUrl(k, p))}).catch(() => null);
     RELC[pid] = {c, t: Date.now()};
     if (macOn(p, pid) && c.remote && !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
   }
@@ -2337,9 +2343,66 @@ const SERVICES = {
       ['Apps', 'https://appstoreconnect.apple.com/apps'], ['API keys', 'https://appstoreconnect.apple.com/access/integrations/api']]},
   play: {name: 'Google Play', note: 'Android releases', keys: ['PLAY_SERVICE_ACCOUNT_JSON'],
     steps: ['Make the app', 'Make a service account in Google Cloud, invite it in Play Console under Users and permissions'], links: [['Play Console', 'https://play.google.com/console']]},
+  // #40: keys/steps/links follow the picked host (HOSTS) → getters; host/domain/pages live in p.site (siteHtml)
+  website: {name: 'Website', note: 'Landing page, privacy policy and terms on your domain',
+    get keys() { return HOSTS[siteOf().host]?.keys || []; },
+    get steps() { const h = HOSTS[siteOf().host]; return h && [...h.steps, `Point **${siteOf().domain || 'your subdomain'}** at it in your DNS: ${h.dns}. On Cloudflare keep it proxied (orange cloud) for free HTTPS`]; },
+    get links() { const h = HOSTS[siteOf().host]; return h && [...h.links, ['Cloudflare DNS', 'https://dash.cloudflare.com/']]; }},
   steam: {name: 'Steam', note: 'Game releases', keys: ['STEAM_APP_ID', 'STEAM_WEB_API_KEY'],
     steps: ['Pay the app fee and make the app in Steamworks', 'Get a Web API key'], links: [['Steamworks', 'https://partner.steamgames.com/apps'], ['Web API key', 'https://steamcommunity.com/dev/apikey']]},
 };
+// #40 website hosts: fields (.env keys) + easiest setup path per kind. ponytail: static list, add one = an entry
+const SSHK = ['SITE_SSH_HOST', 'SITE_SSH_USER', 'SITE_SSH_PRIVATE_KEY', 'SITE_PATH'], A_REC = 'an **A** record to the server\'s IP (shown in the panel)';
+const HOSTS = {
+  cpanel: {name: 'cPanel', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
+    steps: ['In cPanel: **Domains** › **Create a New Domain** with your subdomain; its document root is **SITE_PATH** (like public_html/app)',
+      '**SSH Access** › **Manage SSH Keys** › **Generate a New Key**, then **Authorize** it and view the private key', 'Fill the keys: host = your server name, user = cPanel username, key = that private key']},
+  directadmin: {name: 'DirectAdmin', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
+    steps: ['**Subdomain Management**: add the subdomain; folder = **SITE_PATH** (like domains/example.com/public_html/app)',
+      '**SSH Keys**: add or create a key (no SSH menu? ask your host to enable SSH)', 'Fill the keys: host = your server name, user = DirectAdmin username, key = the private key']},
+  plesk: {name: 'Plesk', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
+    steps: ['**Websites & Domains** › **Add Subdomain**; its document root is **SITE_PATH**', '**Web Hosting Access**: set SSH access to /bin/bash, add your public key under **SSH Keys**', 'Fill the keys']},
+  ssh: {name: 'SSH / SFTP server (VPS)', how: 'rsync over SSH into SITE_PATH (served by the web server there)', keys: SSHK, dns: A_REC, links: [],
+    steps: ['Make a web root for the subdomain on the server (like /var/www/app) and a server block / vhost for it with HTTPS (Caddy does it by itself)', 'Put your public key in ~/.ssh/authorized_keys', 'Fill the keys']},
+  cfpages: {name: 'Cloudflare Pages', how: 'wrangler pages deploy', keys: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'], dns: 'add it under the Pages project › **Custom domains** (Cloudflare makes the CNAME)',
+    steps: ['**My Profile** › **API Tokens** › **Create Token** with **Cloudflare Pages: Edit**', 'Copy your **Account ID** (right side of any zone overview)', 'Fill the keys'],
+    links: [['API tokens', 'https://dash.cloudflare.com/profile/api-tokens']]},
+  netlify: {name: 'Netlify', how: 'netlify deploy --prod', keys: ['NETLIFY_AUTH_TOKEN', 'NETLIFY_SITE_ID'], dns: 'a **CNAME** to <site>.netlify.app (Domain management shows it)',
+    steps: ['**Add new site** › **Deploy manually** (any folder), copy its **Site ID** from Site configuration', '**User settings** › **Applications** › **New access token**', 'Fill the keys'],
+    links: [['Sites', 'https://app.netlify.com/'], ['Tokens', 'https://app.netlify.com/user/applications#personal-access-tokens']]},
+  vercel: {name: 'Vercel', how: 'vercel deploy --prod', keys: ['VERCEL_TOKEN'], dns: 'a **CNAME** to cname.vercel-dns.com (Project › Domains)',
+    steps: ['**Account Settings** › **Tokens** › **Create**', 'Fill the key'], links: [['Tokens', 'https://vercel.com/account/tokens']]},
+  ghpages: {name: 'GitHub Pages', how: 'a GitHub Actions Pages workflow with a CNAME file', keys: [], dns: 'a **CNAME** to <owner>.github.io',
+    steps: ['Repo **Settings** › **Pages**: Source = **GitHub Actions**', 'Optional: tick **Enforce HTTPS** once the domain check passes'], links: [['Pages docs', 'https://docs.github.com/pages']]},
+};
+const SITEPG = {landing: ['Landing page', '/'], privacy: ['Privacy Policy', '/privacy'], terms: ['Terms of Service', '/terms']};
+const siteOf = (p = P()) => ({pages: Object.keys(SITEPG), ...(p.site || {})});
+const siteUrl = (pg, p) => `https://${siteOf(p).domain}${SITEPG[pg][1]}`;
+async function siteSet(ch) {
+  if ('host' in ch) stepReset('website'); // other host = other steps
+  if ('domain' in ch) { ch.domain = ch.domain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''); delete BUNDLE[cur]; delete RELC[cur]; }
+  await setP({site: {...siteOf(), ...ch}}); await refresh(); drawServices();
+}
+const siteTog = (pg, on) => siteSet({pages: Object.keys(SITEPG).filter(k => k === pg ? on : siteOf().pages.includes(k))});
+function siteHtml() {
+  const s = siteOf(), h = HOSTS[s.host];
+  return field('Host', `<select onchange="siteSet({host:this.value})">${options({'': 'Pick your host…', ...Object.fromEntries(Object.entries(HOSTS).map(([k, x]) => [k, x.name]))}, s.host || '')}</select>`)
+    + field('Address', `<input class="mono" placeholder="app.example.com" value="${esc(s.domain || '')}" onchange="siteSet({domain:this.value})">`)
+    + `<div class="box" style="margin:0">${Object.entries(SITEPG).map(([k, [n, path]]) => optRow(esc(n), `<span class="mono">${s.domain ? esc(s.domain) : ''}${path}</span>`,
+      sw(s.pages.includes(k), `siteTog('${k}', this.checked)`))).join('')}</div>`
+    + (s.domain ? bundleRow() + '<small class="dim">Bundle ID suggestion follows this address, reversed</small>' : '')
+    + (h && s.domain && s.pages.length ? `<button class="btn primary block" onclick="siteMake()">${icon('sparkle')}Make &amp; deploy the website</button>` : '');
+}
+function sitePrompt() {
+  const s = siteOf(), h = HOSTS[s.host], pg = s.pages.map(k => `${SITEPG[k][0]} (${SITEPG[k][1]})`).join(', ');
+  if (!h || !s.domain) return 'Set up the project website: ask me via the ask tool which host and address to use.';
+  return `Make the project website as a small static site in site/ (plain HTML/CSS, unless the project already has a web setup): ${pg}, served at https://${s.domain}. `
+    + `Read the README and code first; plain voice of this app, no template filler. Privacy policy and terms must match what the app really collects and does `
+    + `(what's required by Google Play / App Store); ask me via the ask tool for the owner name, contact email and country if you can't find them. `
+    + `Deploy to ${h.name} via ${h.how}${h.keys.length ? `, with a deploy script that reads ${h.keys.join(', ')} from .env at run time (never print or commit them)` : ''}. `
+    + `Tell me the deploy command so I can set it as the project's Deploy step.`;
+}
+async function siteMake() { const text = sitePrompt(); if (await sure(`Ask Claude?\n\n${text}\n${estTok()}`)) sendNow(cur, {text, atts: []}); }
 const svcOf = p => [...new Set([...(p.gcp ? ['google'] : []), ...(p.services || [])])].filter(id => SERVICES[id]);
 async function svcAdd(id) { await setP({services: [...svcOf(P()), id]}); await refresh(); drawRight(); }
 async function svcRemove(id) { await setP({services: svcOf(P()).filter(x => x !== id)}); await refresh(); drawRight(); }
@@ -2350,7 +2413,7 @@ async function drawServices() {
   const box = $('rbody'), p = P(), ids = svcOf(p);
   const files = await call('env_list', {pid: cur}).catch(() => []);
   envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))};
-  if ((ids.includes('macsign') || ids.includes('appstore')) && !(cur in BUNDLE)) BUNDLE[cur] = await call('bundle_id', {pid: cur}).catch(() => null);
+  if ((ids.includes('macsign') || ids.includes('appstore') || ids.includes('website')) && !(cur in BUNDLE)) BUNDLE[cur] = await call('bundle_id', {pid: cur}).catch(() => null);
   if (tab !== 'svc') return;
   const add = `<button class="ib" title="Add a service" onclick="svcMenu(this)">${icon('plus')}</button>`;
   if (!ids.length) {
@@ -2361,13 +2424,15 @@ async function drawServices() {
   }
   box.innerHTML = ids.map(id => { const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k));
     return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px"><p class="dim">Asking gcloud…</p></div>' : '')
+      + (id === 'website' ? siteHtml() : '')
       + (x.steps ? stepper(id, x.steps) : '')
       + (x.links ? `<div class="btnrow">${x.links.map(([l, u]) => `<button class="btn sm" data-url="${esc(u)}">${esc(l)}</button>`).join('')}</div>` : '')
       + (id === 'appstore' ? bundleRow() : '')
       + `<div class="keys">${x.keys.map(k => `<div><span>${k}</span>${envKeys.have.has(k) ? '<small class="ok">set</small>' : '<small class="faint">missing</small>'}</div>`).join('')}</div>`
       + (miss.length ? `<button class="btn primary block" onclick="fillKeys('${id}')">${icon('key')}Fill in ${miss.length} key${miss.length > 1 ? 's' : ''}</button>` : '')
       + (x.gh === true ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
-      `<span class="pill" ${miss.length ? 'style="background:var(--hover);color:var(--dim)"' : ''}>${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`
+      (id === 'website' && !siteReady() ? '<span class="pill" style="background:var(--hover);color:var(--dim)">set up</span>'
+        : `<span class="pill" ${miss.length ? 'style="background:var(--hover);color:var(--dim)"' : ''}>${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`)
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>` + secretsFold(files)
     // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
@@ -2415,7 +2480,8 @@ function stepSync(id) { // → true if new steps got ticked (persisted)
 // required = not "Optional…"; all ticked → service's steps count as done
 const stepReq = steps => steps.map((x, i) => i).filter(i => !/^Optional/.test(steps[i].t || steps[i]));
 const stepsDone = id => { const st = SERVICES[id].steps; return !st || (stepSync(id), stepReq(st).every(i => stepOf(id).d.includes(i))); };
-const svcDone = id => stepsDone(id) && SERVICES[id].keys.every(k => envKeys.have.has(k));
+const siteReady = () => { const s = siteOf(); return !!(HOSTS[s.host] && s.domain); };
+const svcDone = id => (id !== 'website' || siteReady()) && stepsDone(id) && SERVICES[id].keys.every(k => envKeys.have.has(k));
 function stepOpen(id) { const s = stepOf(id); s.open = !s.open; try { localStorage.steps = JSON.stringify(STEPS); } catch {} drawServices(); }
 function stepper(id, steps) {
   stepSync(id); const s = stepOf(id), done = stepsDone(id);
