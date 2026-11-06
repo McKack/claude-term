@@ -557,10 +557,10 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="right" hidden>
   <div id="rtabs">
     <button data-t="gh" onclick="rightTab('gh')" title="GitHub: plan, tasks, repo"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
-    <button data-t="agents" onclick="rightTab('agents')" title="Agents"><svg class="i"><use href="#i-bot"/></svg><span>Agents</span></button>
     <button data-t="svc" onclick="rightTab('svc')" title="Services &amp; Secrets"><svg class="i"><use href="#i-layers"/></svg><span>Services &amp; Secrets</span></button>
     <button data-t="build" onclick="rightTab('build')" title="Build &amp; Release"><svg class="i"><use href="#i-hammer"/></svg><span>Build &amp; Release</span></button>
-    <i class="rsep"></i><!-- workspace group (Code, Browser) always behind this line -->
+    <i class="rsep"></i><!-- workspace group (Agents, Code, Browser) always behind this line -->
+    <button data-t="agents" onclick="rightTab('agents')" title="Agents"><svg class="i"><use href="#i-bot"/></svg><span>Agents</span></button>
     <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
     <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
   </div>
@@ -3236,7 +3236,7 @@ function drawRRail() {
     + (ctx[cur] != null ? stat(ctx[cur] + '%', 'context', 'Context window used') : '')
     + (u.five_hour != null ? stat(u.five_hour + '%', '5h', '5-hour usage') : '')
     + (u.seven_day != null ? stat(u.seven_day + '%', '7d', 'Weekly usage') : '')
-    + '<hr>' + [['gh', 'gh', 'GitHub'], ['agents', 'bot', 'Agents'], ['build', 'hammer', 'Build'], ['svc', 'layers', 'Services & Secrets'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
+    + '<hr>' + [['gh', 'gh', 'GitHub'], ['svc', 'layers', 'Services & Secrets'], ['build', 'hammer', 'Build'], ['agents', 'bot', 'Agents'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
       .map(([k, i, l]) => `<button class="ib" data-t="${k}" title="${l}" onclick="expandRight('${k}')">${icon(i)}</button>`).join('');
 }
 function expandRight(t) { tab = t; UI.rc = false; layout(); drawRight(); }
