@@ -184,6 +184,21 @@ pub struct Live {
     armed: AtomicBool,        // ready was called this turn
     handing_over: AtomicBool, // Clauracle asked for a handover (context limit / Clear & continue)
     first_turn: AtomicBool,   // a fresh session already past the context limit must not hand over forever
+    pin: AtomicU64,           // #83: issue this session was started on (0 = none); ready refuses once while it's open
+    nagged: AtomicBool,       // pin refusal already sent → 2nd ready goes through (AI insists: blocked/waiting)
+}
+
+/// #83: the issue a continue message pins = its first "- #N" line (task_queue order, taken ones skipped).
+fn pin_of(msg: &str) -> u64 {
+    if !msg.starts_with(CONTINUE_ISSUES) { return 0; }
+    msg.split("\n- #").nth(1).and_then(|s| s.split(' ').next()?.parse().ok()).unwrap_or(0)
+}
+
+#[test]
+fn pin_of_works() {
+    assert_eq!(pin_of(&format!("{CONTINUE_ISSUES}\n- #83 Pick tasks\n- #84 x")), 83);
+    assert_eq!(pin_of(CONTINUE), 0);
+    assert_eq!(pin_of(&format!("{CONTINUE_ISSUES} run `gh issue list --label clauracle` to see them.")), 0);
 }
 
 pub struct State {
@@ -617,6 +632,8 @@ pub fn fresh(app: &AppHandle, st: &State, pid: &str, live: &Live, cont: Option<S
     live.armed.store(false, SeqCst);
     live.handing_over.store(false, SeqCst);
     live.first_turn.store(true, SeqCst);
+    live.pin.store(cont.as_deref().map_or(0, pin_of), SeqCst);
+    live.nagged.store(false, SeqCst);
     let answers = st.with_project(pid, |p| {
         if p.session.is_some() { p.prev_session = p.session.take(); }
         p.ready = false;
@@ -914,6 +931,18 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                 let p = st.project(pid).unwrap();
                 if p.cont == "off" && !live.handing_over.load(SeqCst) {
                     return text("Clear-continue is off for this project: nothing will be cleared. Just end the turn.");
+                }
+                // #83: finished = pinned issue closed (code decides, not the AI) ∵ ready on an open issue → clear →
+                // Continue re-picks it → #62/#75 loop. Handover pauses (context limit) pass; one refusal, then trust.
+                let n = live.pin.load(SeqCst);
+                if n > 0 && !live.handing_over.load(SeqCst) && !live.nagged.swap(true, SeqCst) {
+                    let s = store::gh_json(&["issue", "view", &n.to_string(), "--json", "state"], &p.gh, Some(&p.path));
+                    if s["state"] == "OPEN" { // ponytail: blocking gh (~1s) on the reader; gh failing → let ready through
+                        return text(&format!("Not armed: issue #{n} (this session's task) is still open, so the next \
+                          session would pick it again. If it's done: verify, `gh issue close {n} -c <summary>`. If it's too big: \
+                          file the rest as new issues, then close #{n}. Then call ready again. (If it truly can't be closed \
+                          yet, e.g. waiting on the user, call ready again and say why.)"));
+                    }
                 }
                 live.armed.store(true, SeqCst);
                 // watchdog: work is done once ready is called; only the closing summary is left. A stalled API reply
