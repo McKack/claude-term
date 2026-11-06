@@ -494,6 +494,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5l8-1.2V11H3zM13 4l8-1.2V11h-8zM3 13h8v6.7l-8-1.2zM13 13h8v8.2L13 20z"/></symbol>
   <symbol id="i-apple" viewBox="0 0 24 24"><path d="M12 7c-1.5-1-5-1.5-6.5 1.5S5 16 7.5 19c1.5 1.8 3 1.5 4.5.8 1.5.7 3 1 4.5-.8 1.3-1.5 2-3.2 2.3-4.5-2.5-1-2.8-4.8-.3-6-1.5-2.2-4.5-2-6.5-1.5zM12 7c0-2 1-3.5 3-4"/></symbol>
   <symbol id="i-android" viewBox="0 0 24 24"><path d="M5 18v-5a7 7 0 0 1 14 0v5zM7 6l1.5 2.5M17 6l-1.5 2.5"/><path d="M9.5 13v.5M14.5 13v.5"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3L2 20h20zM12 10v5M12 17.5v.5"/></symbol>
   <symbol id="i-bug" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="13" rx="5"/><path d="M9 7a3 3 0 0 1 6 0M12 11v9M3 13h4M17 13h4M4 7l3 2M20 7l-3 2M4 20l3-2M20 20l-3-2"/></symbol>
   <symbol id="i-go" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-brain"viewBox="0 0 24 24"><path d="M12 5a3 3 0 0 0-5.6-1.5A3 3 0 0 0 4 8a3 3 0 0 0 0 5 3.5 3.5 0 0 0 3 5.5A3 3 0 0 0 12 19zM12 5a3 3 0 0 1 5.6-1.5A3 3 0 0 1 20 8a3 3 0 0 1 0 5 3.5 3.5 0 0 1-3 5.5A3 3 0 0 1 12 19zM12 5v14"/></symbol>
@@ -807,10 +808,13 @@ function resetIn(id, k) {
 const RESEEN = new Set();
 setInterval(() => { for (const [id, w] of Object.entries(S.resets || {})) for (const [k, r] of Object.entries(w)) {
   const key = id + k + r, ago = Date.now() - r * 1000;
-  if (ago > 0 && ago < 6e5 && !RESEEN.has(key)) { RESEEN.add(key); toast(`${k === 'five_hour' ? '5-hour' : 'Weekly'} limit reset for ${nick(id)}: fresh quota`); }
+  if (ago > 0 && ago < 6e5 && !RESEEN.has(key)) { RESEEN.add(key); toast(`${k === 'five_hour' ? '5-hour' : 'Weekly'} limit reset for ${nick(id)}: fresh quota`, 'ok'); }
 } }, 30000);
-function toast(text) {
-  const t = Object.assign(document.createElement('div'), {className: 'toast glass', textContent: text, popover: 'manual'});
+// #39 kind → [icon, colour]: info | ok | warn | err
+const TOASTK = {info: ['info', 'var(--accent)'], ok: ['check', 'var(--ok)'], warn: ['warn', '#d9a21b'], err: ['x', 'var(--err)']};
+function toast(text, kind = 'info') {
+  const [ic, c] = TOASTK[kind] || TOASTK.info, t = Object.assign(document.createElement('div'), {className: 'toast glass', popover: 'manual'});
+  t.innerHTML = `<div class="row" style="gap:10px;align-items:flex-start"><span style="color:${c};flex:none;display:inline-flex;padding-top:1px">${icon(ic)}</span><span class="grow">${esc(text)}</span></div>`;
   document.body.append(t); t.showPopover(); setTimeout(() => t.remove(), 8000); t.onclick = () => t.remove();
 }
 function acctCard(btn) {
@@ -2264,7 +2268,7 @@ function syncWeb() {
   const ph = el?.closest('.phone'), wz = ph ? z * (+ph.style.zoom || 1) : 1; // phone: keep its 390px viewport
   const url = webUrl[cur] || '', nav = !!rect && url !== webNav, key = JSON.stringify([rect, wz, url]);
   if (key === webAt && !nav) return; webAt = key; if (nav) webNav = url;
-  call('web_view', {url, rect, zoom: wz, nav}).catch(e => { if (nav) toast(String(e)); });
+  call('web_view', {url, rect, zoom: wz, nav}).catch(e => { if (nav) toast(String(e), 'err'); });
 }
 setInterval(syncWeb, 250);
 function openIn() {
@@ -2875,7 +2879,7 @@ async function csLoad(scope = CS.scope) {
 // one edit = fresh read → change → write → redraw; refuses while the file doesn't parse
 async function csEdit(fn) {
   const r = await call('claude_settings', {scope: CS.scope, pid: cur || ''});
-  if (!r.json) return toast('Settings file is not valid JSON: fix it in Raw JSON');
+  if (!r.json) return toast('Settings file is not valid JSON: fix it in Raw JSON', 'warn');
   r.json.permissions ||= {};
   fn(r.json);
   for (const k of ['allow', 'ask', 'deny']) if (r.json.permissions[k]?.length === 0) delete r.json.permissions[k];
@@ -3169,7 +3173,7 @@ drawSide();
 applyView();
 refresh().then(() => S.active && openProject(S.active));
 /* processes a crashed earlier run left behind: ask, never kill unasked */
-call('orphans', {kill: false}).then(o => o?.length && setTimeout(() => sure(`A previous Clauracle run left ${o.length} process${o.length === 1 ? '' : 'es'} running:\n\n${o.map(x => `${x.name} (pid ${x.pid})`).join('\n')}\n\nEnd ${o.length === 1 ? 'it' : 'them'}?`, 'End').then(y => y && call('orphans', {kill: true}).then(() => toast('Ended'))), 1500));
+call('orphans', {kill: false}).then(o => o?.length && setTimeout(() => sure(`A previous Clauracle run left ${o.length} process${o.length === 1 ? '' : 'es'} running:\n\n${o.map(x => `${x.name} (pid ${x.pid})`).join('\n')}\n\nEnd ${o.length === 1 ? 'it' : 'them'}?`, 'End').then(y => y && call('orphans', {kill: true}).then(() => toast('Ended', 'ok'))), 1500));
 // dock grows (input lines, pills, queue) → the log shrinks; if it was at the bottom, glide up by the same amount
 let dockH = 0;
 new ResizeObserver(() => {
