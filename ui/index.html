@@ -65,7 +65,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 /* sidebar */
 #side { background:var(--side); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
 #brand { display:flex; align-items:center; justify-content:center; gap:9px; padding:16px 14px 10px; font-weight:700; font-size:16px; }
-#brand .logo { width:22px; height:22px; flex:none; } #brand b span { color:var(--accent); }
+#brand .logo { width:22px; height:22px; flex:none; } #appver { font-size:10px; opacity:.45; margin-left:2px; } #brand b span { color:var(--accent); }
 /* the name in Fredoka (SIL OFL, bundled, latin subset): rounded and a bit silly, like the word */
 @font-face { font-family:'Fredoka'; font-weight:600; font-display:swap; src:url(fredoka-600.woff2) format('woff2'); }
 #brand b, .brandname { font-family:'Fredoka',system-ui,sans-serif; font-weight:600; font-size:19px; letter-spacing:.01em; }
@@ -545,7 +545,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 </svg>
 
 <aside id="side">
-  <div id="brand"><svg class="logo" onclick="goHome()" style="cursor:pointer" title="Home"><use href="#i-logo"/></svg><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b>
+  <div id="brand"><svg class="logo" onclick="goHome()" style="cursor:pointer" title="Home"><use href="#i-logo"/></svg><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b><small id="appver"></small>
 </div>
   <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
@@ -3542,5 +3542,6 @@ new ResizeObserver(() => {
 }).observe($('dock'));
 setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 6 * 3600e3);
 </script>
+<script>window.__TAURI__?.app.getVersion().then(v => { document.getElementById('appver').textContent = 'v' + v; }).catch(() => {});</script>
 </body>
 </html>
