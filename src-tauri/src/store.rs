@@ -310,7 +310,10 @@ pub fn mac_script(m: &NetMac, pid: &str, cmd: &str, sign: &[(String, String)]) -
     // #156: fresh Mac lacks Apple's Developer ID G2 intermediate → codesign "unable to build chain" / errSecInternalComponent.
     // Public cert → login keychain import works over ssh w/o unlock; skip if present, never fatal
     let ca = "security find-certificate -c 'Developer ID Certification Authority' >/dev/null 2>&1 || { curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o /tmp/devidg2.cer && security import /tmp/devidg2.cer -k ~/Library/Keychains/login.keychain-db; } || true\n";
-    format!("exec 2>&1\nset -e\nexport CI=true\n{ca}{env}cd {}\nif [ -f package.json ]; then npm install --no-audit --no-fund; fi\n{cmd}\n", mac_dir(m, pid))
+    // #156: tauri notarizes+staples only the .app; the dmg stays "Unnotarized Developer ID" → notarize + staple each fresh dmg.
+    // ponytail: Apple ID creds only (APPLE_API_* path not handled); -mmin 120 = this build's dmgs, not old versions'
+    let dmg = "if [ -n \"$APPLE_ID\" ] && [ -n \"$APPLE_PASSWORD\" ] && [ -n \"$APPLE_TEAM_ID\" ]; then find src-tauri/target -path '*/bundle/dmg/*.dmg' -not -name 'rw.*' -mmin -120 | while read -r d; do echo \"Notarizing $d\"; xcrun notarytool submit \"$d\" --apple-id \"$APPLE_ID\" --password \"$APPLE_PASSWORD\" --team-id \"$APPLE_TEAM_ID\" --wait && xcrun stapler staple \"$d\"; done; fi\n";
+    format!("exec 2>&1\nset -e\nexport CI=true\n{ca}{env}cd {}\nif [ -f package.json ]; then npm install --no-audit --no-fund; fi\n{cmd}\n{dmg}", mac_dir(m, pid))
 }
 
 /// A helper agent Claude Code can hand work to (a subagent), usually on a cheaper model.
@@ -1939,7 +1942,7 @@ mod tests {
         assert_eq!(mac_dir(&m, "p 1"), "~/brm-rf/p1");
         assert_eq!(mac_dir(&NetMac::default(), "x"), "clauracle-build/x");
         let s = mac_script(&m, "x", "npx tauri build", &[("APPLE_PASSWORD".into(), "a'b".into()), ("AZURE_X".into(), "z".into())]);
-        assert!(s.contains("export APPLE_PASSWORD='a'\\''b'\n") && !s.contains("AZURE") && s.ends_with("npx tauri build\n"));
+        assert!(s.contains("export APPLE_PASSWORD='a'\\''b'\n") && !s.contains("AZURE") && s.contains("npx tauri build\n") && s.contains("notarytool submit"));
     }
 
     /// live: CLAURACLE_MAC=mac-mini cargo test mac_roundtrip -- --ignored (sync → script w/ env → fake dmg pulled back)
