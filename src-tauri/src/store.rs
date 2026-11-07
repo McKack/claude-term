@@ -1424,6 +1424,9 @@ fn claude_clean(home: &Path, keep: &[String], low: bool) -> u64 {
 pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool) -> Result<String, String> {
     if tag.is_empty() || tag.starts_with('-') { return Err("bad tag".into()); }
     // #119: tag THIS commit (pushed first); w/o --target gh tags the default branch → v0.1.2 got built from 0.1.1 code
+    // #154: never attach another version's bundle (v0.1.2 shipped 0.1.1 files; a slow/old build keeps its old name)
+    let bad = wrong_version(tag, files);
+    if !bad.is_empty() { return Err(format!("not built as {tag}: {} (rebuild first)", bad.join(", "))); }
     let env = gh_env(user);
     // #130: CI off → repo var gate (workflow `if: vars.CLAURACLE_CI != 'off'`); on → drop it. Errors ignored (no admin = no gate)
     if ci { run("gh", &["variable", "delete", "CLAURACLE_CI"], Some(dir), &env); }
@@ -1445,6 +1448,24 @@ pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool) -> 
         });
     }
     if o.ok { Ok(o.stdout.trim().to_string()) } else { Err(o.stderr.trim().to_string()) }
+}
+
+/// #154 files whose name carries a version (`Name_1.2.3_arch.ext`, Tauri's scheme) ≠ tag's. Unversioned names pass
+/// (`Name_universal.app.tar.gz`). ponytail: name-based; a renamed file slips through
+pub fn wrong_version(tag: &str, files: &[String]) -> Vec<String> {
+    let want = tag.trim_start_matches('v');
+    files.iter().filter_map(|f| {
+        let n = Path::new(f).file_name()?.to_string_lossy().to_string();
+        let v = n.split('_').find(|s| s.contains('.') && s.split('.').all(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit())))?;
+        (v != want).then_some(n)
+    }).collect()
+}
+
+#[test]
+fn release_skips_other_versions() {
+    let f = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert!(wrong_version("v0.1.4", &f(&["a/Clauracle_0.1.4_x64-setup.exe", "Clauracle_universal.app.tar.gz"])).is_empty());
+    assert_eq!(wrong_version("v0.1.2", &f(&["b/Clauracle_0.1.1_amd64.deb", "Clauracle_0.1.2_amd64.deb"])), ["Clauracle_0.1.1_amd64.deb"]);
 }
 
 // ---- Clauracle's issues: label `clauracle` (= ours, ≠ hand-filed repo issues) + a type label (task/feature/fix/
