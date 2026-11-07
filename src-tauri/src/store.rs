@@ -530,6 +530,9 @@ pub fn record_usage(cfg: &mut Config, account: &str, raw: &serde_json::Value) {
         windows.push((t, 1.0, raw["resetsAt"].as_f64()));
     }
     let entry = cfg.usage.entry(account.into()).or_default();
+    if raw["unifiedWindows"].is_object() {
+        entry.clear(); // full report: nothing older (e.g. another account's numbers) survives it
+    }
     for (k, u, r) in windows {
         entry.insert(k, Window { utilization: u, resets_at: r });
     }

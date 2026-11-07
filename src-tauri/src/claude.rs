@@ -340,8 +340,10 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
     let env: Vec<(String, String)> = [store::account_env(&p.account, &base),store::gh_env(&p.gh), store::gcloud_env(&p.gaccount, &p.gcp),
         vec![("CLAUDE_CODE_ENTRYPOINT".into(), "sdk-clauracle".into())]].concat();
     let mut cmd = tokio::process::Command::from(store::command(&claude));
-    if !base.is_empty() {
-        cmd.env_remove("CLAUDE_CODE_OAUTH_TOKEN");
+    // inherited creds (Clauracle started from a session of another account) would make Main run — and record
+    // usage — as that account: each session gets only its own account's vars (Main: the ~/.claude login)
+    for k in ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"] {
+        cmd.env_remove(k);
     }
     cmd.args(args(st, &p)).envs(env).env_remove("CLAUDECODE").current_dir(&p.path)
         .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped())
