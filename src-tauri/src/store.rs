@@ -106,6 +106,7 @@ pub struct Project {
     pub stage: String,        // release wizard: "" | alpha | beta | rc | published
     pub rel_auto: bool,       // Release panel tick: successful build + version ahead of last tag → gh release (UI does it)
     pub order: Vec<u64>,      // task issue numbers in Plan tab order (local; unlisted issues follow by number)
+    pub work: u64,            // issue being worked on (0 = none): persisted ∴ a clear/crash/restart resumes it first, never re-picks the queue head
     pub targets: Vec<String>, // target platforms: windows|macos|linux|ios|android; [] = not picked → UI guesses (ships_mac)
     pub site: serde_json::Value, // #40 website: {host, domain, pages: [landing|privacy|terms]}; UI-owned shape, secrets stay in .env
 }
@@ -116,7 +117,7 @@ impl Default for Project {
             off: vec![], on: None, mode: "default".into(), model: String::new(), effort: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, prev_session: None, ready: false, questions: vec![], answers: String::new(),
             build: Build { after: "smart".into(), fix: true, ..Default::default() }, hide_env: true, terse: true,
-            owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], allow: vec![], ai_credit: false, stage: String::new(), rel_auto: false, order: vec![], targets: vec![], site: serde_json::Value::Null,
+            owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], allow: vec![], ai_credit: false, stage: String::new(), rel_auto: false, order: vec![], work: 0, targets: vec![], site: serde_json::Value::Null,
         }
     }
 }
@@ -268,8 +269,11 @@ fn pipe(mut a: Command, mut b: Command) -> Result<(), String> {
     use std::process::Stdio;
     let mut ca = a.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let out = ca.stdout.take().unwrap();
+    let mut ea = ca.stderr.take().unwrap(); // drained in parallel ∵ a full stderr pipe blocked `a` → b never saw EOF → hang
+    let ta = std::thread::spawn(move || { let mut v = vec![]; let _ = std::io::Read::read_to_end(&mut ea, &mut v); v });
     let ob = b.stdin(out).stdout(Stdio::null()).stderr(Stdio::piped()).output().map_err(|e| e.to_string())?;
-    let oa = ca.wait_with_output().map_err(|e| e.to_string())?;
+    let st = ca.wait().map_err(|e| e.to_string())?;
+    let oa = std::process::Output { status: st, stdout: vec![], stderr: ta.join().unwrap_or_default() };
     let last = |e: &[u8]| String::from_utf8_lossy(e).lines().filter(|l| !l.trim().is_empty() && !l.starts_with("Warning: Permanently added")).last().unwrap_or("failed").trim().to_string();
     if !oa.status.success() { return Err(last(&oa.stderr)); }
     if !ob.status.success() { return Err(last(&ob.stderr)); }
@@ -399,10 +403,13 @@ static SAVE: Mutex<()> = Mutex::new(());
 
 pub fn load() -> Config {
     let path = home().join("config.json");
-    let mut cfg: Config = match std::fs::read_to_string(&path) {
-        Ok(s) => serde_json::from_str(s.trim_start_matches('\u{feff}')).unwrap_or_else(|_| {
-            // unreadable: keep it aside instead of letting the next save wipe it
-            let _ = std::fs::copy(&path, home().join("config.broken.json"));
+    // ∵ any read error used to = "first run" → next save wiped every project: only NotFound is a first run
+    let parse = |p: &std::path::Path| std::fs::read(p).ok()
+        .and_then(|b| serde_json::from_str::<Config>(String::from_utf8_lossy(&b).trim_start_matches('\u{feff}')).ok());
+    let mut cfg: Config = match std::fs::metadata(&path) {
+        Ok(_) => parse(&path).or_else(|| parse(&home().join("config.json.tmp"))).unwrap_or_else(|| {
+            // unreadable (locked, bad bytes, bad JSON): keep it aside, timestamped ∴ a 2nd failure can't overwrite the 1st backup
+            let _ = std::fs::copy(&path, home().join(format!("config.broken-{}.json", now() as u64)));
             Config::default()
         }),
         Err(_) => {
@@ -430,9 +437,10 @@ pub fn save(cfg: &Config) {
     let _g = SAVE.lock().unwrap();
     let _ = std::fs::create_dir_all(home());
     let tmp = home().join("config.json.tmp"); // write then rename: a crash never leaves half a config
-    if std::fs::write(&tmp, serde_json::to_string_pretty(cfg).unwrap_or_default()).is_ok() {
-        let _ = std::fs::rename(&tmp, home().join("config.json"));
-    }
+    let r = std::fs::File::create(&tmp).and_then(|mut f| { // sync ∵ power loss after rename could leave it empty
+        std::io::Write::write_all(&mut f, serde_json::to_string_pretty(cfg).unwrap_or_default().as_bytes())?; f.sync_all() })
+        .and_then(|_| std::fs::rename(&tmp, home().join("config.json")));
+    if let Err(e) = r { eprintln!("config save failed: {e}"); }
 }
 
 /// Unsent input per project (text + attachments), so a crash or restart never loses what was typed.
@@ -1648,27 +1656,18 @@ pub const OUR_LABEL: &str = "clauracle";
 pub const TASK_LABEL: &str = "task";
 pub const DOING_LABEL: &str = "in progress";
 pub const IDEA_LABEL: &str = "suggestion"; // Claude's own idea awaiting the user's yes (Issues list Accept/Dismiss)
+pub const WAIT_LABEL: &str = "needs-user"; // task blocked on the user (login, password, hardware, billing): out of the AI queue until unblocked
 
 pub fn tasks(dir: &str, user: &str) -> serde_json::Value {
-    let list = |l: &str| gh_json(&["issue", "list", "--label", l, "--state", "open", "--limit", "100",
+    // 300 ∵ gh lists newest first: past the limit the OLDEST tasks (first in line) would drop out
+    let v = gh_json(&["issue", "list", "--label", OUR_LABEL, "--state", "open", "--limit", "300",
               "--json", "number,title,url,assignees,labels,updatedAt,author"], user, Some(dir));
-    let v = trusted(list(OUR_LABEL), user, || {
+    // (2026-11-05 `task`→`clauracle` relabel migration removed: it bypassed trusted() and wrote to GitHub on every empty poll)
+    trusted(v, user, || {
         // ∵ issue templates can auto-label outsiders' issues → only push-access authors queue work for the AI
         gh_json(&["api", "repos/{owner}/{repo}/collaborators", "--jq", "[.[] | select(.permissions.push) | .login]"], user, Some(dir))
             .as_array().into_iter().flatten().filter_map(|l| l.as_str().map(str::to_lowercase)).collect()
-    });
-    // ponytail: migration (2026-11-05): none ours yet → tag open `task` issues `clauracle` once; drop later
-    if v.as_array().is_some_and(|a| a.is_empty()) {
-        let old = list(TASK_LABEL);
-        let ns: Vec<String> = old.as_array().into_iter().flatten().filter_map(|x| x["number"].as_u64()).map(|n| n.to_string()).collect();
-        if !ns.is_empty() {
-            let env = gh_env(user);
-            run("gh", &["label", "create", OUR_LABEL, "--color", "D77655", "--description", "Tracked in Clauracle"], Some(dir), &env);
-            for n in &ns { run("gh", &["issue", "edit", n, "--add-label", OUR_LABEL], Some(dir), &env); }
-            return list(OUR_LABEL);
-        }
-    }
-    v
+    })
 }
 
 /// Keep issues by `me` or a push collaborator. Collaborators fetched only if a stranger's issue shows up (solo repo = 0
@@ -1711,6 +1710,7 @@ pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<String,
         "release" => gh(&["issue", "edit", arg, "--remove-assignee", "@me", "--remove-label", DOING_LABEL]),
         "done" => gh(&["issue", "close", arg]),
         "accept" => gh(&["issue", "edit", arg, "--remove-label", IDEA_LABEL]), // suggestion → queued task
+        "unblock" => gh(&["issue", "edit", arg, "--remove-label", WAIT_LABEL]), // user did their part → back in the queue (old number ∴ near the front)
         "dismiss" => gh(&["issue", "close", arg, "--reason", "not planned"]),
         // #112 edit modal: view = issue fields; meta = repo labels + assignable people (page caches); edit = JSON diff
         "view" => gh(&["issue", "view", arg, "--json", "number,title,body,labels,assignees"]),
@@ -1759,17 +1759,18 @@ pub fn split_task(t: &str) -> (String, String) {
     (title, t.to_string())
 }
 
-/// Issue-mode queue: open `task` issues (from `tasks()`) minus suggestions and ones someone else took, in the
-/// project's `order` (unlisted → after, by number). Same rule as the UI's issueQ().
-pub fn task_queue(list: &serde_json::Value, me: &str, order: &[u64]) -> Vec<serde_json::Value> {
+/// Issue-mode queue: open `task` issues (from `tasks()`) minus suggestions, ones blocked on the user and ones someone
+/// else took. Order: `work` (in progress) first, then the project's `order` (urgent asks are put at its front), then
+/// oldest first ∴ outstanding work beats new asks. Same rule as the UI's issueQ().
+pub fn task_queue(list: &serde_json::Value, me: &str, order: &[u64], work: u64) -> Vec<serde_json::Value> {
     let me = me.to_lowercase();
     let mut q: Vec<serde_json::Value> = list.as_array().into_iter().flatten().filter(|x| {
         let names = |k: &str, f: &str| x[k].as_array().into_iter().flatten().filter_map(|l| l[f].as_str().map(str::to_lowercase)).collect::<Vec<_>>();
         let who = names("assignees", "login");
-        !names("labels", "name").iter().any(|l| l == IDEA_LABEL) && (who.is_empty() || who.contains(&me))
+        !names("labels", "name").iter().any(|l| l == IDEA_LABEL || l == WAIT_LABEL) && (who.is_empty() || who.contains(&me))
     }).cloned().collect();
     let n = |x: &serde_json::Value| x["number"].as_u64().unwrap_or(0);
-    q.sort_by_key(|x| (order.iter().position(|&o| o == n(x)).unwrap_or(usize::MAX), n(x)));
+    q.sort_by_key(|x| (n(x) != work, order.iter().position(|&o| o == n(x)).unwrap_or(usize::MAX), n(x)));
     q
 }
 
@@ -1795,11 +1796,14 @@ fn task_queue_works() {
         {"number": 1, "title": "a", "labels": [{"name": "suggestion"}], "assignees": []},
         {"number": 2, "title": "b", "labels": [], "assignees": [{"login": "Bob"}]},
         {"number": 4, "title": "d", "labels": [], "assignees": [{"login": "Me"}]},
-        {"number": 5, "title": "e", "labels": [], "assignees": []}]);
+        {"number": 5, "title": "e", "labels": [], "assignees": []},
+        {"number": 6, "title": "f", "labels": [{"name": "needs-user"}], "assignees": []}]);
     let nums = |q: Vec<serde_json::Value>| q.iter().map(|x| x["number"].as_u64().unwrap()).collect::<Vec<_>>();
-    assert_eq!(nums(task_queue(&v, "me", &[5])), [5, 3, 4]);
-    assert_eq!(nums(task_queue(&v, "me", &[])), [3, 4, 5]);
-    assert!(task_queue(&serde_json::Value::Null, "me", &[]).is_empty());
+    assert_eq!(nums(task_queue(&v, "me", &[5], 0)), [5, 3, 4]);
+    assert_eq!(nums(task_queue(&v, "me", &[], 0)), [3, 4, 5]);
+    assert_eq!(nums(task_queue(&v, "me", &[5], 4)), [4, 5, 3]); // in-progress beats order
+    assert_eq!(nums(task_queue(&v, "me", &[], 6)), [3, 4, 5]); // blocked on the user → out even if it was the work
+    assert!(task_queue(&serde_json::Value::Null, "me", &[], 0).is_empty());
 }
 
 #[test]

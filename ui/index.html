@@ -800,9 +800,9 @@ async function refresh() {
   const first = !draftsLoaded;
   if (first) { // unsent input from before a close, crash or restart
     draftsLoaded = true;
-    for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; queue[pid] = d.queue || []; if (d.editing) editing[pid] = d.editing; }
+    for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; queue[pid] = [...(d.filing || []), ...(d.queue || [])] /* filing = sent mid-gh-call when the app died: no note ∴ the AI files it (rules) */; if (d.editing) editing[pid] = d.editing; }
+    for (const id of S.busy) busy[id] = true; // first load only: a later refresh resolving after status busy:false re-set it → stuck Working, queue never flushed
   }
-  for (const id of S.busy) busy[id] = true;
   drawProjects();
   if (P()) drawChrome(); else drawHome();
   if (first) Object.keys(queue).forEach(flushQueue); // held across a restart with no resumed turn: busy:false never comes → send now (after drawChrome: idle bar known)
@@ -848,7 +848,6 @@ const projRow = p => `<div class="proj ${p.id === cur ? 'on' : ''}" data-id="${p
     ${p.questions.length ? `<span class="pill">${p.questions.length}?</span>` : ''}</div>`;
 // ---- account card (bottom-left): the open project's AI + GitHub account, others as a stack ----
 // GitHub avatars from github.com/<user>.png; Claude accounts have no pictures → initials in the mascot colours
-const AVC = ['#7c83ff', '#d97757', '#3fbf9f', '#c9a86a', '#b67be0'];
 // AI accounts: the service's mark (all Claude for now) in its brand colour
 const avAI = (a, cls = '') => `<span class="av ai ${cls}" title="${esc(a.nick)}"><svg><use href="#i-claude"/></svg></span>`;
 // avatars: one preloaded Image per user, kept alive → the page's image cache draws re-rendered cards instantly (no reload flash)
@@ -1133,6 +1132,7 @@ const acctItems = () => [...S.accounts.map(a => { const on = P().account === a.i
 const permItems = () => [{title: 'Permissions (level)'}, ...Object.entries(PERMS).map(([k, l], i) => ({check: P().mode === k, label: `${i + 1}  ${l}`, run: () => setP({mode: k})}))];
 const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
 
+const LOADED = new Set(); // pids whose transcript is in logs[]
 async function openProject(pid) {
   if (!P(pid)) return;
   if (cur) texts[cur] = $('prompt').value;
@@ -1141,8 +1141,10 @@ async function openProject(pid) {
   $('head').hidden = $('dock').hidden = $('right').hidden = false; $('suggest').hidden = true; grow(); // measure once visible
   drawProjects(); drawChrome(); drawAtts(); drawQueue(); drawEditBar();
   const info = await call('open_project', {pid});
-  if (!logs[pid]) logs[pid] = info.history.length ? [...info.history, {kind: 'note', text: 'Resumed session'}] : [];
-  busy[pid] = info.busy;
+  // transcript once per run, BEFORE whatever arrived meanwhile (resumed-turn lines, flushed queue) ∵ `!logs[pid]` skipped it → chat looked lost after every restart
+  if (!LOADED.has(pid)) { LOADED.add(pid); logs[pid] = [...(info.history.length ? [...info.history, {kind: 'note', text: 'Resumed session'}] : []), ...(logs[pid] || [])]; }
+  if (info.busy) busy[pid] = true; // never → false here: Rust busy is false during armed build steps while the UI must stay busy (status events own that)
+  if (pid !== cur) return; // switched again while loading
   $('branch').hidden = !info.branch; $('branch').textContent = info.branch;
   drawLog(); drawChrome(); drawRight(); $('prompt').focus();
   suggest(pid); pollTeam(); drawSide(); askLegacy(pid);
@@ -1436,7 +1438,8 @@ function keepDraft(pid = cur, now = false) {
   if (pid === cur) texts[pid] = $('prompt').value;
   const text = texts[pid] || '', a = atts[pid] || [], q = queue[pid] || [], ed = editing[pid] || null; // ed: a queued one being edited
   clearTimeout(keepDraft[pid]);
-  const save = () => call('save_draft', {pid, draft: text || a.length || q.length || ed ? {text, atts: a, queue: q, editing: ed} : null});
+  const f = FILING[pid] || [];
+  const save = () => call('save_draft', {pid, draft: text || a.length || q.length || ed || f.length ? {text, atts: a, queue: q, editing: ed, filing: f} : null});
   if (now) save(); else keepDraft[pid] = setTimeout(save, 300);
 }
 // ---- image viewer (chat, terminal, composer attachments) + editor: pen and numbered boxes with notes ----
@@ -1553,28 +1556,46 @@ function send() {
   // #56: every direct ask (issue mode) is filed by Clauracle before it goes anywhere ∴ never lost, never unfiled.
   // Chained per project → order kept while gh runs. Edited queued ones were filed already (text carries the note)
   // #93: a plain question (ends "?", not "can you…/please"; or "btw …") → not filed: answered + ```tasks cards (sugCards)
-  const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && (/\?\s*$/.test(t) && !/\b(can|could|would|will) you\b|\bplease\b/i.test(t) || /^\s*btw\b/i.test(t));
+  const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && (/\?\s*$/.test(t) && !/\b(can|could|would|will|should|shall) (you|we|it|i)\b|\bplease\b|\bis it possible\b|\bhow about\b|\blet'?s\b/i.test(t) || /^\s*btw\b/i.test(t));
   const file = issueOn(pid) && !isQ && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
   // #101: bubble shows now (⏱ while filing) unless it'd queue/triage anyway; the chain re-checks below
   // #103: queued (turn running) → bubble now too, ⏱ Queued; QB ties it to its queue item
   const opt = !(contWaiting(pid) && !a.length) ? userEntry(pid, t, a, {st: busy[pid] || RESTARTING ? 'queue' : 'pend'}) : null;
+  // saved to disk while gh files it (seconds): a crash/quit in that window used to lose it (composer already cleared)
+  const fm = {text: t, atts: a}; (FILING[pid] ||= []).push(fm); keepDraft(pid, true);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
-    const n = file ? await fileAsk(pid, t, a) : 0, text = isQ ? t + QNOTE : n ?`${t}\n\n(Filed as issue #${n} by Clauracle with the raw prompt: first retitle it and write a task summary, the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done. Not a task after all (a question, test leftover, already done) → answer it and \`gh issue close ${n} --reason "not planned"\` so it drops out of the list.)` : t; // #69 ∵ raw prompt as title/body read badly in the issue list
+    const n = file ? await fileAsk(pid, t, a) : 0, now = n && fileNow(pid, t, n), text = isQ ? t + QNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
     const q = queue[pid] ||= [];
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
     if (opt && contWaiting(pid) && !a.length) unEntry(pid, opt); // a Continue came up while filing → triage shows its own
     if (contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
-    const m = {text, atts: a};
+    const m = {text, atts: a, work: now ? n : 0};
     if (busy[pid] || RESTARTING) { q.splice(ed ? ed.i : q.length, 0, m); /* an edited one goes back to its place */ if (opt?.log) { reBub(opt, text, a); tick(opt, 'queue'); QB.set(m, opt); } }
     else sendNow(pid, m, opt?.log && opt);
-    if (pid === cur) drawQueue(); keepDraft(pid, true);
-  });
+    if (pid === cur) drawQueue();
+  }).catch(err => { // a throw used to leave the chain rejected → this and every later message for the project silently dropped
+    (queue[pid] ||= []).push(fm); if (pid === cur) drawQueue();
+    toast(`Message kept in the queue (send hit an error: ${err})`, 'warn');
+  }).finally(() => { FILING[pid] = (FILING[pid] || []).filter(x => x !== fm); keepDraft(pid, true); });
 }
+const FILING = {}; // pid → messages between send() and their place in queue/session (saved in the draft)
 const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A question, not a task \(Clauracle\)/;
 // #98: Clauracle's appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
 // #100: notes = one line each → strip per note (triage batch keeps later bullets); triage preamble hidden too
 const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A question, not a task \(Clauracle\))[^\n]*/g, '');
-const QNOTE = '\n\n(A question, not a task (Clauracle): answer it briefly; change no files, file no issues, start no work. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
+const QNOTE = '\n\n(A question, not a task (Clauracle): answer it briefly; change no files, start no work. If it actually asks for a change, it is a task: file it (`gh issue create --label clauracle --label task`) and say so. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
+/* user's rule: outstanding tasks first, a new ask goes to the END of the queue unless it says urgent (→ front of P.order, worked now).
+   Ask into an empty queue = worked now too. now → send({work}) pins it in Rust (p.work) ∴ a handover/crash resumes it, not the queue head */
+const URGENT_RE = /(^|[\s#])(urgent|asap|right now|immediately)\b/i;
+function fileNow(pid, t, n) {
+  const iq = issueQ(pid), urgent = URGENT_RE.test(t);
+  if (urgent) { const order = [n, ...(P(pid).order || []).filter(x => x !== n)]; P(pid).order = order; call('update_project', {pid, changes: {order}}).catch(() => {}); }
+  return urgent || !iq /* not loaded → old behaviour */ || !iq.some(x => x.number && x.number !== n); // in-progress work is in iq too
+}
+// one line each (bare() strips it for display; FILED_RE reads the number)
+const filedNote = (n, now, urgent) => now
+  ? `\n\n(Filed as issue #${n} by Clauracle${urgent ? ', marked urgent: it goes before the other open tasks' : ''}. Work on it now: first retitle it + write a task summary with the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done. Not a task after all (a question, a status/unblock reply, already done) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`
+  : `\n\n(Filed as issue #${n} by Clauracle at the END of the task queue: open tasks come first (the user's rule), so don't start it now. Retitle it + write a task summary with the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`), say so in one line, then carry on with the task you're on. It only adds to that task → fold it in and close #${n} as a duplicate. Not a task (a question, a status/unblock reply) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`;
 // → issue number, 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
   const body = t + (a.length ? `\n\n(+${a.length} attachment${a.length > 1 ? 's' : ''}: ${a.map(x => x.name).join(', ')})` : '');
@@ -1583,11 +1604,11 @@ async function fileAsk(pid, t, a) {
 }
 // a queued message being edited holds the queue (nothing auto-sends) until it's sent or the edit is cancelled
 const editing = {}; // pid → {i: its place, m: the original, prev: what the composer held before}
-function cancelEdit() {
+function cancelEdit(hold) {
   const e = editing[cur]; if (!e) return;
   delete editing[cur]; queue[cur].splice(e.i, 0, e.m); qBub(cur, e.m);
   $('prompt').value = e.prev.text; atts[cur] = e.prev.atts;
-  drawQueue(); drawAtts(); grow(); drawEditBar(); keepDraft(); flushQueue(cur);
+  drawQueue(); drawAtts(); grow(); drawEditBar(); keepDraft(); if (!hold) flushQueue(cur);
 }
 const drawEditBar = () => { $('cancelEdit').hidden = !editing[cur]; };
 let RESTARTING = false; // Claude asked for a restart: hold everything in the saved queue until the new app is up
@@ -1641,7 +1662,7 @@ function toTasks(pid, texts) {
 }
 // ready → clear + continue; idle bar → next task in this session
 const contGo = pid => P(pid).ready ? (pid === cur ? cont_() : call('continue_now', {pid, extra: null}))
-  : nextUp(pid).length && sendNow(pid, {text: (issueQ(pid) ? 'Carry on with the next task (GitHub issue): ' : S.queues?.[pid]?.length ?'Carry on with the next task in PLAN.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(pid)[0], atts: []});
+  : nextUp(pid).length && sendNow(pid, {work: issueQ(pid)?.[0]?.number, text: (issueQ(pid) ? 'Carry on with the next task (GitHub issue): ' : S.queues?.[pid]?.length ?'Carry on with the next task in PLAN.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(pid)[0], atts: []});
 // #101 ticks: e.st pend ⏱ → sent ✓ (in the session's inbox) → read blue ✓✓ (its turn started) | fail !
 const UNREAD = {}, USEREL = new WeakMap(); // pid → entries awaiting ✓✓; entry → its bubble (WeakMap ∵ logs stay plain data)
 const utext = (t, a) => { const f = a.filter(x => x.path); return t + (f.length ? `\n📎 ${f.map(x => x.name).join(', ')}` : ''); };
@@ -1656,12 +1677,13 @@ const TK = {queue: [icon('clock'), 'Queued: sends when this turn ends'], pend: [
 const tickHtml = e => `<span class="tk ${e.st}" data-tip="${TK[e.st][1]}">${TK[e.st][0]}</span>`;
 function tick(e, st) { e.st = st; const k = USEREL.get(e)?.querySelector('.tk'); if (k) k.outerHTML = tickHtml(e); }
 const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tick(e, 'read')); UNREAD[pid] = []; };
-function sendNow(pid, {text: t, atts: a}, e) {
+function sendNow(pid, {text: t, atts: a, work}, e) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
   if (e) { reBub(e, t, a); if (e.st !== 'pend') tick(e, 'pend'); }
   else e = userEntry(pid, t, a);
   (UNREAD[pid] ||= []).push(e);
-  call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files})
+  if (work) P(pid).work = work;
+  call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files, work: work || null})
     .then(() => e.st === 'pend' && tick(e, 'sent'), err => { tick(e, 'fail'); toast(`Message not sent: ${err}`, 'err'); });
 }
 // one row of pills (first words; click = edit), ‹ › scroll it when it overflows
@@ -1671,13 +1693,14 @@ function drawQueue() {
   $('qrow').innerHTML = q.map((m, i) => `<span class="qp" title="${esc(bare(m.text))}" onclick="editQueued(${i})"><span class="qi">${icon('clock')}</span>${m.atts?.length ? `<span class="qa" data-tip="${esc(m.atts.map(x => x.name).join(', '))}">${icon('file')}${m.atts.length > 1 ? m.atts.length : ''}</span>` : ''}<span class="qt">${esc(words(m))}</span>
     <button class="ib" title="Edit (↑ in an empty box)" onclick="event.stopPropagation(); editQueued(${i})">${icon('new')}</button>
     <button class="ib" title="Send next: first in line when this turn ends" onclick="event.stopPropagation(); queue[cur].unshift(...queue[cur].splice(${i},1)); drawQueue(); keepDraft(cur, true); flushQueue(cur)">${icon('up')}</button>
-    <button class="ib" title="Remove" onclick="event.stopPropagation(); qDrop(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft()">${icon('x')}</button></span>`).join('');
+    <button class="ib" title="Remove" onclick="event.stopPropagation(); qDrop(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft(cur, true)">${icon('x')}</button></span>`).join('');
   requestAnimationFrame(() => { const r = $('qrow'); $('queue').classList.toggle('over', r.scrollWidth > r.clientWidth + 1); });
 }
 const qscroll = d => $('qrow').scrollBy({left: d * $('qrow').clientWidth * .8, behavior: 'smooth'});
 // into the composer; what was there comes back after send/cancel
 function editQueued(i) {
-  if (editing[cur]) cancelEdit();
+  const want = queue[cur][i]; if (!want) return;
+  if (editing[cur]) { cancelEdit(true); i = queue[cur].indexOf(want); } // index moved: the cancelled one went back in (+ a flush used to send the clicked one)
   const [m] = queue[cur].splice(i, 1), p = $('prompt'); qDrop(cur, m);
   editing[cur] = {i, m, prev: {text: p.value, atts: atts[cur] || []}};
   p.value = m.text; atts[cur] = [...m.atts];
@@ -1731,11 +1754,11 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
   status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
     if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
-      Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) { const r = cq && P(d.pid).ready, t = nextUp(d.pid)[0]; contGo(d.pid); if (r) contNote(d.pid, t); } else flushQueue(d.pid); }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
+      Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) { const r = cq && P(d.pid).ready, t = nextUp(d.pid)[0]; contGo(d.pid); if (r) contNote(d.pid, t); } else { if (cq) contQ[d.pid] = true; /* Continue clicked + msgs queued: msgs first, Continue after (was dropped) */ flushQueue(d.pid); } }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
-  restarting: () => { RESTARTING = true; },
+  restarting: () => { RESTARTING = true; setTimeout(() => { if (!RESTARTING) return; RESTARTING = false; toast("Restart didn't happen: queued messages are sending again.", "warn"); Object.keys(queue).forEach(flushQueue); }, 20000); }, // relaunch spawn failed → app lives on; RESTARTING stuck = queue frozen forever
   cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note' && !x.cont)) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   pushed: () => { ghiStale(d.pid); if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
@@ -2433,6 +2456,7 @@ function nextStep(p) {
 // others' (same rule as store::task_queue), in P.order (local; unlisted → after, by number). null → PLAN.md mode / not loaded
 const issueOn = pid => !!(P(pid)?.owner && P(pid)?.gh);
 const isIdea = x => x.labels.some(l => l.name === 'suggestion');
+const isWait = x => x.labels.some(l => l.name === 'needs-user'); // blocked on the user: "Waiting on you", not the AI queue
 /* #41 issue a turn works on, per project; localStorage ∵ app swap mid-turn → resumed turn still finishes it. Set on
    first busy sight (= first open issue), dropped when idle + closed or on clear-continue → "Finishing up #N…" while busy+closed */
 const WDONE = new Set(); // #71 issues the AI closed this run: hidden even if a gh poll lags (else the new turn re-picked them → "Finishing up #N" forever)
@@ -2441,7 +2465,7 @@ function workOf(pid, drop) {
   const iq = issueQ(pid); if (!iq) return;
   const was = WORK[pid], open = iq.some(x => x.number === was);
   if (drop || !busy[pid] && was && !open) delete WORK[pid];
-  else if (busy[pid] && filedOf(pid) && was !== filedOf(pid)) WORK[pid] = filedOf(pid); // #56: the ask's own issue wins
+  else if (busy[pid] && P(pid).work && was !== P(pid).work && iq.some(x => x.number === P(pid).work)) WORK[pid] = P(pid).work; // pinned (urgent ask / ask into an empty queue); a non-urgent filed ask isn't started
   else if (busy[pid] && contOf(pid) && was !== contOf(pid)) WORK[pid] = contOf(pid); // #74: the #N the Continue named, not a guess
   else if (busy[pid] && !was && iq[0]?.number && !askOf(pid)) WORK[pid] = iq[0].number;
   if (was !== WORK[pid]) try { localStorage.workOn = JSON.stringify(WORK); } catch {}
@@ -2452,13 +2476,12 @@ function workOf(pid, drop) {
 const lastUser = pid => (logs[pid] || []).findLast(e => e.kind === 'user')?.text?.trim() || '';
 const askOf = pid => { const t = lastUser(pid);
   return t && !/^(carry on|continue)|#\d+/i.test(t) && !t.startsWith('New from the user') ? t : ''; };
-const filedOf = pid => +(lastUser(pid).match(FILED_RE)?.[1] || 0); // #56 issue Clauracle filed for the last ask
 // #74 first #N of a Continue message (button "…(GitHub issue): #N" or clear-continue "- #N" list) = the task it hands over
 const contOf = pid => { const t = lastUser(pid); return /^(carry on|continue)/i.test(t) ? +(t.match(/#(\d+)/)?.[1] || 0) : 0; };
 function issueQ(pid) {
   if (!issueOn(pid) || !team[pid]?.repo) return null;
-  const me = P(pid).gh.toLowerCase(), ord = P(pid).order || [], at = n => { const i = ord.indexOf(n); return !n ? 2e9 : i < 0 ? 1e9 + n : i; }; // n 0 = optimistic "#…" row → end
-  return teamTasks(pid).filter(x => !isIdea(x) && !WDONE.has(x.number) &&(!x.assignees.length || x.assignees.some(a => a.login.toLowerCase() === me))).sort((a, b) => at(a.number) - at(b.number));
+  const me = P(pid).gh.toLowerCase(), ord = P(pid).order || [], w = P(pid).work, at = n => { const i = ord.indexOf(n); return !n ? 2e9 : n === w ? -1 : i < 0 ? 1e9 + n : i; }; // n 0 = optimistic "#…" row → end; work (in progress) first = store::task_queue
+  return teamTasks(pid).filter(x => !isIdea(x) && !isWait(x) && !WDONE.has(x.number) &&(!x.assignees.length || x.assignees.some(a => a.login.toLowerCase() === me))).sort((a, b) => at(a.number) - at(b.number));
 }
 // Issues list (#15): row = #N link + title + type pills (GitHub colour; `clauracle` hidden ∵ every row has it)
 const issueHtml = x => (x.number ? `<a data-url="${esc(x.url)}">#${x.number}</a> ` : '<span class="faint">#…</span> ') + esc(x.title)
@@ -2467,7 +2490,8 @@ const issueHtml = x => (x.number ? `<a data-url="${esc(x.url)}">#${x.number}</a>
 const issuesRest = () => { const iq = issueQ(cur), me = (team[cur]?.me || '').toLowerCase();
   return `<div class="tlist">${teamTasks(cur).filter(isIdea).map((x, i) => tli(issueHtml(x), {cls: 'sug',
       end: `<button class="ib" title="Accept: queue it" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: close the issue" onclick="planWait(${i}, false)">${icon('x')}</button>`})).join('')
-    + teamTasks(cur).filter(x => !isIdea(x) && !iq.includes(x)).map(x => tli(issueHtml(x), {cls: 'in_progress', end: `<span class="pill">${esc(x.assignees.map(a => a.login).join(', '))}</span>`})).join('')}</div>
+    + teamTasks(cur).filter(x => !isIdea(x) && !isWait(x) && !iq.includes(x)).map(x => tli(issueHtml(x), {cls: 'in_progress', end: `<span class="pill">${esc(x.assignees.map(a => a.login).join(', '))}</span>`})).join('')}</div>
+    ${teamTasks(cur).some(isWait) ? `<div class="label" title="Blocked on you (label needs-user): the AI skips them until you click Unblocked">Waiting on you</div><div class="tlist">${teamTasks(cur).filter(isWait).map(x => tli(issueHtml(x), {cls: 'sug', end: `<button class="btn sm" title="You did your part: back into the AI's queue" onclick="taskDo('unblock', ${x.number})">Unblocked</button>`})).join('')}</div>` : ''}
     <div class="row"><input id="newTask" class="grow" placeholder="New issue (task)" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add issue" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`; };
 const nextUp = pid => { const iq = issueQ(pid); if (iq) return iq.map(x => `#${x.number} ${x.title}`); const q = S.queues?.[pid] || []; return q.length ? q : teamTasks(pid).filter(x => !isDoing(x)).map(x => `#${x.number} ${x.title}`); };
 function tasksHtml() {
@@ -3327,7 +3351,6 @@ const DEPS = {node: ['Node.js', [], 'https://nodejs.org/en/download'], rust: ['R
 let DEPSC = null;
 const depsGet = async () => (DEPSC && Date.now() - DEPSC.t < 60e3) ? DEPSC.d : (DEPSC = {d: await call('deps').catch(() => ({})), t: Date.now()}).d;
 // missing deps for project p's picked targets (only ids this OS reports)
-const depsMissing = p => !DEPSC ? [] : Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].some(t => (p.targets || []).includes(t)));
 async function depsFill() {
   const d = await depsGet(), box = $('depsBox'); if (!box) return;
   const want = new Set(S.projects.flatMap(p => p.targets || []));

@@ -73,12 +73,12 @@ fn find_orphans() -> Vec<(u32, String)> {
     let Ok(t) = std::fs::read_to_string(store::home().join("children.txt")) else { return vec![] };
     let live = procs();
     t.lines().filter_map(|l| l.trim().parse().ok())
-        .filter_map(|p: u32| live.get(&p).filter(|n| ["claude", "node", "cmd", "sh", "bash"].contains(&n.as_str())).map(|n| (p, n.clone())))
+        .filter_map(|p: u32| live.get(&p).filter(|n| CHILDISH.contains(&n.as_str())).map(|n| (p, n.clone())))
         .collect()
 }
 
 /// Orphans from a crashed earlier run; `kill` ends their trees.
-#[tauri::command]
+#[tauri::command(async)]
 fn orphans(kill: bool) -> Vec<Value> {
     let mut o = ORPHANS.lock().unwrap();
     if kill { o.drain(..).for_each(|(p, _)| kill_tree(p)); }
@@ -149,17 +149,18 @@ async fn add_project(st: St<'_>, path: String) -> R<Value> {
         Some(w) => store::new_project(&mut cfg, &path, Some(&w.account), Some(w.gh.as_str()).filter(|g| !g.is_empty())),
         None => store::new_project(&mut cfg, &path, None, None),
     };
-    let p = mark(&mut cfg, &p.id, who.as_ref());
+    let p = mark(&mut cfg, &p.id, who.as_ref()).ok_or("no such project")?;
     store::save(&cfg);
     Ok(json!(p))
 }
 
-fn mark(cfg: &mut store::Config, pid: &str, who: Option<&store::Who>) -> store::Project {
-    let p = cfg.projects.iter_mut().find(|p| p.id == pid).unwrap();
+/// None = project removed meanwhile (was unwrap under the cfg lock → poisoned Mutex → every command dead)
+fn mark(cfg: &mut store::Config, pid: &str, who: Option<&store::Who>) -> Option<store::Project> {
+    let p = cfg.projects.iter_mut().find(|p| p.id == pid)?;
     if let Some(w) = who {
         (p.owner, p.shared) = (w.owner.clone(), w.shared);
     }
-    p.clone()
+    Some(p.clone())
 }
 
 /// After opening: refresh owner/shared, and say whether the suggestion differs from what the project uses.
@@ -168,7 +169,7 @@ async fn who(st: St<'_>, pid: String) -> R<Value> {
     let path = st.project(&pid).ok_or("no such project")?.path;
     let Some(w) = detect(&st, path).await else { return Ok(Value::Null) };
     let mut cfg = st.cfg.lock().unwrap();
-    let p = mark(&mut cfg, &pid, Some(&w));
+    let p = mark(&mut cfg, &pid, Some(&w)).ok_or("no such project")?;
     store::save(&cfg);
     let differs = !p.keep && !w.gh.is_empty() && (!w.gh.eq_ignore_ascii_case(&p.gh) || w.account != p.account);
     Ok(json!({"who": w, "differs": differs}))
@@ -179,6 +180,7 @@ fn remove_project(st: St, pid: String) {
     let mut cfg = st.cfg.lock().unwrap();
     cfg.projects.retain(|p| p.id != pid);
     store::save(&cfg);
+    claude::stop_run(&pid); // its dev server/app kept running until exit
     if let Some(l) = st.live.lock().unwrap().remove(&pid) {
         l.inbox.front(vec![Input::Reconnect]); // its loop sees the project gone and ends
     }
@@ -188,7 +190,7 @@ fn remove_project(st: St, pid: String) {
 /// current reply, same session).
 #[tauri::command]
 fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Value> {
-    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage", "rel_auto", "order", "targets", "site"]; // read live per call: no reconnect
+    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage", "rel_auto", "order", "work", "targets", "site"]; // read live per call: no reconnect
     let p = st.with_project(&pid, |p| {
         let mut v = json!(p);
         for (k, val) in changes.as_object().cloned().unwrap_or_default() {
@@ -211,8 +213,10 @@ fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Valu
 }
 
 /// images: pasted ones as [{media_type, data(base64)}]; files: paths, mentioned so Claude reads only what it needs.
+/// work: the issue this message starts (urgent ask / ask into an empty queue) → persisted ∴ a handover or crash resumes it.
 #[tauri::command]
-fn send(app: AppHandle, st: St, pid: String, text: String, images: Option<Vec<Value>>, files: Option<Vec<String>>) {
+fn send(app: AppHandle, st: St, pid: String, text: String, images: Option<Vec<Value>>, files: Option<Vec<String>>, work: Option<u64>) {
+    if let Some(n) = work.filter(|&n| n > 0) { st.with_project(&pid, |p| p.work = n); }
     let live = session(&app, &st, &pid);
     let (images, files) = (images.unwrap_or_default(), files.unwrap_or_default());
     if text.trim() == "/clear" && images.is_empty() && files.is_empty() {
@@ -254,12 +258,6 @@ async fn interrupt(st: St<'_>, pid: String) -> R<()> {
         c.request(json!({"subtype": "interrupt"}), 10).await?;
     }
     Ok(())
-}
-
-#[tauri::command]
-fn new_session(app: AppHandle, st: St, pid: String) {
-    let live = session(&app, &st, &pid);
-    claude::fresh(&app, &st, &pid, &live, None);
 }
 
 /// The Continue button: clear the context and carry on from the handover (with any answers).
@@ -307,6 +305,7 @@ fn set_lessons(st: St, lessons: Vec<String>) {
 
 #[tauri::command(async)] // async ∵ cont_text runs gh in issue mode
 fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
+    if st.project(&pid).is_none() { return; } // removed: no stray session, no unwrap panic below
     let live = session(&app, &st, &pid);
     if let Some(x) = extra.filter(|x| !x.trim().is_empty()) { // user messages sent while it waited: ride along with "continue"
         st.with_project(&pid, |p| p.answers = if p.answers.is_empty() { x } else { format!("{}
@@ -360,6 +359,11 @@ fn answer_questions(app: AppHandle, st: St, pid: String, answers: Vec<Value>) {
         live.inbox.push(Input::Msg(text));
     } else {
         st.with_project(&pid, |p| p.answers = [p.answers.as_str(), text.as_str()].join("\n").trim().to_string());
+        // turn ended between the busy check and parking → its pickup took nothing: send now (else answers sat unread)
+        if send_now && !live.busy.load(SeqCst) {
+            let t = st.with_project(&pid, |p| std::mem::take(&mut p.answers)).unwrap_or_default();
+            if !t.is_empty() { live.inbox.push(Input::Msg(t)); }
+        }
     }
     emit(&app, "project", json!(st.project(&pid)));
     let acct = st.project(&pid).map(|p| p.account).unwrap_or_default();
@@ -913,7 +917,7 @@ async fn clone_repo(st: St<'_>, user: String, repo: String, branch: Option<Strin
     // the suggested gh if any (owner's), else the account that cloned it
     let gh = who.as_ref().map(|w| w.gh.clone()).filter(|g| !g.is_empty()).unwrap_or(user);
     let p = store::new_project(&mut cfg, &dest, who.as_ref().map(|w| w.account.as_str()), Some(&gh));
-    let p = mark(&mut cfg, &p.id, who.as_ref());
+    let p = mark(&mut cfg, &p.id, who.as_ref()).ok_or("no such project")?;
     store::save(&cfg);
     Ok(json!(p))
 }
@@ -937,7 +941,7 @@ fn stop_run(pid: String) -> bool {
 
 // ---- .env ----
 
-#[tauri::command]
+#[tauri::command(async)] // git check-ignore per file
 fn env_list(st: St, pid: String) -> R<Value> {
     let p = st.project(&pid).ok_or("no such project")?;
     Ok(json!(store::env_files(&p.path).iter().map(|f| {
@@ -1520,10 +1524,7 @@ fn restore_win(app: &tauri::App, r: [i32; 5]) {
 
 pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf, args: &[String]) {
     save_win(app);
-    for pid in CHILDREN.lock().unwrap().drain(..) {
-        kill_tree(pid); // sessions end before the new instance resumes them
-    }
-    save_children(&[]);
+    kill_children(); // sessions end before the new instance resumes them
     let mut c = std::process::Command::new(exe);
     c.args(args).args(["--after", &std::process::id().to_string()]); // new one waits for us ∵ single-instance guard
     #[cfg(windows)]
@@ -1572,12 +1573,23 @@ fn save_draft(pid: String, draft: Value) {
     store::save_draft(&pid, draft);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn restart(app: AppHandle) {
     if let Ok(me) = std::env::current_exe() {
         relaunch(&app, me, &[]);
     }
 }
+
+/// Ends every tracked child tree, but only pids still alive with a child-like name ∵ the list never shrinks and
+/// Windows reuses pids fast → a blind taskkill /T could take down the user's browser/IDE.
+fn kill_children() {
+    let pids: Vec<u32> = CHILDREN.lock().unwrap().drain(..).collect();
+    if !pids.is_empty() {
+        let live = procs();
+        for p in pids { if live.get(&p).is_some_and(|n| CHILDISH.contains(&n.as_str())) { kill_tree(p); } } }
+    save_children(&[]);
+}
+const CHILDISH: [&str; 9] = ["claude", "node", "cmd", "sh", "bash", "zsh", "ssh", "wsl", "npm"];
 
 pub(crate) fn kill_tree(pid: u32) {
     if cfg!(windows) {
@@ -1674,7 +1686,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
+            state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
@@ -1687,10 +1699,7 @@ pub fn run() {
         }
         if let tauri::RunEvent::Exit = e {
             // claude processes and run steps don't die with us on Windows: take their whole trees down
-            for pid in CHILDREN.lock().unwrap().drain(..) {
-                kill_tree(pid);
-            }
-            save_children(&[]);
+            kill_children();
         }
     });
 }

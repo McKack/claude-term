@@ -42,18 +42,21 @@ const HANDOVER_RULES: &str = "
 const ISSUE_RULES: &str = "
 # Handover (Clauracle)
 - Tasks = open GitHub issues labelled `clauracle`: the ONE task list (no PLAN.md). Clauracle's continue message lists
-  them in order (first = next; work on that one, not a later one); `gh issue view N` for details. Skip issues someone else is assigned to.
-- Each new user request becomes an issue at once (`gh issue create --label clauracle --label <type> --title <short>
-  --body <full request>`, type = task | feature | fix; `gh label create` it if missing), so nothing is lost across
-  sessions. Your own ideas needing the user's yes: add `--label suggestion` (rare, only
-  clearly high-value ones); the user accepts or dismisses them. Every issue must be finishable work, never a standing rule.
-- Open work never lives in files: follow-ups, unverified checks, \"next: …\", things waiting on the user's input or
-  restatement each become an issue (user's decision → `--label suggestion`). If PLAN.md, TASKS.md, TODO.md or
-  HANDOVER.md still list open tasks, file them as issues (same order) and remove them there.
+  them in order (first = next; work on that one only, the rest wait); `gh issue view N` for details. Outstanding work
+  comes before new asks: a new ask goes to the END of the list unless the user says it's urgent. Skip issues someone
+  else is assigned to.
+- Clauracle files the user's asks as issues itself (\"Filed as issue #N\" note): don't file them again. Never lose one:
+  an ask that reached you without that note and is new work → `gh issue create --label clauracle --label <task|feature|fix>`.
+- Do NOT create issues for your own follow-ups, ideas, live checks, rebuilds or splits: that piles up work nobody asked
+  for. Verify inside the task (tests, build, the `ui` tool) before closing it. A worthwhile idea → at most one issue with
+  `--label suggestion` (the user accepts or dismisses it; rare). A task too big for one session stays ONE issue: comment
+  the progress on it and hand over; the next session resumes it first.
+- Blocked on the user (their login, password, hardware, billing, a decision, a check only they can do): `gh issue edit N
+  --add-label needs-user` + one comment saying exactly what they must do, then move on (ready). Clauracle shows it under
+  \"Waiting on you\" and puts it back in the queue when they unblock it. Never file a separate issue for that.
 - HANDOVER.md lets a fresh session resume: goal, current state, how to build and test, gotchas, rules; no task list,
-  no open items;
-  under ~50 lines. Finished work goes to CHANGES.md (newest first, one line per change). In a git repo where these
-  aren't tracked, add them to .git/info/exclude.
+  no open items; under ~50 lines (prune stale notes when you add one). Finished work goes to CHANGES.md (newest first,
+  one line per change). In a git repo where these aren't tracked, add them to .git/info/exclude.
 - Finishing a task: verify it, `gh issue close N -c <one-line summary>`, update HANDOVER.md and CHANGES.md, commit if
   the project's rules allow, then call mcp__clauracle__ready as the LAST action of the turn.
 - Do NOT call ready, stop and say why instead, when something failed you can't fix or no task is left.
@@ -80,9 +83,7 @@ const TERSE_RULES: &str = "
 Write code comments as compact notes an AI reads fully: fragments, symbols (→ = ≠ ∵ ∴), no filler words, but keep
 every fact (why, constraint, edge case, upgrade path). Example: `// cache: 5m TTL ∵ API rate limit; ↑ if stale data hurts`.";
 
-const PREPARE: &str = "Pause here; don't start anything new{why}. Update HANDOVER.md so a fresh session can pick up \
-exactly where you are (goal, what you were doing and how far it got, what is verified and what isn't, gotchas \
-learned) and the task list (PLAN.md's Queue, or GitHub issues when tasks live there: next steps in order; there every open follow-up, unverified check or wait on the user = an issue, not a HANDOVER.md line), move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
+const PREPARE: &str = "Pause here; don't start anything new{why}. Update HANDOVER.md so a fresh session can pick up exactly where you are (goal, what you were doing and how far it got, what is verified and what isn't, gotchas learned). Task list: PLAN.md's Queue (local), or with GitHub issues a progress comment on the issue you're on (it stays open and is resumed first; file no new issues). Move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
 
 const RESUMED: &str = "continue
 
@@ -108,7 +109,7 @@ pub fn cont_text(p: &Project) -> Option<String> {
     if !v.is_array() {
         return Some(format!("{CONTINUE_ISSUES} run `gh issue list --label clauracle` to see them."));
     }
-    let q = store::task_queue(&v, &p.gh, &p.order);
+    let q = store::task_queue(&v, &p.gh, &p.order, p.work);
     (!q.is_empty()).then(|| format!("{CONTINUE_ISSUES}\n{}",
         q.iter().map(|x| format!("- #{} {}", x["number"], x["title"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n")))
 }
@@ -187,8 +188,8 @@ pub struct Live {
     armed: AtomicBool,        // ready was called this turn
     handing_over: AtomicBool, // Clauracle asked for a handover (context limit / Clear & continue)
     first_turn: AtomicBool,   // a fresh session already past the context limit must not hand over forever
-    pin: AtomicU64,           // #83: issue this session was started on (0 = none); ready refuses once while it's open
     nagged: AtomicBool,       // pin refusal already sent → 2nd ready goes through (AI insists: blocked/waiting)
+    blind: AtomicBool,        // last auto continue couldn't read the issues (gh failing) → a 2nd in a row pauses
     built: Mutex<String>,     // #89 smart build: HEAD at session start / last good smart build = diff base
 }
 
@@ -411,6 +412,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
                     Input::Msg(text) => json!(text),
                     Input::Rich(blocks) => blocks,
                     Input::Reconnect => {
+                        if let Some(id) = child.id() { crate::kill_tree(id); } // its MCP servers/shells too, not just claude.exe
                         let _ = child.kill().await;
                         return Err("reconnect".into());
                     }
@@ -418,8 +420,12 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
                 live.busy.store(true, SeqCst);
                 st.with_project(pid, |p| p.working = true);
                 emit(app, "status", json!({"pid": pid, "busy": true, "handover": live.handing_over.load(SeqCst)}));
-                conn.write(&json!({"type": "user", "message": {"role": "user", "content": content},
-                                   "parent_tool_use_id": null, "session_id": "default"})).await?;
+                if let Err(e) = conn.write(&json!({"type": "user", "message": {"role": "user", "content": content.clone()},
+                                   "parent_tool_use_id": null, "session_id": "default"})).await {
+                    // claude died under us: the message goes back first in line for the reconnected session (was lost)
+                    live.inbox.front(vec![match content { Value::String(t) => Input::Msg(t), c => Input::Rich(c) }]);
+                    return Err(e);
+                }
                 None
             }
             m = msgs.recv() => {
@@ -657,6 +663,12 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
         return; // ready stays: answer_questions → continue_now
     }
     let msg = cont_text(&p); // ponytail: blocking gh call on a runtime worker (~1s, once per session)
+    // gh failing (logged out, token revoked) → generic continue; twice in a row = endless empty sessions burning tokens → pause
+    let blind = msg.as_deref().is_some_and(|m| m.starts_with(CONTINUE_ISSUES) && pin_of(m) == 0);
+    if live.blind.swap(blind, SeqCst) && blind {
+        line(app, pid, "note", "Paused: Clauracle can't read the GitHub issues (check the gh account in Settings). Continue retries.");
+        return;
+    }
     if msg.is_none() && p.answers.is_empty() {
         // empty Queue = done: no fresh "continue" turn ∵ it would only find nothing and stop (or invent work)
         line(app, pid, "note", "Queue is empty: all done. Send a new request to start again.");
@@ -678,14 +690,16 @@ pub fn fresh(app: &AppHandle, st: &State, pid: &str, live: &Live, cont: Option<S
     live.armed.store(false, SeqCst);
     live.handing_over.store(false, SeqCst);
     live.first_turn.store(true, SeqCst);
-    live.pin.store(cont.as_deref().map_or(0, pin_of), SeqCst);
     live.nagged.store(false, SeqCst);
+    let pin = cont.as_deref().map_or(0, pin_of);
     let answers = st.with_project(pid, |p| {
+        if pin > 0 { p.work = pin; } // #83 + persisted: a crash/restart/handover resumes this issue first
         if p.session.is_some() { p.prev_session = p.session.take(); }
         p.ready = false;
         std::mem::take(&mut p.answers)
     }).unwrap_or_default();
     emit(app, "cleared", json!({"pid": pid}));
+    if pin > 0 { emit(app, "project", json!(st.project(pid))); } // UI's P.work → "Working on #N" + queue order
     let mut items = vec![Input::Reconnect];
     if let Some(c) = cont {
         items.push(Input::Msg(if answers.is_empty() { c } else { format!("{c}\n\n{answers}") }));
@@ -980,14 +994,15 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                 }
                 // #83: finished = pinned issue closed (code decides, not the AI) ∵ ready on an open issue → clear →
                 // Continue re-picks it → #62/#75 loop. Handover pauses (context limit) pass; one refusal, then trust.
-                let n = live.pin.load(SeqCst);
+                let n = p.work;
                 if n > 0 && !live.handing_over.load(SeqCst) && !live.nagged.swap(true, SeqCst) {
-                    let s = store::gh_json(&["issue", "view", &n.to_string(), "--json", "state"], &p.gh, Some(&p.path));
-                    if s["state"] == "OPEN" { // ponytail: blocking gh (~1s) on the reader; gh failing → let ready through
-                        return text(&format!("Not armed: issue #{n} (this session's task) is still open, so the next \
-                          session would pick it again. If it's done: verify, `gh issue close {n} -c <summary>`. If it's too big: \
-                          file the rest as new issues, then close #{n}. Then call ready again. (If it truly can't be closed \
-                          yet, e.g. waiting on the user, call ready again and say why.)"));
+                    let s = store::gh_json(&["issue", "view", &n.to_string(), "--json", "state,labels"], &p.gh, Some(&p.path));
+                    let waits = s["labels"].as_array().into_iter().flatten().any(|l| l["name"] == store::WAIT_LABEL);
+                    if s["state"] == "OPEN" && !waits { // ponytail: blocking gh (~1s) on the reader; gh failing → let ready through
+                        return text(&format!("Not armed: issue #{n} (this session's task) is still open. Done → verify, \
+                          `gh issue close {n} -c <summary>`, call ready again. Not done → comment the progress on #{n} and \
+                          call ready again: the next session resumes it first (don't split it into new issues). Blocked on \
+                          the user → add the `needs-user` label + a comment saying what they must do, then ready."));
                     }
                 }
                 live.armed.store(true, SeqCst);
