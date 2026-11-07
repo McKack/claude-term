@@ -555,10 +555,12 @@ pub fn file_links(dir: &str) -> serde_json::Value {
 }
 
 /// #131: WSL has a real distro (docker-desktop* = Docker's own, can't build). `wsl -l -q` prints UTF-16 → strip NULs.
-/// ponytail: builds run in the default distro; presence only (Node/Rust/WebKitGTK inside unchecked → build log says)
+/// #136: also Node+cargo+WebKitGTK inside the default distro (login shell ∵ rustup PATH in ~/.profile); missing → deps row offers install.
+/// ponytail: builds run in the default distro; a docker-desktop default would fail the inner check (= reads as missing)
 pub fn wsl_ok() -> bool {
     let o = run("wsl", &["-l", "-q"], None, &[]);
     o.ok && o.stdout.replace('\0', "").lines().any(|l| { let l = l.trim(); !l.is_empty() && !l.starts_with("docker-desktop") })
+        && run("wsl", &["-e", "bash", "-lc", "command -v node && command -v cargo && pkg-config --exists webkit2gtk-4.1"], None, &[]).ok
 }
 
 /// #131 bash for a Linux build in WSL: copy the project (no node_modules/target/.git) to ~/.clauracle-build/<pid>, build there
