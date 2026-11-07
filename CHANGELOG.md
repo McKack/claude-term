@@ -3,6 +3,8 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Task list: the queue is now called "Next" with the "Then" step right below it; row actions (Edit, Start, drag) sit in a soft fade panel, and drag-to-reorder works again.
+- Image attachments in the message box show as clean thumbnails at their real shape, squeeze to fit, and scroll with arrows when there are many.
 - Settings › Appearance › Updates: choose how often Clauracle checks for a new version (never, daily, weekly, monthly), or check now.
 - When a command the AI runs fails because a tool, package or crate feature is missing, Clauracle spots it and offers a one-click Install (npm, pip, cargo features, Node/Git/Python/Rust and more). No AI tokens used.
 - Website setup does more by itself: GitHub Pages turns on with one click, Cloudflare Pages reads your Account ID from the token, and Netlify makes the site and fills its Site ID.

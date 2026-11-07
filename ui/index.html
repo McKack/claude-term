@@ -340,8 +340,13 @@ pre.diff .ctx { color:var(--faint); }
 #slash[hidden] { display:none; }
 #slash button { display:flex; flex-wrap:wrap; gap:2px 8px; align-items:baseline; text-align:left; border:0; background:none; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:13px; }
 #slash button small { flex-basis:100%; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #slash button.on, #slash button:hover { background:var(--hover); }
-#atts { display:flex; gap:8px; flex-wrap:wrap; padding:2px 0 8px; } #atts:empty { display:none; }
-.att { position:relative; display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--bg); font-size:12px; padding:4px 26px 4px 6px; max-width:220px; }
+/* #192 thumbs: real aspect at 56px high (width set on load); flex-shrink squeezes wide ones toward 1:1 (min-width); still too many → scroll + arrows */
+#attw { position:relative; } #attw:has(#atts:empty) { display:none; }
+#atts { display:flex; gap:8px; padding:2px 0 8px; overflow-x:auto; scrollbar-width:none; }
+.aarr { position:absolute; top:2px; bottom:8px; z-index:1; width:24px; border:0; padding:0; cursor:pointer; color:var(--text); background:linear-gradient(to right, var(--card) 40%, transparent); display:grid; place-items:center; }
+.aarr.r { right:0; background:linear-gradient(to left, var(--card) 40%, transparent); } .aarr[hidden] { display:none; } .aarr svg { width:16px; height:16px; }
+.att.img { flex:0 1 auto; min-width:56px; height:56px; padding:0; overflow:hidden; } .att.img img { width:100%; height:100%; border-radius:0; display:block; }
+.att { flex:none; position:relative; display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--bg); font-size:12px; padding:4px 26px 4px 6px; max-width:220px; }
 .att img { width:44px; height:44px; object-fit:cover; border-radius:7px; } .att span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .att button { position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; border:0; background:var(--hover); color:var(--dim); cursor:pointer; display:grid; place-items:center; padding:0; }
 .att button svg { width:11px; height:11px; } .att button.aref { top:auto; bottom:3px; }
@@ -415,11 +420,12 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .msg .tlist .ti { font-size:inherit; } .msg .ti > input[type=checkbox] { margin-top:calc((1lh - 13px) / 2); } /* beats .msg.claude :first-child { margin-top:0 } */
 .sugs { margin:6px 0; } .sugs .ti { align-items:center; } .sugs .ti.completed { opacity:.55; } .sugs .ti > .btn { flex:none; }
 .sugnote { margin:0 0 4px 24px; width:calc(100% - 24px); font-size:12px; } .sugs .btns { margin-top:6px; }
-.qdrag { flex:none; align-self:center; border:0; background:none; color:var(--faint); cursor:grab; padding:0 2px; font-size:14px; line-height:1.2; opacity:0; touch-action:none; }
-.ti:hover > .qdrag, .ti.sortable-fallback > .qdrag, .ti:hover > .qedit { opacity:1; }
-.qedit { flex:none; align-self:center; width:22px; height:22px; opacity:0; } .qedit svg { width:13px; height:13px; }
-.ti { position:relative; } .qpill { position:absolute; right:0; top:3px; display:flex; align-items:center; gap:1px; padding:1px 4px; border-radius:999px; background:rgba(18,18,22,.9); color:#eee; box-shadow:0 2px 8px rgba(0,0,0,.3); opacity:0; pointer-events:none; transition:opacity .15s; }
-.qpill > * { opacity:1; color:inherit; } .ti:hover > .qpill, .ti.sortable-fallback > .qpill { opacity:1; pointer-events:auto; } /* #191 floats over the title end: no reserved column */
+.label .btn { text-transform:none; letter-spacing:normal; } /* #192 Then row = label + button */
+.qdrag { flex:none; border:0; background:none; color:var(--dim); cursor:grab; padding:0 3px; font-size:16px; line-height:1; touch-action:none; }
+/* #192 row actions = fade panel over the row end (like the chat's edge fade): Edit/Play stacked, ⋮ handle right, all v-centred */
+.ti { position:relative; } .qpill { position:absolute; right:0; top:0; bottom:0; display:flex; align-items:center; gap:2px; padding-left:28px; background:linear-gradient(to right, transparent, var(--side) 26px); opacity:0; pointer-events:none; transition:opacity .15s; }
+.qbtns { display:flex; flex-direction:column; } .qedit { width:20px; height:14px; color:var(--dim); } .qedit svg { width:12px; height:12px; }
+.ti:hover > .qpill { opacity:1; pointer-events:auto; } .ti.qghost > .qpill, .ti.sortable-fallback > .qpill { display:none; } /* #193 drag: no panel on placeholder/clone */
 .chips { display:flex; flex-wrap:wrap; gap:4px; } .chips .pill { cursor:pointer; opacity:.45; } .chips .pill.on { opacity:1; }
 /* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
 .ti.qghost { background:color-mix(in srgb, var(--accent) 14%, transparent); outline:1px dashed var(--accent); outline-offset:-1px; border-radius:6px; }
@@ -596,7 +602,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onmouseenter="readyMore(this)" onclick="if (!event.target.closest('button') &amp;&amp; readyMore(this)) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
     <div id="composer">
       <div id="slash" hidden></div>
-      <div id="atts"></div>
+      <div id="attw"><button class="aarr" onclick="attScroll(-1)"><svg class="i" style="transform:scaleX(-1)"><use href="#i-chev"/></svg></button><div id="atts" onscroll="attArr()"></div><button class="aarr r" onclick="attScroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
       <textarea id="prompt" rows="1" placeholder="Message your AI…"></textarea>
       <div class="tb">
         <button class="ib" title="Attach files" onclick="pickFiles()"><svg class="i"><use href="#i-clip"/></svg></button>
@@ -1494,10 +1500,14 @@ function attRef(i) { // inserts [name] at the caret; a space before/after only w
   el.setRangeText(ins, s, e, 'end'); el.focus(); grow(); keepDraft();
 }
 function drawAtts() {
-  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})">` : icon('file')}<span>${esc(a.name)}</span>
+  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon('file') + `<span>${esc(a.name)}</span>`}
     <button onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button><button class="aref" title="Refer to this image in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button></div>`).join('');
-  if (cur) { drawChrome(); keepDraft(); }
+  attArr(); if (cur) { drawChrome(); keepDraft(); }
 }
+// #192 scroll arrows only toward hidden thumbs; ResizeObserver ∵ composer width changes w/o a redraw
+function attArr() { const el = $('atts'), [l, r] = $('attw').querySelectorAll('.aarr'); l.hidden = el.scrollLeft < 1; r.hidden = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1; }
+const attScroll = d => $('atts').scrollBy({left: d * $('atts').clientWidth * .8, behavior: 'smooth'});
+new ResizeObserver(() => attArr()).observe($('atts'));
 // every keystroke/attachment lands on disk (debounced), so nothing typed is ever lost
 // now: queue changes save at once ∵ a restart inside the 300ms window lost a queued prompt
 function keepDraft(pid = cur, now = false) {
@@ -2407,7 +2417,7 @@ function thenMenu(el, w) { // w: 'm' = Settings project (mp), else the open proj
   menuAt(el, [{label: 'Do nothing', hint: 'after each task', check: !b, run: () => put('', '')}, '-', {title: '1 · Build'}, ...[['build', 'Build', 'every task'], ['smart', 'Smart build', 'only on big changes / fixes']].map(([k, l, h]) => ({label: l, hint: h, check: b === k, run: () => put(b === k ? '' : k, t)})),
     {and: 'and'}, ...Object.entries(THEN).map(([k, l]) => ({label: l, check: t === k, run: () => put(b || 'build', t === k ? '' : k)}))]);
 }
-const thenRow = p => `<div class="row" style="gap:8px;font-size:13px;margin:8px 0" title="Runs in plain code when the AI finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}">${icon('hammer')}<span class="grow">Then</span>${thenBtn(p)}</div>`;
+const thenRow = p => `<div class="label row" style="gap:8px;align-items:center" title="Runs in plain code when the AI finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}"><span class="grow">Then</span>${thenBtn(p)}</div>`; // #192 under the NEXT list, styled as its label
 async function drawRight(force) {
   if ($('right').hidden || !cur) return;
   if (UI.rc) { drawRRail(); return tabDots(); }
@@ -2455,13 +2465,13 @@ const ghiSet = (pid, g) => { GHI[pid] = {g, t: Date.now()}; try { localStorage.g
 const formVals = box => Object.fromEntries([...box.querySelectorAll('input, select, textarea')].map(e => [e.id || 'v:' + e.value, e.type === 'checkbox' ? e.checked : e.value]));
 const formEl = (box, k) => k.startsWith('v:') ? [...box.querySelectorAll('input[type=checkbox]')].find(e => !e.id && e.value === k.slice(2)) : box.querySelector('#' + CSS.escape(k));
 function drawGh(g, busy) {
+  if (qDragging) return; // #193 a rebuild mid-drag orphans Sortable's row/clone
   const box = $('rbody'), p = P(), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
     <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask your AI</button></div></div>`;
   const list = (xs, kind) => xs?.length ? `<div class="list">${xs.map(x => item(x, kind)).join('')}</div>` : empty('None open');
   box.innerHTML = sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
       : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p><div class="btnrow"><button class="btn" onclick="openManager(cur)">${icon('gh')}Pick another account</button><button class="btn" onclick="TABREF.gh(); drawRight(true)">${icon('loop')}Try again</button></div>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
       : g.err ? `<p class="err">${esc(g.err)}</p>` : publishForm(p, g.users || []), `<button class="ib${busy ? ' upd' : ''}" title="${busy ? 'Updating…' : 'Refresh'}" onclick="drawRight(true)">${icon('loop')}</button>`)
-    + (g.repo ? thenRow(p) : '')
     + '<div id="atp"></div>' // Plan (issue queue / PLAN.md, drag order, Suggestions, Cleanup): drawAtp fills it
     + `<div id="tasksBox">${tasksHtml()}</div>`
     + (g.repo ? fold('collab', 'Collaborators', `<div id="collabBox">${collabHtml(cur)}</div>`, COLLAB[cur]?.people?.length || 0) : '')
@@ -3835,7 +3845,7 @@ function drawAtp() {
         end: `<button class="ib" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: ${iq ? 'close the issue' : 'remove from PLAN.md'}" onclick="planWait(${i}, false)">${icon('x')}</button>`}))) : '')
     + (t.length ? `<div class="label">Now</div>` + L([...open.map(x => tli(esc(x.status === 'in_progress' && x.activeForm || x.content), {cls: x.status})),
         ...fin.slice(-3).map(x => tli(esc(x.content), {done: 1, cls: 'completed', tip: x.content}))]) : '')
-    + (iq || pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">${iq ? 'Issues' : 'Plan'}<span class="grow"></span>
+    + (iq || pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">${iq ? 'Next' : 'Plan'}<span class="grow"></span>
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...(issueQ(cur) ? [{label: 'GitHub issues (clauracle)', hint: issueQ(cur).length + ' open', run: () => expandRight('gh')}] : []), ...S.plans[cur].filter(o => !issueQ(cur) || o.items.length).map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
         ${!iq && (pl.length > 1 || pl[0].file !== 'PLAN.md') ? `<button class="ib" title="Merge every plan file into PLAN.md\n${estTok()}" onclick="mergePlans()">${icon('brush')}</button>` : ''}
         ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
@@ -3843,8 +3853,8 @@ function drawAtp() {
           : !iq && P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
         + L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
           ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
-            end: '<span class="qpill">' + (iq ? `<button class="ib qedit" title="Edit issue" onclick="event.stopPropagation(); editIssue(${iq[i].number})">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⠿</button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"')
-        + (iq ? issuesRest() : '')
+            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit" title="Edit issue" onclick="event.stopPropagation(); editIssue(${iq[i].number})">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"')
+        + (iq ? issuesRest() + (tab === 'gh' ? thenRow(P()) : '') : '')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}${iq ? ' · not issues yet' : ''}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
     || empty(`Your AI's task list and ${iq ? 'open task issues' : "PLAN.md's queue"} show here`, `<button class="btn sm" onclick="putPrompt('${iq ? 'Plan this as GitHub task issues: ' : 'Plan this in PLAN.md: '}')">${icon('list')}Plan with your AI</button>`);
@@ -3887,7 +3897,7 @@ async function cleanPlan() {
 var qDragging = false; // var, not let: drawAtp may run before this line (TDZ)
 function qSortable(list) {
   if (!window.Sortable) return; // ponytail: vendored file missing → no reorder, list still renders
-  Sortable.create(list, {handle: '.qdrag', draggable: '.ti', forceFallback: true, animation: 150, ghostClass: 'qghost',
+  Sortable.create(list, {handle: '.qdrag', draggable: '.ti', forceFallback: true, fallbackOnBody: true, /* #193 clone in body: in-list clone mis-placed (relative .ti/scroll) + stayed as ghost */ animation: 150, ghostClass: 'qghost',
     onStart: () => { qDragging = true; document.body.classList.add('dragging'); },
     onEnd: async ({oldIndex: from, newIndex: to}) => { qDragging = false; document.body.classList.remove('dragging');
       if (to === from) return;
