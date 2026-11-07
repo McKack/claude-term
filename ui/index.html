@@ -2028,16 +2028,16 @@ function relItems(c, p) {
   // array order = display order (filter keeps it) → Build stays last whatever the stage
   return [
     {s: 0, id: 'readme', t: 'README written', ok: c.readme >= 10, d: c.readme ? `${c.readme} lines` : 'none'},
-    {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` + (tv ? ` · last tag ${c.tag}` : ' · first release') : 'not found'},
+    {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` + (tv ? ` · last released ${c.tag}` : ' · first release') : 'not found'},
     // #121: semver ≤ last tag → auto-bumped in relWizard; row stays only when that can't happen (non-semver) → AI fix
-    ...(tv && !(v && vcmp(v, tv) > 0) ? [{s: 0, id: 'bump', t: 'Version above last tag', ok: false, d: `last tag ${c.tag}`}] : []),
-    {s: 0, id: 'clean', t: 'Everything committed', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
+    ...(tv && !(v && vcmp(v, tv) > 0) ? [{s: 0, id: 'bump', t: 'Version newer than the last release', ok: false, d: `last released ${c.tag}`}] : []),
+    {s: 0, id: 'clean', t: 'All changes saved to Git', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
     {s: 1, id: 'license', t: 'Licence', ok: c.license},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
-    ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'CI green', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no workflow runs',
+    ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'Online build passed', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no online builds yet',
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.bill || ci?.url}] : []),
     {s: 2, id: 'icon', t: 'App icon', ok: c.icon},
-    ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: S.ci_builds ? 'Mac signing secrets on GitHub' : 'Mac signing keys in .env', d: S.ci_builds ? '' : 'local Mac builds sign + notarize with them', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
+    ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: S.ci_builds ? 'Mac signing keys on GitHub' : 'Mac signing keys saved', d: 'so Macs trust and open the app', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
     // #40 stores (Play/App Store) want privacy + terms URLs: RC up, mobile targets only; c.site = HTTP statuses (relWizard)
     ...((p.targets || []).some(x => x === 'ios' || x === 'android') ? [{s: 2, id: 'site_legal', t: 'Privacy policy and terms online',
       ok: !!c.site && c.site.every(x => x >= 200 && x < 400), d: siteOf(p).domain ? ['privacy', 'terms'].map((k, i) => `${SITEPG[k][1]} ${c.site?.[i] || 'unreachable'}`).join(' · ') : 'no website yet',
@@ -2045,9 +2045,9 @@ function relItems(c, p) {
     {s: 2, id: 'review', t: 'Release review by AI', ai: true},
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
     ...((un => un.length ? [{s: 0, id: 'targets', t: 'Every picked platform can be built', ok: false, d: un.map(x => `${tgtName(x)}: ${tgtWhy(p, x)[0]}`).join(' · '), go: tgtWhy(p, un[0])[1]}] : [])((p.targets || []).filter(x => !(S.ci_builds && miss.includes(x)) && !tgtReady(p, x)))),
-    ...(miss.length && S.ci_builds ? [{s: 0, id: 'ci_targets', t: 'CI builds the other platforms', ok: false, d: `not in CI: ${miss.map(tgtName).join(', ')}`}] : []),
+    ...(miss.length && S.ci_builds ? [{s: 0, id: 'ci_targets', t: 'GitHub builds the other platforms', ok: false, d: `GitHub can't build: ${miss.map(tgtName).join(', ')}`}] : []),
     {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length && !stale.length,
-      d: stale.length ? `older than the last code change: ${stale.map(f => f.name).join(', ')}` : lack.length && files.length ? `missing: ${lack.map(tgtName).join(', ')}` : files.length ? files.map(f => f.name).join(', ') + (cit.length ? ` · CI: ${cit.map(tgtName).join(', ')}` : '') : v ? `no build of v${v} yet` : '',
+      d: stale.length ? `Outdated builds: ${stale.map(f => f.name).join(', ')}` : lack.length && files.length ? `Not built yet: ${lack.map(tgtName).join(', ')}` : files.length ? files.map(f => f.name).join(', ') + (cit.length ? ` · built on GitHub: ${cit.map(tgtName).join(', ')}` : '') : v ? `version ${v} isn't built yet` : '',
       go: p.build.build ? 'relBuild(this)' : 'openManager(cur)', gl: p.build.build ? 'Build' : 'Set up', dh: builds[cur]?.busy ? bfiles(p, files) : ''},
   ];
 }
