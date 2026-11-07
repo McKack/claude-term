@@ -2108,7 +2108,7 @@ const macOn = (p, pid) => p.targets?.length ? p.targets.includes('macos') : !!MA
    not ready → click unpicks. tgtSplit only counts ready targets → release is limited to them. CI-built ones: no local deps. */
 const TGTSVC = {macos: 'macsign', ios: 'appstore', android: 'play'};
 // #131 Linux on Windows = local via WSL (run_step 2nd pass) when WSL is there or CI is off (→ "Needs WSL" fix); else CI. ponytail: no Docker/mac path
-const tgtLocal = x => x === HOST || x === 'android' || (x === 'ios' && HOST === 'macos') || (x === 'linux' && HOST === 'windows' && (!S.ci_builds || !!DEPSC?.d.wsl));
+const tgtLocal = x => x === HOST || x === 'android' || (x === 'macos' && !!S.mac?.host) /* #149 Network Mac */ || (x === 'ios' && HOST === 'macos') || (x === 'linux' && HOST === 'windows' && (!S.ci_builds || !!DEPSC?.d.wsl));
 const strictStage = p => Math.max(SK.indexOf(p.stage), RELTO[cur] ?? -1) >= SK.indexOf('rc');
 function tgtWhy(p, id) { // '' = ready, else [why, fix js]
   const miss = tgtLocal(id) && DEPSC ? Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].includes(id)) : [];

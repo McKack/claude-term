@@ -210,6 +210,67 @@ pub fn mac_setup(m: &NetMac, on_line: impl Fn(&str)) -> bool {
     ok
 }
 
+/// #149 remote build dir on the Mac: `<dir or clauracle-build>/<pid>` (relative = Mac home). Only safe path chars ∵ goes unquoted
+/// into the remote shell (keeps `~` expansion).
+pub fn mac_dir(m: &NetMac, pid: &str) -> String {
+    let clean = |s: &str, extra: &str| s.chars().filter(|c| c.is_ascii_alphanumeric() || "-_.".contains(*c) || extra.contains(*c)).collect::<String>();
+    let root = clean(m.dir.trim().trim_end_matches('/'), "/~");
+    format!("{}/{}", if root.is_empty() { "clauracle-build".into() } else { root }, clean(pid, ""))
+}
+
+fn mac_ssh(m: &NetMac, remote: &str) -> Command {
+    let mut c = command(&which("ssh").unwrap_or_else(|| "ssh".into()));
+    c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new", &mac_to(m), remote]);
+    c
+}
+
+/// a | b (both std Commands): a.stdout → b.stdin. Err = last stderr line of whichever failed.
+fn pipe(mut a: Command, mut b: Command) -> Result<(), String> {
+    use std::process::Stdio;
+    let mut ca = a.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+    let out = ca.stdout.take().unwrap();
+    let ob = b.stdin(out).stdout(Stdio::null()).stderr(Stdio::piped()).output().map_err(|e| e.to_string())?;
+    let oa = ca.wait_with_output().map_err(|e| e.to_string())?;
+    let last = |e: &[u8]| String::from_utf8_lossy(e).lines().filter(|l| !l.trim().is_empty() && !l.starts_with("Warning: Permanently added")).last().unwrap_or("failed").trim().to_string();
+    if !oa.status.success() { return Err(last(&oa.stderr)); }
+    if !ob.status.success() { return Err(last(&ob.stderr)); }
+    Ok(())
+}
+
+/// #149 working tree → Mac (like the WSL copy: uncommitted edits included). Never .env/.git/node_modules/target
+/// (.env = secrets: they travel only as env in mac_script, #150). ponytail: never deletes files removed locally.
+pub fn mac_sync(m: &NetMac, pid: &str, dir: &str) -> Result<(), String> {
+    let mut t = Command::new("tar");
+    t.current_dir(dir).args(["--exclude=node_modules", "--exclude=target", "--exclude=.git", "--exclude=.env", "--exclude=.env.*", "-cf", "-", "."]);
+    #[cfg(windows)]
+    { use std::os::windows::process::CommandExt; t.creation_flags(NO_WINDOW); }
+    let d = mac_dir(m, pid);
+    pipe(t, mac_ssh(m, &format!("mkdir -p {d} && tar -C {d} -xf -")))
+}
+
+/// #149 Mac bundles (dmg, updater .app.tar.gz + .sig) → same paths in the local project ∴ builds()/Release see them.
+pub fn mac_pull(m: &NetMac, pid: &str, dir: &str) -> Result<(), String> {
+    let d = mac_dir(m, pid);
+    let find = format!("cd {d} && find . -path '*/release/bundle/*' -type f \\( -name '*.dmg' -not -name 'rw.*' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' \\) -not -path './node_modules/*' | COPYFILE_DISABLE=1 tar -cf - -T -"); // no ._ AppleDouble files
+    let mut t = Command::new("tar");
+    t.current_dir(dir).args(["-xf", "-"]);
+    #[cfg(windows)]
+    { use std::os::windows::process::CommandExt; t.creation_flags(NO_WINDOW); }
+    pipe(mac_ssh(m, &find), t)
+}
+
+/// #149/#150 zsh fed via stdin to `ssh host zsh -l -s`: signing keys exported in-process only (never argv, never a file on
+/// the Mac, gone when the shell exits), then npm install + the build cmd in the synced copy. Only APPLE_* / TAURI_SIGNING_*
+/// travel (Windows/Azure keys are useless there). tauri imports APPLE_CERTIFICATE into its own temp keychain + notarizes.
+pub fn mac_script(m: &NetMac, pid: &str, cmd: &str, sign: &[(String, String)]) -> String {
+    let q = |v: &str| format!("'{}'", v.replace('\'', "'\\''"));
+    let env: String = sign.iter().filter(|(k, _)| k.starts_with("APPLE_") || k.starts_with("TAURI_SIGNING_"))
+        .filter(|(k, _)| k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        .map(|(k, v)| format!("export {k}={}\n", q(v))).collect();
+    // CI=true: tauri's bundle_dmg.sh skips the Finder AppleScript layout (times out over ssh: no GUI session, -1712)
+    format!("exec 2>&1\nset -e\nexport CI=true\n{env}cd {}\nif [ -f package.json ]; then npm install --no-audit --no-fund; fi\n{cmd}\n", mac_dir(m, pid))
+}
+
 /// A helper agent Claude Code can hand work to (a subagent), usually on a cheaper model.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default)]
@@ -1807,6 +1868,39 @@ mod tests {
     }
 
     /// #131: pid sanitized (no shell injection via path chars), build cmd + copy-back present
+    #[test]
+    fn mac_script_env_only_and_quoted() {
+        let m = NetMac { host: "h".into(), dir: "~/b; rm -rf /".into(), ..Default::default() };
+        assert_eq!(mac_dir(&m, "p 1"), "~/brm-rf/p1");
+        assert_eq!(mac_dir(&NetMac::default(), "x"), "clauracle-build/x");
+        let s = mac_script(&m, "x", "npx tauri build", &[("APPLE_PASSWORD".into(), "a'b".into()), ("AZURE_X".into(), "z".into())]);
+        assert!(s.contains("export APPLE_PASSWORD='a'\\''b'\n") && !s.contains("AZURE") && s.ends_with("npx tauri build\n"));
+    }
+
+    /// live: CLAURACLE_MAC=mac-mini cargo test mac_roundtrip -- --ignored (sync → script w/ env → fake dmg pulled back)
+    #[test]
+    #[ignore]
+    fn mac_roundtrip() {
+        let m = NetMac { host: std::env::var("CLAURACLE_MAC").unwrap(), ..Default::default() };
+        let d = std::env::temp_dir().join("clauracle-mac-rt");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("a.txt"), "hi").unwrap();
+        std::fs::write(d.join(".env"), "SECRET=1").unwrap();
+        let dir = d.to_string_lossy().to_string();
+        mac_sync(&m, "rt", &dir).unwrap();
+        let cmd = "test ! -e .env; test \"$APPLE_X\" = \"q'z\"; mkdir -p src-tauri/target/release/bundle/dmg; cat a.txt > src-tauri/target/release/bundle/dmg/T.dmg";
+        let mut c = mac_ssh(&m, "zsh -l -s");
+        c.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped());
+        let mut ch = c.spawn().unwrap();
+        { use std::io::Write; ch.stdin.take().unwrap().write_all(mac_script(&m, "rt", cmd, &[("APPLE_X".into(), "q'z".into())]).as_bytes()).unwrap(); }
+        assert!(ch.wait_with_output().unwrap().status.success());
+        mac_pull(&m, "rt", &dir).unwrap();
+        assert_eq!(std::fs::read_to_string(d.join("src-tauri/target/release/bundle/dmg/T.dmg")).unwrap(), "hi");
+        let _ = mac_ssh(&m, "rm -rf clauracle-build/rt").output();
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn wsl_script_shape() {
         let s = wsl_script("a$b;c-1", "npx tauri build");

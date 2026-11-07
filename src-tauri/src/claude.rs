@@ -1081,7 +1081,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     }
     let say = |t: &str, done: Option<bool>| emit(app, "build", json!({"pid": pid, "step": step, "line": t, "done": done}));
     let sign = store::sign_env(&p.path);
-    let mut cmds = vec![(cmd.clone(), shell(&cmd))];
+    let mut cmds = vec![(cmd.clone(), shell(&cmd), None::<String>)];
     // #131: Windows + Linux target + WSL → 2nd pass in WSL (args set by Rust, no cmd.exe quoting); WSLENV forwards signing keys
     if cfg!(windows) && step == "build" && p.targets.iter().any(|t| t == "linux") && store::wsl_ok() {
         let mut w = tokio::process::Command::new("wsl");
@@ -1089,18 +1089,44 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
             .env("WSLENV", sign.iter().map(|(k, _)| k.as_str()).chain(std::env::var("WSLENV").ok().as_deref()).collect::<Vec<_>>().join(":"));
         #[cfg(windows)]
         w.creation_flags(0x0800_0000);
-        cmds.push((format!("wsl: {cmd} (Linux)"), w));
+        cmds.push((format!("wsl: {cmd} (Linux)"), w, None));
+    }
+    // #149: non-Mac host + macos target + Network Mac → sync tree, build over ssh (script + #150 signing env on stdin), pull bundles
+    let mac = st.cfg.lock().unwrap().mac.clone();
+    let remote = !cfg!(target_os = "macos") && step == "build" && p.targets.iter().any(|t| t == "macos") && !mac.host.trim().is_empty();
+    if remote {
+        let mut c = tokio::process::Command::new("ssh");
+        c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new",
+            &if mac.user.trim().is_empty() { mac.host.trim().to_string() } else { format!("{}@{}", mac.user.trim(), mac.host.trim()) }, "zsh -l -s"]);
+        #[cfg(windows)]
+        c.creation_flags(0x0800_0000);
+        cmds.push((format!("ssh {}: {cmd} (macOS)", mac.host.trim()), c, Some(store::mac_script(&mac, pid, &cmd, &sign))));
     }
     let mut tail: VecDeque<String> = VecDeque::new();
     let mut ok = true;
-    for (shown, mut c) in cmds {
+    for (shown, mut c, input) in cmds {
     say(&format!("$ {shown}"), None);
-    c.current_dir(&p.path).envs(sign.iter().cloned()).envs(store::gh_env(&p.gh)).envs(store::gcloud_env(&p.gaccount, &p.gcp)).stdin(std::process::Stdio::null())
+    if input.is_some() { // the Mac pass: copy the tree over first
+        say(&format!("syncing source → {}:{}", mac.host.trim(), store::mac_dir(&mac, pid)), None);
+        let (m2, pid2, dir2) = (mac.clone(), pid.to_string(), p.path.clone());
+        if let Err(e) = tauri::async_runtime::spawn_blocking(move || store::mac_sync(&m2, &pid2, &dir2)).await.unwrap_or(Err("sync panicked".into())) {
+            say(&format!("sync failed: {e}"), None);
+            ok = false;
+            tail.push_back(format!("Mac sync failed: {e}"));
+            break;
+        }
+    }
+    c.current_dir(&p.path).envs(sign.iter().cloned()).envs(store::gh_env(&p.gh)).envs(store::gcloud_env(&p.gaccount, &p.gcp))
+        .stdin(if input.is_some() { std::process::Stdio::piped() } else { std::process::Stdio::null() })
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
     let mut child = match c.spawn() {
-        Ok(c) => {
+        Ok(mut c) => {
             c.id().map(crate::track);
             crate::adopt(&c);
+            if let (Some(t), Some(mut i)) = (&input, c.stdin.take()) {
+                let t = t.clone();
+                tauri::async_runtime::spawn(async move { let _ = i.write_all(t.as_bytes()).await; }); // drop → EOF → script runs
+            }
             c
         }
         Err(e) => {
@@ -1148,6 +1174,14 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
         }
     }
     ok = child.wait().await.map(|s| s.success()).unwrap_or(false);
+    if ok && input.is_some() {
+        say("pulling Mac bundles back", None);
+        let (m2, pid2, dir2) = (mac.clone(), pid.to_string(), p.path.clone());
+        if let Err(e) = tauri::async_runtime::spawn_blocking(move || store::mac_pull(&m2, &pid2, &dir2)).await.unwrap_or(Err("pull panicked".into())) {
+            say(&format!("pull failed: {e}"), None);
+            ok = false;
+        }
+    }
     if !ok { break; }
     }
     say(if ok { "✓ done" } else { "✗ failed" }, Some(ok));
