@@ -1070,6 +1070,14 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
             let job = store::run("gh", &["run", "view", &id, "--json", "jobs", "--jq", ".jobs[0].databaseId"], Some(&p.path), &store::gh_env(&p.gh)).stdout.trim().to_string();
             if !job.is_empty() {
                 let why = store::run("gh", &["api", &format!("repos/{{owner}}/{{repo}}/check-runs/{job}/annotations"), "--jq", ".[0].message // \"\""], Some(&p.path), &store::gh_env(&p.gh)).stdout.trim().to_string();
+                // #133 billing block → exact budgets page (user vs org). ponytail: no user budget API ∴ link, not fix-in-app
+                let w = why.to_lowercase();
+                if ["spending limit", "billing", "payment", "budget"].iter().any(|k| w.contains(k)) {
+                    if let Some((owner, _)) = store::repo_of(&p.path) {
+                        r["bill"] = json!(if owner.eq_ignore_ascii_case(&p.gh) { "https://github.com/settings/billing/budgets".to_string() }
+                                          else { format!("https://github.com/organizations/{owner}/settings/billing/budgets") });
+                    }
+                }
                 r["why"] = json!(why);
             }
         }

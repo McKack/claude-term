@@ -2005,7 +2005,7 @@ function relItems(c, p) {
     {s: 1, id: 'license', t: 'Licence', ok: c.license},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
     ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'CI green', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no workflow runs',
-      go: !c.remote ? `rightTab('gh')` : '', url: ci?.url}] : []),
+      go: !c.remote ? `rightTab('gh')` : '', url: ci?.bill || ci?.url}] : []),
     {s: 2, id: 'icon', t: 'App icon', ok: c.icon},
     ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: S.ci_builds ? 'Mac signing secrets on GitHub' : 'Mac signing keys in .env', d: S.ci_builds ? '' : 'local Mac builds sign + notarize with them', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
     // #40 stores (Play/App Store) want privacy + terms URLs: RC up, mobile targets only; c.site = HTTP statuses (relWizard)
@@ -2116,7 +2116,7 @@ function tgtWhy(p, id) { // '' = ready, else [why, fix js]
   if (!tgtLocal(id) && c && !c.err) {
     if (!c.remote) return ['Built by CI only: put this project on GitHub first', `rightTab('gh')`];
     if (!(c.ci_os || []).includes(id)) return ['Not built on this computer and no CI job builds it', `tgtFlip('${id}').then(() => relAsk('ci_targets'))`];
-    if (c.ci?.why) return [`CI can't run: ${c.ci.why}`, `T.opener.openUrl('${c.ci.url}')`];
+    if (c.ci?.why) return [`CI can't run: ${c.ci.why}${c.ci.bill ? ' · click to fix billing' : ''}`, `T.opener.openUrl('${c.ci.bill || c.ci.url}')`]; // #133
   }
   const s = TGTSVC[id];
   if (s && strictStage(p) && !(svcOf(p).includes(s) && (svcDone(s) || (s === 'macsign' && SECRETS[cur]?.includes('APPLE_CERTIFICATE')))))
@@ -2150,7 +2150,7 @@ const actHtml = () => { const a = ACTU[cur]?.v, c = RELC[cur]?.c; if (!S.ci_buil
         <button class="btn" onclick="actScope()">${icon('gh')}Grant usage access</button> <span id="ghMsg" class="dim" style="font-size:13px"></span>`
     : (u => { const inc = ACTINC[a.plan]; return `<p style="margin:0 0 4px;font-size:13px"><b>${Math.round(u.min).toLocaleString()}</b> min this month${inc ? ` · ${inc.toLocaleString()} included (${esc(a.plan)})` : ''}${u.net > 0 ? ` · <b>billed $${u.net.toFixed(2)}</b>` : ''}</p>`
         + (Object.keys(u.sku).length ? `<small class="dim">${Object.entries(u.sku).map(([k, m]) => `${esc(k)} ${Math.round(m)}`).join(' · ')} · macOS counts 10×, Windows 2×</small>` : ''); })(a.u);
-  return fold('p-actions', 'GitHub Actions', (lim ? `<p class="err" style="margin:0 0 6px;font-size:13px">${icon('info')} Limit reached: ${esc(c.ci.why)}</p>` : '') + body
+  return fold('p-actions', 'GitHub Actions', (lim ? `<p class="err" style="margin:0 0 6px;font-size:13px">${icon('info')} Limit reached: ${esc(c.ci.why)}${c.ci.bill ? ' · ' + link('Fix billing', c.ci.bill) : ''}</p>` : '') + body
     + (bill ? `<div style="margin-top:6px;font-size:13px">${link('Usage', bill + '/usage')} · ${link('Spending limit', bill + '/budgets')}</div>` : ''), lim ? 1 : 0,
     lim ? '<span class="pill" style="background:var(--err);color:#fff">limit</span>' : '');
 };
