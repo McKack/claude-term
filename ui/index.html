@@ -3149,7 +3149,7 @@ function cxPage() {
     <p class="dim" style="font-size:13px">Build toolchains (Node, Rust, WSL, Xcode…): <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>`;
 }
 /* #146 Settings › Build & Release: app-wide build options. Mac signing = per-project service → shown for the open project.
-   Network Mac = placeholder until #147 (SSH setup). */
+   Network Mac = macHtml (#147 SSH; build/deps/signing #148–#150). */
 function buildPage() {
   setTimeout(depsFill);
   const p = P(), mac = p && svcOf(p).includes('macsign'), keys = RELC[cur]?.c?.sign || [],
@@ -3161,7 +3161,30 @@ function buildPage() {
     <div class="box">${p ? optRow(esc(p.name), !mac ? 'Not set up: Mac builds stay unsigned' : keys.includes('APPLE_SIGNING_IDENTITY') ? 'Keys in .env: ' + keys.join(', ') : 'Set up · signing keys not in .env yet',
       `<button class="btn sm" onclick="closeDlg(); ${go}">${icon('apple')}${mac ? 'Open' : 'Set up'}</button>`) : '<p class="dim">Open a project to set up its Mac signing.</p>'}</div>
     <div class="label" style="margin-top:18px">Network Mac</div>
-    <div class="box"><p class="dim" style="margin:6px 0">Build, sign and notarize macOS apps on a Mac on your network over SSH. Coming soon.</p></div>`;
+    ${macHtml()}`;
+}
+/* #147 Network Mac: guided SSH setup. Auth = ssh config/agent keys (BatchMode) → nothing secret saved. MACT = last test (kept, no auto re-run). */
+let MACT = null;
+const macIn = (k, ph) => `<input id="mac-${k}" value="${esc(S.mac?.[k] || '')}" placeholder="${ph}" onchange="macSave()" style="width:100%">`;
+function macHtml() {
+  const t = MACT, chk = (n, v, hint) => optRow(n, v ? esc(v) : hint, v ? `<span style="color:var(--ok)">${icon('check')}</span>` : `<span class="err">missing</span>`);
+  return `<div class="box" id="set-mac"><p class="dim" style="margin:6px 0">Build, sign and notarize macOS apps on a Mac on your network over SSH.</p>
+    ${optRow('1. Turn on Remote Login on the Mac', 'System Settings › General › Sharing › Remote Login', '')}
+    ${optRow('2. Mac address and user', 'An ssh alias from ~/.ssh/config, a name or IP. User empty = the alias/default user.', `<div style="display:flex;gap:6px;width:260px">${macIn('host', 'mac-mini')}${macIn('user', 'user')}</div>`)}
+    ${optRow('3. Key login (no password)', 'No key yet: <code>ssh-keygen -t ed25519</code>, then copy it once (asks the Mac password):<br><code>type $env:USERPROFILE\\.ssh\\id_ed25519.pub | ssh USER@HOST "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"</code>', '')}
+    ${optRow('4. Build folder on the Mac', 'Empty = ~/clauracle-build', `<div style="width:260px">${macIn('dir', '~/clauracle-build')}</div>`)}
+    ${optRow('5. Test connection', t ? (t.ok ? esc(t.os) : '<span class="err">' + esc(t.err || 'Failed') + '</span>') : 'Logs in with your key and checks the build tools',
+      `<button class="btn sm" id="macTestBtn" onclick="macTest()" ${S.mac?.host ? '' : 'disabled'}>${icon('loop')}Test</button>`)}
+    ${t?.ok ? chk('Xcode tools', t.xcode, 'xcode-select --install on the Mac') + chk('Rust', t.rust, 'https://rustup.rs on the Mac') + chk('Node.js', t.node, 'https://nodejs.org on the Mac') : ''}</div>`;
+}
+async function macSave() {
+  S.mac = {host: $('mac-host').value.trim(), user: $('mac-user').value.trim(), dir: $('mac-dir').value.trim()}; MACT = null;
+  await call('set_mac', {mac: S.mac}); $('set-mac').outerHTML = macHtml();
+}
+async function macTest() {
+  const b = $('macTestBtn'); if (b) { b.disabled = true; b.innerHTML = '<span class="spin"></span>Testing…'; }
+  MACT = await call('mac_test', {mac: S.mac}).catch(e => ({ok: false, err: String(e)}));
+  $('set-mac') && ($('set-mac').outerHTML = macHtml());
 }
 /* Dependencies (#28): toolchains for local builds of the picked target platforms (store::deps, 60s cache). Missing → AI installs it
    in the current project's session (official installer/package manager) or the download page. Other OSes build in CI (#27). */

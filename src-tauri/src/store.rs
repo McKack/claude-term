@@ -145,6 +145,27 @@ pub struct Notify {
     pub ntfy: String, // ntfy.sh topic for phone pushes; "" = off
 }
 
+/// #147 Network Mac: builds macOS over SSH. Auth = ~/.ssh/config + agent/keys only (BatchMode) ∴ no password ever stored.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct NetMac {
+    pub host: String, // ssh alias or IP; "" = off
+    pub user: String, // "" = ssh config/default user
+    pub dir: String,  // remote build root; "" = ~/clauracle-build
+}
+
+/// #147 `ssh -o BatchMode=yes [user@]host` probe: login shell (zsh -l ∵ Homebrew/rustup PATH lives in .zprofile) prints
+/// key=value lines → {ok, os, xcode, rust, node, err}. rust also probes keg-only Homebrew rustup / ~/.cargo (not on PATH; #148 adds them). ConnectTimeout 8s ∵ an asleep/moved Mac must not hang the UI.
+pub fn mac_test(m: &NetMac) -> serde_json::Value {
+    let to = if m.user.trim().is_empty() { m.host.trim().to_string() } else { format!("{}@{}", m.user.trim(), m.host.trim()) };
+    if m.host.trim().is_empty() { return serde_json::json!({"ok": false, "err": "No host set"}); }
+    let sh = "zsh -lc 'echo os=$(uname -sm); echo xcode=$(xcode-select -p 2>/dev/null); echo rust=$(command -v cargo || ls ~/.cargo/bin/cargo /opt/homebrew/opt/rustup/bin/cargo 2>/dev/null | head -1); echo node=$(command -v node)'";
+    let o = run("ssh", &["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new", &to, sh], None, &[]);
+    let kv = |k: &str| o.stdout.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).unwrap_or("").trim().to_string();
+    serde_json::json!({"ok": o.ok && !kv("os").is_empty(), "os": kv("os"), "xcode": kv("xcode"), "rust": kv("rust"), "node": kv("node"),
+        "err": o.stderr.lines().filter(|l| !l.trim().is_empty() && !l.starts_with("Warning: Permanently added")).last().unwrap_or("").trim()})
+}
+
 /// A helper agent Claude Code can hand work to (a subagent), usually on a cheaper model.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default)]
@@ -189,6 +210,7 @@ pub struct Config {
     pub win: Option<[i32; 5]>, // main window at last close/restart: x, y, w, h (physical px), maximized 0|1
     pub notify: Notify,
     pub ci_builds: bool, // #126: GitHub Actions builds non-local targets; off (default) = local builds only ∵ CI minutes cost money
+    pub mac: NetMac, // #147 Network Mac (SSH)
     pub projects_dir: String, // where clones and new projects go ("" = ~/Clauracle): <root>/<owner>/<repo>, <root>/local/<name>
 }
 
