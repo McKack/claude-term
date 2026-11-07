@@ -2820,7 +2820,23 @@ async function siteMake() { const text = sitePrompt(); if (await sure(`Ask Claud
 const svcOf = p => [...new Set([...(p.gcp ? ['google'] : []), ...(p.services || [])])].filter(id => SERVICES[id]);
 async function svcAdd(id) { await setP({services: [...svcOf(P()), id]}); await refresh(); drawRight(); }
 async function svcRemove(id) { await setP({services: svcOf(P()).filter(x => x !== id)}); await refresh(); drawRight(); }
-const svcMenu = el => menuAt(el, Object.entries(SERVICES).filter(([id]) => !svcOf(P()).includes(id)).map(([id, x]) => ({label: x.name, hint: x.note, run: () => svcAdd(id)})));
+// #162 type › provider › service; an id may sit in several types; provider '' = no caption; unlisted ids → Other
+const SVCTYPE = {'Sign-in': {Google: ['google', 'firebase'], Apple: ['apple'], GitHub: ['github'], Microsoft: ['microsoft'], Discord: ['discord'], Auth0: ['auth0'], Clerk: ['clerk'], Supabase: ['supabase']},
+  Database: {Supabase: ['supabase'], Google: ['firebase']}, Payments: {Stripe: ['stripe']}, Email: {Resend: ['resend']},
+  Hosting: {'': ['website'], Vercel: ['vercel'], Google: ['firebase']}, Monitoring: {Sentry: ['sentry']},
+  'App stores': {Apple: ['appstore', 'macsign'], Google: ['play'], Valve: ['steam']}, Cloud: {Google: ['google']}};
+function svcMenu(el) {
+  const left = id => SERVICES[id] && !svcOf(P()).includes(id), it = id => ({label: SERVICES[id].name, hint: SERVICES[id].note, run: () => svcAdd(id)});
+  const seen = new Set(Object.values(SVCTYPE).flatMap(t => Object.values(t).flat()));
+  const types = {...SVCTYPE, Other: {'': Object.keys(SERVICES).filter(id => !seen.has(id))}};
+  const menu = Object.entries(types).map(([t, pr]) => {
+    // provider w/ ≥2 left → caption + indented rows; 1 → plain row
+    const items = Object.entries(pr).flatMap(([n, ids]) => { ids = ids.filter(left);
+      return n && ids.length > 1 ? [{title: n}, ...ids.map(id => ({...it(id), sub: 1}))] : ids.map(it); });
+    return items.length && {label: t, items};
+  }).filter(Boolean);
+  menuAt(el, menu.length ? menu : [{title: 'All services added'}]);
+}
 let envKeys = {files: [], have: new Set()};
 const BUNDLE = {}; // pid → bundle ID, cached per app run ∵ file reads; restart after editing the config
 async function drawServices() {
