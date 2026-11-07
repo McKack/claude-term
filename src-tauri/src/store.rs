@@ -986,6 +986,16 @@ pub fn env_parse(text: &str) -> Vec<(String, String)> {
     }).collect()
 }
 
+/// #129 local signing: .env keys the bundler reads → build/deploy step env. tauri build on macOS imports APPLE_CERTIFICATE
+/// into a temp keychain (or uses APPLE_SIGNING_IDENTITY from the login keychain) + notarizes w/ APPLE_ID/PASSWORD/TEAM_ID
+/// or APPLE_API_*; Windows signs via tauri.conf signCommand/certificateThumbprint, AZURE_* feed trusted-signing-cli.
+/// Empty values dropped (empty APPLE_CERTIFICATE would make tauri fail instead of skip).
+pub fn sign_env(dir: &str) -> Vec<(String, String)> {
+    let text = std::fs::read_to_string(std::path::Path::new(dir).join(".env")).unwrap_or_default();
+    env_parse(&text).into_iter().filter(|(k, v)| !v.is_empty()
+        && (k.starts_with("APPLE_") || k.starts_with("AZURE_") || k.starts_with("TAURI_SIGNING_") || k.starts_with("WINDOWS_CERTIFICATE"))).collect()
+}
+
 fn unescape(s: &str) -> String {
     let (mut out, mut it) = (String::new(), s.chars());
     while let Some(c) = it.next() {
@@ -1764,6 +1774,15 @@ mod tests {
         assert_eq!(s["deniedMcpServers"], serde_json::json!([{"serverName": "claude.ai Gmail"}]), "claude.ai connectors by their listed name");
         assert_eq!(s["enabledPlugins"], serde_json::json!({"ponytail@ponytail": false, "unreal@x": false}),
                    "picked mod stays; a plugin with a picked skill stays; Clauracle's Ponytail replaces the plugin");
+    }
+
+    #[test]
+    fn sign_env_picks_signing_keys() {
+        let d = std::env::temp_dir().join("clauracle-sign-env");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join(".env"), "APPLE_ID=a@b.c\nAPPLE_CERTIFICATE=\nDB_URL=x\nAZURE_CLIENT_ID=1\n").unwrap();
+        let k: Vec<String> = sign_env(&d.to_string_lossy()).into_iter().map(|(k, _)| k).collect();
+        assert_eq!(k, ["APPLE_ID", "AZURE_CLIENT_ID"]);
     }
 
     #[test]

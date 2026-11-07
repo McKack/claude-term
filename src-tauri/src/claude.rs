@@ -1082,7 +1082,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     let say = |t: &str, done: Option<bool>| emit(app, "build", json!({"pid": pid, "step": step, "line": t, "done": done}));
     say(&format!("$ {cmd}"), None);
     let mut c = shell(&cmd);
-    c.current_dir(&p.path).envs(store::gh_env(&p.gh)).envs(store::gcloud_env(&p.gaccount, &p.gcp)).stdin(std::process::Stdio::null())
+    c.current_dir(&p.path).envs(store::sign_env(&p.path)).envs(store::gh_env(&p.gh)).envs(store::gcloud_env(&p.gaccount, &p.gcp)).stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
     let mut child = match c.spawn() {
         Ok(c) => {

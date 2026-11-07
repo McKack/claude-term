@@ -1987,7 +1987,8 @@ const RELAI = { // fix prompts: Claude writes/judges, never template
 };
 function relItems(c, p) {
   const v = (c.version || '').replace(/^v/, ''), tv = (c.tag || '').replace(/^v/, ''), ci = c.ci;
-  const sign = SECRETS[cur]?.includes('APPLE_CERTIFICATE'), files = relFilesFor(cur, v), {ci: cit, miss, lack} = tgtSplit(p, c, files);
+  // #129: CI off → local build signs from .env (c.sign = APPLE_*/AZURE_* keys there, passed to build steps)
+  const sign = S.ci_builds ? SECRETS[cur]?.includes('APPLE_CERTIFICATE') : (c.sign || []).includes('APPLE_SIGNING_IDENTITY'), files = relFilesFor(cur, v), {ci: cit, miss, lack} = tgtSplit(p, c, files);
   const stale = files.filter(f => f.mtime && f.mtime < (c.code_t || 0)); // #92: built before the newest code commit → rebuild before release
   // array order = display order (filter keeps it) → Build stays last whatever the stage
   return [
@@ -2001,7 +2002,7 @@ function relItems(c, p) {
     ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'CI green', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no workflow runs',
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.url}] : []),
     {s: 2, id: 'icon', t: 'App icon', ok: c.icon},
-    ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: 'Mac signing secrets on GitHub', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
+    ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: S.ci_builds ? 'Mac signing secrets on GitHub' : 'Mac signing keys in .env', d: S.ci_builds ? '' : 'local Mac builds sign + notarize with them', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
     // #40 stores (Play/App Store) want privacy + terms URLs: RC up, mobile targets only; c.site = HTTP statuses (relWizard)
     ...((p.targets || []).some(x => x === 'ios' || x === 'android') ? [{s: 2, id: 'site_legal', t: 'Privacy policy and terms online',
       ok: !!c.site && c.site.every(x => x >= 200 && x < 400), d: siteOf(p).domain ? ['privacy', 'terms'].map((k, i) => `${SITEPG[k][1]} ${c.site?.[i] || 'unreachable'}`).join(' · ') : 'no website yet',
