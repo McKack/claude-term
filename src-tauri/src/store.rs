@@ -486,6 +486,74 @@ pub fn deps() -> serde_json::Value {
     m
 }
 
+/// #137 Graph view: project files (git ls-files, else a walk; ≤ 3000) + links found in each file's first 8 KB:
+/// quoted paths (JS/TS import/require, CSS @import, HTML src/href, C #include, JSON), Rust `mod x;`, Python imports.
+/// Resolve: relative to the file, then the root, + common extensions / index files. ponytail: no tsconfig paths/aliases,
+/// no `use crate::` (mod already links it); a quoted word that happens to name a sibling file counts as a link.
+pub fn file_links(dir: &str) -> serde_json::Value {
+    let root = Path::new(dir);
+    let o = run("git", &["ls-files", "-co", "--exclude-standard"], Some(dir), &[]);
+    let mut files: Vec<String> = if o.ok { o.stdout.lines().map(String::from).collect() } else {
+        fn walk(root: &Path, p: &Path, out: &mut Vec<String>) {
+            let Ok(rd) = std::fs::read_dir(p) else { return };
+            for e in rd.flatten() {
+                let (path, n) = (e.path(), e.file_name().to_string_lossy().to_string());
+                if out.len() >= 3000 || n.starts_with('.') { continue; }
+                if path.is_dir() { if !["node_modules", "target", "dist", "build", "__pycache__", "venv"].contains(&n.as_str()) { walk(root, &path, out); } }
+                else if let Ok(r) = path.strip_prefix(root) { out.push(r.to_string_lossy().replace('\\', "/")); }
+            }
+        }
+        let mut v = vec![]; walk(root, root, &mut v); v
+    };
+    files.truncate(3000);
+    let idx: HashMap<&str, usize> = files.iter().enumerate().map(|(i, f)| (f.as_str(), i)).collect();
+    // join + normalize (`..`, `.`); None = escapes the root
+    let norm = |base: &str, c: &str| -> Option<String> {
+        let mut v: Vec<&str> = if c.starts_with('/') { vec![] } else { base.split('/').filter(|s| !s.is_empty()).collect() };
+        for s in c.split('/') { match s { "" | "." => {}, ".." => { v.pop()?; }, s => v.push(s) } }
+        Some(v.join("/"))
+    };
+    const EXT: [&str; 18] = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".rs", ".py", ".css", ".scss", ".vue", ".svelte",
+        "/index.ts", "/index.js", "/mod.rs", "/__init__.py"];
+    let q = regex::Regex::new(r#"["'`]([^"'`\s<>{}()$]{1,200})["'`]"#).unwrap();
+    let rmod = regex::Regex::new(r"(?m)^\s*(?:pub(?:\([a-z]+\))?\s+)?mod\s+([a-z_][a-z0-9_]*)\s*;").unwrap();
+    let py = regex::Regex::new(r"(?m)^\s*(?:from\s+(\.*[\w.]*)\s+import|import\s+([\w.]+))").unwrap();
+    let mut links = std::collections::BTreeSet::new();
+    for (i, f) in files.iter().enumerate() {
+        let mut head = vec![0u8; 8192];
+        let n = std::fs::File::open(root.join(f)).and_then(|mut h| std::io::Read::read(&mut h, &mut head)).unwrap_or(0);
+        head.truncate(n);
+        if n == 0 || head.contains(&0) { continue; }
+        let t = String::from_utf8_lossy(&head);
+        let d = f.rsplit_once('/').map_or("", |x| x.0);
+        let mut cands: Vec<(String, String)> = q.captures_iter(&t).map(|c| (d.to_string(), c[1].split(['?', '#']).next().unwrap_or("").to_string())).collect();
+        if f.ends_with(".rs") {
+            let stem = f.rsplit('/').next().unwrap_or("").trim_end_matches(".rs");
+            let md = if ["lib", "main", "mod"].contains(&stem) { d.to_string() } else { format!("{d}/{stem}") };
+            cands.extend(rmod.captures_iter(&t).map(|c| (md.clone(), c[1].to_string())));
+        }
+        if f.ends_with(".py") {
+            for c in py.captures_iter(&t) {
+                let m = c.get(1).or(c.get(2)).map_or("", |m| m.as_str());
+                let dots = m.len() - m.trim_start_matches('.').len();
+                let path = m.trim_start_matches('.').replace('.', "/");
+                let base = if dots > 0 { let mut b = d.to_string(); for _ in 1..dots { b = b.rsplit_once('/').map_or(String::new(), |x| x.0.to_string()); } b } else { String::new() };
+                cands.push((base, path));
+            }
+        }
+        for (base, c) in cands {
+            if c.is_empty() || c.contains("://") { continue; }
+            'find: for b in [base.as_str(), ""] {
+                let Some(p) = norm(b, &c) else { continue };
+                for e in EXT {
+                    if let Some(&j) = idx.get(format!("{p}{e}").as_str()) { if j != i { links.insert((i.min(j), i.max(j))); } break 'find; }
+                }
+            }
+        }
+    }
+    serde_json::json!({"files": files, "links": links.into_iter().map(|(a, b)| [a, b]).collect::<Vec<_>>()})
+}
+
 /// #131: WSL has a real distro (docker-desktop* = Docker's own, can't build). `wsl -l -q` prints UTF-16 → strip NULs.
 /// ponytail: builds run in the default distro; presence only (Node/Rust/WebKitGTK inside unchecked → build log says)
 pub fn wsl_ok() -> bool {
@@ -1630,6 +1698,25 @@ mod tests {
         let mut perm = std::fs::metadata(b.join("p/.git/objects/ab/cd")).unwrap().permissions(); #[allow(clippy::permissions_set_readonly_false)] perm.set_readonly(false);
         let _ = std::fs::set_permissions(b.join("p/.git/objects/ab/cd"), perm); let _ = std::fs::remove_dir_all(&b);
     }
+    /// #137: JS relative import w/o ext, Rust mod, Python relative import, quoted root path; lone file unlinked
+    #[test]
+    fn file_links_finds_header_links() {
+        let d = std::env::temp_dir().join(format!("clauracle-links-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        for (f, t) in [("web/a.js", "import b from './b';\n"), ("web/b.js", "x"), ("src/lib.rs", "pub mod store;\nmod x;"), ("src/store.rs", ""),
+            ("src/x/mod.rs", "// \"web/b.js\""), ("py/m.py", "from .n import k"), ("py/n.py", ""), ("alone.txt", "hi")] {
+            let p = d.join(f); std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, t).unwrap();
+        }
+        let v = file_links(d.to_str().unwrap());
+        let files: Vec<String> = serde_json::from_value(v["files"].clone()).unwrap();
+        let mut got: Vec<(String, String)> = v["links"].as_array().unwrap().iter().map(|l| {
+            let (a, b) = (files[l[0].as_u64().unwrap() as usize].clone(), files[l[1].as_u64().unwrap() as usize].clone()); if a < b { (a, b) } else { (b, a) } }).collect();
+        got.sort();
+        let s = |a: &str, b: &str| (a.to_string(), b.to_string());
+        assert_eq!(got, vec![s("py/m.py", "py/n.py"), s("src/lib.rs", "src/store.rs"), s("src/lib.rs", "src/x/mod.rs"), s("src/x/mod.rs", "web/b.js"), s("web/a.js", "web/b.js")]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     /// #131: pid sanitized (no shell injection via path chars), build cmd + copy-back present
     #[test]
     fn wsl_script_shape() {

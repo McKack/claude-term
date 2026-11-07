@@ -71,7 +71,10 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #brand b, .brandname { font-family:'Fredoka',system-ui,sans-serif; font-weight:600; font-size:19px; letter-spacing:.01em; }
 .side-head { display:flex; align-items:center; gap:2px; padding:8px 8px 6px 10px; }
 #stabs { display:flex; gap:2px; min-width:0; } #brand .ib { margin-left:auto; }
-#files { flex:1; overflow:auto; padding:2px 8px; } .tree div.on { background:var(--soft); color:var(--text); }
+#files { flex:1; overflow:auto; padding:2px 8px; }
+#graph { flex:1; position:relative; margin:2px 8px 8px; border-radius:10px; overflow:hidden; background:#0a0c11; color:#cfd6e4; min-height:120px; } /* #137 always dark */
+#graph canvas { position:absolute; inset:0; width:100%; height:100%; cursor:grab; } #graph .ginfo { position:absolute; left:10px; bottom:8px; opacity:.6; pointer-events:none; }
+#graph .gre { position:absolute; right:6px; top:6px; color:#cfd6e4; } #graph .faint { padding:10px; } .tree div.on { background:var(--soft); color:var(--text); }
 #projects { flex:1; overflow:auto; padding:2px 8px; }
 .proj { display:flex; gap:10px; align-items:center; padding:7px 9px; border-radius:9px; cursor:pointer; transition:background .12s; }
 .proj:hover { background:var(--hover); } .proj.on { background:var(--card); box-shadow:var(--shadow); }
@@ -535,7 +538,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-cal"viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
-  <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9a6 6 0 0 1-6 6H6"/></symbol>
+  <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="18" cy="19" r="2"/><circle cx="5" cy="18" r="1.5"/><path d="M6.7 7.2l3.5 3M17.6 6.4l-4 4M13.8 13.8l2.8 3.6M10 13.6l-3.6 3.2"/></symbol>
+  <symbol id="i-branch"viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9a6 6 0 0 1-6 6H6"/></symbol>
   <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 6 6v4"/></symbol>
   <symbol id="i-info"viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
   <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></symbol>
@@ -547,11 +551,12 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="side">
   <div id="brand"><svg class="logo" onclick="goHome()" style="cursor:pointer" title="Home"><use href="#i-logo"/></svg><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b><small id="appver"></small>
 </div>
-  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button></span>
+  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="graph" onclick="setSide('graph')" title="Graph: how files link"><svg class="i"><use href="#i-graph"/></svg><span>Graph</span></button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
   <div id="files" hidden></div>
+  <div id="graph" hidden></div>
   <div id="lrail" class="railbox"></div><div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
   <div class="side-foot"><button class="btn ghost grow" id="acctBtn" onclick="acctCard(this)" title="Accounts, settings, restart"></button></div>
 </aside>
@@ -2519,10 +2524,85 @@ async function drawCode() {
 function setSide(t) { UI.st = t; layout(); drawSide(); }
 function toggleLeft() { UI.lc = !UI.lc; layout(); }
 function drawSide() {
-  const t = UI.st === 'files' ? 'files' : 'projects'; // old saved 'tasks' tab (removed) → projects
+  const t = ['files', 'graph'].includes(UI.st) ? UI.st : 'projects'; // old saved 'tasks' tab (removed) → projects
   document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', b.dataset.s === t));
-  $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files';
+  $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files'; $('graph').hidden = t !== 'graph';
   if (t === 'files') drawFiles();
+  if (t === 'graph') drawGraph();
+}
+/* #137 Graph: file link cloud. Rust file_links (first 8 KB of each file) → nodes in cheap 3D (canvas 2D + perspective).
+   Links are revealed a few per frame and snap in: degree ↑ → target radius ↓ (hubs center, leaves around, unlinked = outer shell).
+   Auto-spin, drag = rotate, click = open in Code, hover = path. 60s cache per project; loop stops when hidden/switched.
+   ponytail: repulsion = 6 random partners/node/frame (≠ O(n²)); folders = colors, not nodes */
+const GRAPH = {};
+let GV = null;
+async function drawGraph(force) {
+  const box = $('graph'), pid = cur;
+  if (!pid) { GV = null; box.innerHTML = '<p class="faint" style="font-size:13px">Open a project to see how its files link.</p>'; return; }
+  if (!force && GV?.pid === pid && box.contains(GV.cv)) return; // already spinning
+  GV = null;
+  box.innerHTML = `<canvas></canvas><button class="ib gre" title="Scan again" onclick="delete GRAPH[cur]; drawGraph(true)">${icon('loop')}</button><small class="ginfo">Scanning file headers…</small>`;
+  const cv = box.querySelector('canvas'), info = box.querySelector('.ginfo');
+  if (!GRAPH[pid] || Date.now() - GRAPH[pid].t > 60e3) GRAPH[pid] = {t: Date.now(), d: await call('file_links', {pid}).catch(e => ({files: [], links: [], err: String(e)}))};
+  if (cur !== pid || box.hidden || !box.contains(cv)) return;
+  const {files, links, err} = GRAPH[pid].d, deg = files.map(() => 0);
+  links.forEach(([a, b]) => { deg[a]++; deg[b]++; });
+  const maxD = Math.max(1, ...deg), hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; };
+  const N = files.map((f, i) => { const u = Math.random() * 2 - 1, a = Math.random() * 6.283, s = Math.sqrt(1 - u * u), top = f.includes('/') ? f.split('/')[0] : '';
+    return {f, x: s * Math.cos(a), y: u, z: s * Math.sin(a), d: 0, fd: deg[i], c: top ? `hsl(${hue(top)},65%,62%)` : '#9aa3b5'}; });
+  info.textContent = err || `${files.length} files · ${links.length} links · ${deg.filter(d => !d).length} unlinked`;
+  const v = GV = {pid, cv, shown: 0, rot: 0, tilt: .35, flash: [], hover: -1}, L = .14;
+  const target = n => n.fd ? .08 + .62 * (1 - Math.sqrt(n.d / maxD)) * (n.d ? 1 : 1.3) : 1; // linked-to-be start mid-outer, settle by degree
+  let drag = null;
+  cv.onmousedown = e => { drag = {x: e.clientX, y: e.clientY, r: v.rot, t: v.tilt, moved: false}; cv.style.cursor = 'grabbing'; };
+  cv.onmousemove = e => { if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      v.rot = drag.r + dx * .01; v.tilt = Math.max(-1.4, Math.min(1.4, drag.t + dy * .01)); }
+    const r = cv.getBoundingClientRect(); v.mx = e.clientX - r.left; v.my = e.clientY - r.top; };
+  cv.onmouseup = () => { cv.style.cursor = 'grab'; if (drag && !drag.moved && v.hover >= 0) previewFile(N[v.hover].f); drag = null; };
+  cv.onmouseleave = () => { drag = null; v.mx = null; cv.style.cursor = 'grab'; };
+  const ctx = cv.getContext('2d');
+  const frame = () => {
+    if (GV !== v || !cv.isConnected || $('graph').hidden) return;
+    const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    // reveal ("discover") links: ~1.5s total; each new link flashes
+    for (let k = Math.max(1, Math.ceil(links.length / 90)); k-- && v.shown < links.length; v.shown++) { const [a, b] = links[v.shown]; N[a].d++; N[b].d++; v.flash.push([v.shown, 24]); }
+    // physics: radial target, link springs, sampled repulsion
+    for (const n of N) { const r = Math.hypot(n.x, n.y, n.z) || 1e-3, k = (target(n) - r) * .06 / r; n.x += n.x * k; n.y += n.y * k; n.z += n.z * k; }
+    for (let i = 0; i < v.shown; i++) { const a = N[links[i][0]], b = N[links[i][1]], dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, dd = Math.hypot(dx, dy, dz) || 1e-3, f = (dd - L) * .03 / dd;
+      a.x += dx * f; a.y += dy * f; a.z += dz * f; b.x -= dx * f; b.y -= dy * f; b.z -= dz * f; }
+    for (const a of N) for (let j = 0; j < 6; j++) { const b = N[(Math.random() * N.length) | 0]; if (a === b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d2 = dx * dx + dy * dy + dz * dz + 1e-4; if (d2 > .04) continue; const f = .0004 / d2;
+      a.x -= dx * f; a.y -= dy * f; a.z -= dz * f; b.x += dx * f; b.y += dy * f; b.z += dz * f; }
+    // project: spin around Y, tilt around X, perspective
+    if (!drag) v.rot += .0025;
+    const cr = Math.cos(v.rot), sr = Math.sin(v.rot), ct = Math.cos(v.tilt), st = Math.sin(v.tilt), S = Math.min(W * .46, H * .42), D = 3.2; // narrow side panel → width-bound
+    for (const n of N) { const x = n.x * cr - n.z * sr, z1 = n.x * sr + n.z * cr, y = n.y * ct - z1 * st, z = n.y * st + z1 * ct, p = D / (D + z);
+      n.sx = W / 2 + x * S * p; n.sy = H / 2 + y * S * p; n.p = p; }
+    const fl = new Map(v.flash.map(([i, t]) => [i, t])); v.flash = v.flash.filter(x => --x[1] > 0);
+    ctx.lineWidth = 1;
+    for (let i = 0; i < v.shown; i++) { const a = N[links[i][0]], b = N[links[i][1]], t = fl.get(i) || 0;
+      ctx.strokeStyle = t ? `rgba(160,200,255,${.25 + t / 30})` : `rgba(140,160,200,${.08 + .18 * (a.p + b.p - 1.4)})`;
+      ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke(); }
+    let hv = -1, best = 81;
+    const order = N.map((_, i) => i).sort((i, j) => N[i].p - N[j].p); // far first
+    for (const i of order) { const n = N[i], r = (1.3 + Math.sqrt(n.d) * 1.1) * n.p;
+      ctx.globalAlpha = Math.min(1, .25 + (n.p - .7) * 1.6); ctx.fillStyle = n.c; ctx.beginPath(); ctx.arc(n.sx, n.sy, r, 0, 6.283); ctx.fill();
+      if (v.mx != null) { const d2 = (n.sx - v.mx) ** 2 + (n.sy - v.my) ** 2; if (d2 < best) { best = d2; hv = i; } } }
+    ctx.globalAlpha = 1; v.hover = hv;
+    // labels: top hubs + hovered
+    ctx.font = '11px system-ui, sans-serif'; ctx.fillStyle = '#e6ebf5';
+    const top = N.map((n, i) => i).filter(i => N[i].d).sort((i, j) => N[j].d - N[i].d).slice(0, 8);
+    const boxes = []; // skip a hub label that would overlap one already drawn; hovered always wins (drawn first)
+    for (const i of new Set([...(hv >= 0 ? [hv] : []), ...top])) { const n = N[i], t = i === hv ? n.f : n.f.split('/').pop(), w = ctx.measureText(t).width,
+        x = Math.max(4, Math.min(n.sx + 6, W - w - 4)), y = n.sy - 5;
+      if (i !== hv && boxes.some(b => x < b[0] + b[2] && b[0] < x + w && Math.abs(b[1] - y) < 12)) continue;
+      boxes.push([x, y, w]); ctx.globalAlpha = i === hv ? 1 : .75; ctx.fillText(t, x, y); }
+    ctx.globalAlpha = 1; cv.style.cursor = drag ? 'grabbing' : hv >= 0 ? 'pointer' : 'grab';
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 // browser view: in-app browser (native child webview, own profile shared by all projects), or open in a real browser profile
