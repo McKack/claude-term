@@ -187,7 +187,8 @@ pub fn mac_key_setup(m: &NetMac, pw: &str) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut c = command(&which("ssh").ok_or("ssh not found")?);
     c.args(["-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new", "-o", "PubkeyAuthentication=no",
-            "-o", "PreferredAuthentications=password,keyboard-interactive", "-o", "NumberOfPasswordPrompts=1", &mac_to(m),
+            // ponytail: password only ∵ wrong pw → fallback to keyboard-interactive hung (macOS, #171); kbd-only sshd → "Wrong…" msg, add kbd back w/ a timeout if seen
+            "-o", "PreferredAuthentications=password", "-o", "NumberOfPasswordPrompts=1", &mac_to(m),
             "umask 077; mkdir -p ~/.ssh; k=$(cat); grep -qxF \"$k\" ~/.ssh/authorized_keys 2>/dev/null || echo \"$k\" >> ~/.ssh/authorized_keys"])
         .env("SSH_ASKPASS", exe).env("SSH_ASKPASS_REQUIRE", "force").env("DISPLAY", ":0").env("CLAURACLE_ASKPASS", pw)
         .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
