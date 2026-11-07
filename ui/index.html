@@ -311,6 +311,11 @@ pre.diff .ctx { color:var(--faint); }
 #ready.tuck > * { pointer-events:none; } /* #109: hover un-tucks (readyPeek onmouseenter) */
 #ready #readytext.more { cursor:pointer; } #ready #readytext:not(.more) { cursor:default; } /* .more = truncated or .full (readyMore) */
 /* #70 pop: Working… pill shimmer ×2 over the soft bg (transparent stops keep --soft) */
+/* #120 build progress: spinner in place of Build + always-there bar under Manual commands (dark idle, shimmer while building) */
+.spin { width:12px; height:12px; border:2px solid var(--soft); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; display:inline-block; }
+@keyframes spin { to { rotate:360deg; } }
+.bbar { height:4px; border-radius:2px; margin-top:8px; background:var(--side); }
+.bbar.on { background-image:linear-gradient(90deg, transparent 25%, color-mix(in srgb, var(--accent) 55%, transparent) 50%, transparent 75%); background-size:200% 100%; animation:shimmer 1.4s linear infinite; }
 #ready.shine { background-image:linear-gradient(90deg, transparent 25%, color-mix(in srgb, var(--accent) 22%, transparent) 50%, transparent 75%); background-size:200% 100%; animation:shimmer 1.8s linear 2 forwards; }
 #composer { position:relative; z-index:1; }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
@@ -1664,6 +1669,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
+    if (d.step === 'build' && !!b.busy !== (d.done == null)) { b.busy = d.done == null; if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
     if (d.step === 'build' && d.done) { BUILT[d.pid] = 1; if (d.pid === cur) tabDots(); } /* green dot till Build & Release is opened */
     if (d.step === 'build' && d.done != null) { ghiStale(d.pid); delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
@@ -2023,7 +2029,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
   const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;display:inline-flex;padding-top:2px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${icon(x.ai ? 'sparkle' : x.ok ? 'check' : 'x')}</span>
     <span class="grow">${esc(x.t)}${x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
-    ${x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with AI'}</button>` : ''}</div>`;
+    ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with AI'}</button>` : ''}</div>`;
   const seg = `<span class="seg" style="margin-bottom:8px">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const up = to > k, gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, ''); // up: moving a stage (or starting)
   const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : '';
@@ -2059,7 +2065,10 @@ async function relBumpPatch(btn) {
 }
 // Build from the wizard: on success the build event commits + pushes what it changed (Cargo.lock…) ∵ else "Everything committed" flips red again
 const RELB = {};
-const relBuild = btn => { btn.disabled = true; RELB[cur] = 1; call('run_step', {pid: cur, step: 'build'}); };
+// #120: busy at once (event confirms) → spinner + bar; no 2nd click → 2nd cargo blocked on the build-dir lock
+const buildNow = () => { (builds[cur] ||= {out: ''}).busy = true; drawRight(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); }); };
+const relBuild = () => { RELB[cur] = 1; buildNow(); };
+const buildingBtn = sm => `<button class="btn${sm ? ' sm' : ''}" disabled><i class="spin"></i>Building…</button>`;
 // Target platforms (#25): p.targets; [] = not picked → Mac follows ships_mac (MAC). *signing/notarizing optional
 const TGT = [['Desktop', [['windows', 'win', 'Windows', 'setup .exe (signed*)'], ['macos', 'apple', 'macOS', '.dmg with .app (notarized*)'], ['linux', 'term', 'Linux', '.AppImage']]],
   ['Mobile', [['ios', 'phone', 'iOS', 'App Store / TestFlight'], ['android', 'android', 'Android', '.apk / .aab']]]];
@@ -2106,7 +2115,8 @@ async function buildHtml(p, has, live, force) {
   // #34: "Manual commands" fold (closed by default); no Deploy button ∵ Release runs the deploy command after publishing
   return tgtHtml(p) + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
-          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="call('run_step', {pid:cur, step:'${s}'})">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>`
+          : s === 'build' && builds[cur]?.busy ? buildingBtn()
+          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${builds[cur]?.busy ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : 'No build running'}"></div>`
         : live || GUESS[pid0] ? await guessHtml() : skel('b45'), 0, `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
       + (!svcOf(p).includes('macsign') && mac
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
