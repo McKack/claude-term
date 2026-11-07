@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Build & Release shows GitHub Actions minutes used this month, the included amount, any billed spend and a clear "limit reached" note, with links to the usage and spending-limit pages.
 - The "All tasks done" buttons are faded and can't be clicked while the AI is still working.
 - Press Tab in the chat input to switch permission mode (Shift+Tab goes back); the status bar names the mode when there is room.
 - Right-click a side-panel tab for Refresh and a shortcut to its settings.

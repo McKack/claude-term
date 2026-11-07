@@ -2125,6 +2125,28 @@ const tgtHtml = p => { const t = p.targets || [];
     + '<small class="dim">* optional for Alpha and Beta; Release candidate and up need it (Services &amp; Secrets)</small>', 0,
     t.length ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${t.filter(id => tgtReady(p, id)).length}/${t.length}</span>` : '');
 };
+/* #128 Actions minutes this month (owner's billing report, 10-min cache). No `user` scope → one-click re-login adding it.
+   Limit reached = last CI run's annotation (#123) says billing/spending limit → red + budgets link. */
+const ACTU = {}, ACTINC = {free: 2000, pro: 3000, team: 3000, enterprise: 50000};
+async function actLoad(pid, force) {
+  if (!force && ACTU[pid] && Date.now() - ACTU[pid].t < 600e3) return;
+  const d = new Date(); ACTU[pid] = {t: Date.now(), v: await call('actions_usage', {pid, year: d.getFullYear(), month: d.getMonth() + 1}).catch(e => ({err: String(e)}))};
+}
+async function actScope() { const m = $('ghMsg'); if (m) m.textContent = 'Waiting for gh…';
+  const ok = await call('gh_login', {scopes: 'user'}).catch(e => (m && (m.textContent = e), false));
+  if (ok) { delete ACTU[cur]; drawRight(); } }
+const actHtml = () => { const a = ACTU[cur]?.v, c = RELC[cur]?.c; if (!S.ci_builds || !a || (c && !c.remote)) return '';
+  const bill = a.owner ? (a.org ? `https://github.com/organizations/${a.owner}/settings/billing` : 'https://github.com/settings/billing') : '';
+  const lim = /spending limit|billing|payment|budget/i.test(c?.ci?.why || ''), link = (t, u) => `<a data-url="${esc(u)}" style="cursor:pointer">${t}</a>`;
+  const body = a.err ? `<small class="dim">${esc(a.err)}</small>`
+    : a.scope ? `<p class="dim" style="margin:0 0 8px;font-size:13px">Seeing ${a.org ? `${esc(a.owner)}'s` : 'your'} Actions minutes needs ${a.org ? 'org admin rights and ' : ''}the GitHub <b>user</b> permission. Sign in again as <b>${esc(P().gh)}</b> to add it.</p>
+        <button class="btn" onclick="actScope()">${icon('gh')}Grant usage access</button> <span id="ghMsg" class="dim" style="font-size:13px"></span>`
+    : (u => { const inc = ACTINC[a.plan]; return `<p style="margin:0 0 4px;font-size:13px"><b>${Math.round(u.min).toLocaleString()}</b> min this month${inc ? ` · ${inc.toLocaleString()} included (${esc(a.plan)})` : ''}${u.net > 0 ? ` · <b>billed $${u.net.toFixed(2)}</b>` : ''}</p>`
+        + (Object.keys(u.sku).length ? `<small class="dim">${Object.entries(u.sku).map(([k, m]) => `${esc(k)} ${Math.round(m)}`).join(' · ')} · macOS counts 10×, Windows 2×</small>` : ''); })(a.u);
+  return fold('p-actions', 'GitHub Actions', (lim ? `<p class="err" style="margin:0 0 6px;font-size:13px">${icon('info')} Limit reached: ${esc(c.ci.why)}</p>` : '') + body
+    + (bill ? `<div style="margin-top:6px;font-size:13px">${link('Usage', bill + '/usage')} · ${link('Spending limit', bill + '/budgets')}</div>` : ''), lim ? 1 : 0,
+    lim ? '<span class="pill" style="background:var(--err);color:#fff">limit</span>' : '');
+};
 async function tgtFlip(id) {
   const p = P(), t = p.targets || [];
   p.targets = t.includes(id) ? t.filter(x => x !== id) : [...t, id];
@@ -2136,13 +2158,14 @@ async function buildHtml(p, has, live, force) {
   const pid0 = cur, wait = t => sec(t, skel(70, 45, 'b100'));
   if (live && MAC[pid0] === undefined) MAC[pid0] = await call('ships_mac', {pid: pid0}).catch(() => false);
   if (live) await depsGet(); // tgtWhy: local tools per target (60s cache)
+  if (live && S.ci_builds) await actLoad(pid0, force === true); // #128
   if (live && strictStage(p) && svcOf(p).length) { const files = await call('env_list', {pid: pid0}).catch(() => []); // tgtWhy → svcDone reads envKeys
     envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))}; }
   const mac = macOn(p, pid0);
   let c = GHI[pid0];
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) { ghiSet(pid0, g); c = GHI[pid0]; } }
   // #34: "Manual commands" fold (closed by default); no Deploy button ∵ Release runs the deploy command after publishing
-  return tgtHtml(p) + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+  return tgtHtml(p) + actHtml() + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`

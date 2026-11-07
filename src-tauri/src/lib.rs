@@ -566,13 +566,13 @@ async fn gcloud_do(st: St<'_>, pid: String, action: String, arg: String, on: Opt
 // ---- GitHub ----
 
 #[tauri::command]
-async fn gh_login(app: AppHandle) -> R<bool> {
+async fn gh_login(app: AppHandle, scopes: Option<String>) -> R<bool> { // #128 scopes e.g. "user" → re-login adds them
     store::forget_gh_users();
     tauri::async_runtime::spawn_blocking(move || {
         use std::io::BufRead;
         let gh = store::which("gh").ok_or("gh isn't installed")?;
         let mut child = store::command(&gh)
-            .args(["auth", "login", "--web", "-h", "github.com", "-p", "https", "--skip-ssh-key"])
+            .args(["auth", "login", "--web", "-h", "github.com", "-p", "https", "--skip-ssh-key"]).args(scopes.iter().flat_map(|s| ["-s", s.as_str()]))
             .env("GH_BROWSER", "echo").env("BROWSER", "echo")
             .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
             .spawn().map_err(|e| e.to_string())?;
@@ -1079,6 +1079,57 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
     }).await.map_err(|e| e.to_string())
 }
 
+/// #128 Actions usage this month for the repo owner (user or org) via the billing usage report. Needs the token's `user`
+/// scope (org: admin) → `{scope}` when missing. ponytail: no budget/spending-limit API for users → UI links the billing page.
+#[tauri::command(async)]
+fn actions_usage(st: St, pid: String, year: u32, month: u32) -> R<Value> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let (owner, _) = store::repo_of(&p.path).ok_or("not on GitHub")?;
+    let me = owner.eq_ignore_ascii_case(&p.gh);
+    let base = if me { format!("users/{owner}") } else { format!("organizations/{owner}") };
+    let env = store::gh_env(&p.gh);
+    let o = store::run("gh", &["api", &format!("{base}/settings/billing/usage?year={year}&month={month}")], None, &env);
+    if !o.ok {
+        let e = format!("{}{}", o.stdout, o.stderr);
+        if e.contains("scope") || e.contains("404") || e.contains("403") { return Ok(json!({"owner": owner, "org": !me, "scope": true, "why": e.lines().last().unwrap_or("").trim()})); }
+        return Err(e.trim().to_string());
+    }
+    let v: Value = serde_json::from_str(&o.stdout).unwrap_or_default();
+    Ok(json!({"owner": owner, "org": !me, "plan": if me { store::run("gh", &["api", "user", "--jq", ".plan.name"], None, &env).stdout.trim().to_string() } else { String::new() },
+              "u": actions_sum(&v)}))
+}
+
+/// usageItems → {min, sku: {name: minutes}, gross, net} for product "actions" (minutes rows only for min/sku).
+fn actions_sum(v: &Value) -> Value {
+    let (mut min, mut gross, mut net, mut sku) = (0.0, 0.0, 0.0, serde_json::Map::new());
+    for i in v["usageItems"].as_array().into_iter().flatten().filter(|i| i["product"].as_str().is_some_and(|s| s.eq_ignore_ascii_case("actions"))) {
+        gross += i["grossAmount"].as_f64().unwrap_or(0.0);
+        net += i["netAmount"].as_f64().unwrap_or(0.0);
+        if i["unitType"].as_str().is_some_and(|s| s.eq_ignore_ascii_case("minutes")) {
+            let q = i["quantity"].as_f64().unwrap_or(0.0);
+            min += q;
+            let k = i["sku"].as_str().unwrap_or("?").trim_start_matches("Actions ").to_string();
+            let e = sku.entry(k).or_insert(json!(0.0));
+            *e = json!(e.as_f64().unwrap_or(0.0) + q);
+        }
+    }
+    json!({"min": min, "sku": sku, "gross": gross, "net": net})
+}
+
+#[test]
+fn actions_sum_adds_minutes_per_sku() {
+    let v = json!({"usageItems": [
+        {"product": "actions", "sku": "Actions Linux", "unitType": "Minutes", "quantity": 100.0, "grossAmount": 0.8, "netAmount": 0.0},
+        {"product": "actions", "sku": "Actions Linux", "unitType": "Minutes", "quantity": 20.0, "grossAmount": 0.16, "netAmount": 0.0},
+        {"product": "actions", "sku": "Actions macOS 3-core", "unitType": "Minutes", "quantity": 5.0, "grossAmount": 0.4, "netAmount": 0.4},
+        {"product": "actions", "sku": "Actions storage", "unitType": "GigabyteHours", "quantity": 9.0, "grossAmount": 0.1, "netAmount": 0.1},
+        {"product": "git_lfs", "sku": "LFS", "unitType": "Minutes", "quantity": 7.0, "grossAmount": 1.0, "netAmount": 1.0}]});
+    let s = actions_sum(&v);
+    assert_eq!(s["min"], 125.0);
+    assert_eq!(s["sku"]["Linux"], 120.0);
+    assert!((s["net"].as_f64().unwrap() - 0.5).abs() < 1e-9);
+}
+
 /// Release panel "Set version": swaps the version in every version file that exists (first `version` key/line only,
 /// formatting kept). Cargo.lock follows on the next cargo build.
 /// Page → the `ui` self-test tool's waiting call (claude::ui_tool).
@@ -1512,7 +1563,7 @@ pub fn run() {
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
-            test_notify, install, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
+            test_notify, install, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_ci_builds, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
