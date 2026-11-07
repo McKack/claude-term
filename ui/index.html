@@ -878,10 +878,33 @@ setInterval(() => { for (const [id, w] of Object.entries(S.resets || {})) for (c
 } }, 30000);
 // #39 kind → [icon, colour]: info | ok | warn | err
 const TOASTK = {info: ['info', 'var(--accent)'], ok: ['check', 'var(--ok)'], warn: ['warn', '#d9a21b'], err: ['x', 'var(--err)']};
-function toast(text, kind = 'info') {
+function toast(text, kind = 'info', act) { // act = [label, fn] → button; such toasts stay 20s
   const [ic, c] = TOASTK[kind] || TOASTK.info, t = Object.assign(document.createElement('div'), {className: 'toast glass', popover: 'manual'});
-  t.innerHTML = `<div class="row" style="gap:10px;align-items:flex-start"><span style="color:${c};flex:none;display:inline-flex;padding-top:1px">${icon(ic)}</span><span class="grow">${esc(text)}</span></div>`;
-  document.body.append(t); t.showPopover(); setTimeout(() => t.remove(), 8000); t.onclick = () => t.remove();
+  t.innerHTML = `<div class="row" style="gap:10px;align-items:flex-start"><span style="color:${c};flex:none;display:inline-flex;padding-top:1px">${icon(ic)}</span><span class="grow">${esc(text)}</span>${act ? `<button class="btn sm primary">${esc(act[0])}</button>` : ''}</div>`;
+  document.body.append(t); t.showPopover(); setTimeout(() => t.remove(), act ? 20000 : 8000); t.onclick = () => t.remove();
+  if (act) t.querySelector('button').onclick = act[1];
+}
+/* #167 missing tool/feature/module in a tool result → install suggestion, pure regex (no AI tokens). → {k, n, f?, pkg?, label} | null
+   ponytail: TOOLPKG = known tools only [winget id, brew name]; add one = an entry. gh/gcloud/claude use their own installers. */
+const TOOLPKG = {node: ['OpenJS.NodeJS.LTS', 'node'], npm: ['OpenJS.NodeJS.LTS', 'node'], npx: ['OpenJS.NodeJS.LTS', 'node'], git: ['Git.Git', 'git'],
+  python: ['Python.Python.3.12', 'python'], python3: ['Python.Python.3.12', 'python'], pip: ['Python.Python.3.12', 'python'], cargo: ['Rustlang.Rustup', 'rustup'],
+  rustup: ['Rustlang.Rustup', 'rustup'], jq: ['jqlang.jq', 'jq'], go: ['GoLang.Go', 'go'], ffmpeg: ['Gyan.FFmpeg', 'ffmpeg'], gh: [], gcloud: [], claude: []};
+function missOf(t) {
+  let m = /gated behind the `([\w-]+)` feature/.exec(t), c = m && (/(?:for (?:struct|enum|trait|type) |unresolved import )`([a-z_]\w*)::/.exec(t) || /[\/\\]([a-z][\w-]*?)-\d+\.\d+\.\d+[\/\\]src[\/\\]/.exec(t));
+  if (m && c) return {k: 'cargo', n: c[1].replace(/_/g, '-'), f: m[1], label: `Enable the ${m[1]} feature of ${c[1]}`};
+  if ((m = /Cannot find module '([^'.\/][^']*)'|Can't resolve '([^'.\/][^']*)'/.exec(t))) { const n = (m[1] || m[2]).match(/^(@[^/]+\/)?[^/]+/)[0]; return {k: 'npm', n, label: `npm install ${n}`}; }
+  if ((m = /No module named '([\w-]+)/.exec(t))) return {k: 'pip', n: m[1], label: `pip install ${m[1]}`};
+  m = /(?:^|\n)(?:\S*: )?(?:line \d+: )?([\w.-]+): (?:command )?not found|'([\w.-]+)' is not recognized as an internal|The term '([\w.-]+)' is not recognized/.exec(t);
+  const n = m && (m[1] || m[2] || m[3]).replace(/\.(exe|cmd)$/, '');
+  return n && TOOLPKG[n] ? {k: 'tool', n, pkg: TOOLPKG[n][navigator.userAgent.includes('Mac') ? 1 : 0], label: `Install ${n}`} : null;
+}
+const MISSED = new Set(); // ponytail: one suggestion per thing per app run
+function missCheck(pid, t) {
+  const x = t && missOf(t), key = x && x.k + ':' + x.n + ':' + (x.f || '');
+  if (!x || MISSED.has(key)) return; MISSED.add(key);
+  toast(`Missing: ${x.n}${x.f ? ' (' + x.f + ' feature)' : ''}`, 'warn', [x.label.split(' ')[0] === 'Enable' ? 'Enable' : 'Install', async () => {
+    toast(x.label + '…'); try { await call('fix_missing', {pid, kind: x.k, name: x.n, feat: x.f || null, pkg: x.pkg || null}); toast('Done: ' + x.label, 'ok'); DEPSC = null; }
+    catch (e) { toast(String(e), 'err'); } }]);
 }
 function acctCard(btn) {
   const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0], u = S.usage[a?.id] || {};
@@ -1658,7 +1681,7 @@ function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   line: () => { if (d.kind === 'claude') live[d.pid] = '';
-    if (d.kind === 'tool') issueGuess(d.pid, d); else if (d.result_of) issueResult(d);
+    if (d.kind === 'tool') issueGuess(d.pid, d); else if (d.result_of) { issueResult(d); missCheck(d.pid, d.text); }
     if (d.kind === 'tool' && !d.parent) setDoing(d.pid, 'Running: ' + d.text.replace(/\s+/g, ' ').slice(0, 60), d.id);
     else if (d.result_of && d.result_of === doing[d.pid]?.id) setDoing(d.pid, 'Thinking');
     if (reading[d.pid] && /^(claude|tool|err)$/.test(d.kind)) readNote(d.pid, false); // notes/system lines of the reconnect ≠ the reply

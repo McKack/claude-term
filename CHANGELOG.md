@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- When a command the AI runs fails because a tool, package or crate feature is missing, Clauracle spots it and offers a one-click Install (npm, pip, cargo features, Node/Git/Python/Rust and more). No AI tokens used.
 - Website setup does more by itself: GitHub Pages turns on with one click, Cloudflare Pages reads your Account ID from the token, and Netlify makes the site and fills its Site ID.
 - New Graph tab next to Files: a spinning 3D cloud of how the project's files link (imports, includes, modules). Hubs sit in the middle and unlinked files float at the edge. Click a dot to open the file.
 - On Windows, the Linux version can be built on your own computer through WSL (Ubuntu), no GitHub CI needed.

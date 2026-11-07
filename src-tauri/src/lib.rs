@@ -515,6 +515,33 @@ async fn install(what: String) -> R<()> {
         .await.map_err(|e| e.to_string())?
 }
 
+/// #167 one-click fix for what UI missOf() spotted in a tool result. Names come from tool output → validated, never a shell.
+#[tauri::command]
+async fn fix_missing(st: St<'_>, pid: String, kind: String, name: String, feat: Option<String>, pkg: Option<String>) -> R<()> {
+    let dir = st.project(&pid).ok_or("no such project")?.path;
+    let ok = regex::Regex::new(r"^@?[A-Za-z0-9_][A-Za-z0-9_./-]*$").unwrap();
+    if [Some(&name), feat.as_ref(), pkg.as_ref()].into_iter().flatten().any(|s| !ok.is_match(s)) { return Err("odd name, not installing".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        let o = match kind.as_str() {
+            "cargo" => { // root crate or a Tauri app's src-tauri
+                let m = ["Cargo.toml", "src-tauri/Cargo.toml"].iter().map(|f| std::path::Path::new(&dir).join(f)).find(|f| f.exists()).ok_or("no Cargo.toml")?;
+                store::run("cargo", &["add", &name, "--features", feat.as_deref().unwrap_or_default(), "--manifest-path", &m.to_string_lossy()], Some(&dir), &[])
+            }
+            "npm" => store::run("npm", &["install", &name], Some(&dir), &[]),
+            "pip" => store::run(if cfg!(windows) { "python" } else { "python3" }, &["-m", "pip", "install", &name], Some(&dir), &[]),
+            "tool" => match name.as_str() {
+                "gh" => return store::install_gh(), "gcloud" => return store::install_gcloud(), "claude" => return store::install_claude(),
+                _ => { let p = pkg.ok_or("no package known")?;
+                    if cfg!(windows) { store::run("winget", &["install", "-e", "--id", &p, "--accept-package-agreements", "--accept-source-agreements"], None, &[]) }
+                    else if cfg!(target_os = "macos") { store::run("brew", &["install", &p], None, &[]) }
+                    else { return Err(format!("install {name} with your package manager")) } } // ponytail: apt needs sudo
+            },
+            _ => return Err("unknown kind".into()),
+        };
+        if o.ok { Ok(()) } else { Err(format!("{}{}", o.stderr.trim(), o.stdout.lines().last().unwrap_or_default())) }
+    }).await.map_err(|e| e.to_string())?
+}
+
 // ---- Google Cloud ----
 
 /// Everything the Cloud tab shows, fetched in parallel (each gcloud call takes a second or two).
@@ -1634,7 +1661,7 @@ pub fn run() {
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt, new_session,
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
-            test_notify, install, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
+            test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_links, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_ci_builds, set_mac, mac_test, mac_setup, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
