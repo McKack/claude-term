@@ -28,7 +28,7 @@
 .swatch.on { box-shadow:0 0 0 2px var(--text); }
 * { box-sizing:border-box; } [hidden] { display:none !important; }
 html, body { height:100%; }
-body { margin:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; background:var(--bg); color:var(--text);
+body { margin:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-rows:minmax(0,1fr) auto; background:var(--bg); color:var(--text);
   font:14px/1.55 system-ui,-apple-system,"Segoe UI Variable Text","Segoe UI",sans-serif; overflow:hidden; user-select:none; -webkit-font-smoothing:antialiased; }
 /* selectable: chat/terminal log, inputs, code + build output, .sel; set per element (inheritance leaked in WebView2) */
 *, ::before, ::after { -webkit-user-select:none; user-select:none; }
@@ -346,6 +346,11 @@ pre.diff .ctx { color:var(--faint); }
 #status { container-type:inline-size; } #status .ab { display:none; }
 #status .bar { width:22px; height:3px; }
 @container (max-width:560px) { #status .lb, #status .bar, #status button > svg:last-child:not(:first-child) { display:none; } #status .ab { display:inline; } }
+#gbar { grid-column:1 / -1; display:flex; gap:4px 14px; align-items:center; white-space:nowrap; overflow:hidden; font-size:12px; color:var(--faint); padding:2px 10px; border-top:1px solid var(--line); background:var(--side); min-height:24px; }
+#gbar button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:6px; align-items:center; padding:2px 6px; border-radius:6px; min-width:0; }
+#gbar button:hover { color:var(--text); background:var(--hover); } #gbar b { color:var(--dim); font-weight:500; } #gbar .i { width:14px; height:14px; } #gbar .bar { width:22px; height:3px; }
+#gbar > button > span, #gbar .stats > span { display:inline-flex; gap:4px; align-items:center; } #gbar .stats { gap:10px; } #gbar .gt { display:block; overflow:hidden; text-overflow:ellipsis; max-width:40vw; }
+.gdot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse .8s ease-in-out infinite alternate; flex:none; } /* #179 */
 #status button:hover { color:var(--text); background:var(--hover); } #status b { color:var(--dim); font-weight:500; }
 #status > span, #status button > span { display:inline-flex; gap:4px; align-items:center; } #status .stats { gap:10px; } #status .i { width:14px; height:14px; }
 .menu button.sub { padding-left:34px; font-size:12.5px; color:var(--dim); } .menu button.sub .chk { width:12px; }
@@ -611,6 +616,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="rrail" class="railbox"></div><div class="grip" data-side="r" title="Drag to resize, double-click to collapse"></div>
 </aside>
 
+<footer id="gbar"></footer><!-- #179 global statusline: usage, AI working, builds -->
 <dialog id="dlg"></dialog><dialog id="dlg2" class="glass"></dialog><!-- dlg2: a small window over Settings --><dialog id="dlgc" class="glass"></dialog><!-- dlgc: sure()/say(), replaces native confirm/alert -->
 
 
@@ -952,6 +958,38 @@ function statsCard(btn) {
   const r = btn.getBoundingClientRect();
   card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
 }
+/* #179 global statusline (all projects): usage (current project's account, else first), AI working (which + what + agents), builds.
+   Redrawn by drawChrome + 1s tick; el._h = last html → no DOM churn. Cards = popovers like statsCard */
+const gbusy = () => S.projects.filter(p => busy[p.id]), gbuilds = () => S.projects.filter(p => builds[p.id]?.busy);
+const blast = pid => (builds[pid]?.out || '').split('\n').filter(l => l.trim()).at(-1) || 'Starting…';
+function drawGbar() {
+  const el = $('gbar'); if (!el) return;
+  const p = cur && P(), acct = p ? p.account : S.accounts[0]?.id, u = S.usage[acct] || {};
+  const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%${resetIn(acct, k) ? ', ' + resetIn(acct, k) : ''}">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
+  const wk = gbusy(), bd = gbuilds(), what = x => doing[x.id]?.text || 'Thinking';
+  const h = (p ? `<button class="stats" onclick="statsCard(this)" title="Context, usage and session time"><span>${icon('doc')}${ctx[cur] ?? '?'}%</span>${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime"></span></button>`
+      : `<span class="stats" style="display:inline-flex;gap:10px;padding:2px 6px">${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}</span>`)
+    + '<span class="grow"></span>'
+    + (wk.length ? `<button onclick="gCard(this, 'ai')" title="What the AI is working on"><i class="gdot"></i><span class="gt">${wk.length > 1 ? `AI working in ${wk.length} projects` : `<b>${esc(wk[0].name)}</b> · ${esc(what(wk[0]))}`}</span>${(n => n ? `<span>${icon('bot')}${n}</span>` : '')(wk.reduce((n, x) => n + agentsOf(x.id).filter(a => a.running).length, 0))}</button>` : '')
+    + (bd.length ? `<button onclick="gCard(this, 'build')" title="Builds in progress"><span class="spin"></span><span class="gt">Building ${bd.length > 1 ? bd.length + ' projects' : `<b>${esc(bd[0].name)}</b>`}</span></button>` : '');
+  if (el._h !== h) { el._h = h; el.innerHTML = h; }
+  drawTimes();
+}
+setInterval(drawGbar, 1000);
+function gCard(btn, kind) {
+  const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
+  const go = (pid, t) => `onclick="openProject('${pid}').then(() => ${t ? `rightTab('${t}')` : '0'}); this.closest('[popover]').hidePopover()"`;
+  card.innerHTML = kind === 'ai'
+    ? `<h5>AI working</h5>${gbusy().map(x => { const ag = agentsOf(x.id).filter(a => a.running), w = WORK[x.id];
+        return `<div class="row" style="font-size:12px;gap:6px;cursor:pointer" ${go(x.id)}><i class="gdot"></i><b class="grow">${esc(x.name)}</b>${w ? '#' + w : ''}</div>
+          <div class="dim" style="font-size:12px;margin:0 0 6px 13px">${esc(doing[x.id]?.text || 'Thinking')}${ag.map(a => `<div>${icon('bot')} ${esc(a.type)}: ${esc(a.desc)}${a.last ? ' · ' + esc(a.last) : ''}</div>`).join('')}</div>`; }).join('') || '<p class="dim">Nothing running</p>'}`
+    : `<h5>Builds</h5>${gbuilds().map(x => `<div class="row" style="font-size:12px;gap:6px;cursor:pointer" ${go(x.id, 'build')}><span class="spin"></span><b class="grow">${esc(x.name)}</b></div>
+        <div class="dim sel" style="font-size:12px;margin:0 0 6px 20px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(blast(x.id))}</div>`).join('') || '<p class="dim">No builds running</p>'}`;
+  document.body.append(card); card.showPopover();
+  card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
+  const r = btn.getBoundingClientRect();
+  card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
+}
 // ---- update check: Clauracle's latest GitHub release vs this build; a toast offers it ----
 async function checkUpdate() {
   let u; try { u = await call('update_check'); } catch { return; }
@@ -1016,9 +1054,8 @@ function drawChrome() {
   $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? '·' + esc(EFF_S[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${PERM_S[p.mode] || p.mode}</span><span class="ab">${permN(p.mode)}</span></button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${MODE_S[p.cont] || ''}</button>`
-    + `<button class="stats" onclick="statsCard(this)" title="Context, usage and session time"><span>${icon('doc')}${ctx[cur] ?? '?'}%</span>${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime" class="lb"></span></button>`
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
-  drawTimes();
+  drawGbar();
   const sendBtn = $('send');
   sendBtn.innerHTML = busy[cur] && !hasInput() ? icon('stop') : icon('up');
   sendBtn.title = busy[cur] && !hasInput() ? 'Stop' : 'Send (Enter)';
