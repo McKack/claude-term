@@ -607,6 +607,11 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
     if p.cont == "off" && !p.questions.is_empty() {
         emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
     }
+    // #144: answers given mid-turn (lib answer_questions parks them in p.answers) → next turn now, not the next Continue
+    let parked = st.with_project(pid, |p| std::mem::take(&mut p.answers)).unwrap_or_default();
+    if !parked.is_empty() {
+        live.inbox.push(Input::Msg(parked));
+    }
     if let Ok(r) = conn.request(json!({"subtype": "get_context_usage"}), 15).await {
         let pct = r["percentage"].as_f64().unwrap_or(0.0);
         emit(app, "status", json!({"pid": pid, "context": pct.round(), "tokens": r["totalTokens"]}));

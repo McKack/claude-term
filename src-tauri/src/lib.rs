@@ -351,8 +351,9 @@ fn answer_questions(app: AppHandle, st: St, pid: String, answers: Vec<Value>) {
     let (text, send_now, resume) = st.with_project(&pid, |p| {
         let text = claude::answers_text(&p.questions, &answers);
         p.questions.retain(|q| !ids.contains(&q.id.as_str()));
-        // #9/#67: run paused on open questions (claude::auto_continue) → last one answered resumes it
-        (text, p.cont == "off" && !p.ready, p.cont == "auto" && p.ready && p.questions.is_empty())
+        // #144: answers wake an idle session in any mode: mid-task (!ready) → sent as a turn; ready → Continue.
+        // #9/#67 exception: auto run paused on open questions waits for the last one
+        (text, !p.ready, p.ready && !(p.cont == "auto" && !p.questions.is_empty()))
     }).unwrap_or_default();
     let live = session(&app, &st, &pid);
     if send_now && !live.busy.load(SeqCst) {
