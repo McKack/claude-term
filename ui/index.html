@@ -1831,7 +1831,7 @@ const optRow = (title, hint, control) => `<div class="opt-row"><div class="grow"
 // collapsible section: open state remembered per key (only when clicked); never clicked → open when it has something.
 // count (number or short text) shows as a pill; buttons in `actions` don't toggle it
 const folds = (() => { try { return JSON.parse(localStorage.folds || '{}'); } catch { return {}; } })();
-const fold = (key, title, body, count = 0, actions = '') => `<details class="sec fold" ${(folds[key] ?? !!count) ? 'open' : ''}>
+const fold = (key, title, body, count = 0, actions = '') => `<details class="sec fold" data-f="${key}" ${(folds[key] ?? !!count) ? 'open' : ''}>
   <summary class="sh" onclick="setTimeout(() => { folds['${key}'] = this.parentNode.open; try { localStorage.folds = JSON.stringify(folds); } catch {} })">${icon('chev')}<span class="label">${title}</span>
   ${count ? `<span class="pill">${count}</span>` : ''}<span onclick="event.preventDefault()">${actions}</span></summary><div class="sc">${body}</div></details>`;
 // #105 skeleton: skel(60, 40) = bars at those % widths; 'b60' = button-height bar
@@ -1983,7 +1983,8 @@ function rightTab(t) { tab = UI.tab = t; try { localStorage.ui = JSON.stringify(
 /* #114 tab right-click: Refresh = drop that tab's caches + redraw (opens the tab), Settings… = related page if any */
 const TABREF = {gh: () => { ghiStale(cur); delete COLLAB[cur]; delete IMETA[cur]; }, build: () => { delete RELC[cur]; delete SECRETS[cur]; ghiStale(cur); },
   svc: () => { delete SECRETS[cur]; delete BUNDLE[cur]; }, web: () => { BROWSERS = null; HOMEPG = undefined; }, code: () => {}, agents: () => { AGENTS = null; }};
-const TABSET = {gh: () => openSettings('ai'), agents: () => openSettings('cx'), build: () => openManager(cur), svc: () => openManager(cur)};
+const buildSet = () => openManager(cur).then(() => jumpTo('[data-f=p-build]'));
+const TABSET = {gh: () => openSettings('gh'), agents: () => openSettings('agents'), build: buildSet}; // svc: no settings of its own
 $('rtabs').oncontextmenu = e => { const b = e.target.closest('button[data-t]'); if (!b || !cur) return; e.preventDefault(); const t = b.dataset.t;
   menuAt(b, [{icon: 'loop', label: 'Refresh', run: () => { TABREF[t](); tab === t ? drawRight(true) : rightTab(t); }}, ...(TABSET[t] ? [{icon: 'gear', label: 'Settings…', run: TABSET[t]}] : [])]); };
 // Build auto-setup: commands guessed from project files (Rust build_guess, no tokens) → confirm; cached per project
@@ -2153,6 +2154,7 @@ async function jumpTo(sel) {
   for (let i = 0; i < 40; i++, await new Promise(r => setTimeout(r, 100))) {
     const el = typeof sel === 'function' ? sel() : document.querySelector(sel); if (!el) continue;
     for (let d = el.parentElement?.closest('details'); d; d = d.parentElement?.closest('details')) d.open = true;
+    if (el.tagName === 'DETAILS') el.open = true;
     el.scrollIntoView({behavior: 'smooth', block: 'center'}); el.classList.remove('jumphl'); void el.offsetWidth; el.classList.add('jumphl'); return;
   }
 }
@@ -2212,7 +2214,7 @@ async function buildHtml(p, has, live, force) {
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
-        : live || GUESS[pid0] ? await guessHtml() : skel('b45'), 0, `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
+        : live || GUESS[pid0] ? await guessHtml() : skel('b45'), 0, `<button class="ib" title="Edit commands" onclick="buildSet()">${icon('gear')}</button>`)
       + (!svcOf(p).includes('macsign') && mac
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
           <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
@@ -3091,6 +3093,7 @@ const reloadSettings = p => { SET = null; return openSettings(p); };
 async function openSettings(p) {
   const same = !p || p === page; // re-render of the same tab keeps its scroll
   if (p) page = {gh: 'ai', agents: 'cx'}[p] || p;
+  if (p === 'gh' || p === 'agents') setTimeout(() => jumpTo(p === 'gh' ? '#set-gh' : '[data-f=g-agents]')); // #168 aliases land on their section
   if (!$('dlg').open) dlg(`<div style="padding:20px">${skel(30, 'b100', 'b100', 'b100', 70, 'b100', 'b100')}<small class="dim">The first time asks Claude Code which connections it has</small></div>`, 'prefs');
   if (!SET || !AGENTS) [SET, AGENTS] = await Promise.all([call('settings'), call('agents')]);
   else if (same) await refresh(); // after a change: state is a cheap in-process read
@@ -3306,7 +3309,7 @@ function aiPage() {
       ${cxGroup('a-cx', 'Connections &amp; Skills for new projects', a.id, a)}${cxFold('a-plugin', 'Plugins & mods for new projects', 'plugin', a.id, a)}
       <div class="btns"><button class="btn" onclick="csAcct('${esc(a.id)}')">${icon('sliders')}Advanced AI settings</button><span class="grow"></span>${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
-    + `<div class="label" style="margin-top:18px">GitHub accounts</div>${ghPage()}
+    + `<div class="label" id="set-gh" style="margin-top:18px">GitHub accounts</div>${ghPage()}
     <p class="dim" style="font-size:13px">CI builds: <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>
     <div class="label" style="margin-top:18px">Lessons</div>
     <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules your AI records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
@@ -3628,8 +3631,8 @@ function drawAtp() {
   const agents = ag.length ? [...run, ...ag.filter(a => !a.running).slice(-4).reverse()].map(a =>
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
-    : S.agents_on ? empty('No helper agents started in this session', `<button class="btn ghost sm" onclick="openSettings('agents')">${icon('bot')}Agent settings</button>`)
-    : empty('Helper agents are off', `<button class="btn sm" onclick="agentsOn()">${icon('bot')}Switch on</button><button class="btn ghost sm" onclick="openSettings('agents')">Settings</button>`);
+    : S.agents_on ? empty('No helper agents started in this session', `<button class="btn ghost sm" onclick="openSettings('agents')">${icon('gear')}Agent settings</button>`)
+    : empty('Helper agents are off', `<button class="btn sm" onclick="agentsOn()">${icon('bot')}Switch on</button><button class="btn ghost sm" onclick="openSettings('agents')">${icon('gear')}Agent settings</button>`);
   const h = tab === 'agents' ? agents : tasks;
   if (qDragging) return; // mid-drag: a rebuild would drop the row
   if (el._h === h) return; // drawChrome → drawRails → here on every keystroke: same HTML → keep DOM (open rows, animations)
