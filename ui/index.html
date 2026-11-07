@@ -1960,7 +1960,7 @@ const useGuess = () => call('update_project', {pid: cur, changes: {build: {...P(
    target stage (stricter going up). Facts from release_check (plain code, cached 60s/project); Claude only writes/judges
    via a Fix prompt. Same stage = light update (tag + publish in GitHub tab); Move up = target's full list first. */
 const STAGES = {alpha: 'Alpha', beta: 'Beta', rc: 'Release candidate', published: 'Published'}, SK = Object.keys(STAGES);
-const RELC = {}, RELTO = {}; // pid → {c, t} check cache · pid → target stage while moving up
+const RELC = {}, RELTO = {}, RELBUSY = {}; // pid → {c, t} check cache · pid → target stage while moving up
 const RELAI = { // fix prompts: Claude writes/judges, never template
   readme: 'Write README.md by hand-feel: plain voice of this project, what it does and for whom, how to install and run it. No template headings, badge walls or emoji; short beats complete. Read the code first.',
   version: 'Give the project a version (0.1.0) in its main config (package.json / Cargo.toml / tauri.conf.json), consistent across files.',
@@ -2041,7 +2041,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const up = to > k, gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, ''); // up: moving a stage (or starting)
   const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : '';
   // Release = publish v<version> (that version's build files) on GitHub + set the stage; grayed out till every check is green
-  const act = `<button class="btn primary" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this)">${icon('rocket')}Release v${esc(v)} as ${STAGES[SK[to]]}</button>`;
+  const act = RELBUSY[pid] ? `<button class="btn primary" disabled><i class="spin"></i>Publishing…</button>` : `<button class="btn primary" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this)">${icon('rocket')}Release v${esc(v)} as ${STAGES[SK[to]]}</button>`; /* #122 RELBUSY survives redraws */
   return sec('Release', `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}${gi?.release?.tagName ? ` · latest <a data-url="${esc(gi.release.url)}" style="cursor:pointer;color:var(--accent)">${esc(gi.release.tagName)}</a>` : ''}</p>${seg}
     <div>${items.map(row).join('')}</div><div class="btnrow col">${act}${ask}</div>`, (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re);
 }
@@ -2055,13 +2055,16 @@ async function relAsk(id) {
 async function relRelease(to, btn) {
   const v = (RELC[cur]?.c?.version || '').replace(/^v/, ''), files = relFilesFor(cur, v), st = STAGES[SK[to]];
   if (!await sure(`Publish v${v} on GitHub as ${st}?\n\n${files.map(f => f.name).join('\n')}\n\nReleases are public on public repos.`, 'Release')) return;
-  btn.disabled = true;
+  const pid = cur; RELBUSY[pid] = 1; btn.disabled = true; btn.innerHTML = '<i class="spin"></i>Publishing…'; // #122: push + upload can take minutes; RELBUSY keeps the spinner across redraws
   try {
-    addEntry(cur, {kind: 'note', text: 'Released: ' + await call('release', {pid: cur, tag: 'v' + v, files: files.map(f => f.path)})});
-    if (P().stage !== SK[to]) await call('update_project', {pid: cur, changes: {stage: SK[to]}});
-    if (P().build.deploy) call('run_step', {pid: cur, step: 'deploy'}); // #34: deploy = part of Release (guessed by build_guess or set in the project)
-    delete RELTO[cur]; delete RELC[cur]; ghiStale(cur); await refresh(); drawRight(true);
-  } catch (e) { addEntry(cur, {kind: 'note', text: `Release failed: ${e}`}); btn.disabled = false; }
+    const url = await call('release', {pid: pid, tag: 'v' + v, files: files.map(f => f.path)}); // gh release create prints the release URL
+    addEntry(pid, {kind: 'note', text: 'Released: ' + url});
+    const u = (String(url).match(/https?:\S+/) || [])[0];
+    dlg(`<h2 style="margin:0 0 6px;font-size:17px">${icon('rocket')}Released v${esc(v)}</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Published on GitHub as ${st}.</p><div style="display:flex;gap:8px;justify-content:flex-end">${u ? `<button class="btn primary" data-url="${esc(u)}" onclick="closeDlg()">Open release page</button>` : ''}<button class="btn" onclick="closeDlg()">Close</button></div>`);
+    if (P(pid).stage !== SK[to]) await call('update_project', {pid: pid, changes: {stage: SK[to]}});
+    if (P(pid).build.deploy) call('run_step', {pid: pid, step: 'deploy'}); // #34: deploy = part of Release (guessed by build_guess or set in the project)
+    delete RELBUSY[pid]; delete RELTO[pid]; delete RELC[pid]; ghiStale(pid); await refresh(); pid === cur && drawRight(true);
+  } catch (e) { addEntry(pid, {kind: 'note', text: `Release failed: ${e}`}); delete RELBUSY[pid]; if (pid === cur && tab === 'build') drawRight(); }
 }
 // Build from the wizard: on success the build event commits + pushes what it changed (Cargo.lock…) ∵ else "Everything committed" flips red again
 const RELB = {};
