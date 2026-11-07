@@ -1080,9 +1080,22 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
         return (true, String::new());
     }
     let say = |t: &str, done: Option<bool>| emit(app, "build", json!({"pid": pid, "step": step, "line": t, "done": done}));
-    say(&format!("$ {cmd}"), None);
-    let mut c = shell(&cmd);
-    c.current_dir(&p.path).envs(store::sign_env(&p.path)).envs(store::gh_env(&p.gh)).envs(store::gcloud_env(&p.gaccount, &p.gcp)).stdin(std::process::Stdio::null())
+    let sign = store::sign_env(&p.path);
+    let mut cmds = vec![(cmd.clone(), shell(&cmd))];
+    // #131: Windows + Linux target + WSL → 2nd pass in WSL (args set by Rust, no cmd.exe quoting); WSLENV forwards signing keys
+    if cfg!(windows) && step == "build" && p.targets.iter().any(|t| t == "linux") && store::wsl_ok() {
+        let mut w = tokio::process::Command::new("wsl");
+        w.args(["-e", "bash", "-lc", &store::wsl_script(pid, &cmd)])
+            .env("WSLENV", sign.iter().map(|(k, _)| k.as_str()).chain(std::env::var("WSLENV").ok().as_deref()).collect::<Vec<_>>().join(":"));
+        #[cfg(windows)]
+        w.creation_flags(0x0800_0000);
+        cmds.push((format!("wsl: {cmd} (Linux)"), w));
+    }
+    let mut tail: VecDeque<String> = VecDeque::new();
+    let mut ok = true;
+    for (shown, mut c) in cmds {
+    say(&format!("$ {shown}"), None);
+    c.current_dir(&p.path).envs(sign.iter().cloned()).envs(store::gh_env(&p.gh)).envs(store::gcloud_env(&p.gaccount, &p.gcp)).stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
     let mut child = match c.spawn() {
         Ok(c) => {
@@ -1127,7 +1140,6 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
         });
         return (true, String::new());
     }
-    let mut tail: VecDeque<String> = VecDeque::new();
     while let Some(s) = rx.recv().await {
         say(&s, None);
         tail.push_back(s);
@@ -1135,7 +1147,9 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
             tail.pop_front();
         }
     }
-    let ok = child.wait().await.map(|s| s.success()).unwrap_or(false);
+    ok = child.wait().await.map(|s| s.success()).unwrap_or(false);
+    if !ok { break; }
+    }
     say(if ok { "✓ done" } else { "✗ failed" }, Some(ok));
     (ok, tail.into_iter().collect::<Vec<_>>().join("\n"))
 }

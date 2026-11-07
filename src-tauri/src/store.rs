@@ -482,7 +482,26 @@ pub fn deps() -> serde_json::Value {
         "jdk": which("java").is_some() || env("JAVA_HOME").is_some(), "android_sdk": sdk.is_some(), "android_ndk": ndk});
     if cfg!(target_os = "macos") { m["xcode"] = run("xcode-select", &["-p"], None, &[]).ok.into(); }
     if cfg!(target_os = "linux") { m["webkit"] = run("pkg-config", &["--exists", "webkit2gtk-4.1"], None, &[]).ok.into(); }
+    if cfg!(windows) { m["wsl"] = wsl_ok().into(); } // #131 Linux builds via WSL
     m
+}
+
+/// #131: WSL has a real distro (docker-desktop* = Docker's own, can't build). `wsl -l -q` prints UTF-16 → strip NULs.
+/// ponytail: builds run in the default distro; presence only (Node/Rust/WebKitGTK inside unchecked → build log says)
+pub fn wsl_ok() -> bool {
+    let o = run("wsl", &["-l", "-q"], None, &[]);
+    o.ok && o.stdout.replace('\0', "").lines().any(|l| { let l = l.trim(); !l.is_empty() && !l.starts_with("docker-desktop") })
+}
+
+/// #131 bash for a Linux build in WSL: copy the project (no node_modules/target/.git) to ~/.clauracle-build/<pid>, build there
+/// (Windows node_modules hold win32 binaries; sharing target/ would thrash), copy .AppImage/.deb/.rpm back to the same paths.
+/// ponytail: tar copy never deletes files removed in the project; non-target/release/bundle outputs aren't copied back
+pub fn wsl_script(pid: &str, cmd: &str) -> String {
+    let pid: String = pid.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+    format!("set -e; s=\"$PWD\"; d=\"$HOME/.clauracle-build/{pid}\"; mkdir -p \"$d\"; \
+        tar -C \"$s\" --exclude=./node_modules --exclude=./target --exclude=./src-tauri/target --exclude=./.git -cf - . | tar -C \"$d\" -xf -; cd \"$d\"; \
+        if [ -f package.json ]; then npm install --no-audit --no-fund; fi; {cmd}; \
+        find . -path '*/target/release/bundle/*' -type f \\( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \\) -not -path './node_modules/*' -exec cp --parents {{}} \"$s/\" \\;")
 }
 
 pub fn command(program: &Path) -> Command {
@@ -1611,6 +1630,13 @@ mod tests {
         let mut perm = std::fs::metadata(b.join("p/.git/objects/ab/cd")).unwrap().permissions(); #[allow(clippy::permissions_set_readonly_false)] perm.set_readonly(false);
         let _ = std::fs::set_permissions(b.join("p/.git/objects/ab/cd"), perm); let _ = std::fs::remove_dir_all(&b);
     }
+    /// #131: pid sanitized (no shell injection via path chars), build cmd + copy-back present
+    #[test]
+    fn wsl_script_shape() {
+        let s = wsl_script("a$b;c-1", "npx tauri build");
+        assert!(s.contains(".clauracle-build/abc-1\"") && s.contains("; npx tauri build; ") && s.contains("cp --parents {} \"$s/\" \\;"));
+    }
+
     /// #79: janitor beyond versions: idle project's ignored cache cleaned, busy one untouched; transcripts only when low + not kept + old.
     #[test]
     fn janitor_cleans_idle_and_old_transcripts() {

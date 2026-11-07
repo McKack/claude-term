@@ -2100,7 +2100,8 @@ const macOn = (p, pid) => p.targets?.length ? p.targets.includes('macos') : !!MA
    service is set up (TGTSVC). Not ready → faded; click = its fix (Dependencies / add the service), not a pick; picked but
    not ready → click unpicks. tgtSplit only counts ready targets → release is limited to them. CI-built ones: no local deps. */
 const TGTSVC = {macos: 'macsign', ios: 'appstore', android: 'play'};
-const tgtLocal = x => x === HOST || x === 'android' || (x === 'ios' && HOST === 'macos');
+// #131 Linux on Windows = local via WSL (run_step 2nd pass) when WSL is there or CI is off (→ "Needs WSL" fix); else CI. ponytail: no Docker/mac path
+const tgtLocal = x => x === HOST || x === 'android' || (x === 'ios' && HOST === 'macos') || (x === 'linux' && HOST === 'windows' && (!S.ci_builds || !!DEPSC?.d.wsl));
 const strictStage = p => Math.max(SK.indexOf(p.stage), RELTO[cur] ?? -1) >= SK.indexOf('rc');
 function tgtWhy(p, id) { // '' = ready, else [why, fix js]
   const miss = tgtLocal(id) && DEPSC ? Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].includes(id)) : [];
@@ -3061,7 +3062,8 @@ function cxPage() {
 const DEPS = {node: ['Node.js', [], 'https://nodejs.org/en/download'], rust: ['Rust', [], 'https://rustup.rs'],
   jdk: ['Java JDK 17+', ['android'], 'https://adoptium.net'], android_sdk: ['Android SDK', ['android'], 'https://developer.android.com/studio'],
   android_ndk: ['Android NDK', ['android'], 'https://developer.android.com/ndk/downloads'], xcode: ['Xcode', ['macos', 'ios'], 'https://developer.apple.com/xcode/'],
-  webkit: ['WebKitGTK 4.1 dev', ['linux'], 'https://v2.tauri.app/start/prerequisites/#linux']};
+  webkit: ['WebKitGTK 4.1 dev', ['linux'], 'https://v2.tauri.app/start/prerequisites/#linux'],
+  wsl: ['WSL with Ubuntu (+ Node.js, Rust, WebKitGTK 4.1 dev inside)', ['linux'], 'https://learn.microsoft.com/windows/wsl/install']}; /* #131 */
 let DEPSC = null;
 const depsGet = async () => (DEPSC && Date.now() - DEPSC.t < 60e3) ? DEPSC.d : (DEPSC = {d: await call('deps').catch(() => ({})), t: Date.now()}).d;
 // missing deps for project p's picked targets (only ids this OS reports)
