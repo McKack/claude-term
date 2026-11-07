@@ -626,6 +626,7 @@ const EFFORTS = {'': 'Default', low: 'Low', medium: 'Medium', high: 'High', xhig
 const EFF_S = {low: 'L', medium: 'M', high: 'H', xhigh: 'XH', max: 'Max'};
 const PERMS = {plan: 'Plan only', default: 'Ask first', acceptEdits: 'Accept edits', auto: 'Auto (classifier)', bypassPermissions: 'Bypass'};
 const permN = m => Object.keys(PERMS).indexOf(m) + 1 || '?';
+const PERM_S = {plan: 'Plan', default: 'Ask', acceptEdits: 'Edits', auto: 'Auto', bypassPermissions: 'Bypass'}; // #116 status label; number when narrow (.lb hidden)
 const MODE_S = {off: '', manual: 'M', auto: 'A', auto_answer: 'A+'};
 
 // ponytail: tiny markdown (fences, inline code, bold, headings, lists, links); a library when tables matter
@@ -973,7 +974,7 @@ function drawChrome() {
   workTick();
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%${resetIn(p.account, k) ? ', ' + resetIn(p.account, k) : ''}">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
   $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? '·' + esc(EFF_S[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
-    + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}${permN(p.mode)}</button>`
+    + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${PERM_S[p.mode] || p.mode}</span><span class="ab">${permN(p.mode)}</span></button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${MODE_S[p.cont] || ''}</button>`
     + `<button class="stats" onclick="statsCard(this)" title="Context, usage and session time"><span>${icon('doc')}${ctx[cur] ?? '?'}%</span>${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime" class="lb"></span></button>`
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
@@ -1618,6 +1619,7 @@ $('prompt').addEventListener('keydown', e => {
     if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && $('prompt').value !== '/' + xs[slashSel].name)) { e.preventDefault(); return pickSlash(slashSel); }
   }
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  if (e.key === 'Tab' && cur) { e.preventDefault(); const k = Object.keys(PERMS), i = k.indexOf(P().mode); setP({mode: k[(i + (e.shiftKey ? k.length - 1 : 1)) % k.length]}); } // #116 Tab/Shift+Tab cycles permission mode (like Claude Code)
   if (e.key === 'ArrowUp' && !hasInput() && queue[cur]?.length) { e.preventDefault(); editQueued(queue[cur].length - 1); }
 });
 const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };

@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Press Tab in the chat input to switch permission mode (Shift+Tab goes back); the status bar names the mode when there is room.
 - Right-click a side-panel tab for Refresh and a shortcut to its settings.
 - GitHub tab: Collaborators section lists who has access (and pending invites) and invites people by GitHub username.
 - Issues list: hover a task for a pencil button to edit its title, description, labels and assignees.
