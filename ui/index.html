@@ -879,7 +879,6 @@ const AVIMG = new Map(), avUrl = u => {
   const s = AVIMG.get(u); return typeof s === 'string' ? s : '';
 };
 const avGh = (u, cls = '') => `<img class="av ${cls}" data-av="${esc(u)}" src="${avUrl(u) || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'}" alt="" title="@${esc(u)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av ${cls}',textContent:'${esc(u[0] || '?').toUpperCase()}',style:'background:#555'}))">`;
-const ghKnown = () => [...new Set([...ghUsers, ...S.projects.map(p => p.gh)].filter(Boolean))];
 function drawAcct() {
   const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0];
   if (!a) return $('acctBtn').innerHTML = `${icon('user')}<span class="nm">Sign in</span>`;
@@ -936,20 +935,15 @@ function missCheck(pid, t) {
 function acctCard(btn) {
   const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0];
   const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
-  // #195: no usage bars (status bar has them), no GitHub section (header says it); AI account = one dropdown
+  // #197: header (+ restart top-right) + Settings bottom-right only; account/model picker lives in #status (per project = chat)
   card.innerHTML = !a ? `<button class="btn primary block" onclick="openSettings('ai')">Add an AI account</button>` : `
-    <div class="who">${p?.gh ? avGh(p.gh, 'lg') : avAI(a, 'lg')}<span class="grow" style="min-width:0"><b>${esc(a.nick)}</b><small class="dim">${p?.gh ? '@' + esc(p.gh) + ' on GitHub' : 'No GitHub account'}${p ? ' · ' + esc(p.name) : ''}</small></span></div>
-    ${p ? `<h5>AI account for ${esc(p.name)}</h5><select id="acSel">${S.accounts.map(x => `<option value="${esc(x.id)}"${x === a ? ' selected' : ''}>${esc(x.nick)} · ${esc(usageText(x.id))}</option>`).join('')}</select>` : ''}
-    ${ghKnown().filter(g => g !== p?.gh).length ? `<h5>Signed in, not used here</h5><div class="row wrap" style="gap:4px;opacity:.6">${ghKnown().filter(g => g !== p?.gh).map(g => `<span class="pill" style="display:inline-flex;gap:5px;align-items:center;padding:2px 8px 2px 2px">${avGh(g)}@${esc(g)}</span>`).join('')}</div>` : ''}
-    <div class="btnrow"><button class="btn" data-go="ai">${icon('user')}AI accounts</button><button class="btn" data-go="gh">${icon('gh')}GitHub</button></div>`;
-  card.innerHTML += `<hr style="border:0;border-top:1px solid var(--line);margin:0">
-    <div class="row" style="gap:4px"><button class="pick grow" data-go="">${icon('gear')}<span class="grow">Settings</span></button>
-    <button class="ib" id="acRestart" title="Restart Clauracle: sessions, running turns and unsent input all come back">${icon('loop')}</button></div>`;
+    <div class="who">${p?.gh ? avGh(p.gh, 'lg') : avAI(a, 'lg')}<span class="grow" style="min-width:0"><b>${esc(a.nick)}</b><small class="dim">${p?.gh ? '@' + esc(p.gh) + ' on GitHub' : 'No GitHub account'}${p ? ' · ' + esc(p.name) : ''}</small></span>
+    <button class="ib" id="acRestart" style="align-self:flex-start" title="Restart Clauracle: sessions, running turns and unsent input all come back">${icon('loop')}</button></div>`;
+  card.innerHTML += `<div class="row" style="justify-content:flex-end"><button class="btn" data-go="">${icon('gear')}Settings</button></div>`;
   document.body.append(card); card.showPopover();
   card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
-  card.querySelector('#acSel')?.addEventListener('change', e => { card.hidePopover(); setP({account: e.target.value}).then(refresh); });
   card.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { card.hidePopover(); openSettings(b.dataset.go || undefined); });
-  card.querySelector('#acRestart').onclick = () => call('restart');
+  card.querySelector('#acRestart')?.addEventListener('click', () => call('restart'));
   const r = btn.getBoundingClientRect();
   card.style.left = r.left + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
 }
@@ -1084,7 +1078,8 @@ function drawChrome() {
     sk.hidden = false; if (stick) toEnd(true); }
   sk.hidden = !skOn;
   workTick();
-  $('status').innerHTML = `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${PERM_S[p.mode] || p.mode}</span><span class="ab">${permN(p.mode)}</span></button>`
+  $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
+    + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${PERM_S[p.mode] || p.mode}</span><span class="ab">${permN(p.mode)}</span></button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${p.cont === 'off' ? '' : `<span class="lb">${MODES[p.cont]?.[0] || p.cont}</span><span class="ab">${MODE_S[p.cont] || ''}</span>`}</button>` /* #188 full names when wide; short (.ab) when narrow; perms stay short */
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
   drawGbar();
