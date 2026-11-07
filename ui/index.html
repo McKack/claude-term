@@ -283,7 +283,7 @@ pre.diff .ctx { color:var(--faint); }
 .btn.block { width:100%; justify-content:center; } .chk { display:flex; gap:8px; align-items:center; font-size:13.5px; }
 .empty { text-align:center; color:var(--faint); font-size:13px; margin:0; padding:4px 0; }
 .btnrow { display:grid; grid-template-columns:repeat(auto-fit, minmax(84px, 1fr)); gap:8px; } .btnrow .btn { justify-content:center; padding:6px 8px; }
-.btnrow.b3 { grid-template-columns:repeat(3, 1fr); } .btnrow.b3 .btn { white-space:nowrap; } .btnrow.col { grid-template-columns:1fr; } /* b3 = Build/Run|Stop/Deploy; col = stacked */
+.btnrow.col { grid-template-columns:1fr; } /* col = stacked */
 .keys > div { display:flex; justify-content:space-between; gap:8px; font:12.5px ui-monospace,Consolas,monospace; padding:2px 0; } .keys span:first-child { overflow:hidden; text-overflow:ellipsis; }
 .stepper { list-style:none; padding:0; margin:4px 0; counter-reset:st; font-size:13px; color:var(--dim); }
 .stepper li { position:relative; padding:3px 0 16px 40px; counter-increment:st; }
@@ -344,15 +344,15 @@ pre.diff .ctx { color:var(--faint); }
 #status { display:flex; flex-wrap:nowrap; white-space:nowrap; overflow:hidden; gap:4px 10px; align-items:center; font-size:12px; color:var(--faint); padding:0 6px; }
 #status button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:5px; align-items:center; padding:2px 4px; border-radius:6px; }
 #status { container-type:inline-size; } #status .ab { display:none; }
-#status .bar { width:22px; height:3px; }
-@container (max-width:560px) { #status .lb, #status .bar, #status button > svg:last-child:not(:first-child) { display:none; } #status .ab { display:inline; } }
-#gbar { grid-column:1 / -1; display:flex; gap:4px 14px; align-items:center; white-space:nowrap; overflow:hidden; font-size:12px; color:var(--faint); padding:2px 10px; border-top:1px solid var(--line); background:var(--side); min-height:24px; }
+@container (max-width:560px) { #status .lb, #status button > svg:last-child:not(:first-child) { display:none; } #status .ab { display:inline; } }
+#gbar { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:4px 14px; align-items:center; white-space:nowrap; overflow:hidden; font-size:12px; color:var(--faint); padding:2px 10px; border-top:1px solid var(--line); background:var(--side); min-height:24px; }
 #gbar button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:6px; align-items:center; padding:2px 6px; border-radius:6px; min-width:0; }
 #gbar button:hover { color:var(--text); background:var(--hover); } #gbar b { color:var(--dim); font-weight:500; } #gbar .i { width:14px; height:14px; } #gbar .bar { width:22px; height:3px; }
-#gbar > button > span, #gbar .stats > span { display:inline-flex; gap:4px; align-items:center; } #gbar .stats { gap:10px; } #gbar .gt { display:block; overflow:hidden; text-overflow:ellipsis; max-width:40vw; }
+#gbar > button > span, #gbar .stats > span { display:inline-flex; gap:4px; align-items:center; } #gbar .stats { gap:10px; } #gbar .gt { display:block; overflow:hidden; text-overflow:ellipsis; max-width:30vw; } #gbar .gz { display:flex; min-width:0; } #gbar .gz.r { justify-content:flex-end; } #gbar .ok { color:var(--ok, #3fbf7f); } #gbar .bad { color:var(--err, #e5534b); }
+.acard .gact { display:flex; gap:6px; margin:2px 0 8px 13px; } /* statusline card quick actions */
 .gdot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse .8s ease-in-out infinite alternate; flex:none; } /* #179 */
 #status button:hover { color:var(--text); background:var(--hover); } #status b { color:var(--dim); font-weight:500; }
-#status > span, #status button > span { display:inline-flex; gap:4px; align-items:center; } #status .stats { gap:10px; } #status .i { width:14px; height:14px; }
+#status > span, #status button > span { display:inline-flex; gap:4px; align-items:center; } #status .i { width:14px; height:14px; }
 .menu button.sub { padding-left:34px; font-size:12.5px; color:var(--dim); } .menu button.sub .chk { width:12px; }
 .bar { display:inline-block; width:34px; height:4px; border-radius:2px; background:var(--line2); overflow:hidden; vertical-align:middle; } .bar i { display:block; height:100%; background:var(--accent); }
 #working { display:inline-flex; gap:6px; align-items:center; color:var(--accent); }
@@ -388,11 +388,10 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .stat small { font-size:10px; color:var(--faint); }
 #rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
 [data-dot] { position:relative; } [data-dot]::after { content:''; position:absolute; top:3px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--dotc, var(--accent)); box-shadow:0 0 0 2px var(--side); } [data-dot=pulse]::after { animation:pulse .8s ease-in-out infinite alternate; } /* #177 build running */
-.ptabs { display:inline-flex; gap:2px; }
 .rsep { flex:none; width:1px; margin:4px 4px; background:var(--line2); }
-#rtabs button, #stabs button, .ptabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; flex:none; }
+#rtabs button, #stabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; flex:none; }
 #rtabs button span, #stabs button span { display:none; } #rtabs button.on span, #stabs button.on span { display:inline; }
-#rtabs button:hover, #stabs button:hover, .ptabs button:hover { background:var(--hover); } #rtabs button.on, #stabs button.on, .ptabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
+#rtabs button:hover, #stabs button:hover { background:var(--hover); } #rtabs button.on, #stabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 #atp { display:flex; flex-direction:column; gap:5px; } #atp:empty { display:none; } #atp .label { margin:6px 0 0; }
 .atrow { display:flex; gap:8px; align-items:baseline; font-size:13px; } .atrow small { display:block; color:var(--faint); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -967,25 +966,46 @@ function drawGbar() {
   const el = $('gbar'); if (!el) return;
   const p = cur && P(), acct = p ? p.account : S.accounts[0]?.id, u = S.usage[acct] || {};
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%${resetIn(acct, k) ? ', ' + resetIn(acct, k) : ''}">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
-  const wk = gbusy(), bd = gbuilds(), what = x => doing[x.id]?.text || 'Thinking';
-  const h = (p ? `<button class="stats" onclick="statsCard(this)" title="Context, usage and session time"><span>${icon('doc')}${ctx[cur] ?? '?'}%</span>${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime"></span></button>`
-      : `<span class="stats" style="display:inline-flex;gap:10px;padding:2px 6px">${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}</span>`)
-    + '<span class="grow"></span>'
-    + (wk.length ? `<button onclick="gCard(this, 'ai')" title="What the AI is working on"><i class="gdot"></i><span class="gt">${wk.length > 1 ? `AI working in ${wk.length} projects` : `<b>${esc(wk[0].name)}</b> · ${esc(what(wk[0]))}`}</span>${(n => n ? `<span>${icon('bot')}${n}</span>` : '')(wk.reduce((n, x) => n + agentsOf(x.id).filter(a => a.running).length, 0))}</button>` : '')
-    + (bd.length ? `<button onclick="gCard(this, 'build')" title="Builds in progress"><span class="spin"></span><span class="gt">Building ${bd.length > 1 ? bd.length + ' projects' : `<b>${esc(bd[0].name)}</b>`}</span></button>` : '');
+  const wk = gbusy(), bd = gbuilds(), what = x => doing[x.id]?.text || 'Thinking', wait = gwait(), last = glast();
+  const ai = wk.length ? `<button onclick="gCard(this, 'ai')" title="What the AI is working on"><i class="gdot"></i><span class="gt">${wk.length > 1 ? `AI working in ${wk.length} projects` : `<b>${esc(wk[0].name)}</b> · ${esc(what(wk[0]))}`}</span>${(n => n ? `<span>${icon('bot')}${n}</span>` : '')(wk.reduce((n, x) => n + agentsOf(x.id).filter(a => a.running).length, 0))}</button>`
+    : wait.length ? `<button onclick="gCard(this, 'ai')" title="Waiting on you">${icon('sparkle')}<span class="gt">${wait.length > 1 ? `${wait.length} projects waiting on you` : `<b>${esc(wait[0].name)}</b> · ${esc(wait[0].why)}`}</span></button>`
+    : `<button onclick="gCard(this, 'ai')" title="AI activity">${icon('sparkle')}<span class="gt">AI idle</span></button>`;
+  const mid = p ? `<button class="stats" onclick="statsCard(this)" title="Context, usage and session time"><span>${icon('doc')}${ctx[cur] ?? '?'}%</span>${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}<span id="stime"></span></button>`
+      : `<span class="stats" style="display:inline-flex;gap:10px;padding:2px 6px">${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}</span>`;
+  const bl = bd.length ? `<button onclick="gCard(this, 'build')" title="Builds in progress"><span class="spin"></span><span class="gt">Building ${bd.length > 1 ? bd.length + ' projects' : `<b>${esc(bd[0].name)}</b>`}</span></button>`
+    : last ? `<button onclick="gCard(this, 'build')" title="Last build"><span class="${last.b.ok ? 'ok' : 'bad'}">${last.b.ok ? '✓' : '✗'}</span><span class="gt">${last.b.ok ? 'Built' : 'Build failed'} <b>${esc(last.p.name)}</b> · ${gago(last.b.at)}</span></button>`
+    : `<button onclick="gCard(this, 'build')" title="Builds">${icon('hammer')}<span class="gt">No builds</span></button>`;
+  const h = `<div class="gz">${ai}</div>${mid}<div class="gz r">${bl}</div>`;
   if (el._h !== h) { el._h = h; el.innerHTML = h; }
   drawTimes();
 }
 setInterval(drawGbar, 1000);
+// waiting on the user: ready (Continue up) or open questions; last finished build (this run)
+const gwait = () => S.projects.filter(x => !busy[x.id] && (x.questions?.length || x.ready)).map(x => ({...x, why: x.questions?.length ? `${x.questions.length} question${x.questions.length > 1 ? 's' : ''}` : 'ready to continue'}));
+const glast = () => S.projects.map(p => ({p, b: builds[p.id]})).filter(x => x.b?.at && !x.b.busy).sort((a, b) => b.b.at - a.b.at)[0];
+const gago = t => { const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + 'm ago' : Math.round(s / 3600) + 'h ago'; };
 function gCard(btn, kind) {
   const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
-  const go = (pid, t) => `onclick="openProject('${pid}').then(() => ${t ? `rightTab('${t}')` : '0'}); this.closest('[popover]').hidePopover()"`;
-  card.innerHTML = kind === 'ai'
-    ? `<h5>AI working</h5>${gbusy().map(x => { const ag = agentsOf(x.id).filter(a => a.running), w = WORK[x.id];
-        return `<div class="row" style="font-size:12px;gap:6px;cursor:pointer" ${go(x.id)}><i class="gdot"></i><b class="grow">${esc(x.name)}</b>${w ? '#' + w : ''}</div>
-          <div class="dim" style="font-size:12px;margin:0 0 6px 13px">${esc(doing[x.id]?.text || 'Thinking')}${ag.map(a => `<div>${icon('bot')} ${esc(a.type)}: ${esc(a.desc)}${a.last ? ' · ' + esc(a.last) : ''}</div>`).join('')}</div>`; }).join('') || '<p class="dim">Nothing running</p>'}`
-    : `<h5>Builds</h5>${gbuilds().map(x => `<div class="row" style="font-size:12px;gap:6px;cursor:pointer" ${go(x.id, 'build')}><span class="spin"></span><b class="grow">${esc(x.name)}</b></div>
-        <div class="dim sel" style="font-size:12px;margin:0 0 6px 20px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(blast(x.id))}</div>`).join('') || '<p class="dim">No builds running</p>'}`;
+  const go = (pid, t) => `openProject('${pid}').then(() => ${t ? `rightTab('${t}')` : '0'}); this.closest('[popover]').hidePopover()`;
+  const act = (label, js, cls = '') => `<button class="btn sm ${cls}" onclick="event.stopPropagation(); ${js}">${label}</button>`;
+  const close = "this.closest('[popover]').hidePopover()";
+  const row = (pid, lead, name, tail = '') => `<div class="row" style="font-size:12px;gap:6px;cursor:pointer" onclick="${go(pid)}">${lead}<b class="grow">${esc(name)}</b>${tail}</div>`;
+  if (kind === 'ai') {
+    const wk = gbusy(), wt = gwait();
+    card.innerHTML = `<h5>AI working</h5>${wk.map(x => { const ag = agentsOf(x.id).filter(a => a.running), w = WORK[x.id];
+        return row(x.id, '<i class="gdot"></i>', x.name, w ? '#' + w : '') + `<div class="dim" style="font-size:12px;margin:0 0 2px 13px">${esc(doing[x.id]?.text || 'Thinking')}${ag.map(a => `<div>${icon('bot')} ${esc(a.type)}: ${esc(a.desc)}${a.last ? ' · ' + esc(a.last) : ''}</div>`).join('')}</div>`
+          + `<div class="gact">${act('Open', go(x.id))}${act(icon('stop') + 'Stop', `call('interrupt', {pid: '${x.id}'}); ${close}`, 'ghost')}</div>`; }).join('') || '<p class="dim">Nothing running</p>'}
+      ${wt.length ? `<h5>Waiting on you</h5>${wt.map(x => row(x.id, icon('sparkle'), x.name, `<span class="dim">${esc(x.why)}</span>`)
+          + `<div class="gact">${x.questions?.length ? act('Answer', go(x.id)) : act(icon('play') + 'Continue', `contGo('${x.id}'); ${close}`, 'primary')}</div>`).join('')}` : ''}`;
+  } else {
+    const bd = gbuilds(), done = S.projects.map(p => ({p, b: builds[p.id]})).filter(x => x.b?.at && !x.b.busy).sort((a, b) => b.b.at - a.b.at).slice(0, 4);
+    card.innerHTML = `<h5>Builds</h5>${bd.map(x => row(x.id, '<span class="spin"></span>', x.name)
+        + `<div class="dim sel" style="font-size:12px;margin:0 0 2px 20px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(blast(x.id))}</div>`
+        + `<div class="gact">${act('Output', go(x.id, 'build'))}${act(icon('stop') + 'Stop', `call('stop_build', {pid: '${x.id}'}); ${close}`, 'ghost')}</div>`).join('') || '<p class="dim">No builds running</p>'}
+      ${done.length ? `<h5>Finished</h5>${done.map(({p, b}) => row(p.id, `<span class="${b.ok ? 'ok' : 'bad'}">${b.ok ? '✓' : '✗'}</span>`, p.name, `<span class="dim">${gago(b.at)}</span>`)
+          + `<div class="gact">${act('Output', go(p.id, 'build'))}${b.ok ? (b.own ? act('Restart into it', `call('restart_into', {pid: '${p.id}'})`, 'primary') : p.build.run ? act(icon('play') + 'Run', `call('run_step', {pid: '${p.id}', step: 'run'}); ${close}`, 'primary') : '')
+            : act(icon('hammer') + 'Build again', `call('run_step', {pid: '${p.id}', step: 'build'}); ${close}`, 'primary')}</div>`).join('')}` : ''}`;
+  }
   document.body.append(card); card.showPopover();
   card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
   const r = btn.getBoundingClientRect();
@@ -1019,7 +1039,7 @@ function drawProjects() {
 // header, ready bar, toolbar toggles and the status row under the input
 function drawChrome() {
   drawRails();
-  const p = P(), u = S.usage[p.account] || {};
+  const p = P();
   $('pname').textContent = p.name;
   $('tPony').classList.toggle('on', p.ponytail);
   $('tCont').classList.toggle('on', p.cont !== 'off');
@@ -1051,7 +1071,6 @@ function drawChrome() {
     sk.hidden = false; if (stick) toEnd(true); }
   sk.hidden = !skOn;
   workTick();
-  const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%${resetIn(p.account, k) ? ', ' + resetIn(p.account, k) : ''}">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
   $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? '·' + esc(EFF_S[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${PERM_S[p.mode] || p.mode}</span><span class="ab">${permN(p.mode)}</span></button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${MODE_S[p.cont] || ''}</button>`
@@ -1088,18 +1107,24 @@ setInterval(() => {
 const doing = {}; // pid → {text, id, t}: set by tool lines / busy, back to Thinking when that tool's result lands
 const setDoing = (pid, text, id) => { doing[pid] = {text, id, t: Date.now(), sh: /^Running: (Bash|PowerShell)/.test(text)}; }; // #124 sh → the terminal card is the pill
 let workT = null;
-const shRun = () => busy[cur] && doing[cur]?.sh && view === 'chat' && $('handpill').hidden;
+/* ONE working indicator: every terminal row whose call has no result yet (PEND; parallel calls too) wears the shimmer + its
+   own timer; the Working pill shows only when no running row is visible (Thinking, or a call outside the chat cards) */
+const PEND = {}; // pid → Map(tool id → start ms), cleared when the turn ends
+const mmss = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const runRows = () => !busy[cur] || view !== 'chat' || !$('handpill').hidden || !PEND[cur]?.size ? []
+  : [...$('log').querySelectorAll('.termcard:not(.old) .tl > div')].filter(r => r._es?.some(e => PEND[cur].has(e.id)));
+const shRun = () => runRows().length > 0;
 function workTick() {
-  const show = !$('workpill').hidden || shRun();
-  const draw = () => { const d = doing[cur] || {text: 'Thinking', t: Date.now()}, s = Math.floor((Date.now() - d.t) / 1000), el = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-    $('worktext').textContent = `${d.text} · ${el}`;
-    // #124 running shell cmd: its line (newest terminal row) wears the Working look + timer; ponytail: newest row = the running one
-    const r = shRun() && [...$('log').querySelectorAll('.termcard .tl > div')].at(-1);
-    $('log').querySelectorAll('.tl > div.run').forEach(x => x !== r && x.classList.remove('run'));
-    if (r) { r.classList.add('run'); r.dataset.t = el; } };
-  if (show && !workT) { draw(); workT = setInterval(draw, 1000); }
-  if (!show && workT) { clearInterval(workT); workT = null; }
-  if (!show) $('log').querySelectorAll('.tl > div.run').forEach(x => x.classList.remove('run'));
+  const on = busy[cur] && $('handpill').hidden;
+  const draw = () => { const rows = runRows(), now = Date.now();
+    $('log').querySelectorAll('.tl > div.run').forEach(x => !rows.includes(x) && x.classList.remove('run'));
+    for (const r of rows) { r.classList.add('run'); r.dataset.t = mmss(now - Math.min(...r._es.filter(e => PEND[cur].has(e.id)).map(e => PEND[cur].get(e.id)))); }
+    const d = doing[cur] || {text: 'Thinking', t: now};
+    $('workpill').hidden = !busy[cur] || !$('handpill').hidden || rows.length > 0;
+    $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - d.t)}`; };
+  if (on && !workT) { draw(); workT = setInterval(draw, 1000); }
+  if (!on && workT) { clearInterval(workT); workT = null; }
+  if (on) draw(); else $('log').querySelectorAll('.tl > div.run').forEach(x => x.classList.remove('run'));
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
 const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
@@ -1138,7 +1163,8 @@ const LOADED = new Set(); // pids whose transcript is in logs[]
 async function openProject(pid) {
   if (!P(pid)) return;
   if (cur) texts[cur] = $('prompt').value;
-  cur = pid;
+  const prev = cur; cur = pid;
+  if (prev && prev !== pid && editing[prev]) flushQueue(prev); // left mid-edit → its other queued messages go on
   $('prompt').value = texts[pid] || '';
   $('head').hidden = $('dock').hidden = $('right').hidden = false; $('suggest').hidden = true; grow(); // measure once visible
   drawProjects(); drawChrome(); drawAtts(); drawQueue(); drawEditBar();
@@ -1308,8 +1334,11 @@ function entry(e) {
   // #169 ticks after the chain: as its own if, its `else` overwrote md() replies with plain text
   if (e.kind === 'user' && e.st && view === 'chat') { d.insertAdjacentHTML('beforeend', tickHtml(e)); USEREL.set(e, d); }
   if (view === 'chat' && e.kind === 'note' && e.ts) d.dataset.ts = tm(e.ts); // shown above via CSS ::before
+  if (view === 'chat' && e.kind === 'note' && NOTEACT[e.act]) d.insertAdjacentHTML('beforeend', ` <button class="btn sm" onclick="${NOTEACT[e.act][1]}">${NOTEACT[e.act][0]}</button>`);
   return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
 }
+// note buttons (#170 Built! / Build failed): label, handler (cur = the project shown)
+const NOTEACT = {run: [icon('play') + 'Run', "call('run_step', {pid: cur, step: 'run'})"], restart: ['Restart into it', "call('restart_into', {pid: cur})"], out: ['Show output', "rightTab('build')"]};
 // chat look: avatar (Clauracle's icon | your GitHub picture) + name · time over the bubble
 const tm = ts => { const d = ts ? new Date(ts) : null; if (!d || isNaN(d)) return '';
   const t = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
@@ -1362,6 +1391,7 @@ function drawAct(g) {
     <div class="tl">${runs.map((es, i) => `<div data-i="${i}" title="${esc(es[0].detail?.description || 'Details')}">${runLine(es)}</div>`).join('')}</div>`;
   g.querySelectorAll('.ttabs button').forEach(b => b.onclick = () => { g._on = b.dataset.k; g._pin = true; drawAct(g); });
   g.querySelectorAll('.tl > div').forEach(r => { r._es = runs[+r.dataset.i]; r.onclick = () => toolDlg(r._es, on.title); }); // _es: right-click menu
+  if (busy[cur]) workTick(); // rebuilt rows → running ones get their shimmer back now, not on the next tick
   const cp = g.querySelector('.cp');
   if (cp) cp.onclick = () => { navigator.clipboard.writeText(last.detail.command); cp.textContent = 'Copied'; setTimeout(() => cp.textContent = 'Copy', 1200); };
   const tl = g.querySelector('.tl'); tl.scrollTop = tl.scrollHeight;
@@ -1559,20 +1589,24 @@ function send() {
   // Chained per project → order kept while gh runs. Edited queued ones were filed already (text carries the note)
   // #93: a plain question (ends "?", not "can you…/please"; or "btw …") → not filed: answered + ```tasks cards (sugCards)
   const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && (/\?\s*$/.test(t) && !/\b(can|could|would|will|should|shall) (you|we|it|i)\b|\bplease\b|\bis it possible\b|\bhow about\b|\blet'?s\b/i.test(t) || /^\s*btw\b/i.test(t));
-  const file = issueOn(pid) && !isQ && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
+  // #142: a short status/unblock reply ("I've turned the Mac on", "done, try again") = context for the blocked task, not new work
+  const isS = issueOn(pid) && !isQ && !FILED_RE.test(t) && !QNOTE_RE.test(t) && STATUS_RE.test(t) && t.trim().split(/\s+/).length <= 25;
+  const file = issueOn(pid) && !isQ && !isS && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
   // #101: bubble shows now (⏱ while filing) unless it'd queue/triage anyway; the chain re-checks below
   // #103: queued (turn running) → bubble now too, ⏱ Queued; QB ties it to its queue item
   const opt = !(contWaiting(pid) && !a.length) ? userEntry(pid, t, a, {st: busy[pid] || RESTARTING ? 'queue' : 'pend'}) : null;
   // saved to disk while gh files it (seconds): a crash/quit in that window used to lose it (composer already cleared)
   const fm = {text: t, atts: a}; (FILING[pid] ||= []).push(fm); keepDraft(pid, true);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
-    const n = file ? await fileAsk(pid, t, a) : 0, now = n && fileNow(pid, t, n), text = isQ ? t + QNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
+    const n = file ? await fileAsk(pid, t, a) : 0, now = n && fileNow(pid, t, n), text = isQ ? t + QNOTE : isS ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
     const q = queue[pid] ||= [];
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
     if (opt && contWaiting(pid) && !a.length) unEntry(pid, opt); // a Continue came up while filing → triage shows its own
     if (contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
     const m = {text, atts: a, work: now ? n : 0};
-    if (busy[pid] || RESTARTING) { q.splice(ed ? ed.i : q.length, 0, m); /* an edited one goes back to its place */ if (opt?.log) { reBub(opt, text, a); tick(opt, 'queue'); QB.set(m, opt); } }
+    if (busy[pid] && !RESTARTING && !a.length && !ed && await call('send_mid', {pid, text, work: m.work || null}).catch(() => false)) { // CLI feel: reaches the AI mid-turn
+      if (m.work) P(pid).work = m.work; if (opt?.log) { reBub(opt, text, a); tick(opt, 'read'); } }
+    else if (busy[pid] || RESTARTING) { q.splice(ed ? ed.i : q.length, 0, m); /* an edited one goes back to its place */ if (opt?.log) { reBub(opt, text, a); tick(opt, 'queue'); QB.set(m, opt); } }
     else sendNow(pid, m, opt?.log && opt);
     if (pid === cur) drawQueue();
   }).catch(err => { // a throw used to leave the chain rejected → this and every later message for the project silently dropped
@@ -1581,10 +1615,12 @@ function send() {
   }).finally(() => { FILING[pid] = (FILING[pid] || []).filter(x => x !== fm); keepDraft(pid, true); });
 }
 const FILING = {}; // pid → messages between send() and their place in queue/session (saved in the draft)
-const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A question, not a task \(Clauracle\)/;
+const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A (question|status update), not a task \(Clauracle\)/,
+  STATUS_RE = /^\s*(ok(ay)?[,.!]?\s+)?(i('ve| have)|it'?s|it is|(the )?\w+ is) (now )?(turned|booted|started|switched|plugged|logged|installed|granted|fixed|enabled|added|set up|paid|connected|on|up|running|online|ready|back|done|fixed|awake)\b|^\s*(done|ready|fixed|try again|retry|go ahead|it works now|works now)\b/i;
+const SNOTE = '\n\n(A status update, not a task (Clauracle): context for the task you are on or the one labelled `needs-user`: retry what was blocked; if it unblocks a needs-user issue, `gh issue edit N --remove-label needs-user` and resume it. File nothing.)';
 // #98: Clauracle's appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
 // #100: notes = one line each → strip per note (triage batch keeps later bullets); triage preamble hidden too
-const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A question, not a task \(Clauracle\))[^\n]*/g, '');
+const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A (question|status update), not a task \(Clauracle\))[^\n]*/g, '');
 const QNOTE = '\n\n(A question, not a task (Clauracle): answer it briefly; change no files, start no work. If it actually asks for a change, it is a task: file it (`gh issue create --label clauracle --label task`) and say so. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
 /* user's rule: outstanding tasks first, a new ask goes to the END of the queue unless it says urgent (→ front of P.order, worked now).
    Ask into an empty queue = worked now too. now → send({work}) pins it in Rust (p.work) ∴ a handover/crash resumes it, not the queue head */
@@ -1615,7 +1651,7 @@ function cancelEdit(hold) {
 const drawEditBar = () => { $('cancelEdit').hidden = !editing[cur]; };
 let RESTARTING = false; // Claude asked for a restart: hold everything in the saved queue until the new app is up
 function flushQueue(pid) {
-  if (RESTARTING || busy[pid] || editing[pid] || !queue[pid]?.length) return;
+  if (RESTARTING || busy[pid] || editing[pid] && pid === cur || !queue[pid]?.length) return; // an edit holds the queue only while you're on that project (else the rest waited forever)
   if (contWaiting(pid)) { // a Continue is up: text messages become tasks, then the Continue runs; attachments stay queued
     const tasks = queue[pid].filter(m => !m.atts.length); queue[pid] = queue[pid].filter(m => m.atts.length); tasks.forEach(m => qDrop(pid, m)); // toTasks shows its own
     if (pid === cur) drawQueue(); keepDraft(pid, true);
@@ -1736,7 +1772,8 @@ $('prompt').addEventListener('keydown', e => {
   if (e.key === 'ArrowUp' && !hasInput() && queue[cur]?.length) { e.preventDefault(); editQueued(queue[cur].length - 1); }
 });
 const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
-$('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { drawChrome(); keepDraft(); } });
+let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
+$('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { if (!chromeRAF) chromeRAF = requestAnimationFrame(() => { chromeRAF = 0; drawChrome(); }); keepDraft(); } });
 // Continue/auto-clear → "Reading handover…" pill (same spot as Working…) until Claude's first own line/tool or turn end
 const reading = {};
 const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading[pid]; if (pid === cur) drawChrome(); };
@@ -1750,6 +1787,7 @@ function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); 
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   line: () => { if (d.kind === 'claude') live[d.pid] = '';
     if (d.kind === 'tool') issueGuess(d.pid, d); else if (d.result_of) { issueResult(d); missCheck(d.pid, d.text); }
+    if (d.kind === 'tool' && d.id) (PEND[d.pid] ||= new Map()).set(d.id, Date.now()); else if (d.result_of) PEND[d.pid]?.delete(d.result_of);
     if (d.kind === 'tool' && !d.parent) setDoing(d.pid, 'Running: ' + d.text.replace(/\s+/g, ' ').slice(0, 60), d.id);
     else if (d.result_of && d.result_of === doing[d.pid]?.id) setDoing(d.pid, 'Thinking');
     if (reading[d.pid] && /^(claude|tool|err)$/.test(d.kind)) readNote(d.pid, false); // notes/system lines of the reconnect ≠ the reply
@@ -1758,7 +1796,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
   status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
-    if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
+    if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; delete PEND[d.pid]; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) { const r = cq && P(d.pid).ready, t = nextUp(d.pid)[0]; contGo(d.pid); if (r) contNote(d.pid, t); } else { if (cq) contQ[d.pid] = true; /* Continue clicked + msgs queued: msgs first, Continue after (was dropped) */ flushQueue(d.pid); } }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
@@ -1778,8 +1816,11 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.step === 'build' && b.busy && d.line && d.pid === cur && tab === 'build' && /\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/i.test(d.line) && /Finished \d+ bundle/.test(b.out.slice(b.from || 0))) drawRight(); /* #174 an artifact landed → tick it */
-    if (d.step === 'build' && !!b.busy !== (d.done == null)) { if (!b.busy) b.from = b.out.length - (d.line != null ? d.line.length + 1 : 0); b.busy = d.done == null; if (d.pid === cur) tabDots(); if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
+    if (d.step === 'build' && !!b.busy !== (d.done == null)) { if (!b.busy) b.from = b.out.length - (d.line != null ? d.line.length + 1 : 0); b.busy = d.done == null; if (b.busy && !b.manual) addEntry(d.pid, {kind: 'note', text: 'Building…'}); /* after a task / resumed (#170/#175); Build button = manual */ if (d.pid === cur) tabDots(); if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
     if (d.step === 'build' && d.done) { BUILT[d.pid] = 1; if (d.pid === cur) tabDots(); } /* green dot till Build & Release is opened */
+    if (d.step === 'build' && d.done != null) { b.ok = d.done; b.at = Date.now(); b.own = !!d.own; /* statusline right zone + card */
+      if (!b.manual) addEntry(d.pid, d.done ? {kind: 'note', text: 'Built!', act: d.own ? 'restart' : P(d.pid)?.build.run ? 'run' : ''} : {kind: 'note', text: 'Build failed: output in Build & Release', act: 'out'});
+      b.manual = false; drawGbar(); }
     if (d.step === 'build' && d.done != null) { ghiStale(d.pid); delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
@@ -2168,11 +2209,11 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
 /* #123 recheck CI while a run is in flight (one timer per project; only while Build & Release shows it) */
 const CIPOLL = {};
 const ciPoll = (pid, ms) => { if (CIPOLL[pid]) return; CIPOLL[pid] = setTimeout(() => { delete CIPOLL[pid]; if (pid === cur && tab === 'build') { if (RELC[pid]) RELC[pid].t = 0; drawRight(); } }, ms); };
-const relRefresh = () => { delete RELC[cur]; delete SECRETS[cur]; ghiStale(cur); drawRight(); };
+const relRefresh = () => { TABREF.build(); drawRight(); };
 async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
   const text = id === 'summary' ? `Release prep: in a few lines, what this project is and does, then what's missing for an MVP release (open checks: ${open || 'none'}). Plan only, don't change files.` : RELAI[id];
-  if (!await sure(`Ask Claude?\n\n${text}\n${estTok()}`)) return;
+  if (!await sure(`Ask your AI?\n\n${text}\n${estTok()}`)) return;
   sendNow(cur, {text, atts: []});
 }
 async function relRelease(to, btn) {
@@ -2192,7 +2233,7 @@ async function relRelease(to, btn) {
 // Build from the wizard: on success the build event commits + pushes what it changed (Cargo.lock…) ∵ else "Everything committed" flips red again
 const RELB = {};
 // #120: busy at once (event confirms) → spinner + bar; no 2nd click → 2nd cargo blocked on the build-dir lock
-const buildNow = () => { const b = builds[cur] ||= {out: ''}; b.from = b.out.length; b.busy = true; drawRight(); tabDots(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); tabDots(); }); };
+const buildNow = () => { const b = builds[cur] ||= {out: ''}; b.from = b.out.length; b.busy = true; b.manual = true; drawRight(); tabDots(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); tabDots(); }); };
 const relBuild = () => { RELB[cur] = 1; buildNow(); };
 const ciBusy = pid => { const r = RELC[pid]?.c?.ci; return !!r && r.status !== 'completed'; }; // #123 CI run in flight (release_check, polled)
 const bBusy = pid => builds[pid]?.busy || ciBusy(pid);
@@ -2284,7 +2325,7 @@ async function buildHtml(p, has, live, force) {
   let c = GHI[pid0];
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) { ghiSet(pid0, g); c = GHI[pid0]; } }
   // #34: "Manual commands" fold (closed by default); no Deploy button ∵ Release runs the deploy command after publishing
-  return tgtHtml(p) + actHtml() + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+  return tgtHtml(p) + afterRow(p) + actHtml() + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
@@ -2295,6 +2336,7 @@ async function buildHtml(p, has, live, force) {
       + (live || RELC[pid0] ? await relWizard(p, live && force === true, !live) : wait('Release'))
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
 }
+const afterRow = p => `<label class="row" style="gap:8px;font-size:13px;margin:4px 0 10px" title="Runs in plain code when the AI finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}">${icon('hammer')}<span class="grow">After each task</span><select onchange="setP({build: {...P().build, after: this.value}})">${options({'': 'Nothing', smart: 'Smart: build + run on big changes', build: 'Build', build_run: 'Build + run', build_deploy: 'Build + deploy'}, p.build.after)}</select></label>`;
 async function drawRight(force) {
   if ($('right').hidden || !cur) return;
   if (UI.rc) { drawRRail(); return tabDots(); }
@@ -2346,7 +2388,7 @@ function drawGh(g, busy) {
     <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask your AI</button></div></div>`;
   const list = (xs, kind) => xs?.length ? `<div class="list">${xs.map(x => item(x, kind)).join('')}</div>` : empty('None open');
   box.innerHTML = sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
-      : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
+      : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p><div class="btnrow"><button class="btn" onclick="openManager(cur)">${icon('gh')}Pick another account</button><button class="btn" onclick="TABREF.gh(); drawRight(true)">${icon('loop')}Try again</button></div>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
       : g.err ? `<p class="err">${esc(g.err)}</p>` : publishForm(p, g.users || []), `<button class="ib${busy ? ' upd' : ''}" title="${busy ? 'Updating…' : 'Refresh'}" onclick="drawRight(true)">${icon('loop')}</button>`)
     + '<div id="atp"></div>' // Plan (issue queue / PLAN.md, drag order, Suggestions, Cleanup): drawAtp fills it
     + `<div id="tasksBox">${tasksHtml()}</div>`
@@ -2894,7 +2936,7 @@ function sitePrompt() {
     + `Deploy to ${h.name} via ${h.how}${h.keys.length ? `, with a deploy script that reads ${h.keys.join(', ')} from .env at run time (never print or commit them)` : ''}. `
     + `Tell me the deploy command so I can set it as the project's Deploy step.`;
 }
-async function siteMake() { const text = sitePrompt(); if (await sure(`Ask Claude?\n\n${text}\n${estTok()}`)) sendNow(cur, {text, atts: []}); }
+async function siteMake() { const text = sitePrompt(); if (await sure(`Ask your AI?\n\n${text}\n${estTok()}`)) sendNow(cur, {text, atts: []}); }
 const svcOf = p => [...new Set([...(p.gcp ? ['google'] : []), ...(p.services || [])])].filter(id => SERVICES[id]);
 async function svcAdd(id) { await setP({services: [...svcOf(P()), id]}); await refresh(); drawRight(); }
 async function svcRemove(id) { await setP({services: svcOf(P()).filter(x => x !== id)}); await refresh(); drawRight(); }
@@ -3591,11 +3633,12 @@ async function addGh() { $('ghMsg').textContent = 'Waiting for gh…'; const ok 
 async function rmGh(u) { if (await sure(`Log @${u} out of gh?`)) { await call('gh_logout', {user: u}); reloadSettings(); } }
 
 // ---- clone ----
+async function cloneLogin(b) { b.disabled = true; b.textContent = 'Waiting for gh…'; if (await call('gh_login').catch(e => (toast(String(e), 'err'), false))) { SET = null; openClone(); } else b.disabled = false; }
 async function openClone() {
   SET ||= await call('settings'); ghUsers = SET.gh_users;
   dlg(`<div class="row"><h2 class="grow">Clone from GitHub</h2><button class="ib" onclick="closeDlg()">${icon('x')}</button></div>${ghUsers.length ? `<div class="row"><select id="cloneUser">${ghUsers.map(u => `<option>${esc(u)}</option>`).join('')}</select>
     <input id="cloneFilter" class="grow" placeholder="Filter, or owner/repo"></div><small class="dim">Into <span class="mono">${esc(S.projects_dir)}/&lt;owner&gt;/&lt;repo&gt;</span></small><div id="repoList" class="dim" style="height:340px;overflow:auto;margin-top:8px">${skel(...Array(8).fill('b100'))}</div>`
-    : '<p class="dim">Add a GitHub account first (Settings › GitHub).</p>'}`);
+    : `<p class="dim">No GitHub account yet.</p><button class="btn primary block" onclick="cloneLogin(this)">${icon('gh')}Log in to GitHub</button>`}`);
   if (!ghUsers.length) return;
   let repos = [];
   const draw = () => { const f = $('cloneFilter').value.trim(), fl = f.toLowerCase();

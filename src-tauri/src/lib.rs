@@ -251,6 +251,15 @@ fn set_agents(st: St, agents: Vec<store::Agent>, on: Option<bool>) {
     }
 }
 
+/// Message typed while a turn runs → straight into it (true), or false = page keeps it queued for the turn end.
+#[tauri::command]
+async fn send_mid(st: St<'_>, pid: String, text: String, work: Option<u64>) -> R<bool> {
+    let Some(live) = st.live.lock().unwrap().get(&pid).cloned() else { return Ok(false) };
+    let ok = claude::send_mid(&live, &text).await;
+    if ok { if let Some(n) = work.filter(|&n| n > 0) { st.with_project(&pid, |p| p.work = n); } }
+    Ok(ok)
+}
+
 #[tauri::command]
 async fn interrupt(st: St<'_>, pid: String) -> R<()> {
     let conn = st.live.lock().unwrap().get(&pid).and_then(|l| l.conn.lock().unwrap().clone());
@@ -326,6 +335,7 @@ fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
         claude::line(&app, &pid, "note", "No open tasks: nothing to continue. Send a new request to start again.");
         return;
     };
+    if live.continuing.swap(true, SeqCst) { return; } // double click / Continue racing an answer: one fresh session, not two
     claude::fresh(&app, &st, &pid, &live, Some(msg));
 }
 
@@ -947,6 +957,22 @@ fn stop_run(pid: String) -> bool {
     claude::stop_run(&pid)
 }
 
+/// "Built!" note / Builds card: swap into Clauracle's freshly built exe (own repo only); turns resume after it.
+#[tauri::command(async)]
+fn restart_into(app: AppHandle, st: St, pid: String) -> R<()> {
+    if !claude::own_repo(&st, &pid) { return Err("not Clauracle's own repo".into()); }
+    let p = st.project(&pid).ok_or("no such project")?;
+    let (t, a) = claude::restart_target(&claude::own_exe(&p.path))?;
+    emit(&app, "restarting", json!({}));
+    relaunch(&app, t, &a);
+    Ok(())
+}
+
+#[tauri::command(async)] // taskkill blocks
+fn stop_build(pid: String) -> bool {
+    claude::stop_build(&pid)
+}
+
 // ---- .env ----
 
 #[tauri::command(async)] // git check-ignore per file
@@ -1243,8 +1269,6 @@ fn actions_sum_adds_minutes_per_sku() {
     assert!((s["net"].as_f64().unwrap() - 0.5).abs() < 1e-9);
 }
 
-/// Release panel "Set version": swaps the version in every version file that exists (first `version` key/line only,
-/// formatting kept). Cargo.lock follows on the next cargo build.
 /// Page → the `ui` self-test tool's waiting call (claude::ui_tool).
 #[tauri::command]
 fn ui_reply(id: u64, text: String) {
@@ -1252,6 +1276,8 @@ fn ui_reply(id: u64, text: String) {
     if let Some(i) = w.iter().position(|(n, _)| *n == id) { let _ = w.remove(i).1.send(text); }
 }
 
+/// Release panel "Set version": swaps the version in every version file that exists (first `version` key/line only,
+/// formatting kept). Cargo.lock follows on the next cargo build.
 #[tauri::command(async)]
 fn version_set(st: St, pid: String, v: String) -> R<Vec<String>> {
     if v.is_empty() || !v.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c)) { return Err("bad version".into()); }
@@ -1649,6 +1675,7 @@ pub fn run() {
             *ORPHANS.lock().unwrap() = find_orphans(); // before resume spawns (track overwrites the file)
             if let Some(r) = st.cfg.lock().unwrap().win { restore_win(app, r); }
             claude::resume_interrupted(app.handle(), &st);
+            claude::resume_builds(app.handle(), &st);
             // warm the slow lookups so Settings opens instantly: gh accounts, and the catalog on a first run
             let st2 = st.clone();
             // housekeeping: old update download; Storage Janitor now + every JANITOR_EVERY (rules: store::janitor)
@@ -1694,7 +1721,7 @@ pub fn run() {
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
-            test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
+            test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_links, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");

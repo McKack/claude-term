@@ -31,6 +31,9 @@ const HANDOVER_RULES: &str = "
   where these aren't tracked, add them to .git/info/exclude. Finished work goes to CHANGES.md (newest first, one line
   per change), not the plan or handover. Every Queue item must be finishable: never add standing items or rules
   (\"respond to the user\", \"always do X\"); rules go to HANDOVER.md. Empty Queue = done.
+- Gotchas don't grow HANDOVER.md: code-area ones go to .claude/rules/<area>.md with \"paths:\" frontmatter (e.g.
+  ui/**), loaded only when a matching file is touched; topic recipes (release, live tests) go to .claude/notes/<topic>.md,
+  listed in HANDOVER.md with one \"read when …\" line each. One line per gotcha; prune stale ones.
 - Each new user request goes into the Queue at once (reworded, by priority), so nothing is lost across sessions.
 - Finishing a task: verify it, update PLAN.md, HANDOVER.md and CHANGES.md, commit if the project's rules allow, then call
   mcp__clauracle__ready as the LAST action of the turn.
@@ -57,6 +60,9 @@ const ISSUE_RULES: &str = "
 - HANDOVER.md lets a fresh session resume: goal, current state, how to build and test, gotchas, rules; no task list,
   no open items; under ~50 lines (prune stale notes when you add one). Finished work goes to CHANGES.md (newest first,
   one line per change). In a git repo where these aren't tracked, add them to .git/info/exclude.
+- Gotchas don't grow HANDOVER.md: code-area ones go to .claude/rules/<area>.md with \"paths:\" frontmatter (e.g.
+  ui/**), loaded only when a matching file is touched; topic recipes (release, live tests) go to .claude/notes/<topic>.md,
+  listed in HANDOVER.md with one \"read when …\" line each. One line per gotcha; prune stale ones.
 - Finishing a task: verify it, `gh issue close N -c <one-line summary>`, update HANDOVER.md and CHANGES.md, commit if
   the project's rules allow, then call mcp__clauracle__ready as the LAST action of the turn.
 - Do NOT call ready, stop and say why instead, when something failed you can't fix or no task is left.
@@ -115,6 +121,15 @@ pub fn cont_text(p: &Project) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------------------------
+
+/// Mid-turn delivery (CLI feel): a user message written into the RUNNING turn; the CLI hands it to the model at the next
+/// step instead of after the whole turn. Refused (→ caller queues it for the turn end) when idle, connecting, or the turn
+/// is wrapping up (ready armed / handover: the context is about to be cleared and the message would be lost with it).
+pub async fn send_mid(live: &Live, text: &str) -> bool {
+    if !live.busy.load(SeqCst) || live.armed.load(SeqCst) || live.handing_over.load(SeqCst) { return false; }
+    let Some(c) = live.conn.lock().unwrap().clone() else { return false };
+    c.write(&json!({"type": "user", "message": {"role": "user", "content": text}, "parent_tool_use_id": null, "session_id": "default"})).await.is_ok()
+}
 
 pub enum Input {
     Msg(String),
@@ -185,11 +200,12 @@ pub struct Live {
     pub inbox: Inbox,
     pub busy: AtomicBool,
     pub conn: Mutex<Option<Arc<Conn>>>,
-    armed: AtomicBool,        // ready was called this turn
-    handing_over: AtomicBool, // Clauracle asked for a handover (context limit / Clear & continue)
+    pub armed: AtomicBool,        // ready was called this turn
+    pub handing_over: AtomicBool, // Clauracle asked for a handover (context limit / Clear & continue)
     first_turn: AtomicBool,   // a fresh session already past the context limit must not hand over forever
     nagged: AtomicBool,       // pin refusal already sent → 2nd ready goes through (AI insists: blocked/waiting)
-    blind: AtomicBool,        // last auto continue couldn't read the issues (gh failing) → a 2nd in a row pauses
+    blind: AtomicBool,
+    pub continuing: AtomicBool, // a Continue's fresh session is on its way (cleared when its message goes out) → 2nd click ignored        // last auto continue couldn't read the issues (gh failing) → a 2nd in a row pauses
     built: Mutex<String>,     // #89 smart build: HEAD at session start / last good smart build = diff base
 }
 
@@ -418,6 +434,7 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
                     }
                 };
                 live.busy.store(true, SeqCst);
+                live.continuing.store(false, SeqCst);
                 st.with_project(pid, |p| p.working = true);
                 emit(app, "status", json!({"pid": pid, "busy": true, "handover": live.handing_over.load(SeqCst)}));
                 if let Err(e) = conn.write(&json!({"type": "user", "message": {"role": "user", "content": content.clone()},
@@ -558,6 +575,7 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
         let was_handover = live.handing_over.swap(false, SeqCst);
         let mut p = p;
         let mut smart = false;
+        let mut restart_self = false; // #170: Clauracle built itself after a task → swap into the new build
         if !was_handover && p.build.after == "smart" {
             // #89: build + run only when the diff since the last good smart build matters (code, big or a fix)
             let (dir, base) = (p.path.clone(), live.built.lock().unwrap().clone());
@@ -579,7 +597,8 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
         if !was_handover && (smart || !p.build.after.is_empty() && p.build.after != "smart") {
             // a task finished: build (and run/deploy) in plain code; a failure can go back to Claude
             let mut steps = vec!["build"];
-            steps.extend(match p.build.after.as_str() { "build_run" | "smart" => vec!["run"], "build_deploy" => vec!["deploy"], _ => vec![] });
+            let own = own_repo(st, pid);
+            steps.extend(match p.build.after.as_str() { "build_run" | "smart" if !own => vec!["run"], "build_deploy" => vec!["deploy"], _ => vec![] }); // own: restart replaces run
             let mut good = true;
             for step in steps {
                 let (ok, tail) = run_step(app, st, pid, step).await;
@@ -595,6 +614,7 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
                     break;
                 }
             }
+            restart_self = good && own;
             if smart && good {
                 let dir = p.path.clone();
                 let head = tauri::async_runtime::spawn_blocking(move || store::head(&dir)).await.unwrap_or_default();
@@ -604,6 +624,18 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
         let auto = p.cont.starts_with("auto") || (p.cont == "off" && was_handover);
         st.with_project(pid, |p| p.ready = true);
         emit(app, "ready", json!({"pid": pid, "ready": true}));
+        if restart_self {
+            if let Ok((t, a)) = restart_target(&own_exe(&p.path)) {
+                line(app, pid, "note", "Built: restarting into the new build (the run carries on after it).");
+                emit(app, "restarting", json!({}));
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    crate::relaunch(&app, t, &a);
+                });
+                return; // ready stays: resume_interrupted continues an auto run at the next start
+            }
+        }
         if !auto {
             if !p.questions.is_empty() {
                 emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
@@ -873,7 +905,7 @@ fn rule_hit_works() {
 
 /// Project = Clauracle's own source → gets the `ui` self-test tool. ponytail: path sniff; ∵ any other project's
 /// Claude clicking the app could approve its own permission cards.
-fn own_repo(st: &Arc<State>, pid: &str) -> bool {
+pub fn own_repo(st: &Arc<State>, pid: &str) -> bool {
     st.project(pid).is_some_and(|p| std::fs::read_to_string(std::path::Path::new(&p.path).join("src-tauri/tauri.conf.json"))
         .is_ok_and(|s| s.contains("no.arctim.clauracle")))
 }
@@ -956,7 +988,7 @@ fn tool_list(own: bool) -> Value {
 
 /// What to start: this exe, or a new build as its own swap helper (`--swap-into` this exe's path), so the app's
 /// path never changes (pinnable) ∵ Windows locks a running exe: the helper waits for us to exit, then replaces it.
-fn restart_target(exe: &str) -> Result<(std::path::PathBuf, Vec<String>), String> {
+pub fn restart_target(exe: &str) -> Result<(std::path::PathBuf, Vec<String>), String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     if exe.is_empty() {
         return Ok((me, vec![]));
@@ -979,6 +1011,25 @@ pub fn resume_interrupted(app: &AppHandle, st: &Arc<State>) {
         session(app, st, &pid).inbox.push(Input::Msg(RESUMED.into()));
         line(app, &pid, "note", "Clauracle restarted mid-turn: resuming");
     }
+    // auto run that was between tasks (ready) when the app went down (self-restart #170, update, crash) → carry on;
+    // auto_continue re-checks limits, questions and an empty queue. Delay: page listening first.
+    let waiting: Vec<String> = st.cfg.lock().unwrap().projects.iter().filter(|p| p.ready && !p.working && p.cont.starts_with("auto"))
+        .map(|p| p.id.clone()).collect();
+    for pid in waiting {
+        let (app, st) = (app.clone(), st.clone());
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            let live = session(&app, &st, &pid);
+            if !live.busy.load(SeqCst) && st.project(&pid).is_some_and(|p| p.ready) {
+                tauri::async_runtime::spawn_blocking(move || auto_continue(&app, &st, &pid, &live)); // cont_text runs gh
+            }
+        });
+    }
+}
+
+/// The exe a build of Clauracle's own repo makes (tauri build → target/release).
+pub fn own_exe(dir: &str) -> String {
+    std::path::Path::new(dir).join("src-tauri/target/release").join(if cfg!(windows) { "clauracle.exe" } else { "clauracle" }).to_string_lossy().into()
 }
 
 fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value) -> Value {
@@ -1110,6 +1161,9 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
         return (true, String::new());
     }
     let say = |t: &str, done: Option<bool>| emit(app, "build", json!({"pid": pid, "step": step, "line": t, "done": done}));
+    // #175 marker: still there at the next start = the app died mid-build → resume_builds() starts it again
+    let marker = store::home().join(format!("building-{pid}"));
+    if step == "build" { let _ = std::fs::write(&marker, ""); }
     let sign = store::sign_env(&p.path);
     let mut cmds = vec![(cmd.clone(), shell(&cmd), None::<String>)];
     // #131: Windows + Linux target + WSL → 2nd pass in WSL (args set by Rust, no cmd.exe quoting); WSLENV forwards signing keys
@@ -1164,6 +1218,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
             return (false, e.to_string());
         }
     };
+    if step != "run" { if let Some(id) = child.id() { BUILDING.lock().unwrap().insert(pid.to_string(), id); } } // stop_build target
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     for out in [child.stdout.take().map(|o| Box::new(o) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
                 child.stderr.take().map(|o| Box::new(o) as Box<dyn tokio::io::AsyncRead + Unpin + Send>)].into_iter().flatten() {
@@ -1204,6 +1259,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
         }
     }
     ok = child.wait().await.map(|s| s.success()).unwrap_or(false);
+    BUILDING.lock().unwrap().remove(pid);
     if ok && input.is_some() {
         say("pulling Mac bundles back", None);
         let (m2, pid2, dir2) = (mac.clone(), pid.to_string(), p.path.clone());
@@ -1214,8 +1270,37 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     }
     if !ok { break; }
     }
-    say(if ok { "✓ done" } else { "✗ failed" }, Some(ok));
+    if step == "build" { let _ = std::fs::remove_file(&marker); }
+    let stopped = STOPPED.lock().unwrap().remove(pid);
+    emit(app, "build", json!({"pid": pid, "step": step, "line": if ok { "✓ done" } else if stopped { "■ stopped" } else { "✗ failed" }, "done": ok,
+        "own": step == "build" && ok && own_repo(st, pid)}));
     (ok, tail.into_iter().collect::<Vec<_>>().join("\n"))
+}
+
+/// Statusline/Build tab Stop: ends the running build/deploy step's whole tree; its run_step then reports "stopped".
+pub fn stop_build(pid: &str) -> bool {
+    let id = BUILDING.lock().unwrap().remove(pid);
+    if let Some(id) = id { STOPPED.lock().unwrap().insert(pid.to_string()); crate::kill_tree(id); }
+    id.is_some()
+}
+static BUILDING: std::sync::LazyLock<Mutex<HashMap<String, u32>>> = std::sync::LazyLock::new(Default::default);
+static STOPPED: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> = std::sync::LazyLock::new(Default::default);
+
+/// #175 at startup: builds cut off by a close/crash (marker left) start again. Re-attaching is impossible (the build
+/// died with us); cargo/tauri caches make the rerun cheap ∴ only what's missing really rebuilds. Delay: page listening.
+pub fn resume_builds(app: &AppHandle, st: &Arc<State>) {
+    let ids: Vec<String> = st.cfg.lock().unwrap().projects.iter().map(|p| p.id.clone()).collect();
+    for pid in ids {
+        let m = store::home().join(format!("building-{pid}"));
+        if !m.exists() { continue; }
+        let _ = std::fs::remove_file(&m);
+        let (app, st) = (app.clone(), st.clone());
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+            line(&app, &pid, "note", "A build was cut off when Clauracle closed: building again.");
+            run_step(&app, &st, &pid, "build").await;
+        });
+    }
 }
 
 pub fn stop_run(pid: &str) -> bool {
