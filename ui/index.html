@@ -1261,8 +1261,9 @@ function entry(e) {
     : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
   else if (e.kind === 'user' && view === 'chat') { d.textContent = bare(e.text); for (const [, n] of e.text.matchAll(new RegExp(FILED_RE, 'g'))) d.insertAdjacentHTML('beforeend', `<span class="filedtag" data-tip="Filed as task #${n}">#${n}</span>`); }
-  if (e.kind === 'user' && e.st && view === 'chat') { d.insertAdjacentHTML('beforeend', tickHtml(e)); USEREL.set(e, d); }
   else d.textContent = e.text;
+  // #169 ticks after the chain: as its own if, its `else` overwrote md() replies with plain text
+  if (e.kind === 'user' && e.st && view === 'chat') { d.insertAdjacentHTML('beforeend', tickHtml(e)); USEREL.set(e, d); }
   if (view === 'chat' && e.kind === 'note' && e.ts) d.dataset.ts = tm(e.ts); // shown above via CSS ::before
   return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
 }
