@@ -1017,9 +1017,10 @@ function gCard(btn, kind) {
   card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
 }
 // ---- update check: Clauracle's latest GitHub release vs this build; a toast offers it ----
-async function checkUpdate() {
-  let u; try { u = await call('update_check'); } catch { return; }
-  if (!u.newer || sessionStorage.skipUpdate === u.latest) return;
+async function checkUpdate(asked) { // asked = Settings › Check now: says so when there's nothing, ignores Later
+  let u; try { u = await call('update_check'); } catch (e) { return asked && toast(`Update check failed: ${e}`, 'err'); }
+  if (!u.newer) return asked && toast(`Clauracle ${u.current} is the latest`, 'ok');
+  if (!asked && sessionStorage.skipUpdate === u.latest) return;
   const t = Object.assign(document.createElement('div'), {className: 'toast glass', popover: 'manual'});
   t.innerHTML = `<div class="row"><svg class="i ok"><use href="#i-sparkle"/></svg><b class="grow">Clauracle ${esc(u.latest)} is available</b></div>
     <span class="dim">You have ${esc(u.current)}. ${/Windows/.test(navigator.userAgent) ? 'Update downloads the installer and restarts; sessions and unsent input come back.' : 'Opens the release page.'}</span>
@@ -3562,6 +3563,10 @@ function lookPage() {
       `<span class="row" style="gap:10px"><input type="range" min="80" max="150" step="5" value="${LOOK.scale}" style="width:160px;padding:0;border:0;background:none"
         oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="setLook({scale:+this.value})"><b style="width:40px">${LOOK.scale}%</b>
         <button class="btn sm" onclick="setLook({scale:100})">Reset</button></span>`)}</div>
+    <div class="label">Updates</div>
+    <div class="box">${optRow('Check for updates', S.update_at ? `Last checked ${gago(S.update_at * 1e3)}` : 'Not checked yet',
+      `<span class="row" style="gap:6px"><span class="seg">${[[0, 'Never'], [24, 'Every 24h'], [168, 'Weekly'], [720, 'Monthly']].map(([h, t]) => `<button class="${S.update_every === h ? 'on' : ''}" onclick="call('set_update_every', {hours: ${h}}).then(() => openSettings())">${t}</button>`).join('')}</span>
+      <button class="btn sm" onclick="this.disabled = true; checkUpdate(true).then(() => openSettings())">Check now</button></span>`)}</div>
     <div class="label">Performance</div>
     <div class="box">${optRow('Frosted glass', 'Blur behind menus and dialogs. Off is lighter to draw', sw(LOOK.glass, 'setLook({glass:this.checked})'))}
     ${optRow('Animations', 'Shimmer, pulses and fades', sw(LOOK.motion, 'setLook({motion:this.checked})'))}</div>`;
@@ -3928,7 +3933,9 @@ new ResizeObserver(() => {
   const h = $('dock').offsetHeight, d = h - dockH, l = $('log'); dockH = h;
   if (d > 0 && l.scrollHeight - l.scrollTop - l.clientHeight - d < 50) l.scrollBy({top: d, behavior: 'smooth'});
 }).observe($('dock'));
-setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 6 * 3600e3);
+// #183: due = S.update_every hours (0 = never) since S.update_at (Rust stamps it per check); re-evaluated hourly
+const updateDue = () => S.update_every && Date.now() / 1e3 - (S.update_at || 0) >= S.update_every * 3600 && checkUpdate().then(refresh);
+setTimeout(updateDue, 5000); setInterval(updateDue, 3600e3);
 </script>
 <script>window.__TAURI__?.app.getVersion().then(v => { document.getElementById('appver').textContent = 'v' + v; }).catch(() => {});</script>
 </body>

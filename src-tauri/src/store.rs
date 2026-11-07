@@ -366,6 +366,8 @@ pub struct Config {
     pub notify: Notify,
     pub ci_builds: bool, // #126: GitHub Actions builds non-local targets; off (default) = local builds only ∵ CI minutes cost money
     pub mac: NetMac, // #147 Network Mac (SSH)
+    pub update_every: Option<u32>, // #183 auto update check, hours: None = 24, 0 = never
+    pub update_at: u64, // last update check (unix secs): start checks only when due
     pub projects_dir: String, // where clones and new projects go ("" = ~/Clauracle): <root>/<owner>/<repo>, <root>/local/<name>
 }
 
