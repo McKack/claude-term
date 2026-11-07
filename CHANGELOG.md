@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Website setup does more by itself: GitHub Pages turns on with one click, Cloudflare Pages reads your Account ID from the token, and Netlify makes the site and fills its Site ID.
 - New Graph tab next to Files: a spinning 3D cloud of how the project's files link (imports, includes, modules). Hubs sit in the middle and unlinked files float at the edge. Click a dot to open the file.
 - On Windows, the Linux version can be built on your own computer through WSL (Ubuntu), no GitHub CI needed.
 - Build & Release shows GitHub Actions minutes used this month, the included amount, any billed spend and a clear "limit reached" note, with links to the usage and spending-limit pages.

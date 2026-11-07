@@ -1039,6 +1039,40 @@ fn bundle_id(st: St, pid: String) -> R<serde_json::Value> {
     Ok(serde_json::json!({"id": found.as_ref().map(|f| &f.1), "file": found.as_ref().map(|f| f.0), "suggest": suggest}))
 }
 
+/// #161 website host setup done by code instead of the user: ghpages = Pages on w/ Actions source (gh api);
+/// cfpages = CLOUDFLARE_ACCOUNT_ID from the token; netlify = new site → NETLIFY_SITE_ID. → value shown/filled.
+#[tauri::command(async)]
+fn site_auto(st: St, pid: String, host: String) -> R<String> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let envp = std::path::Path::new(&p.path).join(".env");
+    let text = std::fs::read_to_string(&envp).unwrap_or_default();
+    let get = |k: &str| store::env_parse(&text).into_iter().find(|(x, v)| x == k && !v.is_empty()).map(|(_, v)| v).ok_or(format!("fill {k} first"));
+    let fill = |k: &str, v: &str| std::fs::write(&envp, store::env_set(&text, k, Some(v))).map(|_| v.to_string()).map_err(|e| e.to_string());
+    let err = |e: ureq::Error| match e { ureq::Error::Status(c, r) => format!("{c}: {}", r.into_string().unwrap_or_default()), e => e.to_string() };
+    match host.as_str() {
+        "ghpages" => { // POST = create; 409 = exists → PUT switches its source to Actions
+            let env = store::gh_env(&p.gh);
+            let a = ["-f", "build_type=workflow"];
+            let o = store::run("gh", &[&["api", "-X", "POST", "repos/{owner}/{repo}/pages"], &a[..]].concat(), Some(&p.path), &env);
+            if o.ok { return Ok("on".into()); }
+            let o2 = store::run("gh", &[&["api", "-X", "PUT", "repos/{owner}/{repo}/pages"], &a[..]].concat(), Some(&p.path), &env);
+            if o2.ok { Ok("on".into()) } else { Err(format!("{} {}", o.stderr.trim(), o2.stderr.trim())) }
+        }
+        "cfpages" => {
+            let v: Value = ureq::get("https://api.cloudflare.com/client/v4/accounts").set("Authorization", &format!("Bearer {}", get("CLOUDFLARE_API_TOKEN")?))
+                .call().map_err(err)?.into_string().ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+            // ponytail: first account; several → user edits the key
+            fill("CLOUDFLARE_ACCOUNT_ID", v["result"][0]["id"].as_str().ok_or("token sees no account: give it Account › Cloudflare Pages: Edit")?)
+        }
+        "netlify" => {
+            let v: Value = ureq::post("https://api.netlify.com/api/v1/sites").set("Authorization", &format!("Bearer {}", get("NETLIFY_AUTH_TOKEN")?))
+                .set("Content-Type", "application/json").send_string("{}").map_err(err)?.into_string().ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+            fill("NETLIFY_SITE_ID", v["id"].as_str().ok_or("Netlify returned no site id")?)
+        }
+        _ => Err("nothing to automate for this host".into()),
+    }
+}
+
 /// #40: HTTP status per URL (0 = unreachable); the release check uses it for /privacy + /terms being live.
 #[tauri::command(async)]
 fn site_check(urls: Vec<String>) -> Vec<u16> {
@@ -1601,7 +1635,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_links, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_ci_builds, set_mac, mac_test, mac_setup, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_links, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_ci_builds, set_mac, mac_test, mac_setup, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

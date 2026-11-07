@@ -2734,6 +2734,15 @@ const SERVICES = {
     steps: ['Pay the app fee and make the app in Steamworks', 'Get a Web API key'], links: [['Steamworks', 'https://partner.steamgames.com/apps'], ['Web API key', 'https://steamcommunity.com/dev/apikey']]},
 };
 // #40 website hosts: fields (.env keys) + easiest setup path per kind. ponytail: static list, add one = an entry
+// #161 host steps code does: fillStep = key dialog, autoStep = store-side action (lib site_auto) → ticks the step
+const fillStep = k => ({t: `Fill **${k}**`, k, a: () => `<button class="btn sm" onclick="fillKeys('website', ['${k}'])">${icon('key')}Fill in</button>`});
+const autoStep = (h, t, b, k) => ({t, h, k, a: () => `<button class="btn sm primary" onclick="siteAuto('${h}', this)">${icon('sparkle')}${b}</button>`});
+async function siteAuto(h, b) {
+  b.disabled = true; b.innerHTML = '<span class="spin"></span>' + b.textContent;
+  try { const v = await call('site_auto', {pid: cur, host: h}); toast(h === 'ghpages' ? 'GitHub Pages on' : 'Filled: ' + v, 'ok');
+    stepSet('website', HOSTS[h].steps.findIndex(y => y.h === h)); drawRight(); }
+  catch (e) { toast(String(e), 'err'); drawServices(); }
+}
 const SSHK = ['SITE_SSH_HOST', 'SITE_SSH_USER', 'SITE_SSH_PRIVATE_KEY', 'SITE_PATH'], A_REC = 'an **A** record to the server\'s IP (shown in the panel)';
 const HOSTS = {
   cpanel: {name: 'cPanel', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
@@ -2747,15 +2756,15 @@ const HOSTS = {
   ssh: {name: 'SSH / SFTP server (VPS)', how: 'rsync over SSH into SITE_PATH (served by the web server there)', keys: SSHK, dns: A_REC, links: [],
     steps: ['Make a web root for the subdomain on the server (like /var/www/app) and a server block / vhost for it with HTTPS (Caddy does it by itself)', 'Put your public key in ~/.ssh/authorized_keys', 'Fill the keys']},
   cfpages: {name: 'Cloudflare Pages', how: 'wrangler pages deploy', keys: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'], dns: 'add it under the Pages project › **Custom domains** (Cloudflare makes the CNAME)',
-    steps: ['**My Profile** › **API Tokens** › **Create Token** with **Cloudflare Pages: Edit**', 'Copy your **Account ID** (right side of any zone overview)', 'Fill the keys'],
+    steps: ['**My Profile** › **API Tokens** › **Create Token** with **Cloudflare Pages: Edit**', fillStep('CLOUDFLARE_API_TOKEN'), autoStep('cfpages', 'Clauracle reads your **Account ID** with that token', 'Get Account ID', 'CLOUDFLARE_ACCOUNT_ID')],
     links: [['API tokens', 'https://dash.cloudflare.com/profile/api-tokens']]},
   netlify: {name: 'Netlify', how: 'netlify deploy --prod', keys: ['NETLIFY_AUTH_TOKEN', 'NETLIFY_SITE_ID'], dns: 'a **CNAME** to <site>.netlify.app (Domain management shows it)',
-    steps: ['**Add new site** › **Deploy manually** (any folder), copy its **Site ID** from Site configuration', '**User settings** › **Applications** › **New access token**', 'Fill the keys'],
+    steps: ['**User settings** › **Applications** › **New access token**', fillStep('NETLIFY_AUTH_TOKEN'), autoStep('netlify', 'Clauracle makes the site and fills its **Site ID**', 'Make site', 'NETLIFY_SITE_ID')],
     links: [['Sites', 'https://app.netlify.com/'], ['Tokens', 'https://app.netlify.com/user/applications#personal-access-tokens']]},
   vercel: {name: 'Vercel', how: 'vercel deploy --prod', keys: ['VERCEL_TOKEN'], dns: 'a **CNAME** to cname.vercel-dns.com (Project › Domains)',
     steps: ['**Account Settings** › **Tokens** › **Create**', 'Fill the key'], links: [['Tokens', 'https://vercel.com/account/tokens']]},
   ghpages: {name: 'GitHub Pages', how: 'a GitHub Actions Pages workflow with a CNAME file', keys: [], dns: 'a **CNAME** to <owner>.github.io',
-    steps: ['Repo **Settings** › **Pages**: Source = **GitHub Actions**', 'Optional: tick **Enforce HTTPS** once the domain check passes'], links: [['Pages docs', 'https://docs.github.com/pages']]},
+    steps: [autoStep('ghpages', 'Turn on **Pages** with source **GitHub Actions** (repo must be on GitHub)', 'Turn on Pages'), 'Optional: tick **Enforce HTTPS** once the domain check passes'], links: [['Pages docs', 'https://docs.github.com/pages']]},
 };
 const SITEPG = {landing: ['Landing page', '/'], privacy: ['Privacy Policy', '/privacy'], terms: ['Terms of Service', '/terms']};
 const siteOf = (p = P()) => ({pages: Object.keys(SITEPG), ...(p.site || {})});
@@ -2847,6 +2856,7 @@ function stepReset(id) { delete (STEPS[cur] || {})[id]; try { localStorage.steps
 // auto-tick from checks: .env keys / repo secrets ⇒ earlier steps done. s.a = auto idx already applied ∴ a manual untick sticks
 const MAC4 = ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_TEAM_ID'];
 function stepAuto(id) {
+  if (id === 'website') return (SERVICES.website.steps || []).flatMap((x, i) => x.k && envKeys.have.has(x.k) ? [i] : []); // #161 key set ⇒ step done
   if (id !== 'macsign') return [];
   const h = k => envKeys.have.has(k), sec = SECRETS[cur];
   if (sec && SERVICES.macsign.keys.every(k => sec.includes(k))) return [0, 1, 2, 3, 4];
