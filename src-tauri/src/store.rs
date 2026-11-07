@@ -1237,7 +1237,7 @@ pub fn idle_days(dir: &str) -> Option<u64> {
 }
 
 // ---- Storage Janitor (#26): startup + every JANITOR_EVERY. Rules: idle ≥ IDLE_CLEAN_DAYS → clean; caches > CACHE_CAP → clean;
-// drive low (free < max(10 GB, 10%)) → clean most-idle projects first till not low, then old Claude transcripts. ----
+// cap skips projects touched today (#118: wiped the live Tauri target/ mid-dogfood); drive low (free < min(10 GB, 10%)) → clean most-idle projects first till not low, then old Claude transcripts. ----
 pub const JANITOR_EVERY: u64 = 6 * 3600;
 const CACHE_CAP: u64 = 10 << 30; // ponytail: fixed caps; settings if someone needs other numbers
 const GB: u64 = 1 << 30;
@@ -1258,7 +1258,7 @@ pub fn disk_free(dir: &str) -> Option<(u64, u64)> {
     let f: Vec<u64> = o.stdout.lines().nth(1)?.split_whitespace().skip(1).take(3).filter_map(|x| x.parse().ok()).collect();
     (f.len() == 3).then(|| (f[2] * 1024, f[0] * 1024))
 }
-pub fn disk_low(dir: &str) -> bool { disk_free(dir).is_some_and(|(f, t)| f < (10 * GB).max(t / 10)) }
+pub fn disk_low(dir: &str) -> bool { disk_free(dir).is_some_and(|(f, t)| f < (10 * GB).min(t / 10)) } // #118: was max → 1 TB drive w/ 101 GB free = "low" → wiped builds
 
 /// One janitor pass over (path, turn running → left alone); keep = session ids Clauracle resumes. Returns bytes freed.
 pub fn janitor(projects: &[(String, bool)], keep_sessions: &[String]) -> u64 {
@@ -1267,7 +1267,7 @@ pub fn janitor(projects: &[(String, bool)], keep_sessions: &[String]) -> u64 {
     idle.sort_by(|a, b| b.0.cmp(&a.0)); // most idle first
     for (days, d) in &idle {
         let total: u64 = caches(d).iter().map(|c| c.1).sum();
-        if total > 0 && (*days >= IDLE_CLEAN_DAYS || total > CACHE_CAP || disk_low(d)) { freed += clean(d, &[]); }
+        if total > 0 && (*days >= IDLE_CLEAN_DAYS || (*days > 0 && total > CACHE_CAP) || disk_low(d)) { freed += clean(d, &[]); }
     }
     let Some(home) = dirs::home_dir() else { return freed };
     let low = disk_low(&home.to_string_lossy());
