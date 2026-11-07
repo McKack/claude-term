@@ -1988,7 +1988,7 @@ function relItems(c, p) {
     {s: 0, id: 'clean', t: 'Everything committed', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
     {s: 1, id: 'license', t: 'Licence', ok: c.license},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
-    {s: 1, id: 'ci', t: 'CI green', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}` : 'no workflow runs',
+    {s: 1, id: 'ci', t: 'CI green', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no workflow runs',
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.url},
     {s: 2, id: 'icon', t: 'App icon', ok: c.icon},
     ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: 'Mac signing secrets on GitHub', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
@@ -1998,6 +1998,7 @@ function relItems(c, p) {
       ...(siteReady() ? {} : {go: `svcAdd('website').then(() => rightTab('svc'))`, gl: 'Set up'})}] : []),
     {s: 2, id: 'review', t: 'Release review by AI', ai: true},
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
+    ...((un => un.length ? [{s: 0, id: 'targets', t: 'Every picked platform can be built', ok: false, d: un.map(x => `${tgtName(x)}: ${tgtWhy(p, x)[0]}`).join(' · '), go: tgtWhy(p, un[0])[1]}] : [])((p.targets || []).filter(x => !miss.includes(x) && !tgtReady(p, x)))),
     ...(miss.length ? [{s: 0, id: 'ci_targets', t: 'CI builds the other platforms', ok: false, d: `not in CI: ${miss.map(tgtName).join(', ')}`}] : []),
     {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length && !stale.length,
       d: stale.length ? `older than the last code change: ${stale.map(f => f.name).join(', ')}` : lack.length && files.length ? `missing: ${lack.map(tgtName).join(', ')}` : files.length ? files.map(f => f.name).join(', ') + (cit.length ? ` · CI: ${cit.map(tgtName).join(', ')}` : '') : v ? `no build of v${v} yet` : '',
@@ -2009,7 +2010,7 @@ function relItems(c, p) {
 const HOST = /Windows/.test(navigator.userAgent) ? 'windows' : /Mac/.test(navigator.userAgent) ? 'macos' : 'linux';
 const TGTEXT = {windows: /\.(exe|msi|msix)$/i, macos: /\.(dmg|pkg)$/i, linux: /\.(appimage|deb|rpm)$/i, ios: /\.ipa$/i, android: /\.(apk|aab)$/i};
 const tgtName = id => TGT.flatMap(g => g[1]).find(x => x[0] === id)?.[2] || id;
-const tgtSplit = (p, c, files) => { const t = (p.targets || []).filter(x => tgtReady(p, x)), here = tgtLocal; // #34: ready targets only
+const tgtSplit = (p, c, files) => { const t = p.targets || [], here = tgtLocal; // #123: all picked ∵ unready must block Release, not drop out silently
   const ci = t.filter(x => !here(x));
   return {ci, miss: ci.filter(x => !(c.ci_os || []).includes(x)), lack: t.filter(here).filter(x => !files.some(f => TGTEXT[x].test(f.name)))}; };
 // release files for version v: newest build per file type named with v (versionless could be stale); builds via gh_info (GHI)
@@ -2019,7 +2020,10 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   if (!cached && (force || !RELC[pid] || Date.now() - RELC[pid].t > 60e3)) {
     const c = await call('release_check', {pid}).catch(e => ({err: String(e)}));
     if (siteOf(p).domain && (p.targets || []).some(x => x === 'ios' || x === 'android')) c.site = await call('site_check', {urls: ['privacy', 'terms'].map(k => siteUrl(k, p))}).catch(() => null);
-    RELC[pid] = {c, t: Date.now()};
+    const was = RELC[pid]?.c?.ci, now = c.ci; RELC[pid] = {c, t: Date.now()};
+    if (was && now?.status === 'completed' && (was.status !== 'completed' || was.databaseId !== now.databaseId)) { // #123 CI run ended (or a new one already did)
+      toast(`CI ${now.workflowName}: ${now.conclusion}${now.why ? ' · ' + now.why : ''}`, now.conclusion === 'success' ? 'ok' : 'err'); ghiStale(pid); }
+    if (now && now.status !== 'completed') ciPoll(pid, 30e3);
     if (macOn(p, pid) && c.remote && !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
   }
   const c = RELC[pid].c, re = `<button class="ib" title="Check again" onclick="relRefresh()">${icon('loop')}</button>`;
@@ -2045,6 +2049,9 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   return sec('Release', `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}${gi?.release?.tagName ? ` · latest <a data-url="${esc(gi.release.url)}" style="cursor:pointer;color:var(--accent)">${esc(gi.release.tagName)}</a>` : ''}</p>${seg}
     <div>${items.map(row).join('')}</div><div class="btnrow col">${act}${ask}</div>`, (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re);
 }
+/* #123 recheck CI while a run is in flight (one timer per project; only while Build & Release shows it) */
+const CIPOLL = {};
+const ciPoll = (pid, ms) => { if (CIPOLL[pid]) return; CIPOLL[pid] = setTimeout(() => { delete CIPOLL[pid]; if (pid === cur && tab === 'build') { if (RELC[pid]) RELC[pid].t = 0; drawRight(); } }, ms); };
 const relRefresh = () => { delete RELC[cur]; delete SECRETS[cur]; ghiStale(cur); drawRight(); };
 async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
@@ -2063,7 +2070,7 @@ async function relRelease(to, btn) {
     dlg(`<h2 style="margin:0 0 6px;font-size:17px">${icon('rocket')}Released v${esc(v)}</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Published on GitHub as ${st}.</p><div style="display:flex;gap:8px;justify-content:flex-end">${u ? `<button class="btn primary" data-url="${esc(u)}" onclick="closeDlg()">Open release page</button>` : ''}<button class="btn" onclick="closeDlg()">Close</button></div>`);
     if (P(pid).stage !== SK[to]) await call('update_project', {pid: pid, changes: {stage: SK[to]}});
     if (P(pid).build.deploy) call('run_step', {pid: pid, step: 'deploy'}); // #34: deploy = part of Release (guessed by build_guess or set in the project)
-    delete RELBUSY[pid]; delete RELTO[pid]; delete RELC[pid]; ghiStale(pid); await refresh(); pid === cur && drawRight(true);
+    delete RELBUSY[pid]; delete RELTO[pid]; delete RELC[pid]; ghiStale(pid); await refresh(); pid === cur && drawRight(true); ciPoll(pid, 15e3); /* #123 tag → CI run */
   } catch (e) { addEntry(pid, {kind: 'note', text: `Release failed: ${e}`}); delete RELBUSY[pid]; if (pid === cur && tab === 'build') drawRight(); }
 }
 // Build from the wizard: on success the build event commits + pushes what it changed (Cargo.lock…) ∵ else "Everything committed" flips red again
@@ -2071,6 +2078,8 @@ const RELB = {};
 // #120: busy at once (event confirms) → spinner + bar; no 2nd click → 2nd cargo blocked on the build-dir lock
 const buildNow = () => { (builds[cur] ||= {out: ''}).busy = true; drawRight(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); }); };
 const relBuild = () => { RELB[cur] = 1; buildNow(); };
+const ciBusy = pid => { const r = RELC[pid]?.c?.ci; return !!r && r.status !== 'completed'; }; // #123 CI run in flight (release_check, polled)
+const bBusy = pid => builds[pid]?.busy || ciBusy(pid);
 const buildingBtn = sm => `<button class="btn${sm ? ' sm' : ''}" disabled><i class="spin"></i>Building…</button>`;
 // Target platforms (#25): p.targets; [] = not picked → Mac follows ships_mac (MAC). *signing/notarizing optional
 const TGT = [['Desktop', [['windows', 'win', 'Windows', 'setup .exe (signed*)'], ['macos', 'apple', 'macOS', '.dmg with .app (notarized*)'], ['linux', 'term', 'Linux', '.AppImage']]],
@@ -2085,6 +2094,12 @@ const strictStage = p => Math.max(SK.indexOf(p.stage), RELTO[cur] ?? -1) >= SK.i
 function tgtWhy(p, id) { // '' = ready, else [why, fix js]
   const miss = tgtLocal(id) && DEPSC ? Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].includes(id)) : [];
   if (miss.length) return [`Needs ${miss.map(k => DEPS[k][0]).join(', ')} on this computer`, `openSettings('cx')`];
+  const c = RELC[cur]?.c; // #123 CI-built targets: facts from release_check (none yet → no verdict)
+  if (!tgtLocal(id) && c && !c.err) {
+    if (!c.remote) return ['Built by CI only: put this project on GitHub first', `rightTab('gh')`];
+    if (!(c.ci_os || []).includes(id)) return ['Not built on this computer and no CI job builds it', `tgtFlip('${id}').then(() => relAsk('ci_targets'))`];
+    if (c.ci?.why) return [`CI can't run: ${c.ci.why}`, `T.opener.openUrl('${c.ci.url}')`];
+  }
   const s = TGTSVC[id];
   if (s && strictStage(p) && !(svcOf(p).includes(s) && (svcDone(s) || (s === 'macsign' && SECRETS[cur]?.includes('APPLE_CERTIFICATE')))))
     return [`Release candidate and up: set up ${SERVICES[s].name} first`, `svcAdd('${s}').then(() => rightTab('svc'))`];
@@ -2095,7 +2110,7 @@ const tgtHtml = p => { const t = p.targets || [];
   return fold('p-targets', 'Target platforms', (t.length ? '' : '<p class="dim" style="margin:0 0 8px;font-size:13px">Not picked yet: tap what this project ships to.</p>')
     + TGT.map(([g, xs]) => `<div class="row" style="gap:8px;margin-bottom:6px"><small class="dim" style="width:56px">${g}</small><span class="seg">${xs.map(([id, ic, n, d]) => { const w = tgtWhy(p, id), on = t.includes(id);
       return `<button class="${on ? 'on' : ''}" ${w ? 'style="opacity:.4"' : ''} data-tip="${esc(w ? w[0] + (on ? ' · click to unpick' : ' · click to fix') : d)}" onclick="${w && !on ? esc(w[1]) : `tgtFlip('${id}')`}">${icon(ic)}${n}</button>`; }).join('')}</span></div>`).join('')
-    + (t.some(id => !tgtReady(p, id)) ? `<p style="margin:4px 0 6px;font-size:13px">${icon('info')} Not ready, left out of builds and releases: ${t.filter(id => !tgtReady(p, id)).map(tgtName).join(', ')} (hover for why)</p>` : '')
+    + (t.some(id => !tgtReady(p, id)) ? `<p style="margin:4px 0 6px;font-size:13px">${icon('info')} Not ready, Release is blocked till fixed or unpicked: ${t.filter(id => !tgtReady(p, id)).map(tgtName).join(', ')} (hover for why)</p>` : '')
     + '<small class="dim">* optional for Alpha and Beta; Release candidate and up need it (Services &amp; Secrets)</small>', 0,
     t.length ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${t.filter(id => tgtReady(p, id)).length}/${t.length}</span>` : '');
 };
@@ -2119,7 +2134,7 @@ async function buildHtml(p, has, live, force) {
   return tgtHtml(p) + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
-          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${builds[cur]?.busy ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : 'No build running'}"></div>`
+          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
         : live || GUESS[pid0] ? await guessHtml() : skel('b45'), 0, `<button class="ib" title="Edit commands" onclick="openManager(cur)">${icon('gear')}</button>`)
       + (!svcOf(p).includes('macsign') && mac
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>

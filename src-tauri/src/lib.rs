@@ -1055,10 +1055,20 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
             .filter_map(|e| std::fs::read_to_string(e.path()).ok()).collect::<Vec<_>>().join("\n").to_lowercase();
         let ci_os: Vec<&str> = [("windows", "windows-"), ("macos", "macos-"), ("linux", "ubuntu-"), ("ios", "ios"), ("android", "android")]
             .into_iter().filter(|(_, k)| wf.contains(k)).map(|(t, _)| t).collect();
+        // #123: last run; failed → first job annotation as `why` (billing/spending-limit refusals show only there)
+        let mut ci = if remote { store::gh_json(&["run", "list", "--limit", "1", "--json", "databaseId,conclusion,status,workflowName,url,headBranch"], &p.gh, Some(&p.path)).get(0).cloned() } else { None };
+        if let Some(r) = ci.as_mut().filter(|r| r["conclusion"] == "failure") {
+            let id = r["databaseId"].to_string();
+            let job = store::run("gh", &["run", "view", &id, "--json", "jobs", "--jq", ".jobs[0].databaseId"], Some(&p.path), &store::gh_env(&p.gh)).stdout.trim().to_string();
+            if !job.is_empty() {
+                let why = store::run("gh", &["api", &format!("repos/{{owner}}/{{repo}}/check-runs/{job}/annotations"), "--jq", ".[0].message // \"\""], Some(&p.path), &store::gh_env(&p.gh)).stdout.trim().to_string();
+                r["why"] = json!(why);
+            }
+        }
         json!({"readme": readme, "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
                "version": ver.as_ref().map(|v| &v.0), "vfile": ver.as_ref().map(|v| v.1), "tag": if tag.ok { tag.stdout.trim() } else { "" },
                "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon, "remote": remote, "code_t": store::code_time(&p.path),
-               "ci": if remote { store::gh_json(&["run", "list", "--limit", "1", "--json", "conclusion,status,workflowName,url"], &p.gh, Some(&p.path)).get(0).cloned() } else { None }})
+               "ci": ci})
     }).await.map_err(|e| e.to_string())
 }
 
