@@ -258,7 +258,11 @@ pre.diff .ctx { color:var(--faint); }
 .born { animation:hatch .4s ease-out; } /* from the pill's bubble (top-left) out to the full row */
 @keyframes hatch { from { clip-path:inset(0 50% calc(100% - 64px) 0 round 16px); opacity:.5; } to { clip-path:inset(0 0 0 0 round 0); opacity:1; } }
 .respawn { animation:respawn .5s ease-out; } @keyframes respawn { from { opacity:0; translate:0 -12px; } }
-#skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skel .av, #log.term #skel .cm { display:none; }
+#skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skelav, #log.term #skel .cm { display:none; }
+/* #181 terminal turn thinking: no Thinking pill → avatar ring runs the Working shimmer + timer badge (data-t) */
+#skelav { position:relative; flex:none; display:grid; padding:2px; margin:-2px; border-radius:50%; } #skelav > .av { border-color:var(--bg); }
+#skelav.on { background:linear-gradient(90deg, var(--line) 25%, var(--accent) 50%, var(--line) 75%) 0 0/200% 100%; animation:shimmer 1.8s linear infinite; }
+#skelav.on::after { content:attr(data-t); position:absolute; right:-10px; bottom:-7px; font:600 9.5px system-ui; font-variant-numeric:tabular-nums; color:#fff; background:var(--accent); padding:1px 4px; border-radius:7px; border:1.5px solid var(--bg); }
 #handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:4px 16px 16px 16px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
@@ -575,7 +579,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
-    <div class="col" id="skel" hidden><div class="crow claude"><img class="av" src="icon.svg" alt=""><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div>
+    <div class="col" id="skel" hidden><div class="crow claude"><span id="skelav"><img class="av" src="icon.svg" alt=""></span><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div>
       <div id="handpill" hidden>Preparing handover…</div>
       <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div></div>
   <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
@@ -1119,12 +1123,15 @@ function workTick() {
   const draw = () => { const rows = runRows(), now = Date.now();
     $('log').querySelectorAll('.tl > div.run').forEach(x => !rows.includes(x) && x.classList.remove('run'));
     for (const r of rows) { r.classList.add('run'); r.dataset.t = mmss(now - Math.min(...r._es.filter(e => PEND[cur].has(e.id)).map(e => PEND[cur].get(e.id)))); }
-    const d = doing[cur] || {text: 'Thinking', t: now};
-    $('workpill').hidden = !busy[cur] || !$('handpill').hidden || rows.length > 0;
+    const d = doing[cur] || {text: 'Thinking', t: now}, av = $('skelav');
+    // #181 turn uses the terminal preview (a live termcard after the last user msg) + Thinking → avatar ring + badge, no pill
+    const tt = !rows.length && d.text === 'Thinking' && !!busy[cur] && $('handpill').hidden && [...$('log').querySelectorAll('.termcard:not(.old), .crow.user')].pop()?.classList.contains('termcard');
+    av.classList.toggle('on', tt); if (tt) av.dataset.t = mmss(now - d.t);
+    $('workpill').hidden = !busy[cur] || !$('handpill').hidden || rows.length > 0 || tt;
     $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - d.t)}`; };
   if (on && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!on && workT) { clearInterval(workT); workT = null; }
-  if (on) draw(); else $('log').querySelectorAll('.tl > div.run').forEach(x => x.classList.remove('run'));
+  if (on) draw(); else { $('log').querySelectorAll('.tl > div.run').forEach(x => x.classList.remove('run')); $('skelav').classList.remove('on'); }
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
 const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
