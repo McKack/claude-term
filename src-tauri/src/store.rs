@@ -156,14 +156,58 @@ pub struct NetMac {
 
 /// #147 `ssh -o BatchMode=yes [user@]host` probe: login shell (zsh -l ∵ Homebrew/rustup PATH lives in .zprofile) prints
 /// key=value lines → {ok, os, xcode, rust, node, err}. rust also probes keg-only Homebrew rustup / ~/.cargo (not on PATH; #148 adds them). ConnectTimeout 8s ∵ an asleep/moved Mac must not hang the UI.
+fn mac_to(m: &NetMac) -> String {
+    if m.user.trim().is_empty() { m.host.trim().to_string() } else { format!("{}@{}", m.user.trim(), m.host.trim()) }
+}
+
 pub fn mac_test(m: &NetMac) -> serde_json::Value {
-    let to = if m.user.trim().is_empty() { m.host.trim().to_string() } else { format!("{}@{}", m.user.trim(), m.host.trim()) };
+    let to = mac_to(m);
     if m.host.trim().is_empty() { return serde_json::json!({"ok": false, "err": "No host set"}); }
     let sh = "zsh -lc 'echo os=$(uname -sm); echo xcode=$(xcode-select -p 2>/dev/null); echo rust=$(command -v cargo || ls ~/.cargo/bin/cargo /opt/homebrew/opt/rustup/bin/cargo 2>/dev/null | head -1); echo node=$(command -v node)'";
     let o = run("ssh", &["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new", &to, sh], None, &[]);
     let kv = |k: &str| o.stdout.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).unwrap_or("").trim().to_string();
     serde_json::json!({"ok": o.ok && !kv("os").is_empty(), "os": kv("os"), "xcode": kv("xcode"), "rust": kv("rust"), "node": kv("node"),
         "err": o.stderr.lines().filter(|l| !l.trim().is_empty() && !l.starts_with("Warning: Permanently added")).last().unwrap_or("").trim()})
+}
+
+/// #148 idempotent dep install on the Network Mac (rerunnable): node + Homebrew rustup (keg-only → PATH line in ~/.zprofile),
+/// stable toolchain, both mac targets (universal builds). Homebrew/Xcode not auto-installed ∵ need the Mac password/GUI → ERR/WARN lines.
+/// Script via stdin to `zsh -l -s` (no quoting hell); each output line → on_line (progress). Ok = exit 0 + DONE.
+const MAC_SETUP: &str = r#"exec 2>&1
+B=/opt/homebrew/bin/brew; [ -x $B ] || B=/usr/local/bin/brew
+[ -x $B ] || { echo "ERR Homebrew missing: install it from https://brew.sh on the Mac (asks the Mac password), then run Set up again"; exit 2; }
+xcode-select -p >/dev/null 2>&1 || echo "WARN Xcode tools missing: run xcode-select --install on the Mac"
+command -v node >/dev/null || { echo "STEP Installing Node.js"; $B install node || exit 3; }
+R=$($B --prefix)/opt/rustup/bin
+command -v rustup >/dev/null || [ -x $R/rustup ] || { echo "STEP Installing rustup"; $B install rustup || exit 4; }
+if [ -x $R/rustup ] && ! grep -q opt/rustup/bin ~/.zprofile 2>/dev/null; then echo "STEP Adding rustup to PATH (~/.zprofile)"; echo "export PATH=\"$R:\$PATH\"" >> ~/.zprofile; fi
+export PATH="$R:$PATH"
+rustup default >/dev/null 2>&1 || { echo "STEP Installing Rust stable"; rustup default stable || exit 5; }
+echo "STEP Adding Mac targets (Apple silicon + Intel)"; rustup target add aarch64-apple-darwin x86_64-apple-darwin || exit 6
+echo DONE
+"#;
+
+pub fn mac_setup(m: &NetMac, on_line: impl Fn(&str)) -> bool {
+    use std::io::{BufRead, Read, Write};
+    if m.host.trim().is_empty() { on_line("ERR No host set"); return false; }
+    let Some(ssh) = which("ssh") else { on_line("ERR ssh not found"); return false; };
+    let mut c = command(&ssh);
+    c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new", &mac_to(m), "zsh -l -s"])
+        .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    let Ok(mut ch) = c.spawn() else { on_line("ERR ssh failed to start"); return false; };
+    if let Some(mut i) = ch.stdin.take() { let _ = i.write_all(MAC_SETUP.as_bytes()); } // dropped → EOF → script runs
+    let mut done = false;
+    for l in std::io::BufReader::new(ch.stdout.take().unwrap()).lines().map_while(Result::ok) {
+        done |= l.trim() == "DONE";
+        if !l.trim().is_empty() { on_line(l.trim_end()); }
+    }
+    let ok = ch.wait().map_or(false, |s| s.success()) && done;
+    if !ok { // ssh's own error (unreachable, key refused) only lands on stderr
+        let mut e = String::new();
+        let _ = ch.stderr.take().unwrap().read_to_string(&mut e);
+        if let Some(l) = e.lines().filter(|l| !l.trim().is_empty() && !l.starts_with("Warning: Permanently added")).last() { on_line(&format!("ERR {}", l.trim())); }
+    }
+    ok
 }
 
 /// A helper agent Claude Code can hand work to (a subagent), usually on a cheaper model.

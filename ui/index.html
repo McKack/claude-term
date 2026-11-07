@@ -1678,6 +1678,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { if (d.keep) $('suggest').hidden = true; drawChrome(); drawLog(); } },
   queued: () => refresh(),
+  mac_setup: () => macLine(d.line),
   janitor: () => toast(`Storage Janitor freed ${mb(d.freed)} (old caches, Claude Code versions)`, 'ok'),
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
@@ -3175,10 +3176,25 @@ function macHtml() {
     ${optRow('4. Build folder on the Mac', 'Empty = ~/clauracle-build', `<div style="width:260px">${macIn('dir', '~/clauracle-build')}</div>`)}
     ${optRow('5. Test connection', t ? (t.ok ? esc(t.os) : '<span class="err">' + esc(t.err || 'Failed') + '</span>') : 'Logs in with your key and checks the build tools',
       `<button class="btn sm" id="macTestBtn" onclick="macTest()" ${S.mac?.host ? '' : 'disabled'}>${icon('loop')}Test</button>`)}
-    ${t?.ok ? chk('Xcode tools', t.xcode, 'xcode-select --install on the Mac') + chk('Rust', t.rust, 'https://rustup.rs on the Mac') + chk('Node.js', t.node, 'https://nodejs.org on the Mac') : ''}</div>`;
+    ${t?.ok ? chk('Xcode tools', t.xcode, 'xcode-select --install on the Mac') + chk('Rust', t.rust, 'Set up installs it') + chk('Node.js', t.node, 'Set up installs it')
+      + optRow('6. Build tools', MACS.ok ? '<span style="color:var(--ok)">Ready: Node.js, Rust + both Mac targets</span>' : 'Installs what is missing (Homebrew node, rustup, Apple silicon + Intel targets). Safe to rerun.',
+        `<button class="btn sm" onclick="macSetup()" ${MACS.busy ? 'disabled' : ''}>${MACS.busy ? '<span class="spin"></span>Installing…' : icon('hammer') + 'Set up'}</button>`)
+      + (MACS.lines.length ? `<div id="mac-log" class="mono dim" style="font-size:12px;max-height:10em;overflow:auto;white-space:pre-wrap;margin:4px 0">${MACS.lines.map(macLn).join('')}</div>` : '') : ''}</div>`;
+}
+/* #148 Set up = store::mac_setup over ssh; lines stream in via event mac_setup (STEP/WARN/ERR prefixes styled), re-tests at end. */
+const MACS = {busy: false, ok: false, lines: []};
+const macLn = l => { const m = /^(STEP|WARN|ERR|DONE) ?(.*)/.exec(l) || [0, '', l];
+  return `<div${m[1] === 'ERR' ? ' class="err"' : m[1] === 'WARN' ? ' style="color:var(--crab)"' : m[1] === 'STEP' ? ' style="color:var(--text)"' : ''}>${esc(m[1] === 'DONE' ? 'Done' : m[2])}</div>`; };
+function macLine(l) { MACS.lines.push(l); const g = $('mac-log'); if (!g) return $('set-mac') && ($('set-mac').outerHTML = macHtml());
+  g.insertAdjacentHTML('beforeend', macLn(l)); g.scrollTop = g.scrollHeight; }
+async function macSetup() {
+  Object.assign(MACS, {busy: true, ok: false, lines: []}); $('set-mac').outerHTML = macHtml();
+  MACS.ok = await call('mac_setup', {mac: S.mac}).catch(e => (macLine('ERR ' + e), false)); MACS.busy = false;
+  toast(MACS.ok ? 'Mac build tools ready' : 'Mac setup failed: see Settings › Build & Release', MACS.ok ? 'ok' : 'err');
+  await macTest();
 }
 async function macSave() {
-  S.mac = {host: $('mac-host').value.trim(), user: $('mac-user').value.trim(), dir: $('mac-dir').value.trim()}; MACT = null;
+  S.mac = {host: $('mac-host').value.trim(), user: $('mac-user').value.trim(), dir: $('mac-dir').value.trim()}; MACT = null; MACS.ok = false; MACS.lines = [];
   await call('set_mac', {mac: S.mac}); $('set-mac').outerHTML = macHtml();
 }
 async function macTest() {
