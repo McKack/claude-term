@@ -964,7 +964,7 @@ function drawChrome() {
   $('tWeb').title = `Web search: ${S.web !== false ? 'on' : 'off'}, in every project (click to switch)`;
   const next = nextUp(cur);
   // idle without a fresh handover: still offer the next task (sent in this session, no clear) or, queue empty, presets
-  const idle = !busy[cur] && !p.ready && p.cont !== 'off' && !queue[cur]?.length && !!logs[cur]?.length;
+  const idle = !busy[cur] && !reading[cur] /* #145: Continue sent, turn not up yet → no bar flash */ && !p.ready && p.cont !== 'off' && !queue[cur]?.length && !!logs[cur]?.length;
   const wasHid = $('ready').hidden; if (wasHid) $('ready').classList.add('tuck'); $('ready').hidden = !(p.ready || idle || triaging[cur]);
   if (wasHid && !$('ready').hidden) readyPeek();
   // #63: task done, Continue waiting → pop up once per ready; tucks back by the usual rules (4s timer, click elsewhere, focus)
@@ -1567,8 +1567,9 @@ function readyPeek() { // drawChrome: just shown
 }
 const contQ = {}; // pid → Continue clicked mid-turn; runs on turn end (status busy:false)
 // #102: click → instant 'Continue: <task>' bubble, display only (never sent); idle-bar path skips it ∵ sendNow already shows its Carry-on bubble
-const contNote = pid => nextUp(pid)[0] && addEntry(pid, {kind: 'user', text: 'Continue: ' + nextUp(pid)[0]});
-const contClick = pid => { const r = busy[pid] || P(pid).ready; busy[pid] ? (contQ[pid] = true, drawChrome()) : contGo(pid); if (r) contNote(pid); };
+// #145: cont:true → `cleared` doesn't fold it into the old log; queued click → bubble when it actually runs (status handler), else cont_ folds it above Fresh session
+const contNote = (pid, t = nextUp(pid)[0]) => t && addEntry(pid, {kind: 'user', text: 'Continue: ' + t, cont: true});
+const contClick = pid => { if (busy[pid]) { contQ[pid] = true; return drawChrome(); } const r = P(pid).ready, t = nextUp(pid)[0]; contGo(pid); if (r) contNote(pid, t); };
 function toTasks(pid, texts) {
   triaging[pid] = true;
   call('send', {pid, text: (issueOn(pid) ? TRIAGE_ISSUES : TRIAGE) /* issueOn ∵ issueQ = null until team loads → wrongly PLAN.md */ + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n'), images: [], files: []});
@@ -1666,13 +1667,13 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
   status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
-    if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid] || contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
-      Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) contGo(d.pid); else flushQueue(d.pid); }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
+    if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
+      Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) { const r = cq && P(d.pid).ready, t = nextUp(d.pid)[0]; contGo(d.pid); if (r) contNote(d.pid, t); } else flushQueue(d.pid); }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; },
-  cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note')) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note' && !x.cont)) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   pushed: () => { ghiStale(d.pid); if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { if (d.keep) $('suggest').hidden = true; drawChrome(); drawLog(); } },
