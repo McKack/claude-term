@@ -229,8 +229,9 @@ fn send(app: AppHandle, st: St, pid: String, text: String, images: Option<Vec<Va
     if images.is_empty() {
         return live.inbox.push(Input::Msg(text));
     }
-    let mut blocks: Vec<Value> = images.iter().map(|i| json!({"type": "image", "source": {"type": "base64",
-        "media_type": i["media_type"], "data": i["data"]}})).collect();
+    // each image is labelled with its name first ∴ a "[name]" reference in the text (#189) points at the right one
+    let mut blocks: Vec<Value> = images.iter().flat_map(|i| [json!({"type": "text", "text": format!("[{}]", i["name"].as_str().unwrap_or("image"))}),
+        json!({"type": "image", "source": {"type": "base64", "media_type": i["media_type"], "data": i["data"]}})]).collect();
     blocks.push(json!({"type": "text", "text": if text.trim().is_empty() { "(see the image)".to_string() } else { text }}));
     live.inbox.push(Input::Rich(json!(blocks)));
 }

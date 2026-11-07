@@ -341,7 +341,7 @@ pre.diff .ctx { color:var(--faint); }
 .att { position:relative; display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--bg); font-size:12px; padding:4px 26px 4px 6px; max-width:220px; }
 .att img { width:44px; height:44px; object-fit:cover; border-radius:7px; } .att span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .att button { position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; border:0; background:var(--hover); color:var(--dim); cursor:pointer; display:grid; place-items:center; padding:0; }
-.att button svg { width:11px; height:11px; }
+.att button svg { width:11px; height:11px; } .att button.aref { top:auto; bottom:3px; }
 .tb { display:flex; align-items:center; gap:2px; margin-top:4px; }
 #send { width:32px; height:32px; border-radius:50%; border:0; background:var(--primary); color:var(--ink); display:grid; place-items:center; cursor:pointer; }
 #send:hover { background:var(--primary2); } #send:disabled { opacity:.4; cursor:default; }
@@ -415,6 +415,8 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .qdrag { flex:none; align-self:center; border:0; background:none; color:var(--faint); cursor:grab; padding:0 2px; font-size:14px; line-height:1.2; opacity:0; touch-action:none; }
 .ti:hover > .qdrag, .ti.sortable-fallback > .qdrag, .ti:hover > .qedit { opacity:1; }
 .qedit { flex:none; align-self:center; width:22px; height:22px; opacity:0; } .qedit svg { width:13px; height:13px; }
+.ti { position:relative; } .qpill { position:absolute; right:0; top:3px; display:flex; align-items:center; gap:1px; padding:1px 4px; border-radius:999px; background:rgba(18,18,22,.9); color:#eee; box-shadow:0 2px 8px rgba(0,0,0,.3); opacity:0; pointer-events:none; transition:opacity .15s; }
+.qpill > * { opacity:1; color:inherit; } .ti:hover > .qpill, .ti.sortable-fallback > .qpill { opacity:1; pointer-events:auto; } /* #191 floats over the title end: no reserved column */
 .chips { display:flex; flex-wrap:wrap; gap:4px; } .chips .pill { cursor:pointer; opacity:.45; } .chips .pill.on { opacity:1; }
 /* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
 .ti.qghost { background:color-mix(in srgb, var(--accent) 14%, transparent); outline:1px dashed var(--accent); outline-offset:-1px; border-radius:6px; }
@@ -1470,9 +1472,14 @@ function addEntry(pid, e) {
 
 // ---- composer: text, pasted images (previews), attached files ----
 const hasInput = () => $('prompt').value.trim() || (atts[cur] || []).length;
+function attRef(i) { // inserts [name] at the caret; a space before/after only where the neighbour isn't one already
+  const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = `[${atts[cur][i].name}]`;
+  const ins = (s && !/\s/.test(v[s - 1]) ? ' ' : '') + r + (e < v.length && /\s/.test(v[e]) ? '' : ' ');
+  el.setRangeText(ins, s, e, 'end'); el.focus(); grow(); keepDraft();
+}
 function drawAtts() {
   $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})">` : icon('file')}<span>${esc(a.name)}</span>
-    <button onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button></div>`).join('');
+    <button onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button><button class="aref" title="Refer to this image in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button></div>`).join('');
   if (cur) { drawChrome(); keepDraft(); }
 }
 // every keystroke/attachment lands on disk (debounced), so nothing typed is ever lost
@@ -1574,7 +1581,9 @@ document.addEventListener('keydown', e => {
 $('dlg').addEventListener('close', () => { VW = ED = null; });
 function addImage(file) {
   const r = new FileReader();
-  r.onload = () => { (atts[cur] ||= []).push({name: file.name || 'pasted image', url: r.result, media_type: file.type, data: r.result.split(',')[1]}); drawAtts(); };
+  const rid = () => Array.from({length: 3}, () => Math.random().toString(36).slice(2, 5).padEnd(3, '0')).join('-');
+  const name = !file.name || /^image\.\w+$/i.test(file.name) ? rid() + '.' + ((file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')) : file.name;
+  r.onload = () => { (atts[cur] ||= []).push({name, url: r.result, media_type: file.type, data: r.result.split(',')[1]}); drawAtts(); };
   r.readAsDataURL(file);
 }
 const addPaths = paths => { for (const p of paths) (atts[cur] ||= []).push({name: p.split(/[\\/]/).pop(), path: p}); drawAtts(); };
@@ -1593,6 +1602,7 @@ T.event.listen('tauri://drag-drop', e => { $('composer').classList.remove('drop'
 function send() {
   const t = $('prompt').value, a = atts[cur] || [];
   if (!t.trim() && !a.length) return;
+  if (!a.length && !editing[cur] && (/^\s*\/build\b/i.test(t) || BUILD_RE.test(t))) { $('prompt').value = ''; grow(); keepDraft(); return buildLocal(cur, /^\s*\/build\s+all\b/i.test(t)); }
   const ed = editing[cur]; delete editing[cur];
   $('prompt').value = ed ? ed.prev.text : ''; atts[cur] = ed ? ed.prev.atts : []; grow(); drawAtts(); drawEditBar();
   const pid = cur;
@@ -1745,7 +1755,7 @@ function sendNow(pid, {text: t, atts: a, work}, e) {
   (UNREAD[pid] ||= []).push(e);
   if (work) P(pid).work = work;
   const sm = {text: t, atts: a, work}; (INBOX[pid] ||= []).push(sm); keepDraft(pid, true);
-  call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files, work: work || null})
+  call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data, name: x.name})), files, work: work || null})
     .then(() => e.st === 'pend' && tick(e, 'sent'), err => { tick(e, 'fail'); INBOX[pid] = INBOX[pid].filter(x => x !== sm); (queue[pid] ||= []).push(sm); if (pid === cur) drawQueue(); keepDraft(pid, true); toast(`Message not sent (kept in the queue): ${err}`, 'err'); });
 }
 // one row of pills (first words; click = edit), ‹ › scroll it when it overflows
@@ -1833,7 +1843,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
   usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },
-  commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
+  commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = [{name: 'build', argumentHint: '[all]', description: 'Clauracle: build a local copy and run it (all = every target)'}, ...d.commands.map(c => typeof c === 'string' ? {name: c} : c)]; },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.step === 'build' && b.busy && d.line && d.pid === cur && tab === 'build' && /\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/i.test(d.line) && /Finished \d+ bundle/.test(b.out.slice(b.from || 0))) drawRight(); /* #174 an artifact landed → tick it */
@@ -2255,6 +2265,18 @@ async function relRelease(to, btn) {
 const RELB = {};
 // #120: busy at once (event confirms) → spinner + bar; no 2nd click → 2nd cargo blocked on the build-dir lock
 const buildNow = () => { const b = builds[cur] ||= {out: ''}; b.from = b.out.length; b.busy = true; b.manual = true; drawRight(); tabDots(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); tabDots(); }); };
+/* /build (or "build and run a new local copy"): THIS machine's build in plain code (no WSL / Network Mac passes), then run it;
+   Clauracle's own repo restarts into it. Never filed, never queued behind tasks. /build all = every target, no run. */
+const BUILD_RE = /^\s*(please\s+|can you\s+|now\s+)*((do|make) (me )?a\s+)?(new\s+)?(local\s+)?(re)?build(\s+(it|clauracle|a new (local )?copy))?,?\s+(and|\+|&|then)\s+(run|restart|launch|start)(\s+(it|into it|the new (one|build|copy)|a new (local )?copy( of (it|yourself|clauracle))?))?[.!]*\s*$/i;
+async function buildLocal(pid, all) {
+  const b = builds[pid] ||= {out: ''}; b.from = b.out.length; b.busy = true; b.manual = true; if (pid === cur) drawRight(); tabDots();
+  addEntry(pid, {kind: 'note', text: all ? 'Building every target…' : 'Building a local copy…', ts: new Date().toISOString()});
+  const ok = await call('run_step', {pid, step: all ? 'build' : 'local'}).catch(() => false);
+  if (!ok) return addEntry(pid, {kind: 'note', text: 'Build failed: see Build & Release › Output', ts: new Date().toISOString()});
+  if (all) return addEntry(pid, {kind: 'note', text: 'Built every target', ts: new Date().toISOString()});
+  addEntry(pid, {kind: 'note', text: 'Built: starting it', ts: new Date().toISOString()});
+  call('restart_into', {pid}).catch(() => call('run_step', {pid, step: 'run'})); // own repo → swap into it, else Run
+}
 const relBuild = () => { RELB[cur] = 1; buildNow(); };
 const ciBusy = pid => { const r = RELC[pid]?.c?.ci; return !!r && r.status !== 'completed'; }; // #123 CI run in flight (release_check, polled)
 const bBusy = pid => builds[pid]?.busy || ciBusy(pid);
@@ -2349,7 +2371,7 @@ async function buildHtml(p, has, live, force) {
   return tgtHtml(p) + actHtml() + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
-          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>${thenRow(p)}<div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
+          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
         : live || GUESS[pid0] ? await guessHtml() : skel('b45'), 0, `<button class="ib" title="Edit commands" onclick="buildSet()">${icon('gear')}</button>`)
       + (!svcOf(p).includes('macsign') && mac
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
@@ -2366,7 +2388,7 @@ function thenMenu(el, w) { // w: 'm' = Settings project (mp), else the open proj
   const p = w === 'm' ? P(mp) : P(), {b, t} = aft(p.build.after);
   const put = (b, t) => { const v = !b ? '' : b === 'smart' && !t ? 'smart_build' : b + (t ? '_' + t : '');
     w === 'm' ? setBuild('after', v) : setP({build: {...P().build, after: v}}).then(() => drawRight()); };
-  menuAt(el, [{title: '1 · Build'}, ...[['build', 'Build', 'every task'], ['smart', 'Smart build', 'only on big changes / fixes']].map(([k, l, h]) => ({label: l, hint: h, check: b === k, run: () => put(b === k ? '' : k, t)})),
+  menuAt(el, [{label: 'Do nothing', hint: 'after each task', check: !b, run: () => put('', '')}, '-', {title: '1 · Build'}, ...[['build', 'Build', 'every task'], ['smart', 'Smart build', 'only on big changes / fixes']].map(([k, l, h]) => ({label: l, hint: h, check: b === k, run: () => put(b === k ? '' : k, t)})),
     {and: 'and'}, ...Object.entries(THEN).map(([k, l]) => ({label: l, check: t === k, run: () => put(b || 'build', t === k ? '' : k)}))]);
 }
 const thenRow = p => `<div class="row" style="gap:8px;font-size:13px;margin:8px 0" title="Runs in plain code when the AI finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}">${icon('hammer')}<span class="grow">Then</span>${thenBtn(p)}</div>`;
@@ -2423,6 +2445,7 @@ function drawGh(g, busy) {
   box.innerHTML = sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
       : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p><div class="btnrow"><button class="btn" onclick="openManager(cur)">${icon('gh')}Pick another account</button><button class="btn" onclick="TABREF.gh(); drawRight(true)">${icon('loop')}Try again</button></div>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
       : g.err ? `<p class="err">${esc(g.err)}</p>` : publishForm(p, g.users || []), `<button class="ib${busy ? ' upd' : ''}" title="${busy ? 'Updating…' : 'Refresh'}" onclick="drawRight(true)">${icon('loop')}</button>`)
+    + (g.repo ? thenRow(p) : '')
     + '<div id="atp"></div>' // Plan (issue queue / PLAN.md, drag order, Suggestions, Cleanup): drawAtp fills it
     + `<div id="tasksBox">${tasksHtml()}</div>`
     + (g.repo ? fold('collab', 'Collaborators', `<div id="collabBox">${collabHtml(cur)}</div>`, COLLAB[cur]?.people?.length || 0) : '')
@@ -2573,7 +2596,7 @@ const issuesRest = () => { const iq = issueQ(cur), me = (team[cur]?.me || '').to
   return `<div class="tlist">${teamTasks(cur).filter(isIdea).map((x, i) => tli(issueHtml(x), {cls: 'sug',
       end: `<button class="ib" title="Accept: queue it" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: close the issue" onclick="planWait(${i}, false)">${icon('x')}</button>`})).join('')
     + teamTasks(cur).filter(x => !isIdea(x) && !isWait(x) && !iq.includes(x)).map(x => tli(issueHtml(x), {cls: 'in_progress', end: `<span class="pill">${esc(x.assignees.map(a => a.login).join(', '))}</span>`})).join('')}</div>
-    ${teamTasks(cur).some(isWait) ? `<div class="label" title="Blocked on you (label needs-user): the AI skips them until you click Unblocked">Waiting on you</div><div class="tlist">${teamTasks(cur).filter(isWait).map(x => tli(issueHtml(x), {cls: 'sug', end: `<button class="btn sm" title="You did your part: back into the AI's queue" onclick="taskDo('unblock', ${x.number})">Unblocked</button>`})).join('')}</div>` : ''}
+    ${teamTasks(cur).some(isWait) ? `<div class="label">Waiting on you</div><p class="dim" style="margin:0 0 4px;font-size:12px">The AI is blocked on something only you can do (the issue says what). Do it, then click Done: the task goes back into the AI's queue.</p><div class="tlist">${teamTasks(cur).filter(isWait).map(x => tli(issueHtml(x), {cls: 'sug', end: `<button class="btn sm" title="You did your part: back into the AI's queue" onclick="taskDo('unblock', ${x.number})">${icon('check')}Done</button>`})).join('')}</div>` : ''}
     <div class="row"><input id="newTask" class="grow" placeholder="New issue (task)" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add issue" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`; };
 const nextUp = pid => { const iq = issueQ(pid); if (iq) return iq.map(x => `#${x.number} ${x.title}`); const q = S.queues?.[pid] || []; return q.length ? q : teamTasks(pid).filter(x => !isDoing(x)).map(x => `#${x.number} ${x.title}`); };
 function tasksHtml() {
@@ -2630,6 +2653,13 @@ async function taskDo(action, arg) {
 // claim it on GitHub (others see it's taken), then hand it to Claude
 /* pre-fill the composer: appended below what's typed (was replaced = typed text lost), saved at once */
 function putPrompt(t) { const p = $('prompt'); p.value = p.value.trim() ? p.value.replace(/\s*$/, '') + '\n\n' + t : t; grow(); if (cur) { keepDraft(cur, true); drawChrome(); } p.focus(); }
+// #191 ▶: this issue becomes the next one (front of the order, pinned as work); idle → the AI starts it now
+function playTask(n) {
+  const pid = cur, p = P(pid), order = [n, ...(p.order || []).filter(x => x !== n)];
+  p.order = order; p.work = n; call('update_project', {pid, changes: {order, work: n}}).catch(() => {}); drawRight();
+  if (busy[pid]) return toast(`#${n} is next, after the current task`, 'info');
+  contGo(pid);
+}
 async function taskStart(n) {
   const pid = cur, x = teamTasks(cur).find(t => t.number === n);
   await taskDo('claim', n);
@@ -3567,10 +3597,6 @@ function lookPage() {
       `<span class="row" style="gap:10px"><input type="range" min="80" max="150" step="5" value="${LOOK.scale}" style="width:160px;padding:0;border:0;background:none"
         oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="setLook({scale:+this.value})"><b style="width:40px">${LOOK.scale}%</b>
         <button class="btn sm" onclick="setLook({scale:100})">Reset</button></span>`)}</div>
-    <div class="label">Updates</div>
-    <div class="box">${optRow('Check for updates', S.update_at ? `Last checked ${gago(S.update_at * 1e3)}` : 'Not checked yet',
-      `<span class="row" style="gap:6px"><span class="seg">${[[0, 'Never'], [24, 'Every 24h'], [168, 'Weekly'], [720, 'Monthly']].map(([h, t]) => `<button class="${S.update_every === h ? 'on' : ''}" onclick="call('set_update_every', {hours: ${h}}).then(() => openSettings())">${t}</button>`).join('')}</span>
-      <button class="btn sm" onclick="this.disabled = true; checkUpdate(true).then(() => openSettings())">Check now</button></span>`)}</div>
     <div class="label">Performance</div>
     <div class="box">${optRow('Frosted glass', 'Blur behind menus and dialogs. Off is lighter to draw', sw(LOOK.glass, 'setLook({glass:this.checked})'))}
     ${optRow('Animations', 'Shimmer, pulses and fades', sw(LOOK.motion, 'setLook({motion:this.checked})'))}</div>`;
@@ -3582,7 +3608,11 @@ function notifyPage() {
     <div class="label">Phone</div><p class="dim">Install the free <a href="#" data-url="https://ntfy.sh" style="color:var(--accent)">ntfy</a> app and subscribe to this topic. Anyone who knows the topic can read the pushes, so keep it random.</p>
     <div class="row"><input id="topic" class="grow sel mono" value="${esc(n.ntfy)}" placeholder="Off" onchange="saveNotify({ntfy:this.value.trim()})">
       <button class="btn" onclick="$('topic').value='clauracle-'+crypto.randomUUID().slice(0,13); saveNotify({ntfy:$('topic').value})">Generate</button></div>
-    <p><button class="btn" onclick="call('test_notify')">${icon('bell')}Send a test</button></p>`;
+    <p><button class="btn" onclick="call('test_notify')">${icon('bell')}Send a test</button></p>
+    <div class="label">Updates</div>
+    <div class="box">${optRow('Check for updates', S.update_at ? `Last checked ${gago(S.update_at * 1e3)}` : 'Not checked yet',
+      `<span class="row" style="gap:6px"><span class="seg">${[[0, 'Never'], [24, 'Every 24h'], [168, 'Weekly'], [720, 'Monthly']].map(([h, t]) => `<button class="${S.update_every === h ? 'on' : ''}" onclick="call('set_update_every', {hours: ${h}}).then(() => openSettings())">${t}</button>`).join('')}</span>
+      <button class="btn sm" onclick="this.disabled = true; checkUpdate(true).then(() => openSettings())">Check now</button></span>`)}</div>`;
 }
 const saveNotify = c => call('set_notify', {notify: {...S.notify, ...c}}).then(refresh);
 // Claude Code settings files (user / project / project-local): permissions lists, defaultMode, env; raw JSON fallback.
@@ -3797,7 +3827,7 @@ function drawAtp() {
           : !iq && P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
         + L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
           ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
-            end: (iq ? `<button class="ib qedit" title="Edit issue" onclick="event.stopPropagation(); editIssue(${iq[i].number})">${icon('pen')}</button>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⠿</button>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"')
+            end: '<span class="qpill">' + (iq ? `<button class="ib qedit" title="Edit issue" onclick="event.stopPropagation(); editIssue(${iq[i].number})">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⠿</button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"')
         + (iq ? issuesRest() : '')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}${iq ? ' · not issues yet' : ''}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))

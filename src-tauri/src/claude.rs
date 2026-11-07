@@ -54,6 +54,8 @@ const ISSUE_RULES: &str = "
   for. Verify inside the task (tests, build, the `ui` tool) before closing it. A worthwhile idea → at most one issue with
   `--label suggestion` (the user accepts or dismisses it; rare). A task too big for one session stays ONE issue: comment
   the progress on it and hand over; the next session resumes it first.
+- \"Build and run\" / \"restart into a new copy\" = an action, not a task: do it now (this machine's build only, never every
+  release target unless asked) and start it (Clauracle itself: mcp__clauracle__restart with the new exe). Close any issue filed for it.
 - Blocked on the user (their login, password, hardware, billing, a decision, a check only they can do): `gh issue edit N
   --add-label needs-user` + one comment saying exactly what they must do, then move on (ready). Clauracle shows it under
   \"Waiting on you\" and puts it back in the queue when they unblock it. Never file a separate issue for that.
@@ -1158,6 +1160,9 @@ fn shell(cmd: &str) -> tokio::process::Command {
 /// Returns (ok, last 40 lines of output).
 pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -> (bool, String) {
     let Some(p) = st.project(pid) else { return (false, String::new()) };
+    // "local" (/build, "build and run"): the build command on THIS machine only, no WSL / Network Mac passes
+    let local = step == "local";
+    let step = if local { "build" } else { step };
     let cmd = step_cmd(&p, step);
     if cmd.trim().is_empty() {
         return (true, String::new());
@@ -1169,7 +1174,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     let sign = store::sign_env(&p.path);
     let mut cmds = vec![(cmd.clone(), shell(&cmd), None::<String>)];
     // #131: Windows + Linux target + WSL → 2nd pass in WSL (args set by Rust, no cmd.exe quoting); WSLENV forwards signing keys
-    if cfg!(windows) && step == "build" && p.targets.iter().any(|t| t == "linux") && store::wsl_ok() {
+    if cfg!(windows) && step == "build" && !local && p.targets.iter().any(|t| t == "linux") && store::wsl_ok() {
         let mut w = tokio::process::Command::new("wsl");
         w.args(["-e", "bash", "-lc", &store::wsl_script(pid, &cmd)])
             .env("WSLENV", sign.iter().map(|(k, _)| k.as_str()).chain(std::env::var("WSLENV").ok().as_deref()).collect::<Vec<_>>().join(":"));
@@ -1179,7 +1184,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     }
     // #149: non-Mac host + macos target + Network Mac → sync tree, build over ssh (script + #150 signing env on stdin), pull bundles
     let mac = st.cfg.lock().unwrap().mac.clone();
-    let remote = !cfg!(target_os = "macos") && step == "build" && p.targets.iter().any(|t| t == "macos") && !mac.host.trim().is_empty();
+    let remote = !cfg!(target_os = "macos") && step == "build" && !local && p.targets.iter().any(|t| t == "macos") && !mac.host.trim().is_empty();
     if remote {
         let mut c = tokio::process::Command::new("ssh");
         c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new",
