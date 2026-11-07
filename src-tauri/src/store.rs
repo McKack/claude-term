@@ -929,24 +929,44 @@ pub fn can_push(user: &str, owner: &str, repo: &str) -> bool {
 
 // ---- Connections & Skills ---------------------------------------------------------------------
 
-pub fn mcp_line(line: &str) -> Option<(String, String)> {
-    let re = Regex::new(r"^(\S.*?): .* - (✔|✓|!|✘|✗) ?(.*)$").unwrap();
-    re.captures(line.trim()).map(|c| (c[1].to_string(), c[3].to_string()))
-}
-
 pub fn server_id(label: &str) -> String {
     Regex::new(r"\W").unwrap().replace_all(label, "_").to_string() // "claude.ai Gmail" -> mcp__claude_ai_Gmail__*
 }
 
-/// MCP servers (from `claude mcp list`, the one place that also knows claude.ai connectors) and skills
-/// (yours, installed plugins', Clauracle's own).
-pub fn catalog(plugin_dir: &Path) -> Vec<Item> {
-    let mut items = vec![];
-    for line in run("claude", &["mcp", "list"], None, &[]).stdout.lines() {
-        if let Some((label, note)) = mcp_line(line) {
-            items.push(Item { id: format!("mcp:{}", server_id(&label)), label, kind: "mcp".into(), note });
-        }
+/// #155 MCP server names from config files only: `claude mcp list` health-checks = launches every server (AppControl toast
+/// at app start). ~/.claude.json user + every local scope, `.mcp.json` of our projects. claude.ai connectors live only on
+/// the server → `old` ones kept; new ones arrive via session init (`mcp_seen`).
+fn mcp_items(paths: &[String], old: &[Item]) -> Vec<Item> {
+    let h = dirs::home_dir().unwrap_or_default();
+    let read = |p: PathBuf| std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(t.trim_start_matches('\u{feff}')).ok()).unwrap_or_default();
+    let keys = |v: &serde_json::Value| v.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()).unwrap_or_default();
+    let cj = read(h.join(".claude.json"));
+    let mut names: Vec<(String, String)> = keys(&cj["mcpServers"]).into_iter().map(|n| (n, "user".into())).collect();
+    for p in cj["projects"].as_object().into_iter().flat_map(|o| o.values()) { names.extend(keys(&p["mcpServers"]).into_iter().map(|n| (n, "local".into()))); }
+    for p in paths { names.extend(keys(&read(Path::new(p).join(".mcp.json"))["mcpServers"]).into_iter().map(|n| (n, "project".into()))); }
+    let mut items: Vec<Item> = old.iter().filter(|i| i.kind == "mcp" && i.label.starts_with("claude.ai ")).cloned().collect();
+    for (label, note) in names {
+        if label != "clauracle" && !items.iter().any(|i| i.label == label) { items.push(Item { id: format!("mcp:{}", server_id(&label)), label, kind: "mcp".into(), note }); }
     }
+    items
+}
+
+/// #155 servers a session reported in its init message (claude.ai connectors aren't in any local file) → catalog.
+/// True = new ones added (caller reconnects so deniedMcpServers covers them). Plugin servers follow enabledPlugins.
+pub fn mcp_seen(cfg: &mut Config, init: &serde_json::Value) -> bool {
+    let mut added = false;
+    for s in init["mcp_servers"].as_array().into_iter().flatten() {
+        let (Some(label), src) = (s["name"].as_str(), s["source"].as_str().unwrap_or("")) else { continue };
+        if label == "clauracle" || src == "plugin" || src == "sdk" || cfg.catalog.iter().any(|i| i.kind == "mcp" && i.label == label) { continue; }
+        cfg.catalog.push(Item { id: format!("mcp:{}", server_id(label)), label: label.into(), kind: "mcp".into(), note: if src == "claudeai" { "claude.ai".into() } else { src.into() } });
+        added = true;
+    }
+    added
+}
+
+/// MCP servers (mcp_items) and skills (yours, installed plugins', Clauracle's own).
+pub fn catalog(plugin_dir: &Path, paths: &[String], old: &[Item]) -> Vec<Item> {
+    let mut items = mcp_items(paths, old);
     let h = dirs::home_dir().unwrap_or_default();
     let mut roots = vec![(String::new(), h.join(".claude/skills")), ("clauracle:".into(), plugin_dir.join("skills"))];
     if let Ok(s) = std::fs::read_to_string(h.join(".claude/plugins/installed_plugins.json")) {
@@ -2138,9 +2158,12 @@ mod tests {
 
     #[test]
     fn parsing() {
-        let (l, n) = mcp_line("claude.ai Gmail: https://gmailmcp.googleapis.com/mcp/v1 - ✔ Connected").unwrap();
-        assert_eq!((server_id(&l).as_str(), n.as_str()), ("claude_ai_Gmail", "Connected"));
-        assert!(mcp_line("Checking MCP server health…").is_none());
+        assert_eq!(server_id("claude.ai Gmail"), "claude_ai_Gmail");
+        let mut cfg = Config::default();
+        let init = serde_json::json!({"mcp_servers": [{"name": "claude.ai Gmail", "source": "claudeai"}, {"name": "clauracle", "source": "sdk"}, {"name": "cc", "source": "plugin"}]});
+        assert!(mcp_seen(&mut cfg, &init) && !mcp_seen(&mut cfg, &init));
+        assert_eq!(cfg.catalog.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["mcp:claude_ai_Gmail"]);
+        assert_eq!(mcp_items(&[], &cfg.catalog).iter().filter(|i| i.label == "claude.ai Gmail").count(), 1); // connector kept across rescans
         let tok = format!("sk-ant-oat01-{}", "Ab_9-".repeat(18));
         let screen = format!("\x1b]8;;https://claude.com/cai/oauth/authorize?code=true&x=1\x07more\r\ntoken:\x1b[33m{tok}\x1b[39mStore");
         let urls = std::cell::RefCell::new(vec![]);

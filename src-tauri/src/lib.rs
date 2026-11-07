@@ -383,7 +383,8 @@ async fn settings(st: St<'_>) -> R<Value> {
 #[tauri::command]
 async fn refresh_catalog(st: St<'_>) -> R<Value> {
     let dir = st.plugin_dir.clone();
-    let items = tauri::async_runtime::spawn_blocking(move || store::catalog(&dir)).await.map_err(|e| e.to_string())?;
+    let (paths, old) = { let c = st.cfg.lock().unwrap(); (c.projects.iter().map(|p| p.path.clone()).collect::<Vec<_>>(), c.catalog.clone()) };
+    let items = tauri::async_runtime::spawn_blocking(move || store::catalog(&dir, &paths, &old)).await.map_err(|e| e.to_string())?;
     let mut cfg = st.cfg.lock().unwrap();
     cfg.catalog = items;
     store::save(&cfg);
@@ -1574,10 +1575,11 @@ pub fn run() {
             });
             tauri::async_runtime::spawn(async move {
                 let _ = tauri::async_runtime::spawn_blocking(store::gh_users).await;
-                // every start (background, ~`claude mcp list` time): new servers/plugins/skills get known → denied/off
+                // every start (background; files only, no server launched #155): new servers/plugins/skills get known → denied/off
                 // unless picked. Changed → sessions reconnect after their current reply so their CLI settings follow.
                 let dir = st2.plugin_dir.clone();
-                if let Ok(items) = tauri::async_runtime::spawn_blocking(move || store::catalog(&dir)).await {
+                let (paths, old) = { let c = st2.cfg.lock().unwrap(); (c.projects.iter().map(|p| p.path.clone()).collect::<Vec<_>>(), c.catalog.clone()) };
+                if let Ok(items) = tauri::async_runtime::spawn_blocking(move || store::catalog(&dir, &paths, &old)).await {
                     let ids = |c: &[store::Item]| c.iter().map(|i| i.id.clone()).collect::<Vec<_>>();
                     let changed = {
                         let mut cfg = st2.cfg.lock().unwrap();

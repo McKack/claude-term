@@ -454,6 +454,9 @@ fn show(app: &AppHandle, st: &State, pid: &str, acct: &str, m: &Value) { // acct
         if let Some(sid) = m["session_id"].as_str() {
             st.with_project(pid, |p| p.session = Some(sid.into()));
         }
+        // #155 unknown server (claude.ai connector) → catalog → every session reconnects w/ it denied unless picked
+        let added = { let mut cfg = st.cfg.lock().unwrap(); let a = store::mcp_seen(&mut cfg, m); if a { store::save(&cfg); } a };
+        if added { for l in st.live.lock().unwrap().values() { l.inbox.push(Input::Reconnect); } }
     }
     match m["type"].as_str() {
         Some("stream_event") => {
