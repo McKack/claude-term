@@ -1598,6 +1598,15 @@ function send() {
   // saved to disk while gh files it (seconds): a crash/quit in that window used to lose it (composer already cleared)
   const fm = {text: t, atts: a}; (FILING[pid] ||= []).push(fm); keepDraft(pid, true);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
+    // CLI feel: idle + this ask is next anyway (urgent / nothing else open) → the AI starts NOW, gh files it in parallel
+    // and the number follows mid-turn (send_mid); p.work pins it so a crash/handover still resumes it
+    if (file && !busy[pid] && !RESTARTING && !contWaiting(pid) && !ed && !a.length && (URGENT_RE.test(t) || !issueQ(pid)?.some(x => x.number))) {
+      sendNow(pid, {text: t + FASTNOTE, atts: a, work: 0}, opt?.log && opt);
+      const n = await fileAsk(pid, t, a); if (!n) return;
+      fileNow(pid, t, n); P(pid).work = n; call('update_project', {pid, changes: {work: n}}).catch(() => {});
+      call('send_mid', {pid, text: `(Clauracle filed the ask you're on as issue #${n}. Retitle it + write a task summary with the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with \`gh issue close ${n} -c <one-line summary>\` when done.)`, work: n}).catch(() => {});
+      return;
+    }
     const n = file ? await fileAsk(pid, t, a) : 0, now = n && fileNow(pid, t, n), text = isQ ? t + QNOTE : isS ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
     const q = queue[pid] ||= [];
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
@@ -1617,10 +1626,11 @@ function send() {
 const FILING = {}; // pid → messages between send() and their place in queue/session (saved in the draft)
 const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A (question|status update), not a task \(Clauracle\)/,
   STATUS_RE = /^\s*(ok(ay)?[,.!]?\s+)?(i('ve| have)|it'?s|it is|(the )?\w+ is) (now )?(turned|booted|started|switched|plugged|logged|installed|granted|fixed|enabled|added|set up|paid|connected|on|up|running|online|ready|back|done|fixed|awake)\b|^\s*(done|ready|fixed|try again|retry|go ahead|it works now|works now)\b/i;
+const FASTNOTE = '\n\n(Clauracle is filing this as an issue right now; its number follows in a moment: don\'t file it yourself. Work on it now.)';
 const SNOTE = '\n\n(A status update, not a task (Clauracle): context for the task you are on or the one labelled `needs-user`: retry what was blocked; if it unblocks a needs-user issue, `gh issue edit N --remove-label needs-user` and resume it. File nothing.)';
 // #98: Clauracle's appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
 // #100: notes = one line each → strip per note (triage batch keeps later bullets); triage preamble hidden too
-const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A (question|status update), not a task \(Clauracle\))[^\n]*/g, '');
+const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A (question|status update), not a task \(Clauracle\)|Clauracle is filing this as an issue right now)[^\n]*/g, '');
 const QNOTE = '\n\n(A question, not a task (Clauracle): answer it briefly; change no files, start no work. If it actually asks for a change, it is a task: file it (`gh issue create --label clauracle --label task`) and say so. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
 /* user's rule: outstanding tasks first, a new ask goes to the END of the queue unless it says urgent (→ front of P.order, worked now).
    Ask into an empty queue = worked now too. now → send({work}) pins it in Rust (p.work) ∴ a handover/crash resumes it, not the queue head */
