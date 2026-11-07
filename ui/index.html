@@ -406,6 +406,8 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .tlist { display:flex; flex-direction:column; margin:2px 0; } .ti { display:flex; gap:8px; align-items:flex-start; padding:5px 0; border-top:1px dashed var(--line2); cursor:pointer; font-size:13px; }
 .tlist > .ti:first-child { border-top:0; } .ti > input { flex:none; font:inherit; margin:calc((1lh - 13px) / 2) 0 0; accent-color:var(--accent); } /* font:inherit → 1lh = text line ∴ box centred on line 1 (13px = Chromium checkbox) */ .ti > input:disabled { opacity:.55; cursor:default; }
 .ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
+.ti .tt:has(> .lbls) { display:block; } .tt .tc { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; } .ti.open .tt .tc { display:block; } .ti.completed .tc { -webkit-line-clamp:1; }
+.tt .lbls { display:flex; flex-wrap:wrap; gap:4px; margin-top:3px; }
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
 .msg .tlist .ti { font-size:inherit; } .msg .ti > input[type=checkbox] { margin-top:calc((1lh - 13px) / 2); } /* beats .msg.claude :first-child { margin-top:0 } */
 .sugs { margin:6px 0; } .sugs .ti { align-items:center; } .sugs .ti.completed { opacity:.55; } .sugs .ti > .btn { flex:none; }
@@ -2562,8 +2564,10 @@ function issueQ(pid) {
   return teamTasks(pid).filter(x => !isIdea(x) && !isWait(x) && !WDONE.has(x.number) &&(!x.assignees.length || x.assignees.some(a => a.login.toLowerCase() === me))).sort((a, b) => at(a.number) - at(b.number));
 }
 // Issues list (#15): row = #N link + title + type pills (GitHub colour; `clauracle` hidden ∵ every row has it)
-const issueHtml = x => (x.number ? `<a data-url="${esc(x.url)}">#${x.number}</a> ` : '<span class="faint">#…</span> ') + esc(x.title)
-  + x.labels.filter(l => l.name !== 'clauracle').map(l => ` <span class="pill lbl" style="--lc:#${esc(l.color || '888')}">${esc(l.name)}</span>`).join('');
+// #187 labels = own line below title (.lbls), never clamped inline; title clamps alone in .tc
+const issueHtml = x => { const t = (x.number ? `<a data-url="${esc(x.url)}">#${x.number}</a> ` : '<span class="faint">#…</span> ') + esc(x.title),
+  L = x.labels.filter(l => l.name !== 'clauracle').map(l => `<span class="pill lbl" style="--lc:#${esc(l.color || '888')}">${esc(l.name)}</span>`).join('');
+  return L ? `<span class="tc">${t}</span><span class="lbls">${L}</span>` : t; };
 // after the drag queue: suggestions (Accept/Dismiss), others' issues (who), new-issue field
 const issuesRest = () => { const iq = issueQ(cur), me = (team[cur]?.me || '').toLowerCase();
   return `<div class="tlist">${teamTasks(cur).filter(isIdea).map((x, i) => tli(issueHtml(x), {cls: 'sug',
