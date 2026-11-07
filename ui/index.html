@@ -398,7 +398,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .tlist > .ti:first-child { border-top:0; } .ti > input { flex:none; font:inherit; margin:calc((1lh - 13px) / 2) 0 0; accent-color:var(--accent); } /* font:inherit → 1lh = text line ∴ box centred on line 1 (13px = Chromium checkbox) */ .ti > input:disabled { opacity:.55; cursor:default; }
 .ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
-.msg .tlist .ti { font-size:inherit; }
+.msg .tlist .ti { font-size:inherit; } .msg .ti > input[type=checkbox] { margin-top:calc((1lh - 13px) / 2); } /* beats .msg.claude :first-child { margin-top:0 } */
 .sugs { margin:6px 0; } .sugs .ti { align-items:center; } .sugs .ti.completed { opacity:.55; } .sugs .ti > .btn { flex:none; }
 .sugnote { margin:0 0 4px 24px; width:calc(100% - 24px); font-size:12px; } .sugs .btns { margin-top:6px; }
 .qdrag { flex:none; align-self:center; border:0; background:none; color:var(--faint); cursor:grab; padding:0 2px; font-size:14px; line-height:1.2; opacity:0; touch-action:none; }
