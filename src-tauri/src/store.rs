@@ -307,7 +307,10 @@ pub fn mac_script(m: &NetMac, pid: &str, cmd: &str, sign: &[(String, String)]) -
         .filter(|(k, _)| k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
         .map(|(k, v)| format!("export {k}={}\n", q(v))).collect();
     // CI=true: tauri's bundle_dmg.sh skips the Finder AppleScript layout (times out over ssh: no GUI session, -1712)
-    format!("exec 2>&1\nset -e\nexport CI=true\n{env}cd {}\nif [ -f package.json ]; then npm install --no-audit --no-fund; fi\n{cmd}\n", mac_dir(m, pid))
+    // #156: fresh Mac lacks Apple's Developer ID G2 intermediate → codesign "unable to build chain" / errSecInternalComponent.
+    // Public cert → login keychain import works over ssh w/o unlock; skip if present, never fatal
+    let ca = "security find-certificate -c 'Developer ID Certification Authority' >/dev/null 2>&1 || { curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o /tmp/devidg2.cer && security import /tmp/devidg2.cer -k ~/Library/Keychains/login.keychain-db; } || true\n";
+    format!("exec 2>&1\nset -e\nexport CI=true\n{ca}{env}cd {}\nif [ -f package.json ]; then npm install --no-audit --no-fund; fi\n{cmd}\n", mac_dir(m, pid))
 }
 
 /// A helper agent Claude Code can hand work to (a subagent), usually on a cheaper model.

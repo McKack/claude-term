@@ -382,7 +382,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .stat { text-align:center; line-height:1.15; padding:2px 0; } .stat b { display:block; font-size:14px; font-weight:600; }
 .stat small { font-size:10px; color:var(--faint); }
 #rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
-[data-dot] { position:relative; } [data-dot]::after { content:''; position:absolute; top:3px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--dotc, var(--accent)); box-shadow:0 0 0 2px var(--side); }
+[data-dot] { position:relative; } [data-dot]::after { content:''; position:absolute; top:3px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--dotc, var(--accent)); box-shadow:0 0 0 2px var(--side); } [data-dot=pulse]::after { animation:pulse .8s ease-in-out infinite alternate; } /* #177 build running */
 .ptabs { display:inline-flex; gap:2px; }
 .rsep { flex:none; width:1px; margin:4px 4px; background:var(--line2); }
 #rtabs button, #stabs button, .ptabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; flex:none; }
@@ -1713,7 +1713,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.step === 'build' && b.busy && d.line && d.pid === cur && tab === 'build' && /\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/i.test(d.line) && /Finished \d+ bundle/.test(b.out.slice(b.from || 0))) drawRight(); /* #174 an artifact landed → tick it */
-    if (d.step === 'build' && !!b.busy !== (d.done == null)) { if (!b.busy) b.from = b.out.length - (d.line != null ? d.line.length + 1 : 0); b.busy = d.done == null; if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
+    if (d.step === 'build' && !!b.busy !== (d.done == null)) { if (!b.busy) b.from = b.out.length - (d.line != null ? d.line.length + 1 : 0); b.busy = d.done == null; if (d.pid === cur) tabDots(); if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
     if (d.step === 'build' && d.done) { BUILT[d.pid] = 1; if (d.pid === cur) tabDots(); } /* green dot till Build & Release is opened */
     if (d.step === 'build' && d.done != null) { ghiStale(d.pid); delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
@@ -1979,9 +1979,9 @@ function tabDots() {
   if (SVCDOT[cur] === undefined && svcOf(p).length) { SVCDOT[cur] = false; const pid = cur;
     call('env_list', {pid}).then(files => { if (pid !== cur) return delete SVCDOT[pid];
       envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))}; SVCDOT[pid] = svcOf(p).some(id => !svcDone(id)); tabDots(); }).catch(() => {}); }
-  const dot = {gh: busy[cur] && 'var(--accent)', build: BUILT[cur] && 'var(--ok)', svc: SVCDOT[cur] && 'var(--err)'};
+  const dot = {gh: busy[cur] && 'var(--accent)', build: builds[cur]?.busy ? 'var(--accent)' : BUILT[cur] && 'var(--ok)', svc: SVCDOT[cur] && 'var(--err)'};
   document.querySelectorAll('#rtabs button[data-t], #rrail button[data-t]').forEach(b => { const c = dot[b.dataset.t];
-    if (c) { b.dataset.dot = ''; b.style.setProperty('--dotc', c); } else delete b.dataset.dot; });
+    if (c) { b.dataset.dot = b.dataset.t === 'build' && builds[cur]?.busy ? 'pulse' : ''; b.style.setProperty('--dotc', c); } else delete b.dataset.dot; });
 }
 function rightTab(t) { tab = UI.tab = t; try { localStorage.ui = JSON.stringify(UI); } catch {} drawRight(); } // restored at start (UI.tab)
 /* #114 tab right-click: Refresh = drop that tab's caches + redraw (opens the tab), Settings… = related page if any */
@@ -2127,7 +2127,7 @@ async function relRelease(to, btn) {
 // Build from the wizard: on success the build event commits + pushes what it changed (Cargo.lock…) ∵ else "Everything committed" flips red again
 const RELB = {};
 // #120: busy at once (event confirms) → spinner + bar; no 2nd click → 2nd cargo blocked on the build-dir lock
-const buildNow = () => { const b = builds[cur] ||= {out: ''}; b.from = b.out.length; b.busy = true; drawRight(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); }); };
+const buildNow = () => { const b = builds[cur] ||= {out: ''}; b.from = b.out.length; b.busy = true; drawRight(); tabDots(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); tabDots(); }); };
 const relBuild = () => { RELB[cur] = 1; buildNow(); };
 const ciBusy = pid => { const r = RELC[pid]?.c?.ci; return !!r && r.status !== 'completed'; }; // #123 CI run in flight (release_check, polled)
 const bBusy = pid => builds[pid]?.busy || ciBusy(pid);
