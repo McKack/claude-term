@@ -599,7 +599,7 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
         }
         if !was_handover && (smart || a.starts_with("build")) {
             // a task finished: build (and run/deploy) in plain code; a failure can go back to Claude
-            let mut steps = vec!["build"];
+            let mut steps = vec![if a.contains("deploy") { "build" } else { "local" }]; // after a task: this machine only; deploy needs every target
             let own = own_repo(st, pid);
             if a.contains("run") && !own { steps.push("run"); } // own: restart replaces run
             if a.contains("deploy") { steps.push("deploy"); }
@@ -1136,7 +1136,7 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
 // ---- build / run / deploy: plain commands, output streamed to the Build panel ------------------------
 
 fn step_cmd(p: &Project, step: &str) -> String {
-    match step { "build" => &p.build.build, "run" => &p.build.run, _ => &p.build.deploy }.clone()
+    match step { "build" | "local" => &p.build.build, "run" => &p.build.run, _ => &p.build.deploy }.clone()
 }
 
 fn shell(cmd: &str) -> tokio::process::Command {
