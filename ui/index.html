@@ -129,7 +129,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #log .crow.reply { margin:-21px 3% 0 calc(36px + 3%); } /* centred under the termcard (margin-left 36px) */ /* -12 gap -3 card margin -6 tuck */ #log .crow.reply > .av, #log .crow.reply .cm { display:none; }
 #log .crow.reply .cb { flex:1; max-width:none; } #log .crow.reply .msg.claude { position:relative; border-top:0; border-radius:0 0 14px 14px; padding:15px 14px 9px 38px; }
 .rto { position:absolute; left:13px; top:16px; color:var(--faint); cursor:pointer; line-height:0; } .rto .i { width:15px; height:15px; transform:rotate(180deg); } .rto:hover { color:var(--text); }
-.termcard.flash { animation:tcflash 1.2s ease-out; } @keyframes tcflash { from { box-shadow:0 0 0 2px var(--accent); } }
+.termcard.flash { animation:tcflash 1.2s ease-out; } .jumphl { animation:jumphl 2.4s ease-out; border-radius:8px; } @keyframes jumphl { 0%, 55% { box-shadow:0 0 0 2px var(--accent); background:var(--soft); } } @keyframes tcflash { from { box-shadow:0 0 0 2px var(--accent); } }
 .crow .msg.user { max-width:100%; } .crow.cont > .av { visibility:hidden; height:0; } .crow.cont .cm { display:none; } .crow.cont { margin-top:-4px; }
 .msg.claude p { margin:.35em 0; } .msg.claude :first-child { margin-top:0; }
 .msg.claude pre { background:var(--code); border:1px solid var(--line); padding:10px 12px; border-radius:10px; overflow:auto; }
@@ -2111,9 +2111,9 @@ const tgtLocal = x => x === HOST || x === 'android' || (x === 'ios' && HOST === 
 const strictStage = p => Math.max(SK.indexOf(p.stage), RELTO[cur] ?? -1) >= SK.indexOf('rc');
 function tgtWhy(p, id) { // '' = ready, else [why, fix js]
   const miss = tgtLocal(id) && DEPSC ? Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].includes(id)) : [];
-  if (miss.length) return [`Needs ${miss.map(k => DEPS[k][0]).join(', ')} on this computer`, `openSettings('build')`];
+  if (miss.length) return [`Needs ${miss.map(k => DEPS[k][0]).join(', ')} on this computer`, `openSettings('build').then(() => jumpTo('[data-dep=${miss[0]}]'))`];
   const c = RELC[cur]?.c; // #123 CI-built targets: facts from release_check (none yet → no verdict)
-  if (!tgtLocal(id) && !S.ci_builds) return [`Not buildable on this computer · CI builds are off (Settings › Build & Release)`, `openSettings('build')`]; // #126
+  if (!tgtLocal(id) && !S.ci_builds) return [`Not buildable on this computer · CI builds are off (Settings › Build & Release)`, `openSettings('build').then(() => jumpTo('#set-ci'))`]; // #126
   if (!tgtLocal(id) && c && !c.err) {
     if (!c.remote) return ['Built by CI only: put this project on GitHub first', `rightTab('gh')`];
     if (!(c.ci_os || []).includes(id)) return ['Not built on this computer and no CI job builds it', `tgtFlip('${id}').then(() => relAsk('ci_targets'))`];
@@ -2121,9 +2121,20 @@ function tgtWhy(p, id) { // '' = ready, else [why, fix js]
   }
   const s = TGTSVC[id];
   if (s && strictStage(p) && !(svcOf(p).includes(s) && (svcDone(s) || (s === 'macsign' && SECRETS[cur]?.includes('APPLE_CERTIFICATE')))))
-    return [`Release candidate and up: set up ${SERVICES[s].name} first`, `svcAdd('${s}').then(() => rightTab('svc'))`];
+    return [`Release candidate and up: set up ${SERVICES[s].name} first`, `svcJump('${s}')`];
   return '';
 }
+// #153 jump to a setting: wait ≤4s (pages fill async), open enclosing folds, scroll to center, flash. sel = CSS | () => el
+async function jumpTo(sel) {
+  for (let i = 0; i < 40; i++, await new Promise(r => setTimeout(r, 100))) {
+    const el = typeof sel === 'function' ? sel() : document.querySelector(sel); if (!el) continue;
+    for (let d = el.parentElement?.closest('details'); d; d = d.parentElement?.closest('details')) d.open = true;
+    el.scrollIntoView({behavior: 'smooth', block: 'center'}); el.classList.remove('jumphl'); void el.offsetWidth; el.classList.add('jumphl'); return;
+  }
+}
+// service card in the Services tab = n-th section (drawServices renders svcOf order); `.keys` inside ∵ old tab's sections linger till its async render
+const svcJump = s => (svcOf(P()).includes(s) ? Promise.resolve() : svcAdd(s)).then(() => { rightTab('svc');
+  jumpTo(() => { const el = $('rbody').querySelectorAll(':scope > section.sec')[svcOf(P()).indexOf(s)]; return el?.querySelector('.keys') && el; }); });
 const tgtReady = (p, id) => !tgtWhy(p, id);
 const tgtHtml = p => { const t = p.targets || [];
   return fold('p-targets', 'Target platforms', (t.length ? '' : '<p class="dim" style="margin:0 0 8px;font-size:13px">Not picked yet: tap what this project ships to.</p>')
@@ -3144,7 +3155,7 @@ function buildPage() {
   const p = P(), mac = p && svcOf(p).includes('macsign'), keys = RELC[cur]?.c?.sign || [],
     go = mac ? `rightTab('svc')` : `svcAdd('macsign').then(() => rightTab('svc'))`;
   return `<div class="label">CI</div>
-    <div class="box">${optRow('CI builds', 'Let GitHub Actions build the platforms this computer can\'t (costs Actions minutes). Off: only local builds count, Release uploads them.', sw(S.ci_builds, `call('set_ci_builds', {on: this.checked}).then(refresh)`))}</div>
+    <div class="box" id="set-ci">${optRow('CI builds', 'Let GitHub Actions build the platforms this computer can\'t (costs Actions minutes). Off: only local builds count, Release uploads them.', sw(S.ci_builds, `call('set_ci_builds', {on: this.checked}).then(refresh)`))}</div>
     ${fold('g-deps', 'Dependencies (this computer, WSL for Linux)', `<div id="depsBox">${skel(90, 60, 'b100', 'b100', 'b100')}</div>`, 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}
     <div class="label" style="margin-top:18px">Mac signing (Apple Developer ID)</div>
     <div class="box">${p ? optRow(esc(p.name), !mac ? 'Not set up: Mac builds stay unsigned' : keys.includes('APPLE_SIGNING_IDENTITY') ? 'Keys in .env: ' + keys.join(', ') : 'Set up · signing keys not in .env yet',
@@ -3169,7 +3180,7 @@ async function depsFill() {
   box.innerHTML = `<p class="dim" style="margin:0 0 8px;font-size:13px">Tools this computer needs to build the target platforms your projects pick (Build &amp; Release › Target platforms). Other systems build on GitHub's CI.</p><div class="box">`
     + Object.keys(DEPS).filter(k => k in d).map(k => { const [n, ts, url] = DEPS[k], need = ts.filter(t => want.has(t));
       return optRow(esc(n), d[k] ? 'Installed' : (ts.length ? (need.length ? 'Needed for ' + need.map(tgtName).join(', ') : 'Only for ' + ts.map(tgtName).join(', ')) : 'Not found'),
-        d[k] ? `<span style="color:var(--ok)">${icon('check')}</span>` : `${cur ? `<button class="btn sm" onclick="depsAi('${k}')">${icon('sparkle')}Install with AI</button>` : ''}<button class="btn ghost sm" data-url="${url}">Download</button>`); }).join('') + '</div>';
+        d[k] ? `<span style="color:var(--ok)">${icon('check')}</span>` : `${cur ? `<button class="btn sm" onclick="depsAi('${k}')">${icon('sparkle')}Install with AI</button>` : ''}<button class="btn ghost sm" data-url="${url}">Download</button>`).replace('class="opt-row"', `class="opt-row" data-dep="${k}"`); }).join('') + '</div>';
 }
 async function depsAi(k) {
   const [n, ts] = DEPS[k], text = `Install ${n} on this computer${ts.length ? ` (to build for ${ts.map(tgtName).join(', ')})` : ''}: official installer or package manager, per user if possible, set any env vars it needs, then check it's found. Ask me before large downloads.`;
