@@ -188,6 +188,7 @@ pub struct Config {
     pub lessons: Vec<String>, // never-again rules (mcp lesson tool / Settings › Accounts), in every session's prompt
     pub win: Option<[i32; 5]>, // main window at last close/restart: x, y, w, h (physical px), maximized 0|1
     pub notify: Notify,
+    pub ci_builds: bool, // #126: GitHub Actions builds non-local targets; off (default) = local builds only ∵ CI minutes cost money
     pub projects_dir: String, // where clones and new projects go ("" = ~/Clauracle): <root>/<owner>/<repo>, <root>/local/<name>
 }
 

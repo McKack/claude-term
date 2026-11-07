@@ -1998,8 +1998,8 @@ function relItems(c, p) {
     {s: 0, id: 'clean', t: 'Everything committed', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
     {s: 1, id: 'license', t: 'Licence', ok: c.license},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
-    {s: 1, id: 'ci', t: 'CI green', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no workflow runs',
-      go: !c.remote ? `rightTab('gh')` : '', url: ci?.url},
+    ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'CI green', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no workflow runs',
+      go: !c.remote ? `rightTab('gh')` : '', url: ci?.url}] : []),
     {s: 2, id: 'icon', t: 'App icon', ok: c.icon},
     ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: 'Mac signing secrets on GitHub', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
     // #40 stores (Play/App Store) want privacy + terms URLs: RC up, mobile targets only; c.site = HTTP statuses (relWizard)
@@ -2008,8 +2008,8 @@ function relItems(c, p) {
       ...(siteReady() ? {} : {go: `svcAdd('website').then(() => rightTab('svc'))`, gl: 'Set up'})}] : []),
     {s: 2, id: 'review', t: 'Release review by AI', ai: true},
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
-    ...((un => un.length ? [{s: 0, id: 'targets', t: 'Every picked platform can be built', ok: false, d: un.map(x => `${tgtName(x)}: ${tgtWhy(p, x)[0]}`).join(' · '), go: tgtWhy(p, un[0])[1]}] : [])((p.targets || []).filter(x => !miss.includes(x) && !tgtReady(p, x)))),
-    ...(miss.length ? [{s: 0, id: 'ci_targets', t: 'CI builds the other platforms', ok: false, d: `not in CI: ${miss.map(tgtName).join(', ')}`}] : []),
+    ...((un => un.length ? [{s: 0, id: 'targets', t: 'Every picked platform can be built', ok: false, d: un.map(x => `${tgtName(x)}: ${tgtWhy(p, x)[0]}`).join(' · '), go: tgtWhy(p, un[0])[1]}] : [])((p.targets || []).filter(x => !(S.ci_builds && miss.includes(x)) && !tgtReady(p, x)))),
+    ...(miss.length && S.ci_builds ? [{s: 0, id: 'ci_targets', t: 'CI builds the other platforms', ok: false, d: `not in CI: ${miss.map(tgtName).join(', ')}`}] : []),
     {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length && !stale.length,
       d: stale.length ? `older than the last code change: ${stale.map(f => f.name).join(', ')}` : lack.length && files.length ? `missing: ${lack.map(tgtName).join(', ')}` : files.length ? files.map(f => f.name).join(', ') + (cit.length ? ` · CI: ${cit.map(tgtName).join(', ')}` : '') : v ? `no build of v${v} yet` : '',
       go: p.build.build ? 'relBuild(this)' : 'openManager(cur)', gl: p.build.build ? 'Build' : 'Set up'},
@@ -2105,6 +2105,7 @@ function tgtWhy(p, id) { // '' = ready, else [why, fix js]
   const miss = tgtLocal(id) && DEPSC ? Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].includes(id)) : [];
   if (miss.length) return [`Needs ${miss.map(k => DEPS[k][0]).join(', ')} on this computer`, `openSettings('cx')`];
   const c = RELC[cur]?.c; // #123 CI-built targets: facts from release_check (none yet → no verdict)
+  if (!tgtLocal(id) && !S.ci_builds) return [`Not buildable on this computer · CI builds are off (Settings › Accounts › GitHub)`, `openSettings('ai')`]; // #126
   if (!tgtLocal(id) && c && !c.err) {
     if (!c.remote) return ['Built by CI only: put this project on GitHub first', `rightTab('gh')`];
     if (!(c.ci_os || []).includes(id)) return ['Not built on this computer and no CI job builds it', `tgtFlip('${id}').then(() => relAsk('ci_targets'))`];
@@ -3086,6 +3087,7 @@ function aiPage() {
       <div class="btns"><button class="btn" onclick="csAcct('${esc(a.id)}')">${icon('sliders')}Advanced AI settings</button><span class="grow"></span>${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
     + `<div class="label" style="margin-top:18px">GitHub accounts</div>${ghPage()}
+    <div class="box">${optRow('CI builds', 'Let GitHub Actions build the platforms this computer can\'t (costs Actions minutes). Off: only local builds count, Release uploads them.', sw(S.ci_builds, `call('set_ci_builds', {on: this.checked}).then(refresh)`))}</div>
     <div class="label" style="margin-top:18px">Lessons</div>
     <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules your AI records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
     <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
