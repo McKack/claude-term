@@ -961,8 +961,9 @@ function drawChrome() {
   $('contBtn').disabled = !!triaging[cur] || !!contQ[cur]; $('contBtn').textContent = triaging[cur] ? 'Wait…' : contQ[cur] ? 'Queued' : busy[cur] ? 'Queue' : 'Continue';
   $('contBtn').title = busy[cur] ? 'Runs once the current turn ends' : '';
   // questions never block a Continue: they open in the fresh session (qsOpen), the bar keeps showing the next task
+  const dis = busy[cur] ? ' disabled title="Clauracle is working: wait for this turn to end"' : ''; // #117 presets faded while a turn runs
   $('readytext').innerHTML = next.length ? `<input type="checkbox" disabled style="vertical-align:-2px;margin:0 6px 0 0;opacity:.55">Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
-    : `All tasks done! What next? ${(([l, ic, js]) => `<button class="btn primary" onclick="${js}">${icon(ic)}${l}</button>`)(nextStep(p))}${NEXT_IDEAS.map(([l, ic], i) => `<button class="btn" onclick="askNext(${i})">${icon(ic)}${l}</button>`).join('')}`;
+    : `All tasks done! What next? ${(([l, ic, js]) => `<button class="btn primary"${dis} onclick="${js}">${icon(ic)}${l}</button>`)(nextStep(p))}${NEXT_IDEAS.map(([l, ic], i) => `<button class="btn"${dis} onclick="askNext(${i})">${icon(ic)}${l}</button>`).join('')}`;
   $('ready').title = ''; // #95: click toggles .full only when truncated (readyMore), title set there
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
   $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
