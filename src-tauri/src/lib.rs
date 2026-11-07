@@ -85,31 +85,33 @@ fn orphans(kill: bool) -> Vec<Value> {
     o.iter().map(|(p, n)| json!({"pid": p, "name": n})).collect()
 }
 
-#[tauri::command]
+// async + locks dropped before the file reads (PLAN/HANDOVER/CHANGES per project): ran on the window thread holding cfg
+#[tauri::command(async)]
 fn state(st: St) -> Value {
-    let cfg = st.cfg.lock().unwrap();
-    let usage: serde_json::Map<String, Value> =
-        cfg.accounts.iter().map(|a| (a.id.clone(), json!(store::usage(&cfg, &a.id)))).collect();
-    // when each usage window resets (unix secs), per account: shown in the usage cards, toast when one passes
-    let resets: serde_json::Map<String, Value> = cfg.usage.iter().map(|(id, w)|
-        (id.clone(), json!(w.iter().filter_map(|(k, v)| v.resets_at.map(|r| (k.clone(), r))).collect::<std::collections::HashMap<_, _>>()))).collect();
-    let live = st.live.lock().unwrap();
-    let busy: Vec<&String> = live.iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k).collect();
-    json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "resets": resets,"active": cfg.active, "busy": busy,
-           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "ci_builds": cfg.ci_builds, "mac": cfg.mac, "web": !cfg.off.iter().any(|x| x == "web"), "lessons": cfg.lessons,"notify": cfg.notify, "drafts": store::drafts(),
-           "projects_dir": store::projects_root(&cfg).to_string_lossy(),
-           // next steps from PLAN.md (ready bar, Tasks tab), every plan file with tasks (Plan tab ⓘ / merge)
-           // + the last few done from CHANGES.md (Plan tab)
-           "queues": cfg.projects.iter().map(|p| (p.id.clone(), json!(claude::queue(&p.path))))
-               .collect::<serde_json::Map<String, Value>>(),
-           "plans": cfg.projects.iter().map(|p| (p.id.clone(), json!(claude::plans(&p.path))))
-               .collect::<serde_json::Map<String, Value>>(),
-           "done": cfg.projects.iter().map(|p| (p.id.clone(), json!(claude::done(&p.path, 3))))
-               .collect::<serde_json::Map<String, Value>>(),
-           // PLAN.md "## Waiting on the user" → Plan tab suggestions (Accept/Dismiss), parse only
-           "waits": cfg.projects.iter().map(|p| (p.id.clone(), json!(claude::waiting(&p.path))))
-               .collect::<serde_json::Map<String, Value>>(),
-           "claude": store::which("claude").is_some(), "gh": store::which("gh").is_some()})
+    let (mut out, paths) = {
+        let cfg = st.cfg.lock().unwrap();
+        let usage: serde_json::Map<String, Value> =
+            cfg.accounts.iter().map(|a| (a.id.clone(), json!(store::usage(&cfg, &a.id)))).collect();
+        // when each usage window resets (unix secs), per account: shown in the usage cards, toast when one passes
+        let resets: serde_json::Map<String, Value> = cfg.usage.iter().map(|(id, w)|
+            (id.clone(), json!(w.iter().filter_map(|(k, v)| v.resets_at.map(|r| (k.clone(), r))).collect::<std::collections::HashMap<_, _>>()))).collect();
+        let busy: Vec<String> = st.live.lock().unwrap().iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k.clone()).collect();
+        let paths: Vec<(String, String)> = cfg.projects.iter().map(|p| (p.id.clone(), p.path.clone())).collect();
+        (json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "resets": resets, "active": cfg.active, "busy": busy,
+           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "ci_builds": cfg.ci_builds, "mac": cfg.mac, "web": !cfg.off.iter().any(|x| x == "web"), "lessons": cfg.lessons, "notify": cfg.notify,
+           "projects_dir": store::projects_root(&cfg).to_string_lossy()}), paths)
+    };
+    let per = |f: &dyn Fn(&str) -> Value| paths.iter().map(|(id, p)| (id.clone(), f(p))).collect::<serde_json::Map<String, Value>>();
+    // next steps from PLAN.md (ready bar, Tasks tab), every plan file with tasks (Plan tab ⓘ / merge), last few done (CHANGES.md),
+    // PLAN.md "## Waiting on the user" → Plan tab suggestions (Accept/Dismiss), parse only
+    out["queues"] = json!(per(&|p| json!(claude::queue(p))));
+    out["plans"] = json!(per(&|p| json!(claude::plans(p))));
+    out["done"] = json!(per(&|p| json!(claude::done(p, 3))));
+    out["waits"] = json!(per(&|p| json!(claude::waiting(p))));
+    out["drafts"] = json!(store::drafts());
+    out["claude"] = json!(store::which("claude").is_some());
+    out["gh"] = json!(store::which("gh").is_some());
+    out
 }
 
 #[tauri::command(async)]
@@ -198,11 +200,9 @@ fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Valu
                 v[k] = val;
             }
         }
-        if let Ok(n) = serde_json::from_value(v) {
-            *p = n;
-        }
-        p.clone()
-    }).ok_or("no such project")?;
+        // bad value (e.g. NaN → null) used to be dropped silently while the UI thought it saved
+        serde_json::from_value(v).map(|n| { *p = n; p.clone() }).map_err(|e| format!("not saved: {e}"))
+    }).ok_or("no such project")??;
     if changes.as_object().map_or(false, |o| o.keys().any(|k| !quiet.contains(&k.as_str()))) {
         if let Some(l) = st.live.lock().unwrap().get(&pid) {
             l.inbox.front(vec![Input::Reconnect]);
@@ -278,7 +278,7 @@ async fn avatar(login: String) -> R<tauri::ipc::Response> {
     let fresh = std::fs::metadata(&f).and_then(|m| m.modified()).ok()
         .and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 86400);
     if !fresh {
-        let got = ureq::get(&format!("https://github.com/{login}.png?size=88")).set("User-Agent", "Clauracle").call()
+        let got = ureq::get(&format!("https://github.com/{login}.png?size=88")).set("User-Agent", "Clauracle").timeout(std::time::Duration::from_secs(10)).call()
             .map_err(|e| e.to_string()).and_then(|r| { let mut b = vec![]; std::io::Read::read_to_end(&mut r.into_reader(), &mut b).map_err(|e| e.to_string())?; Ok(b) });
         match got {
             Ok(b) => { let _ = std::fs::create_dir_all(f.parent().unwrap()); let _ = std::fs::write(&f, &b); return Ok(tauri::ipc::Response::new(b)); }
@@ -491,8 +491,12 @@ fn claude_add_token(st: St, nick: String, token: String, base_url: Option<String
 #[tauri::command(async)]
 fn claude_remove(st: St, id: String) {
     let mut cfg = st.cfg.lock().unwrap();
+    let pids: Vec<String> = cfg.projects.iter().filter(|p| p.account == id).map(|p| p.id.clone()).collect();
     store::remove_account(&mut cfg, &id);
     store::save(&cfg);
+    drop(cfg);
+    // their sessions kept running on the removed account's token until some later reconnect
+    for (pid, l) in st.live.lock().unwrap().iter() { if pids.contains(pid) { l.inbox.front(vec![claude::Input::Reconnect]); } }
 }
 
 #[tauri::command]
@@ -622,15 +626,19 @@ async fn gh_login(app: AppHandle, scopes: Option<String>) -> R<bool> { // #128 s
                 }
             });
         }
-        Ok(child.wait().map(|s| s.success()).unwrap_or(false))
+        let ok = child.wait().map(|s| s.success()).unwrap_or(false);
+        store::forget_gh_users(); // again ∵ a gh_users() during the login re-cached the old list
+        Ok(ok)
     }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 async fn gh_logout(user: String) -> bool {
     store::forget_gh_users();
-    tauri::async_runtime::spawn_blocking(move || store::run("gh", &["auth", "logout", "-h", "github.com", "-u", &user], None, &[]).ok)
-        .await.unwrap_or(false)
+    let ok = tauri::async_runtime::spawn_blocking(move || store::run("gh", &["auth", "logout", "-h", "github.com", "-u", &user], None, &[]).ok)
+        .await.unwrap_or(false);
+    store::forget_gh_users(); // again: see gh_login
+    ok
 }
 
 #[tauri::command]
@@ -960,8 +968,7 @@ fn env_set(st: St, pid: String, file: String, key: String, value: Option<String>
         return Err("keys are letters, digits and _".into());
     }
     let path = std::path::Path::new(&p.path).join(&file);
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
-    std::fs::write(&path, store::env_set(&text, &key, value.as_deref())).map_err(|e| e.to_string())
+    store::env_put(&path, &[(&key, value.as_deref())])
 }
 
 /// Add the file to .gitignore.
@@ -1045,11 +1052,7 @@ fn apple_p12(st: St, pid: String, cer: String) -> R<String> {
     ssl(&[args(true).as_slice(), &[k.as_str()], &rest].concat()).or_else(|_| ssl(&[args(false).as_slice(), &[k.as_str()], &rest].concat()))?;
     let b64 = ssl(&["base64", "-A", "-in", &p12])?.trim().to_string();
     let env = std::path::Path::new(&p.path).join(".env");
-    let mut text = std::fs::read_to_string(&env).unwrap_or_default();
-    for (key, v) in [("APPLE_CERTIFICATE", b64.as_str()), ("APPLE_CERTIFICATE_PASSWORD", pw.as_str()), ("APPLE_SIGNING_IDENTITY", cn.as_str()), ("APPLE_TEAM_ID", team.as_str())] {
-        text = store::env_set(&text, key, Some(v));
-    }
-    std::fs::write(&env, text).map_err(|e| e.to_string())?;
+    store::env_put(&env, &[("APPLE_CERTIFICATE", Some(b64.as_str())), ("APPLE_CERTIFICATE_PASSWORD", Some(pw.as_str())), ("APPLE_SIGNING_IDENTITY", Some(cn.as_str())), ("APPLE_TEAM_ID", Some(team.as_str()))])?;
     if store::git_ignored(&p.path, ".env") == Some(false) { env_ignore(st, pid, ".env".into())?; }
     Ok(cn)
 }
@@ -1094,7 +1097,7 @@ fn site_auto(st: St, pid: String, host: String) -> R<String> {
     let envp = std::path::Path::new(&p.path).join(".env");
     let text = std::fs::read_to_string(&envp).unwrap_or_default();
     let get = |k: &str| store::env_parse(&text).into_iter().find(|(x, v)| x == k && !v.is_empty()).map(|(_, v)| v).ok_or(format!("fill {k} first"));
-    let fill = |k: &str, v: &str| std::fs::write(&envp, store::env_set(&text, k, Some(v))).map(|_| v.to_string()).map_err(|e| e.to_string());
+    let fill = |k: &str, v: &str| store::env_put(&envp, &[(k, Some(v))]).map(|_| v.to_string()); // fresh read ∵ text is from before the API call
     let err = |e: ureq::Error| match e { ureq::Error::Status(c, r) => format!("{c}: {}", r.into_string().unwrap_or_default()), e => e.to_string() };
     match host.as_str() {
         "ghpages" => { // POST = create; 409 = exists → PUT switches its source to Actions
@@ -1465,7 +1468,7 @@ fn claude_settings_set(st: St, scope: String, pid: String, value: Value) -> R<()
     if !value.is_object() { return Err("settings must be a JSON object".into()); }
     let f = cs_file(&st, &scope, &pid)?;
     std::fs::create_dir_all(f.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(&f, serde_json::to_string_pretty(&value).unwrap() + "\n").map_err(|e| e.to_string())?;
+    store::write_atomic(&f, (serde_json::to_string_pretty(&value).unwrap() + "\n").as_bytes()).map_err(|e| e.to_string())?; // crash mid-write ≠ truncated ~/.claude/settings.json
     // account file is read at spawn → its sessions reconnect after the current reply (user/project files: the CLI reads them live)
     if let Some(id) = scope.strip_prefix("account:") {
         let pids: Vec<String> = st.cfg.lock().unwrap().projects.iter().filter(|p| p.account == id).map(|p| p.id.clone()).collect();
@@ -1595,6 +1598,8 @@ pub(crate) fn kill_tree(pid: u32) {
     if cfg!(windows) {
         let _ = store::command(std::path::Path::new("taskkill")).args(["/F", "/T", "/PID", &pid.to_string()]).output();
     } else {
+        // group first (build/run steps lead their own, claude::shell); plain pid for the rest (claude CLI)
+        let _ = std::process::Command::new("kill").args(["-TERM", "--", &format!("-{pid}")]).output();
         let _ = std::process::Command::new("kill").arg(pid.to_string()).output();
     }
 }

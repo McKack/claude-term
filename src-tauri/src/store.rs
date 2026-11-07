@@ -1305,6 +1305,20 @@ fn unescape(s: &str) -> String {
 }
 
 /// Set (Some) or delete (None) one key, keeping everything else in the file as it was.
+/// temp + rename in the same dir: a crash mid-write never leaves a truncated file (settings.json, .env)
+pub fn write_atomic(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension(format!("{}clauracle-tmp", path.extension().map(|e| e.to_string_lossy().to_string() + ".").unwrap_or_default()));
+    std::fs::write(&tmp, data)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| { let _ = std::fs::remove_file(&tmp); })
+}
+
+/// .env keys set from a FRESH read right before writing (callers used text read before a slow network call → lost edits)
+pub fn env_put(path: &std::path::Path, kv: &[(&str, Option<&str>)]) -> Result<(), String> {
+    let mut t = std::fs::read_to_string(path).unwrap_or_default();
+    for (k, v) in kv { t = env_set(&t, k, *v); }
+    write_atomic(path, t.as_bytes()).map_err(|e| e.to_string())
+}
+
 pub fn env_set(text: &str, key: &str, value: Option<&str>) -> String {
     let quote = |v: &str| if v.chars().any(|c| c.is_whitespace() || "#\"'\\$".contains(c)) {
         format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"))
@@ -1804,6 +1818,18 @@ fn task_queue_works() {
     assert_eq!(nums(task_queue(&v, "me", &[5], 4)), [4, 5, 3]); // in-progress beats order
     assert_eq!(nums(task_queue(&v, "me", &[], 6)), [3, 4, 5]); // blocked on the user → out even if it was the work
     assert!(task_queue(&serde_json::Value::Null, "me", &[], 0).is_empty());
+}
+
+#[test]
+fn env_put_rereads_and_replaces() {
+    let d = std::env::temp_dir().join("clauracle-envput-test");
+    let _ = std::fs::create_dir_all(&d);
+    let f = d.join(".env");
+    std::fs::write(&f, "A=1\nB=2\n").unwrap();
+    env_put(&f, &[("B", Some("3")), ("C", Some("4"))]).unwrap();
+    let t = std::fs::read_to_string(&f).unwrap();
+    assert!(t.contains("A=1") && t.contains("B=3") && t.contains("C=4") && !t.contains("B=2"), "{t}");
+    assert!(!d.join(".env.clauracle-tmp").exists());
 }
 
 #[test]

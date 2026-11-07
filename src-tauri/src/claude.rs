@@ -426,6 +426,9 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
                     live.inbox.front(vec![match content { Value::String(t) => Input::Msg(t), c => Input::Rich(c) }]);
                     return Err(e);
                 }
+                if let Some(t) = content.as_str() { // answers riding in this message are delivered now → drop them from the config
+                    st.with_project(pid, |p| if !p.answers.is_empty() && t.contains(p.answers.as_str()) { p.answers.clear(); });
+                }
                 None
             }
             m = msgs.recv() => {
@@ -696,7 +699,7 @@ pub fn fresh(app: &AppHandle, st: &State, pid: &str, live: &Live, cont: Option<S
         if pin > 0 { p.work = pin; } // #83 + persisted: a crash/restart/handover resumes this issue first
         if p.session.is_some() { p.prev_session = p.session.take(); }
         p.ready = false;
-        std::mem::take(&mut p.answers)
+        p.answers.clone() // cleared once written to the new session (connect loop) ∵ a crash before that lost them
     }).unwrap_or_default();
     emit(app, "cleared", json!({"pid": pid}));
     if pin > 0 { emit(app, "project", json!(st.project(pid))); } // UI's P.work → "Working on #N" + queue order
@@ -1093,6 +1096,8 @@ fn shell(cmd: &str) -> tokio::process::Command {
     };
     #[cfg(windows)]
     c.creation_flags(0x0800_0000);
+    #[cfg(unix)]
+    c.process_group(0); // own group ∴ kill_tree's `kill -- -pid` takes npm → node → cargo → app down, not just sh
     c
 }
 

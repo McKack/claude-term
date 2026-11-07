@@ -665,7 +665,7 @@ const tli = (h, {done, on, cls = '', tip, end = ''} = {}) => `<div class="ti ${c
 // #93 question answers: ```tasks fence ("- Title: summary" lines) → cards w/ Accept|Dismiss switch (re-click clears) + Note;
 // Confirm files accepted ones (unpicked = dismissed). State per fence content hash, localStorage ∴ survives reload/redraw
 const SUGS = (() => { try { return JSON.parse(localStorage.sugs || '{}'); } catch { return {}; } })();
-const saveSugs = () => { try { localStorage.sugs = JSON.stringify(SUGS); } catch {} };
+const saveSugs = () => { const k = Object.keys(SUGS); k.slice(0, -300).forEach(x => delete SUGS[x]); /* newest 300 ∵ grew forever */ try { localStorage.sugs = JSON.stringify(SUGS); } catch {} };
 function sugCards(code) {
   const t = code.split('\n').map(l => l.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)/)?.[1]).filter(Boolean);
   if (!t.length) return '';
@@ -684,10 +684,10 @@ function sugBox(k) {
 function sugPick(el, i, v) { const box = el.closest('.sugs'), s = SUGS[box.dataset.k];
   if (s.p[i] === v) delete s.p[i]; else s.p[i] = v; saveSugs(); box.innerHTML = sugBox(box.dataset.k); }
 async function sugGo(el) {
-  const box = el.closest('.sugs'), k = box.dataset.k, s = SUGS[k], done = {};
+  const box = el.closest('.sugs'), k = box.dataset.k, s = SUGS[k], done = {}, pid = cur; // pid fixed ∵ switching mid-loop filed into the other project
   el.disabled = true;
   for (const [i, t] of s.t.entries()) if (s.p[i] === 'a') { const n = (s.n[i] || '').trim();
-    try { done[i] = +(String(await call('task_do', {pid: cur, action: 'new', arg: t + (n ? `\n\nNote: ${n}` : '')})).match(/\/issues\/(\d+)/)?.[1] || 0) || '?'; }
+    try { done[i] = +(String(await call('task_do', {pid, action: 'new', arg: t + (n ? `\n\nNote: ${n}` : '')})).match(/\/issues\/(\d+)/)?.[1] || 0) || '?'; }
     catch (e) { toast(`Couldn't file "${t}": ${e}`, 'warn'); } }
   s.done = done; saveSugs(); box.innerHTML = sugBox(k); pollTeam();
 }
@@ -708,7 +708,9 @@ function splitCmd(c) {
 }
 // app dialogs instead of WebView2's Win7-looking confirm()/alert(); opened last → on top of dlg/dlg2. Esc = cancel.
 // html: body as HTML (already escaped) instead of text's rest
-function sure(text, ok = 'OK', cancel = 'Cancel', html) {
+let SURE = Promise.resolve(); // one at a time
+const sure = (...a) => (SURE = SURE.then(() => sure1(...a)));
+function sure1(text, ok = 'OK', cancel = 'Cancel', html) {
   const d = $('dlgc'), [head, ...rest] = String(text).split('\n\n'), body = html ?? (rest.length ? esc(rest.join('\n\n')) : '');
   d.innerHTML = `<div class="small-dlg"><h2 style="margin:0 0 8px;font-size:17px;white-space:pre-wrap">${esc(head)}</h2>${body ? `<p class="dim" style="margin:0;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto">${body}</p>` : ''}
     <div class="btns">${cancel ? `<button class="btn ghost" value="">${esc(cancel)}</button>` : ''}<button class="btn primary" value="1">${esc(ok)}</button></div></div>`;
@@ -1438,7 +1440,7 @@ function keepDraft(pid = cur, now = false) {
   if (pid === cur) texts[pid] = $('prompt').value;
   const text = texts[pid] || '', a = atts[pid] || [], q = queue[pid] || [], ed = editing[pid] || null; // ed: a queued one being edited
   clearTimeout(keepDraft[pid]);
-  const f = FILING[pid] || [];
+  const f = [...(FILING[pid] || []), ...(INBOX[pid] || [])];
   const save = () => call('save_draft', {pid, draft: text || a.length || q.length || ed || f.length ? {text, atts: a, queue: q, editing: ed, filing: f} : null});
   if (now) save(); else keepDraft[pid] = setTimeout(save, 300);
 }
@@ -1676,15 +1678,18 @@ function reBub(e, t, a) { e.text = utext(t, a); const old = USEREL.get(e)?.close
 const TK = {queue: [icon('clock'), 'Queued: sends when this turn ends'], pend: [icon('clock'), 'Sending…'], sent: ['✓', 'Sent'], read: ['✓✓', 'Received by the AI'], fail: ['!', 'Not sent']};
 const tickHtml = e => `<span class="tk ${e.st}" data-tip="${TK[e.st][1]}">${TK[e.st][0]}</span>`;
 function tick(e, st) { e.st = st; const k = USEREL.get(e)?.querySelector('.tk'); if (k) k.outerHTML = tickHtml(e); }
-const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tick(e, 'read')); UNREAD[pid] = []; };
+const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tick(e, 'read')); UNREAD[pid] = []; if (INBOX[pid]?.length) { INBOX[pid] = []; keepDraft(pid, true); } };
+/* sent but not yet read (busy:true) = only in Rust's in-memory inbox (session connecting/retrying) → kept in the saved draft till then ∴ a crash/quit re-queues it */
+const INBOX = {};
 function sendNow(pid, {text: t, atts: a, work}, e) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
   if (e) { reBub(e, t, a); if (e.st !== 'pend') tick(e, 'pend'); }
   else e = userEntry(pid, t, a);
   (UNREAD[pid] ||= []).push(e);
   if (work) P(pid).work = work;
+  const sm = {text: t, atts: a, work}; (INBOX[pid] ||= []).push(sm); keepDraft(pid, true);
   call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data})), files, work: work || null})
-    .then(() => e.st === 'pend' && tick(e, 'sent'), err => { tick(e, 'fail'); toast(`Message not sent: ${err}`, 'err'); });
+    .then(() => e.st === 'pend' && tick(e, 'sent'), err => { tick(e, 'fail'); INBOX[pid] = INBOX[pid].filter(x => x !== sm); (queue[pid] ||= []).push(sm); if (pid === cur) drawQueue(); keepDraft(pid, true); toast(`Message not sent (kept in the queue): ${err}`, 'err'); });
 }
 // one row of pills (first words; click = edit), ‹ › scroll it when it overflows
 function drawQueue() {
@@ -2546,11 +2551,13 @@ async function taskDo(action, arg) {
   await pollTeam(); drawAtp();
 }
 // claim it on GitHub (others see it's taken), then hand it to Claude
+/* pre-fill the composer: appended below what's typed (was replaced = typed text lost), saved at once */
+function putPrompt(t) { const p = $('prompt'); p.value = p.value.trim() ? p.value.replace(/\s*$/, '') + '\n\n' + t : t; grow(); if (cur) { keepDraft(cur, true); drawChrome(); } p.focus(); }
 async function taskStart(n) {
-  const x = teamTasks(cur).find(t => t.number === n);
+  const pid = cur, x = teamTasks(cur).find(t => t.number === n);
   await taskDo('claim', n);
-  $('prompt').value = `Work on issue #${n} "${x?.title}" (${x?.url}): read it with gh, do it on a new branch, and close the issue when it's done.`;
-  grow(); keepDraft(); $('prompt').focus();
+  if (pid !== cur) return; // switched project meanwhile
+  putPrompt(`Work on issue #${n} "${x?.title}" (${x?.url}): read it with gh, do it on a new branch, and close the issue when it's done.`);
 }
 
 // local-only project → its own GitHub repo; defaults to the project's (or its AI account's) GitHub account
@@ -2571,9 +2578,8 @@ async function publish(btn) {
   } catch (e) { $('pubMsg').textContent = e; btn.disabled = false; }
 }
 function draft(kind, x) {
-  $('prompt').value = kind === 'pr' ? `Review PR #${x.number} "${x.title}" (${x.url}): read the diff and comments with gh, then list risks and suggested changes.`
-    : `Work on issue #${x.number} "${x.title}" (${x.url}): read it with gh, then fix it on a new branch.`;
-  grow(); keepDraft(); $('prompt').focus();
+  putPrompt(kind === 'pr' ? `Review PR #${x.number} "${x.title}" (${x.url}): read the diff and comments with gh, then list risks and suggested changes.`
+    : `Work on issue #${x.number} "${x.title}" (${x.url}): read it with gh, then fix it on a new branch.`);
 }
 
 // files: the tree lives in the left panel (Files tab); a picked file previews in the right panel's Code tab
@@ -2647,7 +2653,7 @@ let GV = null;
 async function drawGraph(force) {
   const box = $('graph'), pid = cur;
   if (!pid) { GV = null; box.innerHTML = '<p class="faint" style="font-size:13px">Open a project to see how its files link.</p>'; return; }
-  if (!force && GV?.pid === pid && box.contains(GV.cv)) return; // already spinning
+  if (!force && GV?.pid === pid && box.contains(GV.cv) && !GV.stopped) return; // already spinning (stopped = loop exited while hidden → restart it, else frozen)
   GV = null;
   box.innerHTML = `<canvas></canvas><button class="ib gre" title="Scan again" onclick="delete GRAPH[cur]; drawGraph(true)">${icon('loop')}</button><small class="ginfo">Scanning file headers…</small>`;
   const cv = box.querySelector('canvas'), info = box.querySelector('.ginfo');
@@ -2670,7 +2676,7 @@ async function drawGraph(force) {
   cv.onmouseleave = () => { drag = null; v.mx = null; cv.style.cursor = 'grab'; };
   const ctx = cv.getContext('2d');
   const frame = () => {
-    if (GV !== v || !cv.isConnected || $('graph').hidden) return;
+    if (GV !== v || !cv.isConnected || $('graph').hidden) return void (v.stopped = true);
     const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
     if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
@@ -2733,7 +2739,7 @@ async function drawWeb() {
     // only reachable from the phone if the dev server listens on all interfaces → offer Claude the fix
     const pu = new URL(purl), off = local && !await call('reach', {host: pu.hostname, port: +pu.port || 80}).catch(() => true);
     const fix = off ? `<div class="row" style="margin-bottom:8px"><small class="dim grow">Not reachable from the phone: the dev server only listens on localhost.</small>
-      <button class="btn" onclick="$('prompt').value = 'Make the dev server listen on all interfaces (0.0.0.0, e.g. vite --host) so a phone on the same Wi-Fi can open ${esc(purl)}'; grow(); $('prompt').focus()">Fix with AI</button></div>` : '';
+      <button class="btn" onclick="putPrompt('Make the dev server listen on all interfaces (0.0.0.0, e.g. vite --host) so a phone on the same Wi-Fi can open ${esc(purl)}')">Fix with AI</button></div>` : '';
     // QR: 2 screen px per module; click → fills the panel width for scanning, click again → back
     phone = `<div class="qrbox"><div class="qr" title="Click to enlarge for scanning" onclick="this.classList.toggle('big')">${QRS.get(purl)}</div><div class="grow" style="min-width:0"><small class="dim">Scan on your phone${local ? ' (same Wi-Fi)' : ''}</small>
       <a class="mono" data-url="${esc(purl)}" style="display:block;overflow-wrap:anywhere;color:var(--accent);cursor:pointer">${esc(purl)}</a></div></div>${fix}`;
@@ -3713,7 +3719,7 @@ function drawAtp() {
         + (iq ? issuesRest() : '')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}${iq ? ' · not issues yet' : ''}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
-    || empty(`Your AI's task list and ${iq ? 'open task issues' : "PLAN.md's queue"} show here`, `<button class="btn sm" onclick="$('prompt').value = '${iq ? 'Plan this as GitHub task issues: ' : 'Plan this in PLAN.md: '}'; $('prompt').focus(); grow()">${icon('list')}Plan with your AI</button>`);
+    || empty(`Your AI's task list and ${iq ? 'open task issues' : "PLAN.md's queue"} show here`, `<button class="btn sm" onclick="putPrompt('${iq ? 'Plan this as GitHub task issues: ' : 'Plan this in PLAN.md: '}')">${icon('list')}Plan with your AI</button>`);
   const agents = ag.length ? [...run, ...ag.filter(a => !a.running).slice(-4).reverse()].map(a =>
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
