@@ -3217,20 +3217,23 @@ function buildPage() {
     <div class="label" style="margin-top:18px">Network Mac</div>
     ${macHtml()}`;
 }
-/* #147 Network Mac: guided SSH setup. Auth = ssh config/agent keys (BatchMode) → nothing secret saved. MACT = last test (kept, no auto re-run). */
+/* #147 Network Mac: guided SSH setup (#160 one-click key install). Auth = ssh keys (BatchMode) → nothing secret saved. MACT = last test (kept, no auto re-run). */
 let MACT = null;
 const macIn = (k, ph) => `<input id="mac-${k}" value="${esc(S.mac?.[k] || '')}" placeholder="${ph}" onchange="macSave()" style="width:100%">`;
 function macHtml() {
   const t = MACT, chk = (n, v, hint) => optRow(n, v ? esc(v) : hint, v ? `<span style="color:var(--ok)">${icon('check')}</span>` : `<span class="err">missing</span>`);
   return `<div class="box" id="set-mac"><p class="dim" style="margin:6px 0">Build, sign and notarize macOS apps on a Mac on your network over SSH.</p>
     ${optRow('1. Turn on Remote Login on the Mac', 'System Settings › General › Sharing › Remote Login', '')}
-    ${optRow('2. Mac address and user', 'An ssh alias from ~/.ssh/config, a name or IP. User empty = the alias/default user.', `<div style="display:flex;gap:6px;width:260px">${macIn('host', 'mac-mini')}${macIn('user', 'user')}</div>`)}
-    ${optRow('3. Key login (no password)', 'No key yet: <code>ssh-keygen -t ed25519</code>, then copy it once (asks the Mac password):<br><code>type $env:USERPROFILE\\.ssh\\id_ed25519.pub | ssh USER@HOST "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"</code>', '')}
-    ${optRow('4. Build folder on the Mac', 'Empty = ~/clauracle-build', `<div style="width:260px">${macIn('dir', '~/clauracle-build')}</div>`)}
-    ${optRow('5. Test connection', t ? (t.ok ? esc(t.os) : '<span class="err">' + esc(t.err || 'Failed') + '</span>') : 'Logs in with your key and checks the build tools',
+    ${S.mac?.host && !MACF ? optRow('2. SSH login', esc(macTo()) + (t?.ok ? ' · key login works' : ''), `<button class="btn sm" onclick="MACF=1; $('set-mac').outerHTML = macHtml()">Change</button>`)
+      : optRow('2. Set up SSH', 'Mac name (Sharing settings, e.g. <code>mac-mini.local</code>) or IP, your Mac login. The password is used once to install a key, never saved.',
+        `<div style="display:flex;flex-direction:column;gap:6px;width:260px"><input id="macf-host" value="${esc(S.mac?.host || '')}" placeholder="mac-mini.local">
+          <div style="display:flex;gap:6px"><input id="macf-user" value="${esc(S.mac?.user || '')}" placeholder="Mac username" style="width:100%"><input id="macf-pw" type="password" placeholder="Mac password" style="width:100%" onkeydown="event.key === 'Enter' && macKey()"></div>
+          <button class="btn sm" id="macKeyBtn" onclick="macKey()">${icon('key')}Set up SSH</button></div>`)}
+    ${optRow('3. Build folder on the Mac', 'Empty = ~/clauracle-build', `<div style="width:260px">${macIn('dir', '~/clauracle-build')}</div>`)}
+    ${optRow('4. Test connection', t ? (t.ok ? esc(t.os) : '<span class="err">' + esc(t.err || 'Failed') + '</span>') : 'Logs in with your key and checks the build tools',
       `<button class="btn sm" id="macTestBtn" onclick="macTest()" ${S.mac?.host ? '' : 'disabled'}>${icon('loop')}Test</button>`)}
-    ${t?.ok ? chk('Xcode tools', t.xcode, 'xcode-select --install on the Mac') + chk('Rust', t.rust, 'Set up installs it') + chk('Node.js', t.node, 'Set up installs it')
-      + optRow('6. Build tools', MACS.ok ? '<span style="color:var(--ok)">Ready: Node.js, Rust + both Mac targets</span>' : 'Installs what is missing (Homebrew node, rustup, Apple silicon + Intel targets). Safe to rerun.',
+    ${t?.ok ? (t.xcode ? chk('Xcode tools', t.xcode) : optRow('Xcode tools', "Opens Apple's installer on the Mac: click Install there, then Test again", `<button class="btn sm" onclick="macXcode(this)">${icon('apple')}Install</button>`)) + chk('Rust', t.rust, 'Set up installs it') + chk('Node.js', t.node, 'Set up installs it')
+      + optRow('5. Build tools', MACS.ok ? '<span style="color:var(--ok)">Ready: Node.js, Rust + both Mac targets</span>' : 'Installs what is missing (Homebrew node, rustup, Apple silicon + Intel targets). Safe to rerun.',
         `<button class="btn sm" onclick="macSetup()" ${MACS.busy ? 'disabled' : ''}>${MACS.busy ? '<span class="spin"></span>Installing…' : icon('hammer') + 'Set up'}</button>`)
       + (MACS.lines.length ? `<div id="mac-log" class="mono dim" style="font-size:12px;max-height:10em;overflow:auto;white-space:pre-wrap;margin:4px 0">${MACS.lines.map(macLn).join('')}</div>` : '') : ''}</div>`;
 }
@@ -3246,8 +3249,22 @@ async function macSetup() {
   toast(MACS.ok ? 'Mac build tools ready' : 'Mac setup failed: see Settings › Build & Release', MACS.ok ? 'ok' : 'err');
   await macTest();
 }
+/* #160 Set up SSH: lib mac_key = ssh-keygen if needed + key → authorized_keys (password once, askpass) + saves cfg.mac → Test. MACF = form open. */
+let MACF = 0;
+const macTo = () => (S.mac.user ? S.mac.user + '@' : '') + S.mac.host;
+async function macKey() {
+  const b = $('macKeyBtn'), mac = {host: $('macf-host').value.trim(), user: $('macf-user').value.trim(), dir: S.mac?.dir || ''}, pw = $('macf-pw').value;
+  if (!mac.host || !pw) return toast('Enter the Mac name and password', 'warn');
+  b.disabled = true; b.innerHTML = '<span class="spin"></span>Setting up…';
+  try { await call('mac_key', {mac, pw}); S.mac = mac; MACF = 0; MACS.ok = false; MACS.lines = []; $('set-mac').outerHTML = macHtml(); await macTest(); }
+  catch (e) { toast('SSH setup failed: ' + e, 'err'); b.disabled = false; b.innerHTML = icon('key') + 'Set up SSH'; }
+}
+async function macXcode(b) {
+  b.disabled = true; await call('mac_xcode', {mac: S.mac}).then(() => toast('Click Install in the dialog on the Mac, then Test again', 'info'), e => toast('Xcode install: ' + e, 'err'));
+  b.disabled = false;
+}
 async function macSave() {
-  S.mac = {host: $('mac-host').value.trim(), user: $('mac-user').value.trim(), dir: $('mac-dir').value.trim()}; MACT = null; MACS.ok = false; MACS.lines = [];
+  S.mac = {...S.mac, dir: $('mac-dir').value.trim()}; MACT = null; MACS.ok = false; MACS.lines = [];
   await call('set_mac', {mac: S.mac}); $('set-mac').outerHTML = macHtml();
 }
 async function macTest() {

@@ -649,6 +649,22 @@ async fn mac_setup(app: AppHandle, mac: store::NetMac) -> bool {
     tauri::async_runtime::spawn_blocking(move || store::mac_setup(&mac, |l| emit(&app, "mac_setup", json!({"line": l})))).await.unwrap_or(false)
 }
 
+/// #160 Set up SSH: key + authorized_keys via password once, then save cfg.mac (dir kept).
+#[tauri::command]
+async fn mac_key(st: St<'_>, mac: store::NetMac, pw: String) -> Result<(), String> {
+    let m = mac.clone();
+    tauri::async_runtime::spawn_blocking(move || store::mac_key_setup(&m, &pw)).await.map_err(|e| e.to_string())??;
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.mac = mac;
+    store::save(&cfg);
+    Ok(())
+}
+
+#[tauri::command]
+async fn mac_xcode(mac: store::NetMac) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || store::mac_xcode(&mac)).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn mac_test(mac: store::NetMac) -> serde_json::Value {
     tauri::async_runtime::spawn_blocking(move || store::mac_test(&mac)).await.unwrap_or_default()
@@ -1662,7 +1678,7 @@ pub fn run() {
             continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_links, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_ci_builds, set_mac, mac_test, mac_setup, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_links, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

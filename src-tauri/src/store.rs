@@ -170,6 +170,44 @@ pub fn mac_test(m: &NetMac) -> serde_json::Value {
         "err": o.stderr.lines().filter(|l| !l.trim().is_empty() && !l.starts_with("Warning: Permanently added")).last().unwrap_or("").trim()})
 }
 
+/// #160 one-click key login: ssh-keygen ed25519 if missing → pubkey appended (dedup) to the Mac's authorized_keys over a
+/// password login. Password → ssh via SSH_ASKPASS = this exe in askpass mode (main.rs: env CLAURACLE_ASKPASS → stdout);
+/// lives only in that child's env, never stored. SSH_ASKPASS_REQUIRE=force needs OpenSSH ≥8.4 (Win11/macOS ok).
+pub fn mac_key_setup(m: &NetMac, pw: &str) -> Result<(), String> {
+    if m.host.trim().is_empty() { return Err("No host set".into()); }
+    let sshd = dirs::home_dir().ok_or("no home")?.join(".ssh");
+    let key = sshd.join("id_ed25519");
+    let pubk = sshd.join("id_ed25519.pub");
+    if !pubk.exists() {
+        let _ = std::fs::create_dir_all(&sshd);
+        let o = run("ssh-keygen", &["-q", "-t", "ed25519", "-N", "", "-f", &key.to_string_lossy()], None, &[]);
+        if !o.ok { return Err(format!("ssh-keygen: {}", o.stderr.trim())); }
+    }
+    let k = std::fs::read_to_string(&pubk).map_err(|e| e.to_string())?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut c = command(&which("ssh").ok_or("ssh not found")?);
+    c.args(["-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new", "-o", "PubkeyAuthentication=no",
+            "-o", "PreferredAuthentications=password,keyboard-interactive", "-o", "NumberOfPasswordPrompts=1", &mac_to(m),
+            "umask 077; mkdir -p ~/.ssh; k=$(cat); grep -qxF \"$k\" ~/.ssh/authorized_keys 2>/dev/null || echo \"$k\" >> ~/.ssh/authorized_keys"])
+        .env("SSH_ASKPASS", exe).env("SSH_ASKPASS_REQUIRE", "force").env("DISPLAY", ":0").env("CLAURACLE_ASKPASS", pw)
+        .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
+    let mut ch = c.spawn().map_err(|e| e.to_string())?;
+    { use std::io::Write; let _ = ch.stdin.take().unwrap().write_all(k.trim().as_bytes()); }
+    let o = ch.wait_with_output().map_err(|e| e.to_string())?;
+    if o.status.success() { return Ok(()); }
+    let e = String::from_utf8_lossy(&o.stderr);
+    let l = e.lines().filter(|l| !l.trim().is_empty() && !l.starts_with("Warning: Permanently added")).last().unwrap_or("ssh failed").trim();
+    Err(if l.contains("Permission denied") { "Wrong Mac username or password".into() }
+        else if l.contains("onnection refused") { "Remote Login is off on the Mac".into() } else { l.to_string() })
+}
+
+/// #160 Xcode CLT: pops Apple's install dialog on the Mac (user clicks Install there).
+pub fn mac_xcode(m: &NetMac) -> Result<(), String> {
+    let o = mac_ssh(m, "xcode-select --install").output().map_err(|e| e.to_string())?;
+    let e = String::from_utf8_lossy(&o.stderr);
+    if o.status.success() || e.contains("already installed") { Ok(()) } else { Err(e.lines().last().unwrap_or("failed").trim().into()) }
+}
+
 /// #148 idempotent dep install on the Network Mac (rerunnable): node + Homebrew rustup (keg-only → PATH line in ~/.zprofile),
 /// stable toolchain, both mac targets (universal builds). Homebrew/Xcode not auto-installed ∵ need the Mac password/GUI → ERR/WARN lines.
 /// Script via stdin to `zsh -l -s` (no quoting hell); each output line → on_line (progress). Ok = exit 0 + DONE.
