@@ -57,7 +57,8 @@ pub struct Question {
     pub blocking: bool,
 }
 
-/// Build steps Clauracle runs itself (plain code, no tokens). after: "" | smart (#89, new projects) | build | build_run | build_deploy
+/// Build steps Clauracle runs itself (plain code, no tokens). after (#182): "" | <build|smart>[_run][_deploy];
+/// "smart_build" = smart, nothing after; legacy "smart" = smart_run
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default)]
 pub struct Build {
@@ -116,7 +117,7 @@ impl Default for Project {
             id: String::new(), name: String::new(), path: String::new(), account: MAIN.into(), gh: String::new(),
             off: vec![], on: None, mode: "default".into(), model: String::new(), effort: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, prev_session: None, ready: false, questions: vec![], answers: String::new(),
-            build: Build { after: "smart".into(), fix: true, ..Default::default() }, hide_env: true, terse: true,
+            build: Build { after: "smart_run".into(), fix: true, ..Default::default() }, hide_env: true, terse: true,
             owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], allow: vec![], ai_credit: false, stage: String::new(), rel_auto: false, order: vec![], work: 0, targets: vec![], site: serde_json::Value::Null,
         }
     }

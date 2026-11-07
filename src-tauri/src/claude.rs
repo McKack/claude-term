@@ -576,7 +576,8 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
         let mut p = p;
         let mut smart = false;
         let mut restart_self = false; // #170: Clauracle built itself after a task → swap into the new build
-        if !was_handover && p.build.after == "smart" {
+        let a = if p.build.after == "smart" { "smart_run" } else { p.build.after.as_str() }.to_string(); // #182 legacy smart = smart+run
+        if !was_handover && a.starts_with("smart") {
             // #89: build + run only when the diff since the last good smart build matters (code, big or a fix)
             let (dir, base) = (p.path.clone(), live.built.lock().unwrap().clone());
             let why = tauri::async_runtime::spawn_blocking(move || store::smart_why(&dir, &base)).await.unwrap_or_default();
@@ -591,14 +592,15 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
                 smart = false;
                 line(app, pid, "note", "Smart build: no build/run step found; set one in the Build tab.");
             } else if smart {
-                line(app, pid, "note", &format!("Smart build: {why} → build + run."));
+                line(app, pid, "note", &format!("Smart build: {why} → building."));
             }
         }
-        if !was_handover && (smart || !p.build.after.is_empty() && p.build.after != "smart") {
+        if !was_handover && (smart || a.starts_with("build")) {
             // a task finished: build (and run/deploy) in plain code; a failure can go back to Claude
             let mut steps = vec!["build"];
             let own = own_repo(st, pid);
-            steps.extend(match p.build.after.as_str() { "build_run" | "smart" if !own => vec!["run"], "build_deploy" => vec!["deploy"], _ => vec![] }); // own: restart replaces run
+            if a.contains("run") && !own { steps.push("run"); } // own: restart replaces run
+            if a.contains("deploy") { steps.push("deploy"); }
             let mut good = true;
             for step in steps {
                 let (ok, tail) = run_step(app, st, pid, step).await;

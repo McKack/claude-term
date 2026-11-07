@@ -368,6 +368,7 @@ pre.diff .ctx { color:var(--faint); }
 .menu button { display:flex; width:100%; gap:9px; align-items:center; text-align:left; border:0; background:none; padding:7px 10px; border-radius:8px; cursor:pointer; }
 .menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
+.menu .mand { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--faint); padding:2px 10px; } .menu .mand::before, .menu .mand::after { content:''; flex:1; border-top:1px solid var(--line); }
 .menu .mcap { font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; padding:6px 10px 2px; }
 .menu .mact { display:inline-grid; place-items:center; width:24px; height:22px; border-radius:6px; color:var(--dim); } .menu .mact:hover { background:var(--soft); color:var(--accent); } .menu .mact svg { width:14px; height:14px; }
 .menu .mact.lab { display:inline-flex; gap:4px; width:auto; min-width:92px; padding:0 6px; margin-left:4px; border:1px solid var(--line2); font-size:12px; } .menu .mact.lab svg:last-child { width:10px; height:10px; margin-left:auto; }
@@ -729,12 +730,12 @@ function menuAt(anchor, items) {
   buildMenu(items, anchor.getBoundingClientRect(), false);
   setTimeout(() => document.addEventListener('mousedown', outside), 0);
 }
-// item: '-' | {label, hint, icon, check, run, sub (indented), title (caption, not clickable), items (› submenu on hover)}
+// item: '-' | {and: text} (divider with a word) | {label, hint, icon, check, run, sub (indented), title (caption, not clickable), items (› submenu on hover)}
 function buildMenu(items, r, side, level = 0) {
   document.querySelectorAll('.menu').forEach(x => +x.dataset.level >= level && x.remove());
   const m = document.createElement('div');
   m.className = 'menu glass'; m.dataset.level = level; m.popover = 'manual'; // top layer, opened last → over Settings/dialogs
-  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
+  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.and ? `<div class="mand">${esc(it.and)}</div>` : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
     <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact${a.label ? ' lab' : ''}" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}${a.label ? `${esc(a.label)}${icon('down')}` : ''}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
   (document.querySelector('dialog:modal') || document.body).appendChild(m); m.showPopover(); // inside a modal: else inert
   m.style.maxHeight = innerHeight - 16 + 'px'; m.style.overflowY = 'auto';
@@ -2013,7 +2014,7 @@ function projectsPage() {
       ${optRow('Keep .env away from the AI', 'The AI can\'t read or edit .env files; manage them in Services &amp; Secrets › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on')}
     ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
-      <span>After each task</span><select onchange="setBuild('after', this.value)">${options({'': 'Nothing', smart: 'Smart: build + run on big changes / fixes', build: 'Build', build_run: 'Build + run', build_deploy: 'Build + deploy'}, p.build.after)}</select>
+      <span>After each task</span><span>${thenBtn(p, 'm')}</span>
       <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to the AI to fix</small></label></div>`,
       ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3')}
     ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Storage Janitor cleans them on its own: after 14 days without commits, over 10 GB, or when the drive runs low (also old Claude Code versions and, on a low drive, Claude transcripts older than 14 days).</p>
@@ -2213,8 +2214,8 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   }
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
   const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;display:inline-flex;padding-top:2px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${icon(x.ai ? 'sparkle' : x.ok ? 'check' : 'x')}</span>
-    <span class="grow">${esc(x.t)}${x.dh ? `<small class="dim" style="display:block">${x.dh}</small>` : x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
-    ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with AI'}</button>` : ''}</div>`;
+    <span class="grow">${esc(x.t)}${x.dh ? '' : x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
+    ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with AI'}</button>` : ''}</div>${x.dh ? `<small class="dim" style="display:block;padding-left:24px">${x.dh}</small>` : ''}`; /* #182 dh below the row: full width, not squeezed by the Building… button */
   const seg = `<span class="seg" style="margin-bottom:8px">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const up = to > k, gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, ''); // up: moving a stage (or starting)
   const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : '';
@@ -2342,10 +2343,10 @@ async function buildHtml(p, has, live, force) {
   let c = GHI[pid0];
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) { ghiSet(pid0, g); c = GHI[pid0]; } }
   // #34: "Manual commands" fold (closed by default); no Deploy button ∵ Release runs the deploy command after publishing
-  return tgtHtml(p) + afterRow(p) + actHtml() + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+  return tgtHtml(p) + actHtml() + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
-          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
+          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div>${thenRow(p)}<div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
         : live || GUESS[pid0] ? await guessHtml() : skel('b45'), 0, `<button class="ib" title="Edit commands" onclick="buildSet()">${icon('gear')}</button>`)
       + (!svcOf(p).includes('macsign') && mac
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
@@ -2353,7 +2354,19 @@ async function buildHtml(p, has, live, force) {
       + (live || RELC[pid0] ? await relWizard(p, live && force === true, !live) : wait('Release'))
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
 }
-const afterRow = p => `<label class="row" style="gap:8px;font-size:13px;margin:4px 0 10px" title="Runs in plain code when the AI finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}">${icon('hammer')}<span class="grow">After each task</span><select onchange="setP({build: {...P().build, after: this.value}})">${options({'': 'Nothing', smart: 'Smart: build + run on big changes', build: 'Build', build_run: 'Build + run', build_deploy: 'Build + deploy'}, p.build.after)}</select></label>`;
+/* #182 p.build.after = '<build|smart>[_run][_deploy]', '' = nothing; 'smart_build' = smart, nothing after; legacy 'smart' = smart_run (Rust same) */
+const aft = a => { a = a === 'smart' ? 'smart_run' : a || ''; return {b: a.startsWith('smart') ? 'smart' : a ? 'build' : '', t: ['run', 'deploy'].filter(x => a.includes(x)).join('_')}; };
+const THEN = {run: 'Run', run_deploy: 'Run + Deploy', deploy: 'Deploy'};
+const thenLbl = a => { const {b, t} = aft(a); return b ? (b === 'smart' ? 'Smart build' : 'Build') + (t ? ' + ' + THEN[t] : '') : 'Nothing'; };
+const thenBtn = (p, w) => `<button class="btn sm" style="white-space:nowrap" onclick="thenMenu(this, '${w}')">${esc(thenLbl(p.build.after))}${icon('down')}</button>`;
+function thenMenu(el, w) { // w: 'm' = Settings project (mp), else the open project; click the picked one again = off
+  const p = w === 'm' ? P(mp) : P(), {b, t} = aft(p.build.after);
+  const put = (b, t) => { const v = !b ? '' : b === 'smart' && !t ? 'smart_build' : b + (t ? '_' + t : '');
+    w === 'm' ? setBuild('after', v) : setP({build: {...P().build, after: v}}).then(() => drawRight()); };
+  menuAt(el, [{title: '1 · Build'}, ...[['build', 'Build', 'every task'], ['smart', 'Smart build', 'only on big changes / fixes']].map(([k, l, h]) => ({label: l, hint: h, check: b === k, run: () => put(b === k ? '' : k, t)})),
+    {and: 'and'}, ...Object.entries(THEN).map(([k, l]) => ({label: l, check: t === k, run: () => put(b || 'build', t === k ? '' : k)}))]);
+}
+const thenRow = p => `<div class="row" style="gap:8px;font-size:13px;margin:8px 0" title="Runs in plain code when the AI finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}">${icon('hammer')}<span class="grow">Then</span>${thenBtn(p)}</div>`;
 async function drawRight(force) {
   if ($('right').hidden || !cur) return;
   if (UI.rc) { drawRRail(); return tabDots(); }
