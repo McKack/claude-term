@@ -1310,16 +1310,29 @@ fn claude_clean(home: &Path, keep: &[String], low: bool) -> u64 {
 }
 
 /// GitHub release `tag` with `files` attached and notes generated from the commits since the last one.
-pub fn release(dir: &str, user: &str, tag: &str, files: &[String]) -> Result<String, String> {
+pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool) -> Result<String, String> {
     if tag.is_empty() || tag.starts_with('-') { return Err("bad tag".into()); }
     // #119: tag THIS commit (pushed first); w/o --target gh tags the default branch → v0.1.2 got built from 0.1.1 code
     let env = gh_env(user);
+    // #130: CI off → repo var gate (workflow `if: vars.CLAURACLE_CI != 'off'`); on → drop it. Errors ignored (no admin = no gate)
+    if ci { run("gh", &["variable", "delete", "CLAURACLE_CI"], Some(dir), &env); }
+    else { run("gh", &["variable", "set", "CLAURACLE_CI", "--body", "off"], Some(dir), &env); }
     let push = run("git", &["push", "-q", "origin", "HEAD"], Some(dir), &env);
     if !push.ok { return Err(format!("push failed: {}", push.stderr.trim())); }
     let sha = run("git", &["rev-parse", "HEAD"], Some(dir), &[]).stdout.trim().to_string();
     let mut a = vec!["release", "create", tag, "--title", tag, "--generate-notes", "--target", &sha];
     a.extend(files.iter().map(String::as_str));
     let o = run("gh", &a, Some(dir), &env);
+    if o.ok && !ci {
+        // fallback for workflows w/o the gate: cancel runs the tag push started (they appear after a few s)
+        let (dir, tag) = (dir.to_string(), tag.to_string());
+        std::thread::spawn(move || for _ in 0..6 {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            let l = run("gh", &["run", "list", "--branch", &tag, "--event", "push", "--json", "databaseId,status", "--jq",
+                ".[] | select(.status != \"completed\") | .databaseId"], Some(&dir), &env);
+            for id in l.stdout.split_whitespace() { run("gh", &["run", "cancel", id], Some(&dir), &env); }
+        });
+    }
     if o.ok { Ok(o.stdout.trim().to_string()) } else { Err(o.stderr.trim().to_string()) }
 }
 

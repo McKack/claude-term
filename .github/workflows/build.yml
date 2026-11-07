@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   build:
+    # #130: Clauracle sets repo var CLAURACLE_CI=off when its CI builds switch is off → tag pushes skip (manual runs still go)
+    if: github.event_name != 'push' || vars.CLAURACLE_CI != 'off'
     strategy:
       fail-fast: false
       matrix:
