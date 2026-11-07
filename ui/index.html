@@ -2111,9 +2111,9 @@ const tgtLocal = x => x === HOST || x === 'android' || (x === 'ios' && HOST === 
 const strictStage = p => Math.max(SK.indexOf(p.stage), RELTO[cur] ?? -1) >= SK.indexOf('rc');
 function tgtWhy(p, id) { // '' = ready, else [why, fix js]
   const miss = tgtLocal(id) && DEPSC ? Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].includes(id)) : [];
-  if (miss.length) return [`Needs ${miss.map(k => DEPS[k][0]).join(', ')} on this computer`, `openSettings('cx')`];
+  if (miss.length) return [`Needs ${miss.map(k => DEPS[k][0]).join(', ')} on this computer`, `openSettings('build')`];
   const c = RELC[cur]?.c; // #123 CI-built targets: facts from release_check (none yet → no verdict)
-  if (!tgtLocal(id) && !S.ci_builds) return [`Not buildable on this computer · CI builds are off (Settings › Accounts › GitHub)`, `openSettings('ai')`]; // #126
+  if (!tgtLocal(id) && !S.ci_builds) return [`Not buildable on this computer · CI builds are off (Settings › Build & Release)`, `openSettings('build')`]; // #126
   if (!tgtLocal(id) && c && !c.err) {
     if (!c.remote) return ['Built by CI only: put this project on GitHub first', `rightTab('gh')`];
     if (!(c.ci_os || []).includes(id)) return ['Not built on this computer and no CI job builds it', `tgtFlip('${id}').then(() => relAsk('ci_targets'))`];
@@ -3023,7 +3023,7 @@ async function preset(file, name) {
 // ---- settings: Accounts (AI + GitHub) · Projects | Extensions (cx, agents, deps) · Appearance · Notifications ----
 // #38 order: who + what | what the AI gets + Clauracle itself (divider before cx)
 // #59: GitHub folded into Accounts, Agents into Extensions; old page keys still open their new home
-const PAGES = {ai: ['user', 'Accounts'], projects: ['folder', 'Projects'], cx: ['plug', 'Extensions'], look: ['sliders', 'Appearance'], notify: ['bell', 'Notifications']};
+const PAGES = {ai: ['user', 'Accounts'], projects: ['folder', 'Projects'], build: ['hammer', 'Build &amp; Release'], cx: ['plug', 'Extensions'], look: ['sliders', 'Appearance'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
 // GitHub accounts / catalog changed: drop the cache and load again
 const reloadSettings = p => { SET = null; return openSettings(p); };
@@ -3038,7 +3038,7 @@ async function openSettings(p) {
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `${k === 'cx' ? '<i class="rsep"></i>' : ''}<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="body">${page === 'projects' ? '' : `<h2 class="row">${PAGES[page][1]}</h2>`}
-    ${{look: lookPage, projects: projectsPage, cx: cxPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
+    ${{look: lookPage, projects: projectsPage, build: buildPage, cx: cxPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
 }
 function ghPage() {
@@ -3130,13 +3130,27 @@ async function askLegacy(pid) {
   pickItems('project:' + pid, `Choose what your AI can use in ${p.name}`, onOf(p));
 }
 function cxPage() {
-  setTimeout(depsFill);
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
     <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => reloadSettings())">${icon('loop')}Rescan</button></p>
     ${cxGroup('g-cx', 'Connections &amp; Skills', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}
     ${fold('g-agents', 'Helper agents', optRow('Give helper agents to your AI', '', sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')) + agentsPage(),
       S.agents_on ? `${AGENTS.filter(a => a.on).length}/${AGENTS.length}` : 'off')}
-    ${fold('g-deps', 'Dependencies', `<div id="depsBox">${skel(90, 60, 'b100', 'b100', 'b100')}</div>`, 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}`;
+    <p class="dim" style="font-size:13px">Build toolchains (Node, Rust, WSL, Xcode…): <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>`;
+}
+/* #146 Settings › Build & Release: app-wide build options. Mac signing = per-project service → shown for the open project.
+   Network Mac = placeholder until #147 (SSH setup). */
+function buildPage() {
+  setTimeout(depsFill);
+  const p = P(), mac = p && svcOf(p).includes('macsign'), keys = RELC[cur]?.c?.sign || [],
+    go = mac ? `rightTab('svc')` : `svcAdd('macsign').then(() => rightTab('svc'))`;
+  return `<div class="label">CI</div>
+    <div class="box">${optRow('CI builds', 'Let GitHub Actions build the platforms this computer can\'t (costs Actions minutes). Off: only local builds count, Release uploads them.', sw(S.ci_builds, `call('set_ci_builds', {on: this.checked}).then(refresh)`))}</div>
+    ${fold('g-deps', 'Dependencies (this computer, WSL for Linux)', `<div id="depsBox">${skel(90, 60, 'b100', 'b100', 'b100')}</div>`, 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}
+    <div class="label" style="margin-top:18px">Mac signing (Apple Developer ID)</div>
+    <div class="box">${p ? optRow(esc(p.name), !mac ? 'Not set up: Mac builds stay unsigned' : keys.includes('APPLE_SIGNING_IDENTITY') ? 'Keys in .env: ' + keys.join(', ') : 'Set up · signing keys not in .env yet',
+      `<button class="btn sm" onclick="closeDlg(); ${go}">${icon('apple')}${mac ? 'Open' : 'Set up'}</button>`) : '<p class="dim">Open a project to set up its Mac signing.</p>'}</div>
+    <div class="label" style="margin-top:18px">Network Mac</div>
+    <div class="box"><p class="dim" style="margin:6px 0">Build, sign and notarize macOS apps on a Mac on your network over SSH. Coming soon.</p></div>`;
 }
 /* Dependencies (#28): toolchains for local builds of the picked target platforms (store::deps, 60s cache). Missing → AI installs it
    in the current project's session (official installer/package manager) or the download page. Other OSes build in CI (#27). */
@@ -3194,7 +3208,7 @@ function aiPage() {
       <div class="btns"><button class="btn" onclick="csAcct('${esc(a.id)}')">${icon('sliders')}Advanced AI settings</button><span class="grow"></span>${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
     + `<div class="label" style="margin-top:18px">GitHub accounts</div>${ghPage()}
-    <div class="box">${optRow('CI builds', 'Let GitHub Actions build the platforms this computer can\'t (costs Actions minutes). Off: only local builds count, Release uploads them.', sw(S.ci_builds, `call('set_ci_builds', {on: this.checked}).then(refresh)`))}</div>
+    <p class="dim" style="font-size:13px">CI builds: <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>
     <div class="label" style="margin-top:18px">Lessons</div>
     <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules your AI records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
     <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
