@@ -411,6 +411,8 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti.sug > svg:first-child { flex:none; color:var(--accent); margin-top:calc((1lh - 16px) / 2); } .ti.sug > .ib { flex:none; padding:0 2px; } /* sparkle centred on line 1 */
 .ti.working .tt { color:transparent; background:linear-gradient(90deg, var(--accent) 25%, color-mix(in srgb, var(--accent) 35%, var(--text)) 50%, var(--accent) 75%) 0 0/200% 100%;
   -webkit-background-clip:text; background-clip:text; animation:shimmer 1.8s linear infinite; } /* Claude works on it: Working… pill's shimmer, on the text */
+.shim { color:transparent; background:linear-gradient(90deg, var(--dim) 25%, var(--text) 50%, var(--dim) 75%) 0 0/200% 100%; -webkit-background-clip:text; background-clip:text; animation:shimmer 1.8s linear infinite; } /* #174 artifact still building */
+.bfile { display:block; color:var(--text); } .bfile svg { width:12px; height:12px; color:var(--ok); vertical-align:-1px; margin-left:4px; }
 .ti.working > input { outline:1.5px solid var(--accent); outline-offset:-1.5px; border-radius:3px; } /* unchecked box ignores accent-color → outline tints it */
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .item a { color:var(--text); text-decoration:none; cursor:pointer; } .item a:hover { color:var(--accent); }
@@ -1710,7 +1712,8 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = d.commands.map(c => typeof c === 'string' ? {name: c} : c); },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
-    if (d.step === 'build' && !!b.busy !== (d.done == null)) { b.busy = d.done == null; if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
+    if (d.step === 'build' && b.busy && d.line && d.pid === cur && tab === 'build' && /\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/i.test(d.line) && /Finished \d+ bundle/.test(b.out.slice(b.from || 0))) drawRight(); /* #174 an artifact landed → tick it */
+    if (d.step === 'build' && !!b.busy !== (d.done == null)) { if (!b.busy) b.from = b.out.length - (d.line != null ? d.line.length + 1 : 0); b.busy = d.done == null; if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
     if (d.step === 'build' && d.done) { BUILT[d.pid] = 1; if (d.pid === cur) tabDots(); } /* green dot till Build & Release is opened */
     if (d.step === 'build' && d.done != null) { ghiStale(d.pid); delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
@@ -2045,7 +2048,7 @@ function relItems(c, p) {
     ...(miss.length && S.ci_builds ? [{s: 0, id: 'ci_targets', t: 'CI builds the other platforms', ok: false, d: `not in CI: ${miss.map(tgtName).join(', ')}`}] : []),
     {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length && !stale.length,
       d: stale.length ? `older than the last code change: ${stale.map(f => f.name).join(', ')}` : lack.length && files.length ? `missing: ${lack.map(tgtName).join(', ')}` : files.length ? files.map(f => f.name).join(', ') + (cit.length ? ` · CI: ${cit.map(tgtName).join(', ')}` : '') : v ? `no build of v${v} yet` : '',
-      go: p.build.build ? 'relBuild(this)' : 'openManager(cur)', gl: p.build.build ? 'Build' : 'Set up'},
+      go: p.build.build ? 'relBuild(this)' : 'openManager(cur)', gl: p.build.build ? 'Build' : 'Set up', dh: builds[cur]?.busy ? bfiles(p, files) : ''},
   ];
 }
 /* #27 per-target builds: this OS builds its own desktop target + Android (macOS also iOS); the rest come from CI (tag push).
@@ -2057,6 +2060,11 @@ const tgtSplit = (p, c, files) => { const t = p.targets || [], here = tgtLocal; 
   const ci = t.filter(x => !here(x));
   return {ci, miss: ci.filter(x => !(c.ci_os || []).includes(x)), lack: t.filter(here).filter(x => !files.some(f => TGTEXT[x].test(f.name)))}; };
 // release files for version v: newest build per file type named with v (versionless could be stale); builds via gh_info (GHI)
+/* #174 while building: expected artifacts (last build's names, else target name) shimmer → check once Tauri prints them under "Finished N bundle(s) at:" (b.from = out offset at build start) */
+const bdone = b => (b?.out || '').slice(b.from || 0).split(/Finished \d+ bundles? at:/).slice(1).join('\n').match(/[^\s\\/]+\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/gi) || [];
+const bfiles = (p, files) => { const done = bdone(builds[cur]), loc = (p.targets || []).filter(tgtLocal);
+  const exp = loc.flatMap(x => { const f = files.filter(f => TGTEXT[x].test(f.name)).map(f => f.name); return f.length ? f.map(n => [n, done.includes(n)]) : [[tgtName(x), done.some(n => TGTEXT[x].test(n))]]; });
+  return exp.map(([n, ok]) => `<span class="bfile${ok ? '' : ' shim'}">${esc(n)}${ok ? icon('check') : ''}</span>`).join(''); };
 const relFilesFor = (pid, v) => v ? relPick(GHI[pid]?.g?.builds || [], v).filter(b => fver(b.name) === v) : [];
 async function relWizard(p, force, cached) { // cached → draw RELC as is (caller ensures it exists)
   const pid = cur, k = p.stage ? SK.indexOf(p.stage) : -1, to = RELTO[pid] ?? Math.max(k, 0);
@@ -2082,7 +2090,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   }
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
   const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;display:inline-flex;padding-top:2px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${icon(x.ai ? 'sparkle' : x.ok ? 'check' : 'x')}</span>
-    <span class="grow">${esc(x.t)}${x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
+    <span class="grow">${esc(x.t)}${x.dh ? `<small class="dim" style="display:block">${x.dh}</small>` : x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
     ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with AI'}</button>` : ''}</div>`;
   const seg = `<span class="seg" style="margin-bottom:8px">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const up = to > k, gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, ''); // up: moving a stage (or starting)
@@ -2119,7 +2127,7 @@ async function relRelease(to, btn) {
 // Build from the wizard: on success the build event commits + pushes what it changed (Cargo.lock…) ∵ else "Everything committed" flips red again
 const RELB = {};
 // #120: busy at once (event confirms) → spinner + bar; no 2nd click → 2nd cargo blocked on the build-dir lock
-const buildNow = () => { (builds[cur] ||= {out: ''}).busy = true; drawRight(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); }); };
+const buildNow = () => { const b = builds[cur] ||= {out: ''}; b.from = b.out.length; b.busy = true; drawRight(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); }); };
 const relBuild = () => { RELB[cur] = 1; buildNow(); };
 const ciBusy = pid => { const r = RELC[pid]?.c?.ci; return !!r && r.status !== 'completed'; }; // #123 CI run in flight (release_check, polled)
 const bBusy = pid => builds[pid]?.busy || ciBusy(pid);
