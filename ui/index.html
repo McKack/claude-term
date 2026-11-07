@@ -164,6 +164,10 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .termcard .ttabs button:hover { color:#d8d4cb; } .termcard .ttabs button.on { background:var(--tc-hi); color:#d8d4cb; } .termcard .ttabs small { margin-left:4px; color:var(--tc-dim); }
 .termcard .tl { padding:7px 0; color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; max-height:10.5em; overflow:auto; }
 .termcard .tl > div { padding:0 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; } .termcard .tl > div:hover { background:var(--tc-row); }
+.termcard .tl > div.run { position:relative; padding-right:52px; color:#fff; box-shadow:inset 2px 0 var(--accent); /* #124 = Working pill look */
+  background:linear-gradient(90deg, var(--tc-row) 25%, color-mix(in srgb, var(--accent) 22%, var(--tc-row)) 50%, var(--tc-row) 75%) 0 0/200% 100%; animation:shimmer 1.8s linear infinite; }
+.termcard .tl > div.run::after { content:attr(data-t); position:absolute; right:12px; color:var(--accent); font-variant-numeric:tabular-nums; }
+.termcard:has(.tl > div.run) { border-color:color-mix(in srgb, var(--accent) 45%, #2e2c2a); }
 .termcard .tl .i { width:12px; height:12px; vertical-align:-2px; color:var(--tc-dim); }
 .termcard pre { margin:0; padding:9px 12px; color:#d8d4cb; font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:9em; overflow:auto; cursor:pointer; }
 .sh-p { color:#8c877e; } .sh-c { color:#f0c674; font-weight:600; } .sh-s { color:#a8d982; } .sh-v { color:#8fb8ff; } .sh-f { color:#c49cf0; } .sh-o { color:#f28b82; } .sh-m { color:#7a756c; font-style:italic; }
@@ -972,8 +976,8 @@ function drawChrome() {
   $('ready').title = ''; // #95: click toggles .full only when truncated (readyMore), title set there
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
   $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
-  $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
-  const sk = $('skel'), skOn = !$('workpill').hidden || !$('handpill').hidden;
+  $('workpill').hidden = !busy[cur] || !$('handpill').hidden || shRun(); // #124: shell running → its terminal card shows it
+  const sk = $('skel'), skOn = busy[cur] || !$('handpill').hidden;
   if (sk.hidden && skOn) { $('skelts').textContent = tm(new Date().toISOString()); const stick = atEnd();
     sk.hidden = false; if (stick) toEnd(true); }
   sk.hidden = !skOn;
@@ -1014,14 +1018,20 @@ setInterval(() => {
 }, 1000);
 // Working… pill = what's really going on: the running tool (or Thinking) + elapsed, ticking each second
 const doing = {}; // pid → {text, id, t}: set by tool lines / busy, back to Thinking when that tool's result lands
-const setDoing = (pid, text, id) => { doing[pid] = {text, id, t: Date.now()}; };
+const setDoing = (pid, text, id) => { doing[pid] = {text, id, t: Date.now(), sh: /^Running: (Bash|PowerShell)/.test(text)}; }; // #124 sh → the terminal card is the pill
 let workT = null;
+const shRun = () => busy[cur] && doing[cur]?.sh && view === 'chat' && $('handpill').hidden;
 function workTick() {
-  const show = !$('workpill').hidden;
-  const draw = () => { const d = doing[cur] || {text: 'Thinking', t: Date.now()}, s = Math.floor((Date.now() - d.t) / 1000);
-    $('worktext').textContent = `${d.text} · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const show = !$('workpill').hidden || shRun();
+  const draw = () => { const d = doing[cur] || {text: 'Thinking', t: Date.now()}, s = Math.floor((Date.now() - d.t) / 1000), el = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    $('worktext').textContent = `${d.text} · ${el}`;
+    // #124 running shell cmd: its line (newest terminal row) wears the Working look + timer; ponytail: newest row = the running one
+    const r = shRun() && [...$('log').querySelectorAll('.termcard .tl > div')].at(-1);
+    $('log').querySelectorAll('.tl > div.run').forEach(x => x !== r && x.classList.remove('run'));
+    if (r) { r.classList.add('run'); r.dataset.t = el; } };
   if (show && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!show && workT) { clearInterval(workT); workT = null; }
+  if (!show) $('log').querySelectorAll('.tl > div.run').forEach(x => x.classList.remove('run'));
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
 const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
