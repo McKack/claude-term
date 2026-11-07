@@ -1977,7 +1977,7 @@ function relItems(c, p) {
   return [
     {s: 0, id: 'readme', t: 'README written', ok: c.readme >= 10, d: c.readme ? `${c.readme} lines` : 'none'},
     {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` : 'not found'},
-    {s: 0, id: 'bump', t: 'Version bumped since last tag', ok: !tv || (v && v !== tv), d: tv ? `last tag ${c.tag}` : 'first release', go: SEMV.test(v) ? 'relBumpPatch(this)' : '', gl: 'Bump'},
+    {s: 0, id: 'bump', t: 'Version bumped since last tag', ok: !tv || (v && vcmp(v, tv) > 0), d: tv ? `last tag ${c.tag}` + (v && vcmp(v, tv) <= 0 ? ` → next v${vnext(v, tv)}` : '') : 'first release', go: SEMV.test(v) ? 'relBumpPatch(this)' : '', gl: 'Bump'},
     {s: 0, id: 'clean', t: 'Everything committed', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
     {s: 1, id: 'license', t: 'Licence', ok: c.license},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
@@ -2053,7 +2053,7 @@ async function relRelease(to, btn) {
 // Bump: next patch in every config file that carries the version
 async function relBumpPatch(btn) {
   btn.disabled = true;
-  const v = (RELC[cur].c.version || '').replace(/^v/, '').replace(/^(\d+\.\d+\.)(\d+).*$/, (_, a, n) => a + (+n + 1));
+  const v = vnext(RELC[cur].c.version || '', RELC[cur].c.tag || ''); // #119: above the latest tag, not just +1
   try { const f = await call('version_set', {pid: cur, v}); addEntry(cur, {kind: 'note', text: `Version ${v} set in ${f.join(', ')}`}); delete RELC[cur]; drawRight(); }
   catch (e) { addEntry(cur, {kind: 'note', text: `Bump failed: ${e}`}); btn.disabled = false; }
 }
@@ -2207,6 +2207,11 @@ function changesSec(s) {
 }
 const mb = n => n > 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.ceil(n / 1e3) + ' kB';
 // version in a file name (Clauracle_0.1.0_x64-setup.exe → 0.1.0); pre-release kept (0.2.0-beta.1) ∵ else a beta never matches its files
+/* #119 semver: vcmp(a,b) <0|0|>0 on x.y.z (prerelease < release); vnext = patch after max(a,b) ∴ never ≤ latest tag */
+const vcmp = (a, b) => { const p = s => (s || '').replace(/^v/, '').split('-'), [x, xp] = p(a), [y, yp] = p(b), n = s => s.split('.').map(Number);
+  for (let i = 0, A = n(x), B = n(y); i < 3; i++) if ((A[i] || 0) !== (B[i] || 0)) return (A[i] || 0) - (B[i] || 0);
+  return xp === yp ? 0 : !xp ? 1 : !yp ? -1 : xp < yp ? -1 : 1; };
+const vnext = (a, b) => (vcmp(a, b) >= 0 ? a : b).replace(/^v/, '').replace(/^(\d+\.\d+\.)(\d+).*$/, (_, x, n) => x + (+n + 1));
 const fver = n => n.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.\d+)*)?/)?.[0] || '', SEMV = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 // newest build per file type whose version = v (or carries none); builds come newest first
 const relPick = (builds, v) => { const seen = new Set(); return builds.filter(b => { const x = b.name.replace(/^[^.]*/, ''), bv = fver(b.name); if (seen.has(x) || (bv && bv !== v)) return false; seen.add(x); return true; }); };

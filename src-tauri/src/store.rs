@@ -1301,9 +1301,14 @@ fn claude_clean(home: &Path, keep: &[String], low: bool) -> u64 {
 /// GitHub release `tag` with `files` attached and notes generated from the commits since the last one.
 pub fn release(dir: &str, user: &str, tag: &str, files: &[String]) -> Result<String, String> {
     if tag.is_empty() || tag.starts_with('-') { return Err("bad tag".into()); }
-    let mut a = vec!["release", "create", tag, "--title", tag, "--generate-notes"];
+    // #119: tag THIS commit (pushed first); w/o --target gh tags the default branch → v0.1.2 got built from 0.1.1 code
+    let env = gh_env(user);
+    let push = run("git", &["push", "-q", "origin", "HEAD"], Some(dir), &env);
+    if !push.ok { return Err(format!("push failed: {}", push.stderr.trim())); }
+    let sha = run("git", &["rev-parse", "HEAD"], Some(dir), &[]).stdout.trim().to_string();
+    let mut a = vec!["release", "create", tag, "--title", tag, "--generate-notes", "--target", &sha];
     a.extend(files.iter().map(String::as_str));
-    let o = run("gh", &a, Some(dir), &gh_env(user));
+    let o = run("gh", &a, Some(dir), &env);
     if o.ok { Ok(o.stdout.trim().to_string()) } else { Err(o.stderr.trim().to_string()) }
 }
 

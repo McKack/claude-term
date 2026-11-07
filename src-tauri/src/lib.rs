@@ -1044,7 +1044,10 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
         let readme = files.iter().find(|(n, _)| n.starts_with("README")).and_then(|(_, f)| std::fs::read_to_string(f).ok()).map_or(0, |t| t.lines().count());
         let ver = version_of(&root);
         let git = |a: &[&str]| store::run("git", a, Some(&p.path), &[]);
-        let tag = git(&["describe", "--tags", "--abbrev=0"]);
+        // #119: highest version tag incl. remote ones (gh release create tags on GitHub only → describe saw v0.1.1 after v0.1.2)
+        let _ = store::run("git", &["fetch", "-q", "--tags"], Some(&p.path), &store::gh_env(&p.gh));
+        let tag = git(&["tag", "--list", "v[0-9]*", "--sort=-v:refname"]);
+        let tag = store::Out { stdout: tag.stdout.lines().next().unwrap_or("").to_string(), ok: tag.ok && !tag.stdout.trim().is_empty(), ..tag };
         let icon = ["src-tauri/icons/icon.png", "public/favicon.ico", "public/favicon.svg", "assets/icon.png", "assets/icon.svg", "icon.png", "app/src/main/res"].iter().any(|f| root.join(f).exists());
         let remote = store::repo_of(&p.path).is_some();
         // target platforms the CI workflows build (#27): plain text match on runner/target names. ponytail: no YAML parse
