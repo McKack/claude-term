@@ -259,10 +259,13 @@ pre.diff .ctx { color:var(--faint); }
 @keyframes hatch { from { clip-path:inset(0 50% calc(100% - 64px) 0 round 16px); opacity:.5; } to { clip-path:inset(0 0 0 0 round 0); opacity:1; } }
 .respawn { animation:respawn .5s ease-out; } @keyframes respawn { from { opacity:0; translate:0 -12px; } }
 #skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skelav, #log.term #skel .cm { display:none; }
-/* #181 terminal turn thinking: no Thinking pill → avatar ring runs the Working shimmer + timer badge (data-t) */
-#skelav { position:relative; flex:none; display:grid; padding:2px; margin:-2px; border-radius:50%; } #skelav > .av { border-color:var(--bg); }
-#skelav.on { background:linear-gradient(90deg, var(--line) 25%, var(--accent) 50%, var(--line) 75%) 0 0/200% 100%; animation:shimmer 1.8s linear infinite; }
-#skelav.on::after { content:attr(data-t); position:absolute; right:-10px; bottom:-7px; font:600 9.5px system-ui; font-variant-numeric:tabular-nums; color:#fff; background:var(--accent); padding:1px 4px; border-radius:7px; border:1.5px solid var(--bg); }
+/* #189 turn already has its Clauracle head (avatar row above the termcard / first bubble) → skeleton = pill only, indented; no 2nd avatar jumping below */
+#skel.hd #skelav { display:none; } #skel.hd .crow { padding-left:36px; } #skel.hd .cm { display:none; } #skel.hd { margin-top:0; }
+.crow.thead { margin-bottom:-8px; } /* #189 head row over a termcard: card tucks under the name */ #log.term .crow.thead { display:none; }
+/* #181 terminal turn thinking: no Thinking pill → avatar ring runs the Working shimmer + timer badge (data-t); #189 on the head's .tav */
+:is(#skelav, .tav) { position:relative; flex:none; display:grid; padding:2px; margin:-2px; border-radius:50%; } :is(#skelav, .tav) > .av { border-color:var(--bg); }
+:is(#skelav, .tav).on { background:linear-gradient(90deg, var(--line) 25%, var(--accent) 50%, var(--line) 75%) 0 0/200% 100%; animation:shimmer 1.8s linear infinite; }
+:is(#skelav, .tav).on::after { content:attr(data-t); position:absolute; right:-10px; bottom:-7px; font:600 9.5px system-ui; font-variant-numeric:tabular-nums; color:#fff; background:var(--accent); padding:1px 4px; border-radius:7px; border:1.5px solid var(--bg); }
 #handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:4px 16px 16px 16px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
@@ -1129,15 +1132,23 @@ function workTick() {
   const draw = () => { const rows = runRows(), now = Date.now();
     $('log').querySelectorAll('.tl > div.run').forEach(x => !rows.includes(x) && x.classList.remove('run'));
     for (const r of rows) { r.classList.add('run'); r.dataset.t = mmss(now - Math.min(...r._es.filter(e => PEND[cur].has(e.id)).map(e => PEND[cur].get(e.id)))); }
-    const d = doing[cur] || {text: 'Thinking', t: now}, av = $('skelav');
-    // #181 turn uses the terminal preview (a live termcard after the last user msg) + Thinking → avatar ring + badge, no pill
-    const tt = !rows.length && d.text === 'Thinking' && !!busy[cur] && $('handpill').hidden && [...$('log').querySelectorAll('.termcard:not(.old), .crow.user')].pop()?.classList.contains('termcard');
-    av.classList.toggle('on', tt); if (tt) av.dataset.t = mmss(now - d.t);
+    const d = doing[cur] || {text: 'Thinking', t: now}, hd = turnHead(), av = hd?.querySelector('.tav');
+    $('skel').classList.toggle('hd', !!hd); // #189 the turn's head row already shows avatar + name
+    // #181 turn uses the terminal preview (a live termcard after the last user msg) + Thinking → head avatar ring + badge, no pill
+    const tt = !!av && !rows.length && d.text === 'Thinking' && !!busy[cur] && $('handpill').hidden && [...$('log').querySelectorAll('.termcard:not(.old), .crow.user')].pop()?.classList.contains('termcard');
+    $('log').querySelectorAll('.tav.on').forEach(x => x !== av && x.classList.remove('on'));
+    av?.classList.toggle('on', tt); if (tt) av.dataset.t = mmss(now - d.t);
     $('workpill').hidden = !busy[cur] || !$('handpill').hidden || rows.length > 0 || tt;
     $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - d.t)}`; };
   if (on && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!on && workT) { clearInterval(workT); workT = null; }
-  if (on) draw(); else { $('log').querySelectorAll('.tl > div.run').forEach(x => x.classList.remove('run')); $('skelav').classList.remove('on'); }
+  if (on) draw(); else { $('log').querySelectorAll('.tl > div.run, .tav.on').forEach(x => x.classList.remove('run', 'on')); $('skel').classList.remove('hd'); }
+}
+// #189 live turn's Clauracle head: first Claude row after the last user msg (chat view, busy) → skeleton drops its own avatar
+function turnHead() {
+  const c = $('log').firstElementChild; if (!busy[cur] || view !== 'chat' || !c || c.id === 'skel') return null;
+  const r = [...c.querySelectorAll(':scope > .crow.user, :scope > .crow.claude')], u = r.findLastIndex(x => x.classList.contains('user'));
+  return u < 0 ? null : r[u + 1] || null;
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
 const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
@@ -1269,7 +1280,11 @@ function put(box, e) {
     // a run of tool calls = one terminal window; tabs: shell commands, then one per file / other tool; the newest shows
     // (until a tab is clicked); its lines = each call, click one → just that call's details/output
     let g = box.lastElementChild;
-    if (!g?.classList.contains('tools') || !!g._old !== !!e.old) { g = document.createElement('div'); g.className = 'tools termcard' + (e.old ? ' old' : ''); g._old = e.old; g._tabs = new Map(); box.appendChild(g); hatch(box, g); }
+    if (!g?.classList.contains('tools') || !!g._old !== !!e.old) { g = document.createElement('div'); g.className = 'tools termcard' + (e.old ? ' old' : ''); g._old = e.old; g._tabs = new Map();
+      if (!box.lastElementChild?.matches('.crow.claude')) { // #189 card opens Claude's turn → its avatar/name row sits above it (fixed; no jump)
+        const h = chatRow('claude', document.createDocumentFragment(), e.ts || (e.old ? '' : new Date().toISOString())); h.classList.add('thead');
+        const a = document.createElement('span'); a.className = 'tav'; a.append(h.firstElementChild); h.prepend(a); box.appendChild(h); }
+      box.appendChild(g); hatch(box, g); }
     const d = e.detail || {}, name = toolName(e), sh = /^(Bash|PowerShell)$/.test(name) && typeof d.command === 'string',
       f = d.file_path || d.notebook_path, key = sh ? 'sh' : f ? 'f:' + f : 't:' + name;
     let t = g._tabs.get(key);
@@ -1314,6 +1329,7 @@ function hatch(box, el) {
   if (!box.isConnected || $('skel').hidden || view !== 'chat') return;
   $('skelts').textContent = tm(new Date().toISOString()); // skeleton's time = the latest post
   el.classList.add('born'); s.classList.remove('respawn'); void s.offsetWidth; s.classList.add('respawn');
+  workTick(); // #189 new head row → skeleton drops its avatar now, not on the next 1s tick
 }
 // file → blob URL, cached per path (ponytail: never revoked; fine for a session's handful of screenshots)
 const SHOTS = new Map();
