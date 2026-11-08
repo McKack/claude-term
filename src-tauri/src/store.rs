@@ -1619,7 +1619,7 @@ fn claude_clean(home: &Path, keep: &[String], low: bool) -> u64 {
 }
 
 /// GitHub release `tag` with `files` attached and notes generated from the commits since the last one.
-pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool) -> Result<String, String> {
+pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool, main: bool) -> Result<String, String> {
     if tag.is_empty() || tag.starts_with('-') { return Err("bad tag".into()); }
     // #119: tag THIS commit (pushed first); w/o --target gh tags the default branch → v0.1.2 got built from 0.1.1 code
     // #154: never attach another version's bundle (v0.1.2 shipped 0.1.1 files; a slow/old build keeps its old name)
@@ -1631,6 +1631,17 @@ pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool) -> 
     else { run("gh", &["variable", "set", "CLAURACLE_CI", "--body", "off"], Some(dir), &env); }
     let push = run("git", &["push", "-q", "origin", "HEAD"], Some(dir), &env);
     if !push.ok { return Err(format!("push failed: {}", push.stderr.trim())); }
+    // #210 RC/Published: default branch fast-forwards to this commit (plain push = ff only, never forced) → main = what shipped
+    if main {
+        let def = run("git", &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], Some(dir), &[]).stdout.trim().trim_start_matches("origin/").to_string();
+        let def = if def.is_empty() { gh_json(&["repo", "view", "--json", "defaultBranchRef"], user, Some(dir))["defaultBranchRef"]["name"]
+            .as_str().unwrap_or_default().to_string() } else { def };
+        let cur = run("git", &["rev-parse", "--abbrev-ref", "HEAD"], Some(dir), &[]).stdout.trim().to_string();
+        if !def.is_empty() && def != cur {
+            let m = run("git", &["push", "-q", "origin", &format!("HEAD:refs/heads/{def}")], Some(dir), &env);
+            if !m.ok { return Err(format!("couldn't move {def} to this release ({cur} is behind {def}: merge {def} into {cur} first): {}", m.stderr.trim())); }
+        }
+    }
     let sha = run("git", &["rev-parse", "HEAD"], Some(dir), &[]).stdout.trim().to_string();
     let mut a = vec!["release", "create", tag, "--title", tag, "--generate-notes", "--target", &sha];
     a.extend(files.iter().map(String::as_str));

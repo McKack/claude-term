@@ -873,10 +873,10 @@ async fn update_run(app: AppHandle) -> R<()> {
 }
 
 #[tauri::command]
-async fn release(st: St<'_>, pid: String, tag: String, files: Vec<String>) -> R<String> {
+async fn release(st: St<'_>, pid: String, tag: String, files: Vec<String>, main: Option<bool>) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
     let ci = st.cfg.lock().unwrap().ci_builds;
-    tauri::async_runtime::spawn_blocking(move || store::release(&p.path, &p.gh, &tag, &files, ci)).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || store::release(&p.path, &p.gh, &tag, &files, ci, main.unwrap_or(false))).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
