@@ -363,6 +363,12 @@ pre.diff .ctx { color:var(--faint); }
 #gbar button:hover { color:var(--text); background:var(--hover); } #gbar b { color:var(--dim); font-weight:500; } #gbar .i { width:14px; height:14px; } #gbar .bar { width:22px; height:3px; }
 #gbar > button > span, #gbar .stats > span { display:inline-flex; gap:4px; align-items:center; } #gbar .stats { gap:10px; } #gbar .gt { display:block; overflow:hidden; text-overflow:ellipsis; max-width:30vw; } #gbar .gz { display:flex; min-width:0; } #gbar .gz.r { justify-content:flex-end; } #gbar .ok { color:var(--ok, #3fbf7f); } #gbar .bad { color:var(--err, #e5534b); }
 .acard .gact { display:flex; gap:6px; margin:2px 0 8px 13px; } /* statusline card quick actions */
+/* #200 AI card Usage: full-width bars under their label; context bar carries the hand-over slider (range over it, thumb only) */
+.acard .ubar { position:relative; display:flex; height:6px; border-radius:3px; background:var(--line2); margin-top:4px; } .acard .ubar i { display:block; height:100%; background:var(--accent); border-radius:3px; }
+.acard .ubar i:not(:last-child) { border-radius:3px 0 0 3px; } .acard .ubar i + i { border-radius:0 3px 3px 0; }
+.acard .ubar input { position:absolute; inset:-6px 0; width:100%; height:18px; margin:0; appearance:none; -webkit-appearance:none; background:transparent; cursor:ew-resize; }
+.acard .ubar input::-webkit-slider-runnable-track { background:transparent; height:18px; } .acard .ubar input::-webkit-slider-thumb { -webkit-appearance:none; width:6px; height:18px; border-radius:3px; background:var(--text); border:2px solid var(--bg, #fff); box-sizing:border-box; }
+.acard .tpill { display:inline-flex; align-items:center; gap:4px; padding:1px 7px; border-radius:9px; font-size:11px; color:#fff; } .acard .tpill .i { width:12px; height:12px; }
 .gdot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse .8s ease-in-out infinite alternate; flex:none; } /* #179 */
 #status button:hover { color:var(--text); background:var(--hover); } #status b { color:var(--dim); font-weight:500; }
 #status > span, #status button > span { display:inline-flex; gap:4px; align-items:center; } #status .i { width:14px; height:14px; }
@@ -947,16 +953,18 @@ function acctCard(btn) {
   const r = btn.getBoundingClientRect();
   card.style.left = r.left + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
 }
+const limTip = v => +v ? `Hand over at ${v}%: when context reaches this, Clauracle writes the handover, clears and continues in a fresh session` : 'Hand over: off (0 = never clear & continue)';
 // #195 merged AI card, lower half: account/model/effort (→ acctItems menu), context (+ hand-over), usage, session timers (#stime, live via drawTimes)
 function statsHtml(p) {
-  const u = S.usage[p.account] || {}, a = S.accounts.find(x => x.id === p.account), bar = (v, l, ic, k) => useRow(v, l, ic, k ? resetIn(p.account, k) : '');
+  const u = S.usage[p.account] || {}, a = S.accounts.find(x => x.id === p.account), c = ctx[cur], n = tk(cur).now;
+  // #200 one Usage section: label row, full-width bar under it; 5h + weekly share a line (reset → tooltip)
+  const half = (k, l, ic) => `<div class="grow" style="font-size:12px" title="${l} usage: ${u[k] ?? '?'}%${resetIn(p.account, k) ? '\n' + resetIn(p.account, k) : ''}"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span>${u[k] ?? '?'}%</div><div class="ubar"><i style="width:${u[k] || 0}%"></i></div></div>`;
   return `<h5>AI account · ${esc(p.name)}</h5><button class="pick" id="scAcct" title="AI account, model and effort">${a ? avAI(a) : icon('user')}<span class="grow">${esc(nick(p.account))}<small class="dim" style="display:block">${esc(MODELS[p.model] || p.model)}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}</small></span>${icon('down')}</button>
-    <h5>Context</h5>${bar(ctx[cur], 'Used', 'doc')}
-    <label class="row" style="font-size:12px;gap:6px">${icon('loop')}<span class="grow">Hand over at</span><input id="scLim" type="number" min="0" max="95" value="${p.context_limit}" style="width:64px">%</label>
-    ${tk(cur).now ? `<div class="row" style="font-size:12px;gap:6px">${icon('doc')}<span class="grow">In context now</span>${kt(tk(cur).now)} tokens</div>` : ''}
-    ${tk(cur).saved ? `<div class="row" style="font-size:12px;gap:6px" title="Clear-continue: each turn after a clear would otherwise re-read the cleared context. Counted once per turn (tool calls re-read it too), so the real saving is higher.">${icon('loop')}<span class="grow">Saved by Clauracle (est.)</span>${kt(tk(cur).saved)} tokens</div>` : ''}
-    <h5>Usage · ${esc(nick(p.account))}</h5>${bar(u.five_hour, '5-hour', 'clock', 'five_hour')}${bar(u.seven_day, 'Weekly', 'cal', 'seven_day')}
-    <div id="stime" class="col" style="gap:10px"></div>
+    <h5>Usage</h5><div style="font-size:12px"><div class="row" style="gap:6px">${icon('doc')}<span class="grow">Context <span id="scLimV" class="faint"></span></span>${c ?? '?'}%${n ? ` (${kt(n)})` : ''}</div>
+      <div class="ubar"><i style="width:${c || 0}%"></i><input id="scLim" type="range" min="0" max="95" value="${p.context_limit}" title="${limTip(p.context_limit)}"></div></div>
+    ${tk(cur).saved ? `<div class="row faint" style="font-size:11px;gap:6px" title="Clear-continue: each turn after a clear would otherwise re-read the cleared context. Counted once per turn (tool calls re-read it too), so the real saving is higher.">${icon('loop')}<span class="grow">Saved by Clauracle (est.)</span>${kt(tk(cur).saved)} tokens</div>` : ''}
+    <div class="row" style="gap:12px;align-items:flex-start">${half('five_hour', '5-hour', 'clock')}${half('seven_day', 'Weekly', 'cal')}</div>
+    <div id="stime"></div>
     <div class="btnrow"><button class="btn sm" id="scReset">Start timers over</button></div>`;
 }
 /* #179 global statusline (all projects): usage (current project's account, else first), AI working (which + what + agents), builds.
@@ -993,11 +1001,13 @@ function gCard(btn, kind) {
   const row = (pid, lead, name, tail = '') => `<div class="row" style="font-size:12px;gap:6px;cursor:pointer" onclick="${go(pid)}">${lead}<b class="grow">${esc(name)}</b>${tail}</div>`;
   if (kind === 'ai') {
     const wk = gbusy(), wt = gwait();
-    card.innerHTML = `<h5>AI working</h5>${wk.map(x => { const ag = agentsOf(x.id).filter(a => a.running), w = WORK[x.id];
-        return row(x.id, '<i class="gdot"></i>', x.name, w ? '#' + w : '') + `<div class="dim" style="font-size:12px;margin:0 0 2px 13px">${esc(doing[x.id]?.text || 'Thinking')}${ag.map(a => `<div>${icon('bot')} ${esc(a.type)}: ${esc(a.desc)}${a.last ? ' · ' + esc(a.last) : ''}</div>`).join('')}</div>`
-          + `<div class="gact">${act('Open', go(x.id))}${act(icon('stop') + 'Stop', `call('interrupt', {pid: '${x.id}'}); ${close}`, 'ghost')}</div>`; }).join('') || '<p class="dim">Nothing running</p>'}
-      ${wt.length ? `<h5>Waiting on you</h5>${wt.map(x => row(x.id, icon('sparkle'), x.name, `<span class="dim">${esc(x.why)}</span>`)
-          + `<div class="gact">${x.questions?.length ? act('Answer', go(x.id)) : act(icon('play') + 'Continue', `contGo('${x.id}'); ${close}`, 'primary')}</div>`).join('')}` : ''}`
+    // #200 ONE activity list: current project first, then working, then waiting; status on the right; no Continue (the dock has it)
+    const ls = [...new Set([...(cur ? [P()] : []), ...wk, ...wt.map(x => S.projects.find(p => p.id === x.id))])].sort((a, b) => (b.id === cur) - (a.id === cur));
+    const why = Object.fromEntries(wt.map(x => [x.id, x.why]));
+    card.innerHTML = `<h5>Activity</h5>${ls.map(x => { const on = busy[x.id], ag = on ? agentsOf(x.id).filter(a => a.running) : [], w = WORK[x.id];
+        return row(x.id, on ? '<i class="gdot"></i>' : why[x.id] ? icon('sparkle') : '<i class="gdot" style="background:var(--line2);animation:none"></i>', x.name, `<span class="dim" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w && on ? '#' + w + ' · ' : ''}${esc(on ? doing[x.id]?.text || 'Thinking' : why[x.id] || 'Idle')}</span>`
+          + (on ? `<button class="ib" title="Stop" onclick="event.stopPropagation(); call('interrupt', {pid: '${x.id}'}); ${close}">${icon('stop')}</button>` : ''))
+          + ag.map(a => `<div class="dim" style="font-size:12px;margin:0 0 2px 13px">${icon('bot')} ${esc(a.type)}: ${esc(a.desc)}${a.last ? ' · ' + esc(a.last) : ''}</div>`).join(''); }).join('') || '<p class="dim">Nothing running</p>'}`
       + (cur ? statsHtml(P()) : '');
   } else {
     const bd = gbuilds(), done = S.projects.map(p => ({p, b: builds[p.id]})).filter(x => x.b?.at && !x.b.busy).sort((a, b) => b.b.at - a.b.at).slice(0, 4);
@@ -1011,7 +1021,8 @@ function gCard(btn, kind) {
   document.body.append(card); card.showPopover(); drawTimes();
   card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
   const q = id => card.querySelector('#' + id);
-  if (q('scLim')) { q('scLim').onchange = e => setP({context_limit: Math.max(0, Math.min(95, +e.target.value || 0))}).then(refresh);
+  if (q('scLim')) { q('scLim').oninput = e => { e.target.title = limTip(e.target.value); q('scLimV').textContent = '· hand over ' + (+e.target.value ? e.target.value + '%' : 'off'); };
+    q('scLim').onchange = e => { q('scLimV').textContent = ''; setP({context_limit: Math.max(0, Math.min(95, +e.target.value || 0))}).then(refresh); };
     q('scReset').onclick = () => { TIMES[cur] = {start: Date.now(), you: 0, ai: 0, any: 0}; drawTimes(); };
     q('scAcct').onclick = e => { const b = e.currentTarget.getBoundingClientRect(); card.hidePopover(); menuAt({getBoundingClientRect: () => b}, acctItems()); }; }
   const r = btn.getBoundingClientRect();
@@ -1096,8 +1107,12 @@ let lastAct = Date.now(), lastTick = Date.now(), tickN = 0;
 const dur = ms => { const m = Math.floor(ms / 60e3); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`; };
 function drawTimes() {
   const x = cur && TIMES[cur], el = $('stime'); if (!el || !x) return;
-  const row = (ic, l, v, t = '') => `<div class="row" style="font-size:12px;gap:6px"${t}>${icon(ic)}<span class="grow">${l}</span>${v}</div>`; // #195 lives in the AI card
-  el.innerHTML = `<h5>This session <span class="faint">since ${esc(tm(new Date(x.start).toISOString()))}</span></h5>${row('timer', 'You, active', dur(x.you), ' title="2 min without input counts as idle"')}${row('sparkle', 'AI working', dur(x.ai))}${row('clock', 'Total, either going', dur(x.any))}`;
+  // #200 one stacked bar: whole bar = total; You / AI segments by share (they overlap in time ∴ share of you+ai, not of total)
+  const sum = x.you + x.ai || 1, C = {you: 'var(--ok)', ai: 'var(--accent)'};
+  const pill = (k, ic, l, t) => `<span class="tpill" style="background:${C[k]}" title="${t}">${icon(ic)}${l} ${dur(x[k])}</span>`;
+  const h = `<div class="row" style="font-size:12px;gap:6px;margin-top:2px" title="This session, since ${esc(tm(new Date(x.start).toISOString()))}">${pill('you', 'user', 'You', 'You, active (2 min without input counts as idle)')}${pill('ai', 'sparkle', 'AI', 'AI working')}<span class="grow"></span><span title="Total: either going">${icon('clock')} ${dur(x.any)}</span></div>
+    <div class="ubar"><i style="width:${x.you / sum * 100}%;background:${C.you}"></i><i style="width:${x.ai / sum * 100}%;background:${C.ai}"></i></div>`;
+  if (el._h !== h) el.innerHTML = el._h = h;
 }
 setInterval(() => {
   const now = Date.now(), dt = now - lastTick; lastTick = now;
