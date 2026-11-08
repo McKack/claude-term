@@ -486,7 +486,8 @@ dialog { border-radius:20px; color:var(--text); padding:0; } dialog:focus, dialo
 ::-webkit-scrollbar-thumb:hover { background-color:color-mix(in srgb, var(--text) 32%, transparent); }
 dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 /* settings: one window, icon tabs across the top (macOS System Settings style) */
-.prefs { width:min(920px,94vw); height:min(700px,88vh); display:grid; grid-template-rows:auto 1fr; }
+.prefs { width:min(920px,94vw); height:min(700px,88vh); display:grid; grid-template-rows:auto 1fr auto; }
+.prefs .sfoot { display:flex; align-items:center; gap:10px; padding:10px 16px; border-top:1px solid var(--line); } .prefs .sfoot .row { justify-content:center; gap:8px; } .prefs .sfoot select { max-width:200px; }
 .prefs .tbar { display:flex; justify-content:center; gap:2px; padding:10px 48px 8px; border-bottom:1px solid var(--line); position:relative; }
 .prefs .tbar button { display:flex; flex-direction:column; align-items:center; gap:4px; min-width:78px; padding:7px 8px 5px; border:0; background:none;
   border-radius:12px; color:var(--dim); font-size:11.5px; cursor:pointer; transition:background .12s, color .12s; }
@@ -2075,7 +2076,7 @@ function projectsPage() {
     ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Storage Janitor cleans them on its own: after 14 days without commits, over 10 GB, or when the drive runs low (also old Claude Code versions and, on a low drive, Claude transcripts older than 14 days).</p>
       <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
     ${cxGroup('p-cx', 'Connections &amp; Skills', 'project:' + p.id, p)}${cxFold('p-plugin', 'Plugins & mods', 'plugin', 'project:' + p.id, p)}
-    <div class="btns" style="justify-content:space-between"><button class="btn" onclick="removeProject()">Remove project</button><button class="btn primary" onclick="closeDlg()">Done</button></div></div></div>`;
+    </div></div>`;
 }
 const setBuild = (k, v) => setM({build: {...P(mp).build, [k]: v}});
 async function drawDisk() {
@@ -3363,9 +3364,18 @@ async function openSettings(p) {
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `${k === 'cx' ? '<i class="rsep"></i>' : ''}<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="body">${page === 'projects' ? '' : `<h2 class="row">${PAGES[page][1]}</h2>`}
-    ${{look: lookPage, projects: projectsPage, build: buildPage, cx: cxPage, ai: aiPage, notify: notifyPage}[page]()}</div>`, 'prefs');
+    ${{look: lookPage, projects: projectsPage, build: buildPage, cx: cxPage, ai: aiPage, notify: notifyPage}[page]()}</div>
+    <div class="sfoot"><select id="sjump" title="Jump to a section" onchange="sjumpGo(this)"></select><span class="row grow">${(FOOT[page] || (() => ''))()}</span><button class="btn primary" onclick="closeDlg()">Done</button></div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
+  sjumpFill(); setTimeout(sjumpFill, 1500); // ponytail: 2nd pass ∵ some pages fill sections async
 }
+// #215 footer: Jump to = the page's section titles (folds + secs), live from the DOM; FOOT[page] = contextual actions
+const sjumpEls = () => [...$('dlg').querySelectorAll('.prefs .body :is(details.fold, section.sec)')].filter(e => !e.parentElement.closest('details.fold, section.sec'));
+function sjumpFill() { const s = $('sjump'); if (!s) return;
+  s.innerHTML = '<option value="">Jump to…</option>' + sjumpEls().map((e, i) => `<option value="${i}">${esc(e.querySelector('.label')?.textContent.trim() || '')}</option>`).join('');
+  s.hidden = s.options.length < 3; }
+function sjumpGo(s) { const el = sjumpEls()[s.value]; s.value = ''; if (el) jumpTo(() => el); }
+const FOOT = {projects: () => mp ? `<button class="btn" onclick="removeProject()">Remove project</button>` : ''};
 function ghPage() {
   return `<p class="dim">GitHub accounts live in the GitHub CLI. Each project gets its own account's token, so any number can be signed in at once.</p>
     <div class="box">${ghUsers.map(u => optRow('@' + esc(u), '', `<button class="btn ghost" onclick="rmGh('${esc(u)}')">Log out</button>`)).join('') || '<p class="dim">None yet.</p>'}</div>
