@@ -401,10 +401,10 @@ pre.diff .ctx { color:var(--faint); }
 .tb { display:flex; align-items:center; gap:2px; margin-top:4px; }
 #send { width:32px; height:32px; border-radius:50%; border:0; background:var(--primary); color:var(--ink); display:grid; place-items:center; cursor:pointer; }
 #send:hover { background:var(--primary2); } #send:disabled { opacity:.4; cursor:default; }
-#status { display:flex; flex-wrap:nowrap; white-space:nowrap; overflow:hidden; gap:4px 10px; align-items:center; font-size:12px; color:var(--faint); padding:0 6px; }
+#status { display:flex; flex-wrap:nowrap; white-space:nowrap; overflow:hidden; gap:4px 10px; align-items:center; font-size:12px; color:var(--faint); padding:0 6px; flex:1; min-width:0; justify-content:flex-end; }
 #status button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:5px; align-items:center; padding:2px 4px; border-radius:6px; }
 #status { container-type:inline-size; } #status .ab { display:none; }
-@container (max-width:560px) { #status .lb, #status button > svg:last-child:not(:first-child) { display:none; } #status .ab { display:inline; } }
+@container (max-width:400px) { #status .lb, #status button > svg:last-child:not(:first-child) { display:none; } #status .ab { display:inline; } }
 #gbar { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:4px 14px; align-items:center; white-space:nowrap; overflow:hidden; font-size:12px; color:var(--faint); padding:2px 10px; border-top:1px solid var(--line); background:var(--side); min-height:24px; }
 #gbar button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:6px; align-items:center; padding:2px 6px; border-radius:6px; min-width:0; }
 #gbar button:hover { color:var(--text); background:var(--hover); } #gbar b { color:var(--dim); font-weight:500; } #gbar .i { width:14px; height:14px; } #gbar .bar { width:22px; height:3px; }
@@ -683,12 +683,11 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
         <button class="ib" id="tCont" title="Clear & continue mode" onclick="menuAt(this, contItems())"><svg class="i"><use href="#i-loop"/></svg></button>
         <button class="ib" title="Clear & continue now: write the handover, then start fresh" onclick="call('prepare_handover', {pid:cur})"><svg class="i"><use href="#i-eraser"/></svg></button>
         <button class="ib" id="tWeb" onclick="S.web = !S.web; call('set_off', {item: 'web', off: !S.web, scope: 'global'}); drawChrome()"><svg class="i"><use href="#i-globe"/></svg></button>
-        <span class="grow"></span>
+        <div id="status"></div><!-- #278 status row inside the composer, right-aligned ∴ composer sits lower -->
         <button class="btn ghost sm" id="cancelEdit" hidden title="Put the queued message back, unchanged, in its place" onclick="cancelEdit()" style="margin-right:6px"><svg class="i"><use href="#i-x"/></svg>Cancel edit</button>
         <button id="send" onclick="busy[cur] && !hasInput() ? call('interrupt', {pid:cur}) : send()" title="Send (Enter)"><svg class="i"><use href="#i-up"/></svg></button>
       </div>
     </div>
-    <div id="status"></div>
   </div></div>
 </main>
 
