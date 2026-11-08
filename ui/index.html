@@ -116,7 +116,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .msg { max-width:100%; }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
 .cm .tk { margin-left:6px; color:var(--faint); display:inline-flex; } .cm .tk.read { color:#34b7f1; } .cm .tk.fail { color:var(--err); } .cm .tk .i { width:13px; height:13px; vertical-align:-2px; }
-.rpill { display:inline-flex; align-items:center; gap:4px; padding:0 8px 0 6px; border-radius:99px; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); } .rpill svg { width:1em; height:1em; flex:none; }
+.rpill { display:inline; white-space:nowrap; padding:.1em 8px .1em 6px; border-radius:99px; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); } .rpill svg { width:1em; height:1em; margin-right:4px; vertical-align:-.1em; } /* #271 inline (≠ inline-flex: svg-baseline lifted the pill), nowrap */
 #pback .fic { position:relative; } #pback .fic svg { position:absolute; left:.2em; top:50%; width:.8em; height:.8em; transform:translateY(-50%); color:var(--accent); } /* #270 icon over the "@[" slot */
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
 /* #250 = composer .att.img: 56px high, real aspect, 56..220px wide, 10px radius, gap 8 */
@@ -373,7 +373,7 @@ pre.diff .ctx { color:var(--faint); }
 #composer.drop { border-color:var(--accent); border-style:dashed; }
 #prompt { width:100%; border:0; padding:4px 0; resize:none; min-height:26px; max-height:260px; background:none; box-shadow:none; position:relative; display:block; color:transparent; caret-color:var(--text); } /* #223 text drawn by #pback ∴ [ ] can hide */
 #pwrap { position:relative; } #pback { position:absolute; inset:0; padding:4px 0; white-space:pre-wrap; overflow-wrap:break-word; color:var(--text); pointer-events:none; overflow:hidden; } #pback mark i { font-style:normal; color:transparent; }
-#pback mark { color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); border-radius:99px; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); box-decoration-break:clone; -webkit-box-decoration-break:clone; } /* #225 real pill: hidden [ ] = its side padding */
+#pback mark { padding:.1em 0; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); border-radius:99px; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); box-decoration-break:clone; -webkit-box-decoration-break:clone; } /* #225 real pill: hidden [ ] = its side padding */
 .att.hl { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
 #slash { display:flex; flex-direction:column; max-height:280px; overflow:auto; margin:0 0 6px -6px; padding-bottom:6px; border-bottom:1px solid var(--line); }
 #slash[hidden] { display:none; }
