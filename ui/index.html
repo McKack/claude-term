@@ -587,6 +587,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-stop"viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
   <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-check2" viewBox="0 0 24 24"><path d="M17 6 7 17l-5-5M22 7l-9.5 10-1.5-1.5"/></symbol>
   <symbol id="i-term" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
@@ -1710,7 +1711,7 @@ function rmAtt(i) { const n = stem(atts[cur].splice(i, 1)[0].name), p = $('promp
 const refB = i => `<button class="aref" title="Refer to it in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button>`; // #237 image thumbs: bottom-right; file chips: top bar (too short for 2 rows)
 function drawAtts() {
   $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
-    <span class="abtns">${a.url ? '' : refB(i)}<button title="Remove" onclick="rmAtt(${i})">${icon('x')}</button></span>${a.url ? `<span class="abtns bot">${refB(i)}</span>` : ''}
+    <span class="abtns">${a.url ? '' : refB(i)}<button title="Remove" onclick="rmAtt(${i})">${icon('trash')}</button></span>${a.url ? `<span class="abtns bot">${refB(i)}</span>` : ''}
     ${a.notes?.length ? `<button class="anote" title="${esc(a.notes.join('\n').slice(0, 160))}&#10;(click to edit the notes)" onclick="viewAtt(${i}); editImage()">${icon('doc')}</button>` : ''}</div>`).join('');
   attArr(); pbDraw(); if (cur) { drawChrome(); keepDraft(); }
 }
@@ -2153,7 +2154,7 @@ function drawQueue() {
   $('qrow').innerHTML = q.map((m, i) => `<span class="qp" title="${esc(bare(m.text))}" onclick="editQueued(${i})"><span class="qi">${icon('clock')}</span>${m.atts?.length ? `<span class="qa" data-tip="${esc(m.atts.map(x => x.name).join(', '))}">${icon('file')}${m.atts.length > 1 ? m.atts.length : ''}</span>` : ''}<span class="qt">${esc(words(m))}</span>
     <button class="ib" title="Edit (↑ in an empty box)" onclick="event.stopPropagation(); editQueued(${i})">${icon('new')}</button>
     <button class="ib" title="Send next: first in line when this turn ends" onclick="event.stopPropagation(); queue[cur].unshift(...queue[cur].splice(${i},1)); drawQueue(); keepDraft(cur, true); flushQueue(cur)">${icon('up')}</button>
-    <button class="ib" title="Remove" onclick="event.stopPropagation(); qDrop(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft(cur, true)">${icon('x')}</button></span>`).join('');
+    <button class="ib" title="Remove" onclick="event.stopPropagation(); qDrop(cur, queue[cur].splice(${i},1)[0]); drawQueue(); keepDraft(cur, true)">${icon('trash')}</button></span>`).join('');
   requestAnimationFrame(() => { const r = $('qrow'); $('queue').classList.toggle('over', r.scrollWidth > r.clientWidth + 1); });
 }
 const qscroll = d => $('qrow').scrollBy({left: d * $('qrow').clientWidth * .8, behavior: 'smooth'});
@@ -3634,7 +3635,7 @@ async function drawServices() {
       + (x.gh === true && S.ci_builds /* #267 local builds read .env */ ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
       (id === 'website' && !siteReady() ? '<span class="pill" style="background:var(--hover);color:var(--dim)">set up</span>'
         : `<span class="pill" ${miss.length ? 'style="background:var(--hover);color:var(--dim)"' : ''}>${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`)
-      + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
+      + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('trash')}</button>`); }).join('')
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>` + secretsFold(files)
     // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
     + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services and secrets set up.</p><button class="btn sm primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button>
@@ -3830,7 +3831,7 @@ function envHtml(files) {
     + files.map(f => `<div class="envfile"><div class="row"><b class="grow mono">${esc(f.file)}</b>
       ${f.ignored === false ? `<span class="pill" style="color:var(--err)">not git-ignored</span><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="call('env_ignore', {pid:cur, file:'${esc(f.file)}'}).then(drawEnv)">Ignore it</button>` : f.ignored ? '<small class="ok">git-ignored</small>' : ''}</div>
       ${f.keys.map(([k, v]) => { const id = f.file + ':' + k; return `<div class="kv"><span class="k sel">${esc(k)}</span>
-        <span class="row" style="gap:0"><button class="ib" title="${shown[id] ? 'Hide' : 'Show'}" onclick="shown['${esc(id)}']=!shown['${esc(id)}']; drawEnv()">${icon('key')}</button><button class="ib" title="Copy" onclick='navigator.clipboard.writeText(${esc(JSON.stringify(v))})'>${icon('file')}</button><button class="ib" title="Edit" onclick="editKey('${esc(f.file)}', '${esc(k)}')">${icon('new')}</button><button class="ib" title="Delete" onclick="setKey('${esc(f.file)}', '${esc(k)}', null)">${icon('x')}</button></span>
+        <span class="row" style="gap:0"><button class="ib" title="${shown[id] ? 'Hide' : 'Show'}" onclick="shown['${esc(id)}']=!shown['${esc(id)}']; drawEnv()">${icon('key')}</button><button class="ib" title="Copy" onclick='navigator.clipboard.writeText(${esc(JSON.stringify(v))})'>${icon('file')}</button><button class="ib" title="Edit" onclick="editKey('${esc(f.file)}', '${esc(k)}')">${icon('new')}</button><button class="ib" title="Delete" onclick="setKey('${esc(f.file)}', '${esc(k)}', null)">${icon('trash')}</button></span>
         <span class="v sel">${v ? (shown[id] ? esc(v) : '•'.repeat(Math.min(24, v.length))) : '<i>empty</i>'}</span></div>`; }).join('')}
       <div class="row" style="margin-top:8px"><input class="grow mono" placeholder="NEW_KEY" id="nk-${esc(f.file)}"><button class="btn" onclick="editKey('${esc(f.file)}', $('nk-${esc(f.file)}').value)">Add</button>
       <select onchange="preset('${esc(f.file)}', this.value); this.value=''"><option value="">Preset…</option>${Object.keys(PRESETS).map(k => `<option>${k}</option>`).join('')}</select></div></div>`).join('')
@@ -4115,7 +4116,7 @@ function agentsPage() {
   return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to Clauracle until you switch them on above.'}</p>`
     + `<div style="${S.agents_on ? '' : 'opacity:.5'}">` + AGENTS.map((a, i) => `<div class="agent"><div class="row">${sw(a.on, `agentSet(${i}, 'on', this.checked)`)}<input class="mono" value="${esc(a.name)}" style="width:160px" onchange="agentSet(${i}, 'name', this.value.trim())">
         <select onchange="agentSet(${i}, 'model', this.value)">${options({haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus', inherit: 'Same as session'}, a.model || 'inherit')}</select>
-        <span class="grow"></span><button class="ib" title="Remove" onclick="AGENTS.splice(${i},1); saveAgents()">${icon('x')}</button></div>
+        <span class="grow"></span><button class="ib" title="Remove" onclick="AGENTS.splice(${i},1); saveAgents()">${icon('trash')}</button></div>
       <input value="${esc(a.description)}" placeholder="When Clauracle should use it" onchange="agentSet(${i}, 'description', this.value)">
       <textarea placeholder="Its instructions" onchange="agentSet(${i}, 'prompt', this.value)">${esc(a.prompt)}</textarea></div>`).join('')
     + `<p class="row"><button class="btn" onclick="AGENTS.push({name:'helper', model:'haiku', description:'', prompt:'', on:true}); saveAgents()">${icon('plus')}Add agent</button></p></div>`;
@@ -4293,7 +4294,7 @@ async function csLoad(scope = CS.scope) {
   const sc = {['account:' + acct]: `${a?.nick || acct} only (Clauracle sessions on this account)`, user: 'Every account (+ plain claude in a terminal)',
     ...(cur ? {project: `${P().name}: shared (committed)`, local: `${P().name}: only you (not committed)`} : {})};
   const list = k => `<div class="label">${{allow: 'Allow without asking', ask: 'Always ask', deny: 'Never allow'}[k]}</div>
-    <div class="row" style="flex-wrap:wrap;gap:6px">${(perm[k] || []).map((r, i) => `<span class="pill mono">${esc(r)} <a style="cursor:pointer" title="Remove" onclick="csEdit(j => j.permissions.${k}.splice(${i}, 1))">${icon('x')}</a></span>`).join('') || '<span class="faint">None</span>'}</div>
+    <div class="row" style="flex-wrap:wrap;gap:6px">${(perm[k] || []).map((r, i) => `<span class="pill mono">${esc(r)} <a style="cursor:pointer" title="Remove" onclick="csEdit(j => j.permissions.${k}.splice(${i}, 1))">${icon('trash')}</a></span>`).join('') || '<span class="faint">None</span>'}</div>
     <div class="row" style="margin-top:6px"><input class="grow mono" placeholder="e.g. Bash(npm test:*), Read(./src/**), WebFetch(domain:github.com)"
       onkeydown="if (event.key === 'Enter' && this.value.trim()) csAdd('${k}', this.value.trim())"><button class="btn sm" onclick="const v = this.previousElementSibling.value.trim(); if (v) csAdd('${k}', v)">Add</button></div>`;
   const env = Object.entries(j?.env || {});
@@ -4304,7 +4305,7 @@ async function csLoad(scope = CS.scope) {
       <select onchange="csEdit(j => this.value ? j.permissions.defaultMode = this.value : delete j.permissions.defaultMode)">${options({'': 'Not set', default: 'Ask', acceptEdits: 'Accept edits', plan: 'Plan', auto: 'Auto (classifier)', dontAsk: "Don't ask (deny unless allowed)", bypassPermissions: 'Bypass (no checks)'}, perm.defaultMode || '')}</select>
       ${['allow', 'ask', 'deny'].map(list).join('')}
       <div class="label">Environment variables</div>
-      <div class="box">${env.map(([k, v]) => optRow(`<span class="mono">${esc(k)}</span>`, '', `<input class="mono" value="${esc(String(v))}" onchange="csEdit(j => j.env['${esc(k)}'] = this.value)"><button class="ib" title="Remove" onclick="csEdit(j => delete j.env['${esc(k)}'])">${icon('x')}</button>`)).join('') || '<p class="dim">None.</p>'}</div>
+      <div class="box">${env.map(([k, v]) => optRow(`<span class="mono">${esc(k)}</span>`, '', `<input class="mono" value="${esc(String(v))}" onchange="csEdit(j => j.env['${esc(k)}'] = this.value)"><button class="ib" title="Remove" onclick="csEdit(j => delete j.env['${esc(k)}'])">${icon('trash')}</button>`)).join('') || '<p class="dim">None.</p>'}</div>
       <div class="row"><input id="csEk" class="mono" placeholder="NAME" style="width:180px"><input id="csEv" class="grow mono" placeholder="value">
         <button class="btn sm" onclick="const k = $('csEk').value.trim(); if (k) csEdit(j => (j.env ||= {})[k] = $('csEv').value)">Add</button></div>`
     : '<p class="warn">This file is not valid JSON. Fix it below; nothing else here writes to it until it parses.</p>'}
