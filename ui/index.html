@@ -2146,7 +2146,9 @@ $('prompt').addEventListener('keydown', e => {
   if (e.key === 'Tab' && cur) { e.preventDefault(); const k = Object.keys(PERMS), i = k.indexOf(P().mode); setP({mode: k[(i + (e.shiftKey ? k.length - 1 : 1)) % k.length]}); } // #116 Tab/Shift+Tab cycles permission mode (like Claude Code)
   if (e.key === 'ArrowUp' && !hasInput() && queue[cur]?.length) { e.preventDefault(); editQueued(queue[cur].length - 1); }
 });
-const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; pbDraw(); };
+// #249 measure w/o scrollbar (it narrowed the lines → over-tall + a stray 10px bar that later vanished → mirror wrapped wider/narrower → caret drift); bar only past max-height
+const grow = () => { const t = $('prompt'); t.style.overflowY = 'hidden'; t.style.height = 'auto'; const h = t.scrollHeight; t.style.height = h + 'px'; t.style.overflowY = h > parseFloat(getComputedStyle(t).maxHeight) ? 'auto' : 'hidden'; pbDraw(); };
+new ResizeObserver(() => pbDraw()).observe($('prompt')); // width/scrollbar changes w/o typing (window, side panels) → mirror re-measured
 let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
 $('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { if (!chromeRAF) chromeRAF = requestAnimationFrame(() => { chromeRAF = 0; drawChrome(); }); keepDraft(); } });
 // Continue/auto-clear → "Reading handover…" pill (same spot as Working…) until Claude's first own line/tool or turn end

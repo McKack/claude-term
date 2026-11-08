@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Composer: the caret no longer drifts away from the text in long prompts.
 - Image editor: the cursor shows the selected tool; a click with the pen draws a dot; a click with Box + note places just the numbered point; a new width menu sets line thickness and arrowheads on lines.
 - File viewer: zoom with the wheel, Ctrl + / − / 0 or the header slider; pan images with the middle mouse button.
 - Code tab: syntax colouring, recently worked-on files when nothing is open, and the file path opens the file in the File viewer.
