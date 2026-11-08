@@ -1699,8 +1699,10 @@ function drawAtts() {
 const attAt = name => { name = name.replace(/[   ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
 function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.style.right = p.offsetWidth - p.clientWidth + 'px'; /* #231 scrollbar (max-height hit) narrows the textarea's lines → mirror must wrap the same or the caret drifts */
   b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m; const l = n.startsWith(PADL), rr = n.endsWith(PADR), x = n.slice(l ? PADL.length : 0, rr ? -1 : undefined);
-    return `<mark><i>[</i>${l ? `<i class="fic">${PADL}${icon(fIcon(atts[cur][i].name))}</i>` : ''}${x}<i>${rr ? PADR : ''}]</i></mark>`; }) + '\n'; b.scrollTop = p.scrollTop; }
-$('prompt').addEventListener('scroll', () => $('pback').scrollTop = $('prompt').scrollTop);
+    return `<mark><i>[</i>${l ? `<i class="fic">${PADL}${icon(fIcon(atts[cur][i].name))}</i>` : ''}${x}<i>${rr ? PADR : ''}]</i></mark>`; }) + '\n'; pbSync(); }
+// #258 sync now + next frame ∵ Chromium reveals the caret (scrolls) after the input event/keys, not always w/ a timely scroll event → text drifted till the user scrolled
+const pbSync = () => { const f = () => $('pback').scrollTop = $('prompt').scrollTop; f(); requestAnimationFrame(f); };
+['scroll', 'keyup', 'mouseup', 'select'].forEach(e => $('prompt').addEventListener(e, pbSync));
 // #223 link cursor over a pill: hit-test the mirror's <mark> rects (#pback is pointer-events:none)
 $('prompt').addEventListener('mousemove', e => { const hit = [...$('pback').querySelectorAll('mark')].some(m => [...m.getClientRects()].some(r => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom));
   e.target.style.cursor = hit ? 'pointer' : ''; });
@@ -2168,7 +2170,7 @@ $('prompt').addEventListener('keydown', e => {
   if (e.key === 'ArrowUp' && !hasInput() && queue[cur]?.length) { e.preventDefault(); editQueued(queue[cur].length - 1); }
 });
 // #249 measure w/o scrollbar (it narrowed the lines → over-tall + a stray 10px bar that later vanished → mirror wrapped wider/narrower → caret drift); bar only past max-height
-const grow = () => { const t = $('prompt'); t.style.overflowY = 'hidden'; t.style.height = 'auto'; const h = t.scrollHeight; t.style.height = h + 'px'; t.style.overflowY = h > parseFloat(getComputedStyle(t).maxHeight) ? 'auto' : 'hidden'; pbDraw(); };
+const grow = () => { const t = $('prompt'), st = t.scrollTop; t.style.overflowY = 'hidden'; t.style.height = 'auto'; const h = t.scrollHeight; t.style.height = h + 'px'; t.style.overflowY = h > parseFloat(getComputedStyle(t).maxHeight) ? 'auto' : 'hidden'; t.scrollTop = st; pbDraw(); }; // #258 height:auto reset scrollTop to 0 → restore the spot
 new ResizeObserver(() => pbDraw()).observe($('prompt')); // width/scrollbar changes w/o typing (window, side panels) → mirror re-measured
 let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
 $('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { if (!chromeRAF) chromeRAF = requestAnimationFrame(() => { chromeRAF = 0; drawChrome(); }); keepDraft(); } });
