@@ -280,7 +280,7 @@ pre.diff .ctx { color:var(--faint); }
 #skel.hd > .crow { display:none; } #skel.hd { margin-top:0; } #dockpill { display:flex; justify-content:center; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
 /* #225/#230/#232 live head: zero-height sticky #stickav (ring + timer) sits right before the newest head row (child of .col ∴ sticks for the rest of the log);
    the row's own avatar hides; name/time never follow. top counts from inside #log's 62px padding ∴ -14 = 48px from the window top; margin-bottom = -.col gap */
-#stickav { position:sticky; top:-14px; height:0; margin-bottom:-12px; z-index:3; } #stickav .tav { position:absolute; left:0; top:0; } .crow.stick > :is(.av, .tav) { visibility:hidden; }
+#stickav { position:sticky; top:-14px; height:0; margin-bottom:-12px; z-index:3; } #stickav .tav { position:absolute; left:-44px; top:0; } #log { padding-left:56px; } /* #233 live avatar in the left gutter, outside the column; 56px pad keeps the gutter on narrow windows */ .crow.stick > :is(.av, .tav) { visibility:hidden; }
 #dockpill > * { padding:5px 14px; }
 .crow.thead { margin-bottom:-8px; } /* #189 head row over a termcard: card tucks under the name */ #log.term .crow.thead { display:none; }
 /* #181 terminal turn thinking: no Thinking pill → avatar ring runs the Working shimmer + timer badge (data-t); #189 on the head's .tav */
@@ -1189,7 +1189,7 @@ function workTick() {
     if (hd && !sa) { sa = Object.assign(document.createElement('div'), {id: 'stickav'}); sa.innerHTML = '<span class="tav"><svg class="av"><use href="#i-logo"/></svg></span>'; }
     if (hd && sa.nextElementSibling !== hd) { hd.before(sa); // overlay the row's own avatar (reply rows sit indented + raised): measure unstuck, once per new head
       sa.style.position = 'static'; const s0 = sa.getBoundingClientRect(), a0 = hd.querySelector('.av').getBoundingClientRect(), dy = a0.top - s0.top; sa.style.position = '';
-      Object.assign(sa.firstElementChild.style, {left: a0.left - s0.left + 'px', top: dy + 'px'}); sa.style.top = -14 - dy + 'px'; } // stuck: avatar at 48px whatever dy
+      sa.firstElementChild.style.top = dy + 'px'; sa.style.top = -14 - dy + 'px'; } // stuck: avatar at 48px whatever dy
     else if (!hd) sa?.remove();
     const av = hd && sa.firstElementChild;
     $('skel').classList.toggle('hd', !!hd); // #189 the turn's head row already shows avatar + name
@@ -1208,7 +1208,7 @@ function turnHead() {
   const c = $('log').firstElementChild; if (!busy[cur] || view !== 'chat' || !c || c.id === 'skel') return null;
   const r = [...c.querySelectorAll(':scope > .crow.user, :scope > .crow.claude')], u = r.findLastIndex(x => x.classList.contains('user'));
   // #196/#232 newest head row (thead or text row with its own avatar) after the user msg ∴ only the bottom-most one sticks + rings
-  return u < 0 ? null : r.slice(u + 1).findLast(x => !x.classList.contains('cont')) || null;
+  return u < 0 ? null : r.slice(u + 1).findLast(x => !x.matches('.cont, .reply')) || null; // #233 .reply rows have no avatar (hang under their card)
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
 const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
@@ -1609,7 +1609,7 @@ const stem = n => n.replace(/\.\w+$/, '');
 // #227 file-type icon for pills/thumbs: image | doc | code | file
 const fIcon = n => /\.(png|jpe?g|gif|webp|bmp|svg|ico)$/i.test(n) ? 'image' : /\.(md|txt|pdf|docx?|rtf|csv|log)$/i.test(n) ? 'doc' : /\.(js|ts|tsx|jsx|rs|py|go|java|c|cpp|h|cs|rb|php|html|css|json|toml|ya?ml|sh|ps1|kt|swift)$/i.test(n) ? 'code' : 'file';
 // #227 composer ref = "[ name ]": em space = icon slot, en space = right pad (a textarea can't pad a range); stripped on send
-const PADL = ' ', PADR = ' ', unpad = t => t.replace(/\[ ([^\]\n]+?) \]/g, '[$1]');
+const PADL = '  ', PADR = ' ', unpad = t => t.split(`[${PADL}`).join('[').split(`${PADR}]`).join(']'); // #233 U+2007 figure space = non-breaking ∴ icon never wraps away from its name (ponytail: a hyphen in the name can still wrap)
 // #227 chat bubble: [ref] naming one of the message's files → same pill
 const refPills = (t, names) => esc(unpad(t)).replace(/\[([^\]\n]+)\]/g, (m, n) => { const f = names.find(x => stem(x) === n.replace(/&amp;/g, '&') || x === n); return f ? `<span class="rpill">${icon(fIcon(f))}${n}</span>` : m; });
 function attRef(i) { // inserts [name w/o extension] at the caret; a space before/after only where the neighbour isn't one already
@@ -1625,9 +1625,9 @@ function drawAtts() {
 }
 // #217 [ref] pills: #pback mirrors the textarea text; refs naming an attachment get a <mark> behind them (a textarea can't style
 // its own text). Click inside one → highlight + scroll its thumb, image → viewer. Icon drawn over the PADL char (same width ∴ mirror stays aligned)
-const attAt = name => { name = name.replace(/[  ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
+const attAt = name => { name = name.replace(/[   ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
 function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.style.right = p.offsetWidth - p.clientWidth + 'px'; /* #231 scrollbar (max-height hit) narrows the textarea's lines → mirror must wrap the same or the caret drifts */
-  b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m; const l = n.startsWith(PADL), rr = n.endsWith(PADR), x = n.slice(l ? 1 : 0, rr ? -1 : undefined);
+  b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m; const l = n.startsWith(PADL), rr = n.endsWith(PADR), x = n.slice(l ? PADL.length : 0, rr ? -1 : undefined);
     return `<mark><i>[</i>${l ? `<i class="fic">${PADL}${icon(fIcon(atts[cur][i].name))}</i>` : ''}${x}<i>${rr ? PADR : ''}]</i></mark>`; }) + '\n'; b.scrollTop = p.scrollTop; }
 $('prompt').addEventListener('scroll', () => $('pback').scrollTop = $('prompt').scrollTop);
 // #223 link cursor over a pill: hit-test the mirror's <mark> rects (#pback is pointer-events:none)
