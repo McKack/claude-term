@@ -733,6 +733,13 @@ const MODES = {off: ['Just chat', 'No task list: tasks run only when you ask'], 
   auto: ['Keep going', 'Works through the task list, fresh context per task, until a limit, a question or an empty list'], auto_answer: ['Keep going + answer', 'Like Keep going, and answers what it can itself; holds only real decisions']};
 const MODELS = {'': 'Default', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku'};
 const EFFORTS = {'': 'Default', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max'};
+// #280 the CLI's own /model list (initialize answer `models`), cached ∴ menus work before the 1st connect; MODELS = fallback.
+// rows [value ('' = CLI default, no --model), name, description, effort levels|null]
+let CMODELS = (() => { try { return JSON.parse(localStorage.cmodels || 'null'); } catch { return null; } })();
+const mList = () => CMODELS?.length ? CMODELS.map(x => [x.value === 'default' ? '' : x.value, x.value === 'default' ? 'Default' : x.displayName, x.description || '', x.supportedEffortLevels || null])
+  : Object.entries(MODELS).map(([k, l]) => [k, l, '', null]);
+const mName = k => mList().find(x => x[0] === (k || ''))?.[1] || MODELS[k] || k;
+const effOf = k => ['', ...(mList().find(x => x[0] === (k || ''))?.[3] || Object.keys(EFFORTS).filter(Boolean))];
 // short forms for the status row; full names in the menus. PERMS order = level 1..4 (least → most freedom)
 const EFF_S = {low: 'L', medium: 'M', high: 'H', xhigh: 'XH', max: 'Max'};
 const PERMS = {plan: 'Plan only', default: 'Ask first', acceptEdits: 'Accept edits', auto: 'Auto (classifier)', bypassPermissions: 'Bypass'};
@@ -1044,7 +1051,7 @@ function statsHtml(p) {
   const u = S.usage[p.account] || {}, a = S.accounts.find(x => x.id === p.account), c = ctx[cur], n = tk(cur).now;
   // #200 one Usage section: label row, full-width bar under it; 5h + weekly share a line (reset → tooltip)
   const half = (k, l, ic) => `<div class="grow" style="font-size:12px" data-tip=""${l} usage: ${u[k] ?? '?'}%${resetIn(p.account, k) ? '\n' + resetIn(p.account, k) : ''}"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span>${u[k] ?? '?'}%</div><div class="ubar"><i style="width:${u[k] || 0}%"></i></div></div>`;
-  return `<h5>AI Account</h5><button class="pick" id="scAcct" title="AI account, model and effort"><span class="grow">${esc(nick(p.account))}<small class="dim" style="display:block">${esc(MODELS[p.model] || p.model)}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}</small></span>${icon('down')}</button>
+  return `<h5>AI Account</h5><button class="pick" id="scAcct" title="AI account, model and effort"><span class="grow">${esc(nick(p.account))}<small class="dim" style="display:block">${esc(mName(p.model))}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}</small></span>${icon('down')}</button>
     <h5>Usage</h5><div style="font-size:12px"><div class="row" style="gap:6px">${icon('doc')}<span class="grow">Context <span id="scLimV" class="faint"></span></span>${c ?? '?'}%${n ? ` (${kt(n)})` : ''}</div>
       <div class="ubar"><i style="width:${c || 0}%"></i><input id="scLim" type="range" min="0" max="95" value="${p.context_limit}" title="${limTip(p.context_limit)}"></div></div>
     ${tk(cur).saved ? `<div class="row faint" style="font-size:11px;gap:6px" title="Clear-continue: each turn after a clear would otherwise re-read the cleared context. Counted once per turn (tool calls re-read it too), so the real saving is higher.">${icon('loop')}<span class="grow">Saved by Clauracle (est.)</span>${kt(tk(cur).saved)} tokens</div>` : ''}
@@ -1183,7 +1190,7 @@ function drawChrome() {
     sk.hidden = false; if (stick) toEnd(true); }
   sk.hidden = !skOn;
   workTick();
-  $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(MODELS[p.model] || p.model)}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(MODELS[p.model] || p.model)}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
+  $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(mName(p.model))}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(mName(p.model))}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${PERM_S[p.mode] || p.mode}</span><span class="ab">${permN(p.mode)}</span></button>`
     + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${p.cont === 'off' ? '' : `<span class="lb">${MODES[p.cont]?.[0] || p.cont}</span><span class="ab">${MODE_S[p.cont] || ''}</span>`}</button>` /* #188 full names when wide; short (.ab) when narrow; perms stay short */
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
@@ -1290,10 +1297,10 @@ document.addEventListener('mouseover', e => {
 // model/effort are project-level (kept on account switch) → every row shows the project's current values
 const acctItems = () => [...S.accounts.map(a => { const on = P().account === a.id, m = P().model || '', ef = P().effort || '';
   return {check: on, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id}), acts: [
-    {icon: 'sparkle', label: MODELS[m] || m, tip: 'Model', items: [{title: 'Model'},
-      ...Object.entries(MODELS).map(([k, l]) => ({check: m === k, label: l, run: () => setP({account: a.id, model: k})}))]},
+    {icon: 'sparkle', label: mName(m), tip: 'Model', items: [{title: 'Model'},
+      ...mList().map(([k, l, d]) => ({check: m === k, label: l, hint: d, run: () => setP({account: a.id, model: k})}))]},
     {icon: 'brain', label: EFFORTS[ef] || ef, tip: 'Effort', items: [{title: 'Effort'},
-      ...Object.entries(EFFORTS).map(([k, l]) => ({check: ef === k, label: l, run: () => setP({account: a.id, effort: k})}))]}]}; }), '-',
+      ...effOf(m).map(k => ({check: ef === k, label: EFFORTS[k] || k, run: () => setP({account: a.id, effort: k})}))]}]}; }), '-',
   {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}];
 const permItems = () => [{title: 'Permissions (level)'}, ...Object.entries(PERMS).map(([k, l], i) => ({check: P().mode === k, label: `${i + 1}  ${l}`, run: () => setP({mode: k})}))];
 const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
@@ -2167,15 +2174,26 @@ const atMatches = () => { const p = $('prompt'), q = /(?:^|\s)@([^\s@[\]]*)$/.ex
   const fs = HEAT[cur]?.d.files, pid = cur; if (!fs) { if (!atLoading) atLoading = call('file_heat', {pid}).then(d => { HEAT[pid] ||= {t: Date.now(), d}; atLoading = 0; drawSlash(); }, () => atLoading = 0); return []; }
   const r = f => (f.split('/').pop().toLowerCase().startsWith(q) ? 0 : 1e4) + f.length;
   return fs.map(f => f[0]).filter(f => f.toLowerCase().includes(q)).sort((a, b) => r(a) - r(b)).slice(0, 8); };
-const menuXs = () => { const s = slashMatches(); return s.length ? s : atMatches(); }; // commands are objects, files strings
+// #280 "/model [q]" → the CLI's models (mList); "/model <value> [q]" → that model's effort levels. Items {opt, label, sub, check, run}.
+// ponytail: only /model is mapped; another option-picking command = one more branch fed by its initialize data (e.g. available_output_styles)
+const modelSet = o => { setP(o); $('prompt').value = ''; slashSel = 0; drawSlash(); grow(); keepDraft(); };
+const modelMatches = () => { const m = /^\/model(?:\s+(\S*))?(?:\s+(\S*))?$/.exec($('prompt').value); if (!m || !cur) return [];
+  const ls = mList(), sel = m[2] != null && ls.find(x => x[0] === m[1] || (!x[0] && m[1] === 'default'));
+  if (sel) { const q = m[2].toLowerCase(); return effOf(sel[0]).filter(e => (e + ' ' + (EFFORTS[e] || '')).toLowerCase().includes(q))
+    .map(e => ({opt: 1, label: EFFORTS[e] || e, sub: `Effort for ${sel[1]}`, check: (P().model || '') === sel[0] && (P().effort || '') === e, run: () => modelSet({model: sel[0], effort: e})})); }
+  const q = (m[1] || '').toLowerCase();
+  return ls.filter(x => (x[0] + ' ' + x[1]).toLowerCase().includes(q)).map(x => ({opt: 1, label: x[1], sub: x[2] || x[0], check: (P().model || '') === x[0],
+    run: () => { if (!x[3]) return modelSet({model: x[0]}); $('prompt').value = `/model ${x[0] || 'default'} `; slashSel = Math.max(0, effOf(x[0]).indexOf(P().effort || '')); drawSlash(); grow(); }})); };
+const menuXs = () => { const o = modelMatches(); if (o.length || /^\/model\s/.test($('prompt').value)) return o; const s = slashMatches(); return s.length ? s : atMatches(); }; // commands = objects, files = strings, options = {opt}
 function drawSlash() {
   const xs = menuXs(), el = $('slash');
   slashSel = Math.min(slashSel, Math.max(xs.length - 1, 0));
   el.hidden = !xs.length;
-  el.innerHTML = xs.map((c, i) => `<button class="${i === slashSel ? 'on' : ''}" onmousedown="event.preventDefault(); pickSlash(${i})">${typeof c === 'string' ? `${icon(fIcon(c))}<b>${esc(c.split('/').pop())}</b><small>${esc(c)}</small>` : `<b>/${esc(c.name)}</b>
+  el.innerHTML = xs.map((c, i) => `<button class="${i === slashSel ? 'on' : ''}" onmousedown="event.preventDefault(); pickSlash(${i})">${c.opt ? `<b>${esc(c.label)}</b>${c.check ? icon('check') : ''}<small>${esc(c.sub)}</small>` : typeof c === 'string' ? `${icon(fIcon(c))}<b>${esc(c.split('/').pop())}</b><small>${esc(c)}</small>` : `<b>/${esc(c.name)}</b>
     ${c.argumentHint ? `<span class="faint">${esc(c.argumentHint)}</span>` : ''}<small>${esc(c.description || '')}</small>`}</button>`).join('');
+  el.querySelector('.on')?.scrollIntoView({block: 'nearest'}); // #280 /model lists > 8 rows: ↑↓ keeps the pick visible
 }
-function pickSlash(i) { const c = menuXs()[i]; if (typeof c === 'string') return pickAt(c); if (c) { $('prompt').value = '/' + c.name + ' '; slashSel = 0; drawSlash(); grow(); } }
+function pickSlash(i) { const c = menuXs()[i]; if (c?.opt) return c.run(); if (typeof c === 'string') return pickAt(c); if (c) { $('prompt').value = '/' + c.name + ' '; slashSel = 0; drawSlash(); grow(); } }
 // #270 picked file → path attachment (sent as "Attached files", like a dropped one) + its @[name] tag in place of "@query"
 function pickAt(rel) { const p = $('prompt'), c = p.selectionStart, s = p.value.lastIndexOf('@', c - 1), root = P().path, sep = root.includes('\\') ? '\\' : '/';
   const abs = root.replace(/[\\/]+$/, '') + sep + rel.split('/').join(sep), a = (atts[cur] ||= []); let i = a.findIndex(x => x.path === abs);
@@ -2236,7 +2254,8 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
   usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },
-  commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = [{name: 'build', argumentHint: '[windows|linux|macos|ios|android|all]', description: 'Clauracle: build a local copy and run it; or build one target / all'}, ...d.commands.map(c => typeof c === 'string' ? {name: c} : c)]; },
+  commands: () => { if (Array.isArray(d.models) && d.models.length) { CMODELS = d.models; try { localStorage.cmodels = JSON.stringify(d.models); } catch {} }
+    if (Array.isArray(d.commands)) cmds[d.pid] = [{name: 'build', argumentHint: '[windows|linux|macos|ios|android|all]', description: 'Clauracle: build a local copy and run it; or build one target / all'}, ...d.commands.map(c => typeof c === 'string' ? {name: c} : c)]; },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.step === 'build' && b.busy && d.line && d.pid === cur && tab === 'build' && /\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/i.test(d.line) && /Finished \d+ bundle/.test(b.out.slice(b.from || 0))) drawRight(); /* #174 an artifact landed → tick it */
@@ -2424,7 +2443,7 @@ function projectsPage() {
       <span>Permissions</span><select onchange="setM({mode:this.value})">${options(PERMS, p.mode)}</select>
       <span>Clear & continue</span><select onchange="setM({cont:this.value})">${options(Object.fromEntries(Object.entries(MODES).map(([k, v]) => [k, v[0]])), p.cont)}</select>
       <span>Hand over at</span><span class="row"><input type="number" min="0" max="95" value="${p.context_limit}" style="width:76px" onchange="setM({context_limit:+this.value})"><small class="dim">% of the context window (0 = never)</small></span>
-    </div>`, [MODELS[p.model], PERMS[p.mode]].filter(Boolean).join(' · '), '', false)}
+    </div>`, [p.model && mName(p.model), PERMS[p.mode]].filter(Boolean).join(' · '), '', false)}
     ${fold('p-save', 'Options', `<div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}

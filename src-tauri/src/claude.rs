@@ -420,8 +420,8 @@ async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &A
         init["agents"] = Value::Object(agents);
     }
     let r = conn.request(init, 90).await?;
-    // /commands for the composer's autocomplete: [{name, description, argumentHint}], known before the first turn
-    emit(app, "commands", json!({"pid": pid, "commands": r["commands"]}));
+    // /commands for the composer's autocomplete: [{name, description, argumentHint}], known before the first turn + #280 models (the CLI's own /model list)
+    emit(app, "commands", json!({"pid": pid, "commands": r["commands"], "models": r["models"]}));
     *live.conn.lock().unwrap() = Some(conn.clone());
     emit(app, "status", json!({"pid": pid, "busy": false, "connected": true}));
 
