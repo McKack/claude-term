@@ -1644,7 +1644,9 @@ function send() {
   // #56: every direct ask (issue mode) is filed by Clauracle before it goes anywhere ∴ never lost, never unfiled.
   // Chained per project → order kept while gh runs. Edited queued ones were filed already (text carries the note)
   // #93: a plain question (ends "?", not "can you…/please"; or "btw …") → not filed: answered + ```tasks cards (sugCards)
-  const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && (/\?\s*$/.test(t) && !/\b(can|could|would|will|should|shall) (you|we|it|i)\b|\bplease\b|\bis it possible\b|\bhow about\b|\blet'?s\b/i.test(t) || /^\s*btw\b/i.test(t));
+  // #212: doubt → file (a lost ask costs more than a filed question): Q only if ONE short sentence, no change/bug words
+  const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && !ASK_RE.test(t) && t.trim().split(/\s+/).length <= 30 && !/[.!?:]\s+\S/.test(t.trim())
+    && (/\?\s*$/.test(t) || /^\s*btw\b/i.test(t));
   // #142: a short status/unblock reply ("I've turned the Mac on", "done, try again") = context for the blocked task, not new work
   const isS = issueOn(pid) && !isQ && !FILED_RE.test(t) && !QNOTE_RE.test(t) && STATUS_RE.test(t) && t.trim().split(/\s+/).length <= 25;
   const file = issueOn(pid) && !isQ && !isS && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
@@ -1682,6 +1684,8 @@ function send() {
 const FILING = {}; // pid → messages between send() and their place in queue/session (saved in the draft)
 const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A (question|status update), not a task \(Clauracle\)/,
   STATUS_RE = /^\s*(ok(ay)?[,.!]?\s+)?(i('ve| have)|it'?s|it is|(the )?\w+ is) (now )?(turned|booted|started|switched|plugged|logged|installed|granted|fixed|enabled|added|set up|paid|connected|on|up|running|online|ready|back|done|fixed|awake)\b|^\s*(done|ready|fixed|try again|retry|go ahead|it works now|works now)\b/i;
+// #212 change/bug wording → a task even when it ends with "?" (misfiled before: "…Fix it. …?", "wasn't X supposed to…?", "not showing…?")
+const ASK_RE = /\b(fix|make|add|change|remove|rename|move|replace|show|hide|style|should|supposed|instead|broken|bug|wrong|missing|still|not (showing|working)|(does|is|was|wo|ca|did)n'?t|please|let'?s|how about|is it possible|(can|could|would|will|shall) (you|we|it|i))\b/i;
 const FASTNOTE = '\n\n(Clauracle is filing this as an issue right now; its number follows in a moment: don\'t file it yourself. Work on it now.)';
 const SNOTE = '\n\n(A status update, not a task (Clauracle): context for the task you are on or the one labelled `needs-user`: retry what was blocked; if it unblocks a needs-user issue, `gh issue edit N --remove-label needs-user` and resume it. File nothing.)';
 // #98: Clauracle's appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
