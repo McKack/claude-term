@@ -1633,7 +1633,8 @@ fn claude_clean(home: &Path, keep: &[String], low: bool) -> u64 {
 }
 
 /// GitHub release `tag` with `files` attached and notes generated from the commits since the last one.
-pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool, main: bool) -> Result<String, String> {
+pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool, main: bool, sha: Option<&str>) -> Result<String, String> {
+    // #266 sha = staged build's commit (an ancestor of HEAD, on the remote once HEAD is pushed); None = HEAD
     if tag.is_empty() || tag.starts_with('-') { return Err("bad tag".into()); }
     // #119: tag THIS commit (pushed first); w/o --target gh tags the default branch → v0.1.2 got built from 0.1.1 code
     // #154: never attach another version's bundle (v0.1.2 shipped 0.1.1 files; a slow/old build keeps its old name)
@@ -1652,11 +1653,11 @@ pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool, mai
             .as_str().unwrap_or_default().to_string() } else { def };
         let cur = run("git", &["rev-parse", "--abbrev-ref", "HEAD"], Some(dir), &[]).stdout.trim().to_string();
         if !def.is_empty() && def != cur {
-            let m = run("git", &["push", "-q", "origin", &format!("HEAD:refs/heads/{def}")], Some(dir), &env);
+            let m = run("git", &["push", "-q", "origin", &format!("{}:refs/heads/{def}", sha.unwrap_or("HEAD"))], Some(dir), &env);
             if !m.ok { return Err(format!("couldn't move {def} to this release ({cur} is behind {def}: merge {def} into {cur} first): {}", m.stderr.trim())); }
         }
     }
-    let sha = run("git", &["rev-parse", "HEAD"], Some(dir), &[]).stdout.trim().to_string();
+    let sha = sha.map_or_else(|| run("git", &["rev-parse", "HEAD"], Some(dir), &[]).stdout.trim().to_string(), str::to_string);
     let mut a = vec!["release", "create", tag, "--title", tag, "--generate-notes", "--target", &sha];
     a.extend(files.iter().map(String::as_str));
     let o = run("gh", &a, Some(dir), &env);
@@ -1671,6 +1672,58 @@ pub fn release(dir: &str, user: &str, tag: &str, files: &[String], ci: bool, mai
         });
     }
     if o.ok { Ok(o.stdout.trim().to_string()) } else { Err(o.stderr.trim().to_string()) }
+}
+
+/// #266 staged releases: .git/clauracle-stage/<v>/ = copies of a full build + stage.json {v, sha, t, files, src}.
+/// Copies ∵ later builds/cargo clean/Janitor must not touch them. Actions: list | add (v, files; sha = HEAD) | done (drop copies) | skip (copies + originals).
+/// ponytail: sha = HEAD at staging (UI stages only non-stale builds); uncommitted edits at build time aren't in that sha
+pub fn stage(dir: &str, action: &str, v: &str, files: &[String]) -> Result<serde_json::Value, String> {
+    let git = Path::new(dir).join(".git");
+    if !git.is_dir() { return if action == "list" { Ok(serde_json::json!([])) } else { Err("not a git repo".into()) }; } // no git = no GitHub release
+    let root = git.join("clauracle-stage");
+    if !v.is_empty() && (v.contains(['/', '\\']) || v.contains("..")) { return Err("bad version".into()); }
+    let d = root.join(v);
+    let meta = |d: &Path| std::fs::read_to_string(d.join("stage.json")).ok().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    match action {
+        "list" => Ok(std::fs::read_dir(&root).into_iter().flatten().flatten().filter_map(|e| meta(&e.path())).collect()),
+        "add" => {
+            if v.is_empty() || files.is_empty() { return Err("nothing to stage".into()); }
+            std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+            let mut out = vec![];
+            for f in files {
+                let to = d.join(Path::new(f).file_name().ok_or("bad file")?);
+                std::fs::copy(f, &to).map_err(|e| format!("{f}: {e}"))?;
+                out.push(to.to_string_lossy().to_string());
+            }
+            let sha = run("git", &["rev-parse", "HEAD"], Some(dir), &[]).stdout.trim().to_string();
+            let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            let m = serde_json::json!({"v": v, "sha": sha, "t": t, "files": out, "src": files});
+            std::fs::write(d.join("stage.json"), m.to_string()).map_err(|e| e.to_string())?;
+            Ok(m)
+        }
+        "done" | "skip" => {
+            if v.is_empty() { return Err("bad version".into()); }
+            if action == "skip" { for f in meta(&d).and_then(|m| m["src"].as_array().cloned()).unwrap_or_default() { if let Some(f) = f.as_str() { let _ = std::fs::remove_file(f); } } }
+            std::fs::remove_dir_all(&d).map_err(|e| e.to_string())?;
+            Ok(serde_json::Value::Null)
+        }
+        _ => Err("bad action".into()),
+    }
+}
+
+#[test]
+fn stage_add_list_skip() {
+    let d = std::env::temp_dir().join(format!("clstage{}", new_id()));
+    std::fs::create_dir_all(d.join(".git")).unwrap();
+    let f = d.join("App_0.1.4_x64-setup.exe"); std::fs::write(&f, "x").unwrap();
+    let ds = d.to_string_lossy().to_string();
+    assert!(stage(&ds, "add", "../x", &[]).is_err());
+    let m = stage(&ds, "add", "0.1.4", &[f.to_string_lossy().to_string()]).unwrap();
+    assert!(Path::new(m["files"][0].as_str().unwrap()).exists());
+    assert_eq!(stage(&ds, "list", "", &[]).unwrap().as_array().unwrap().len(), 1);
+    stage(&ds, "skip", "0.1.4", &[]).unwrap();
+    assert!(!f.exists() && stage(&ds, "list", "", &[]).unwrap().as_array().unwrap().is_empty());
+    let _ = std::fs::remove_dir_all(&d);
 }
 
 /// #154 files whose name carries a version (`Name_1.2.3_arch.ext`, Tauri's scheme) ≠ tag's. Unversioned names pass

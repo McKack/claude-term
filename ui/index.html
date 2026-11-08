@@ -107,6 +107,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #head .title { font-weight:600; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #branch { cursor:pointer; } #branch:hover { color:var(--text); border-color:var(--line2); }
 #branch { font-size:12px; color:var(--dim); background:var(--side); border:1px solid var(--line); padding:1px 8px; border-radius:99px; white-space:nowrap; }
+.stg { padding:3px 0; overflow:hidden; transition:opacity .25s, height .3s, padding .3s; } .stg.gone { opacity:0; height:0 !important; padding:0; } /* #266 Skip */
 .seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
 .seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
 .seg button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
@@ -2229,7 +2230,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if (d.step === 'build' && d.done != null) { b.ok = d.done; b.at = Date.now(); b.own = !!d.own; /* statusline right zone + card */
       if (!b.manual) addEntry(d.pid, d.done ? {kind: 'note', text: 'Built!', act: d.own ? 'restart' : P(d.pid)?.build.run ? 'run' : ''} : {kind: 'note', text: 'Build failed', act: 'out'});
       b.manual = false; drawGbar(); }
-    if (d.step === 'build' && d.done != null) { ghiStale(d.pid); delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
+    if (d.step === 'build' && d.done != null) { ghiStale(d.pid); delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.done && relStage(d.pid)).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
   login_url: () => { const m = $('loginMsg'); if (m) m.innerHTML = `Finish signing in in your browser. Didn't open? <a href="#" data-url="${esc(d.url)}">Open the sign-in page</a>`; },
   gh_code: () => { const m = $('ghMsg'); if (m) m.innerHTML = `Enter <b style="font-size:18px" class="sel mono">${esc(d.code)}</b> at <a href="#" data-url="${esc(d.url)}">github.com/login/device</a>`; T.opener.openUrl(d.url); },
@@ -2618,6 +2619,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const pid = cur, k = p.stage ? SK.indexOf(p.stage) : -1, to = RELTO[pid] ?? Math.max(k, 0);
   if (!cached && (force || !RELC[pid] || Date.now() - RELC[pid].t > 60e3)) {
     const c = await call('release_check', {pid}).catch(e => ({err: String(e)}));
+    c.staged = await call('stage', {pid, action: 'list'}).catch(() => []); // #266
     if (siteOf(p).domain && (p.targets || []).some(x => x === 'ios' || x === 'android')) c.site = await call('site_check', {urls: ['privacy', 'terms'].map(k => siteUrl(k, p))}).catch(() => null);
     const was = RELC[pid]?.c?.ci, now = c.ci; RELC[pid] = {c, t: Date.now()};
     if (was && now?.status === 'completed' && (was.status !== 'completed' || was.databaseId !== now.databaseId)) { // #123 CI run ended (or a new one already did)
@@ -2631,9 +2633,10 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   if (k < 0 && RELTO[pid] == null) return stHead('Release', re) + (`<p class="dim" style="margin:0 0 8px">Walk this project to a release: alpha → beta → release candidate → published. Each stage has its own checklist, stricter going up.</p>
     <div class="btnrow col">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`);
   const tv = (c.tag || '').replace(/^v/, ''), cv = (c.version || '').replace(/^v/, '');
-  if (tv && SEMV.test(cv) && vcmp(cv, tv) <= 0 && !c.bumping) { // #121 auto-bump past the latest tag (patch); once per check
-    c.bumping = 1; const nv = vnext(cv, tv);
-    try { const f = await call('version_set', {pid, v: nv}); addEntry(pid, {kind: 'note', text: `Version ${nv} set in ${f.join(', ')} (last tag ${c.tag})`}); c.version = nv; c.clean = false; }
+  const top = (c.staged || []).reduce((a, x) => !a || vcmp(x.v, a) > 0 ? x.v : a, tv); // #266 staged versions count as taken
+  if (top && SEMV.test(cv) && vcmp(cv, top) <= 0 && !c.bumping) { // #121 auto-bump past the latest tag / staged build (patch); once per check
+    c.bumping = 1; const nv = vnext(cv, top);
+    try { const f = await call('version_set', {pid, v: nv}); addEntry(pid, {kind: 'note', text: `Version ${nv} set in ${f.join(', ')} (last ${top === tv ? 'tag ' + c.tag : 'staged v' + top})`}); c.version = nv; c.clean = false; }
     catch (e) { addEntry(pid, {kind: 'note', text: `Auto-bump failed: ${e}`}); }
   }
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
@@ -2643,12 +2646,18 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const seg = `<span class="seg">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, '');
   // #265 build in flight → say so (was an enabled-looking button under "Ready to build!")
-  const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : bBusy(pid) ? 'Building… Release unlocks when it finishes' : '';
+  // #266 staged builds (lowest first) = what Release ships; build/clean/bump rows don't block them (own commit + copies)
+  const stg = (c.staged || []).filter(x => !tv || vcmp(x.v, tv) > 0).sort((a, b) => vcmp(a.v, b.v)), sl = items.filter(x => !x.ai && !x.ok && !['build', 'clean', 'bump'].includes(x.id)).length;
+  const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : stg.length ? (sl ? `${sl} check${sl > 1 ? 's' : ''} open` : '') : left ? `${left} check${left > 1 ? 's' : ''} open` : bBusy(pid) ? 'Building… Release unlocks when it finishes' : '';
+  const sv = stg[0]?.v, rv = sv || v;
   // Release = publish v<version> (that version's build files) on GitHub + set the stage; grayed out till every check is green
-  const act = RELBUSY[pid] ? `<button class="btn sm primary block" disabled><i class="spin"></i>Publishing…</button>` : `<button class="btn sm primary block" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this)">${icon('rocket')}Release v${esc(v)} as ${STAGES[SK[to]]}</button>`; /* #122 RELBUSY survives redraws */
+  const act = RELBUSY[pid] ? `<button class="btn sm primary block" disabled><i class="spin"></i>Publishing…</button>` : `<button class="btn sm primary block" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this${sv ? `, '${esc(sv)}'` : ''})">${icon('rocket')}Release v${esc(rv)} as ${STAGES[SK[to]]}</button>`; /* #122 RELBUSY survives redraws */
+  const srow = (x, i) => `<div class="row stg" data-v="${esc(x.v)}" style="gap:8px;align-items:center"><span style="width:16px;display:inline-flex;color:var(--ok)">${icon('check')}</span><span class="grow">v${esc(x.v)}<small class="dim" style="display:block">${x.files.length} file${x.files.length > 1 ? 's' : ''} · built ${gago(x.t * 1e3)}${x.sha ? ' · ' + esc(x.sha.slice(0, 7)) : ''}</small></span>
+    <button class="btn sm" onclick="relSkip('${esc(x.v)}', this)">Skip</button><button class="btn sm primary" ${i || why || RELBUSY[pid] ? `disabled title="${esc(i ? `Release v${stg[0].v} first` : why || 'Publishing…')}"` : ''} onclick="relRelease(${to}, this, '${esc(x.v)}')">Release</button></div>`;
+  const slist = stg.length ? `<div class="label" style="margin:14px 0 6px">Staged releases</div>${stg.map(srow).join('')}` : '';
   return stHead('Release', (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re) + `<div class="row" style="gap:8px;align-items:center;margin-bottom:8px"><span class="dim">Stage:</span>${seg}</div>
     <div>${items.map(row).join('')}</div>
-    <div class="nextstep"><p>${why ? esc(why) : 'Ready to release!'}</p>${act}</div><div class="btnrow col" style="margin-top:8px">${ask}</div>`; /* #237 header = Stage + switcher only; ask under the Release box */ // #232 Release button in the next-step box
+    <div class="nextstep"><p>${why ? esc(why) : 'Ready to release!'}</p>${act}</div><div class="btnrow col" style="margin-top:8px">${ask}</div>${slist}`; /* #237 header = Stage + switcher only; ask under the Release box */ // #232 Release button in the next-step box
 }
 /* #123 recheck CI while a run is in flight (one timer per project; only while Build & Release shows it) */
 const CIPOLL = {};
@@ -2662,13 +2671,14 @@ async function relAsk(id) {
   if (!await sure(`Ask Clauracle?\n\n${text}\n${estTok()}`)) return;
   sendNow(cur, {text, atts: []});
 }
-async function relRelease(to, btn) {
-  const v = (RELC[cur]?.c?.version || '').replace(/^v/, ''), files = relFilesFor(cur, v), st = STAGES[SK[to]];
+async function relRelease(to, btn, sv) { // sv = staged version (#266): its copies + commit
+  const sg = sv && RELC[cur]?.c?.staged?.find(x => x.v === sv), v = sg ? sv : (RELC[cur]?.c?.version || '').replace(/^v/, ''), files = sg ? sg.files.map(f => ({path: f, name: f.split(/[\\/]/).pop()})) : relFilesFor(cur, v), st = STAGES[SK[to]];
   const main = to >= SK.indexOf('rc'); // #210 RC/Published: the default branch moves to this release (fast-forward only)
   if (!await sure(`Publish v${v} on GitHub as ${st}?\n\n${files.map(f => f.name).join('\n')}\n\n${main ? 'Main moves to this release too (fast-forward, never forced).\n' : ''}Releases are public on public repos.`, 'Release')) return;
   const pid = cur; RELBUSY[pid] = 1; btn.disabled = true; btn.innerHTML = '<i class="spin"></i>Publishing…'; // #122: push + upload can take minutes; RELBUSY keeps the spinner across redraws
   try {
-    const url = await call('release', {pid: pid, tag: 'v' + v, files: files.map(f => f.path), main}); // gh release create prints the release URL
+    const url = await call('release', {pid: pid, tag: 'v' + v, files: files.map(f => f.path), main, sha: sg?.sha || null});
+    if (sg) call('stage', {pid, action: 'done', v}).catch(() => {}); /* uploaded → copies go */ // gh release create prints the release URL
     addEntry(pid, {kind: 'note', text: 'Released: ' + url});
     const u = (String(url).match(/https?:\S+/) || [])[0];
     dlg(`<h2 style="margin:0 0 6px;font-size:17px">${icon('rocket')}Released v${esc(v)}</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Published on GitHub as ${st}.</p><div style="display:flex;gap:8px;justify-content:flex-end">${u ? `<button class="btn primary" data-url="${esc(u)}" onclick="closeDlg()">Open release page</button>` : ''}<button class="btn" onclick="closeDlg()">Close</button></div>`);
@@ -2676,6 +2686,25 @@ async function relRelease(to, btn) {
     if (P(pid).build.deploy) call('run_step', {pid: pid, step: 'deploy'}); // #34: deploy = part of Release (guessed by build_guess or set in the project)
     delete RELBUSY[pid]; delete RELTO[pid]; delete RELC[pid]; ghiStale(pid); await refresh(); pid === cur && drawRight(true); ciPoll(pid, 15e3); /* #123 tag → CI run */
   } catch (e) { addEntry(pid, {kind: 'note', text: `Release failed: ${e}`}); delete RELBUSY[pid]; if (pid === cur && tab === 'build') drawRight(); }
+}
+/* #266 full build done → staged release: copies + commit kept (later commits/builds can't stale it), version bumps past it.
+   Only once the project walks the release flow (stage set / started). Not current version, missing local target or stale (built before the newest code commit) → nothing staged */
+async function relStage(pid) {
+  const p = P(pid); if (!p || (!p.stage && RELTO[pid] == null)) return;
+  const c = await call('release_check', {pid}).catch(() => null), g = await call('gh_info', {pid}).catch(() => null); if (!c || c.err || !g) return;
+  ghiSet(pid, g); c.staged = await call('stage', {pid, action: 'list'}).catch(() => []); RELC[pid] = {c, t: Date.now()};
+  const v = (c.version || '').replace(/^v/, ''), files = relFilesFor(pid, v);
+  if (!SEMV.test(v) || !files.length || tgtSplit(p, c, files).lack.length || files.some(f => f.mtime && f.mtime < (c.code_t || 0)) || c.staged.some(x => x.v === v)) return;
+  try { c.staged.push(await call('stage', {pid, action: 'add', v, files: files.map(f => f.path)})); addEntry(pid, {kind: 'note', text: `Staged v${v}: ${files.map(f => f.name).join(', ')} (Build & Release › Staged releases)`});
+    const nv = vnext(v, v), f = await call('version_set', {pid, v: nv}); c.version = nv; c.clean = false; addEntry(pid, {kind: 'note', text: `Version ${nv} set in ${f.join(', ')} (next build)`}); }
+  catch (e) { addEntry(pid, {kind: 'note', text: `Couldn't stage v${v}: ${e}`}); }
+}
+async function relSkip(v, btn) {
+  if (!await sure(`Skip v${v}?\n\nDeletes its built files; it won't be released.`, 'Skip')) return;
+  const pid = cur, r = btn.closest('.stg'); r.style.height = r.offsetHeight + 'px'; r.offsetHeight; r.classList.add('gone'); // fade + collapse → rows below slide up
+  try { await call('stage', {pid, action: 'skip', v}); } catch (e) { toast(`Skip failed: ${e}`, 'err'); }
+  const c = RELC[pid]?.c; if (c?.staged) c.staged = c.staged.filter(x => x.v !== v);
+  ghiStale(pid); setTimeout(() => pid === cur && tab === 'build' && drawRight(), 300);
 }
 // Build from the wizard: on success the build event commits + pushes what it changed (Cargo.lock…) ∵ else "Everything committed" flips red again
 const RELB = {};
