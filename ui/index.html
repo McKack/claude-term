@@ -434,6 +434,8 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
 .ti .tt:has(> .lbls) { display:block; } .tt .tc { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; } .ti.open .tt .tc { display:block; } .ti.completed .tc { -webkit-line-clamp:1; }
 .tt .lbls { display:flex; flex-wrap:wrap; gap:4px; margin-top:3px; }
+.ti .tt:has(> .ldots) { display:block; } .tt .tc[data-n] { -webkit-line-clamp:1; } .ti:has(.tc[data-n]) { cursor:pointer; } .ti .inum { font-weight:700; font-size:.88em; }
+.tt .ldots { display:flex; gap:4px; margin-top:4px; width:max-content; } .ldots i { width:7px; height:7px; border-radius:50%; background:var(--lc); }
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
 .msg .tlist .ti { font-size:inherit; } .msg .ti > input[type=checkbox] { margin-top:calc((1lh - 13px) / 2); } /* beats .msg.claude :first-child { margin-top:0 } */
 .sugs { margin:6px 0; } .sugs .ti { align-items:center; } .sugs .ti.completed { opacity:.55; } .sugs .ti > .btn { flex:none; }
@@ -444,7 +446,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti { position:relative; } .qpill { position:absolute; right:0; top:0; bottom:0; display:flex; align-items:center; gap:6px; padding:0 2px 0 30px; background:linear-gradient(to right, transparent, var(--side) 26px); opacity:0; pointer-events:none; transition:opacity .15s; }
 .qbtns { display:flex; gap:6px; } .qedit { width:24px; height:24px; border-radius:50%; color:var(--dim); background:var(--hover); } .qedit:hover { background:var(--soft); color:var(--accent); } .qedit svg { width:12px; height:12px; } /* #199 round, side by side ∵ stacked overflowed 1-line rows */
 .ti:hover > .qpill { opacity:1; pointer-events:auto; } .ti.qghost > .qpill, .ti.sortable-fallback > .qpill { display:none; } /* #193 drag: no panel on placeholder/clone */
-.chips { display:flex; flex-wrap:wrap; gap:4px; } .chips .pill { cursor:pointer; opacity:.45; } .chips .pill.on { opacity:1; }
+.chips { display:flex; flex-wrap:wrap; gap:4px; } .chips .pill { cursor:pointer; opacity:.45; display:inline-flex; align-items:center; gap:3px; line-height:18px; } .chips .pill .i { width:12px; height:12px; } .chips .pill.on { opacity:1; }
 /* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
 .ti.qghost { background:color-mix(in srgb, var(--accent) 14%, transparent); outline:1px dashed var(--accent); outline-offset:-1px; border-radius:6px; }
 .ti.qghost > * { opacity:.35; } .ti.sortable-fallback { opacity:.95 !important; background:var(--card); box-shadow:0 6px 18px #0004; border-radius:6px; cursor:grabbing; }
@@ -1734,7 +1736,7 @@ function send() {
       sendNow(pid, {text: t + FASTNOTE, atts: a, work: 0}, opt?.log && opt);
       const n = await fileAsk(pid, t, a); if (!n) return;
       fileNow(pid, t, n); P(pid).work = n; call('update_project', {pid, changes: {work: n}}).catch(() => {});
-      call('send_mid', {pid, text: `(Clauracle filed the ask you're on as issue #${n}. Retitle it + write a task summary with the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with \`gh issue close ${n} -c <one-line summary>\` when done.)`, work: n}).catch(() => {});
+      call('send_mid', {pid, text: `(Clauracle filed the ask you're on as issue #${n}. Retitle it + write a task summary, the prompt quoted at the end inside \`<details><summary>Original ask</summary> … </details>\` (one \`gh issue edit ${n} -t … -F …\`); close it with \`gh issue close ${n} -c <one-line summary>\` when done.)`, work: n}).catch(() => {});
       return;
     }
     const n = file ? await fileAsk(pid, t, a) : 0, now = n && fileNow(pid, t, n), text = isQ ? t + QNOTE : isS ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
@@ -1774,8 +1776,8 @@ function fileNow(pid, t, n) {
 }
 // one line each (bare() strips it for display; FILED_RE reads the number)
 const filedNote = (n, now, urgent) => now
-  ? `\n\n(Filed as issue #${n} by Clauracle${urgent ? ', marked urgent: it goes before the other open tasks' : ''}. Work on it now: first retitle it + write a task summary with the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done. Not a task after all (a question, a status/unblock reply, already done) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`
-  : `\n\n(Filed as issue #${n} by Clauracle at the END of the task queue: open tasks come first (the user's rule), so don't start it now. Retitle it + write a task summary with the prompt quoted below it (one \`gh issue edit ${n} -t … -F …\`), say so in one line, then carry on with the task you're on. It only adds to that task → fold it in and close #${n} as a duplicate. Not a task (a question, a status/unblock reply) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`;
+  ? `\n\n(Filed as issue #${n} by Clauracle${urgent ? ', marked urgent: it goes before the other open tasks' : ''}. Work on it now: first retitle it + write a task summary, the prompt quoted at the end inside \`<details><summary>Original ask</summary> … </details>\` (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done. Not a task after all (a question, a status/unblock reply, already done) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`
+  : `\n\n(Filed as issue #${n} by Clauracle at the END of the task queue: open tasks come first (the user's rule), so don't start it now. Retitle it + write a task summary, the prompt quoted at the end inside \`<details><summary>Original ask</summary> … </details>\` (one \`gh issue edit ${n} -t … -F …\`), say so in one line, then carry on with the task you're on. It only adds to that task → fold it in and close #${n} as a duplicate. Not a task (a question, a status/unblock reply) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`;
 // → issue number, 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
   const body = t + (a.length ? `\n\n(+${a.length} attachment${a.length > 1 ? 's' : ''}: ${a.map(x => x.name).join(', ')})` : '');
@@ -2704,9 +2706,12 @@ function issueQ(pid) {
 }
 // Issues list (#15): row = #N link + title + type pills (GitHub colour; `clauracle` hidden ∵ every row has it)
 // #187 labels = own line below title (.lbls), never clamped inline; title clamps alone in .tc
-const issueHtml = x => { const t = (x.number ? `<a data-url="${esc(x.url)}">#${x.number}</a> ` : '<span class="faint">#…</span> ') + esc(x.title),
-  L = x.labels.filter(l => l.name !== 'clauracle').map(l => `<span class="pill lbl" style="--lc:#${esc(l.color || '888')}">${esc(l.name)}</span>`).join('');
-  return L ? `<span class="tc">${t}</span><span class="lbls">${L}</span>` : t; };
+// #217 labels = coloured dots under the one-line title (hover = names); row click → editIssue (tc[data-n], delegated below)
+const issueHtml = x => { const t = (x.number ? `<a class="inum" data-url="${esc(x.url)}">#${x.number}</a> ` : '<span class="faint">#…</span> ') + esc(x.title),
+  l = x.labels.filter(l => l.name !== 'clauracle'), L = l.map(l => `<i style="--lc:#${esc(l.color || '888')}"></i>`).join('');
+  return `<span class="tc"${x.number ? ` data-n="${x.number}"` : ''}>${t}</span>${L ? `<span class="ldots" title="${esc(l.map(l => l.name).join(', '))}">${L}</span>` : ''}`; };
+document.addEventListener('click', e => { if (e.target.closest('input, a, button:not(.qpen), .qdrag, dialog')) return;
+  const n = e.target.closest('.ti')?.querySelector('.tc[data-n]')?.dataset.n; if (n && $('right')?.contains(e.target)) editIssue(+n); });
 // after the drag queue: suggestions (Accept/Dismiss), others' issues (who), new-issue field
 // #216 issue-mode pieces (GitHub tab steps + the plain list in issuesRest)
 const issueParts = () => { const iq = issueQ(cur);
@@ -2739,9 +2744,9 @@ function runStep(p, n) {
     : q ? `Paused: ${q} question${q > 1 ? 's' : ''} for you` : p.cont !== 'off' && last?.kind === 'note' ? esc(last.text)
     : !n ? 'Nothing queued' : p.cont === 'off' ? 'Tasks run only when you ask' : `Next: #${n}`;
   const act = q && !busy[cur] ? `<button class="btn sm" onclick="hiddenQs[cur] = false; qsOpen[cur] = true; drawLog()">Answer</button>`
-    : !busy[cur] && n && p.cont !== 'off' ? `<button class="btn primary sm" onclick="playTask(${n})">${icon('play')}Start #${n}</button>` : '';
+    : '';
   return `<div class="btnrow runm">${Object.entries(MODES).map(([k, [l, h]]) => `<button class="btn sm${p.cont === k ? ' primary' : ''}" title="${esc(h)}" onclick="setP({cont: '${k}'})">${l}</button>`).join('')}</div>
-    <div class="row" style="gap:8px;margin-top:8px;align-items:center"><span class="grow dim" style="font-size:12.5px">${why}</span>${act}</div>`;
+    <div class="row" style="gap:8px;margin-top:8px;align-items:center"><span class="grow faint" style="font-size:12.5px">${why}</span>${act}</div>`;
 }
 const issuesRest = (then = '') => { const x = issueParts();
   return `<div class="tlist">${x.sug}${x.others}</div>${then}${x.wait ? `<div class="label row" style="gap:4px;align-items:center">Waiting on you<button class="ib" title="${WAIT_TIP}" onclick="toast(WAIT_TIP, 'info')">${icon('info')}</button></div><div class="tlist">${x.wait}</div>` : ''}${x.add}`; };
@@ -2765,15 +2770,23 @@ function tasksHtml() {
 }
 // #112 edit modal: title/body/labels/assignees → task_do edit (gh issue edit, diff only). IMETA = repo labels + assignable
 // people per pid, 10 min ∵ rarely change; issue itself re-fetched per open (edit must start from fresh text)
-const IMETA = {};
+// #217 IVIEW = last fetched issue per pid+n in localStorage (≤150) → opens at once, fresh copy re-renders it if nothing was typed yet
+const IMETA = {}, IVIEW = (() => { try { return JSON.parse(localStorage.iview || '{}'); } catch { return {}; } })();
+const ivSet = (k, x) => { delete IVIEW[k]; if (x) IVIEW[k] = x; const ks = Object.keys(IVIEW); ks.slice(0, -150).forEach(y => delete IVIEW[y]); try { localStorage.iview = JSON.stringify(IVIEW); } catch {} };
 async function editIssue(n) {
-  const pid = cur; dlg(`<h2 style="margin:0 0 10px;font-size:17px">Issue #${n}</h2>${skel(60, 'b100')}`);
-  const m = IMETA[pid]?.t > Date.now() - 6e5 ? IMETA[pid] : null;
+  const pid = cur, k = pid + '#' + n, c = IVIEW[k], m = IMETA[pid]?.t > Date.now() - 6e5 ? IMETA[pid] : null;
+  const get = Promise.all([call('task_do', {pid, action: 'view', arg: String(n)}).then(JSON.parse), m || call('task_do', {pid, action: 'meta', arg: ''}).then(JSON.parse)]);
+  if (c && m) { eiDraw(pid, n, c, m); get.then(([x, meta]) => { ivSet(k, x); IMETA[pid] = {...meta, t: m.t};
+      if ($('eiGo') && !$('eiGo').disabled && $('dlg').dataset.ei === k && !$('dlg')._typed && JSON.stringify(x) !== JSON.stringify(c)) eiDraw(pid, n, x, IMETA[pid]); }).catch(() => {}); return; }
+  dlg(`<h2 style="margin:0 0 10px;font-size:17px">Issue #${n}</h2>${skel(60, 'b100')}`);
   let x, meta;
-  try { [x, meta] = await Promise.all([call('task_do', {pid, action: 'view', arg: String(n)}).then(JSON.parse), m || call('task_do', {pid, action: 'meta', arg: ''}).then(JSON.parse)]); }
+  try { [x, meta] = await get; }
   catch (e) { return dlg(`<h2 style="margin:0 0 10px;font-size:17px">Issue #${n}</h2><div class="warn">${esc(e)}</div><div class="btns"><button class="btn" onclick="closeDlg()">Close</button></div>`); }
-  IMETA[pid] = {...meta, t: m?.t || Date.now()};
+  IMETA[pid] = {...meta, t: m?.t || Date.now()}; ivSet(k, x);
   if (!$('dlg').open) return; // closed while loading
+  eiDraw(pid, n, x, IMETA[pid]);
+}
+function eiDraw(pid, n, x, meta) {
   const L = new Set(x.labels.map(l => l.name)), A = new Set(x.assignees.map(a => a.login)), labels = meta.labels || [], people = [...new Set([...(meta.people || []), ...A])];
   const chip = (k, v, on, c) => `<span class="pill${c ? ' lbl' : ''}${on ? ' on' : ''}" data-k="${k}" data-v="${esc(v)}"${c ? ` style="--lc:#${esc(c)}"` : ''} onclick="this.classList.toggle('on')">${esc(v)}</span>`;
   dlg(`<h2 style="margin:0 0 10px;font-size:17px">Issue #${n}</h2>
@@ -2788,8 +2801,9 @@ async function editIssue(n) {
     $('eiGo').disabled = true;
     try { await call('task_do', {pid, action: 'edit', arg: JSON.stringify({n, title: $('eiT').value.trim() || x.title, body: $('eiB').value, addL, rmL, addA, rmA})}); }
     catch (e) { $('eiGo').disabled = false; return $('eiGo').closest('.btns').insertAdjacentHTML('beforebegin', `<div class="warn">${esc(e)}</div>`); }
-    closeDlg(); await pollTeam(); $('atp') && ($('atp')._h = null); drawAtp();
+    ivSet(pid + '#' + n, null); closeDlg(); await pollTeam(); $('atp') && ($('atp')._h = null); drawAtp();
   };
+  const d = $('dlg'); d.dataset.ei = pid + '#' + n; d._typed = false; d.querySelectorAll('input, textarea').forEach(i => i.oninput = () => d._typed = true);
   $('eiT').focus();
 }
 async function taskDo(action, arg) {
@@ -4009,7 +4023,7 @@ function drawAtp() {
   const L = a => `<div class="tlist">${a.join('')}</div>`;
   const qRows = L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
           ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
-            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit" title="Edit issue" onclick="event.stopPropagation(); editIssue(${iq[i].number})">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
+            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
   const wt = iq ? teamTasks(cur).filter(isIdea).map(x => `#${x.number} ${x.title}`) : S.waits?.[cur] || [];
   const tasks = ((wt.length && !iq ? `<div class="label" title="${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: your AI noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
         end: `<button class="ib" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: ${iq ? 'close the issue' : 'remove from PLAN.md'}" onclick="planWait(${i}, false)">${icon('x')}</button>`}))) : '')

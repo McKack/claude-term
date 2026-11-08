@@ -739,6 +739,10 @@ pub fn fresh(app: &AppHandle, st: &State, pid: &str, live: &Live, cont: Option<S
     }).unwrap_or_default();
     emit(app, "cleared", json!({"pid": pid}));
     if pin > 0 { emit(app, "project", json!(st.project(pid))); } // UI's P.work → "Working on #N" + queue order
+    // #217 claim it ourselves (assignee + `in progress`) ∵ the prompt's "claim it" rule was skipped by the AI → others saw it free
+    if let Some(p) = st.project(pid).filter(|p| pin > 0 && issue_mode(p)) {
+        std::thread::spawn(move || { let _ = store::task_do(&p.path, &p.gh, "claim", &pin.to_string()); });
+    }
     let mut items = vec![Input::Reconnect];
     if let Some(c) = cont {
         items.push(Input::Msg(if answers.is_empty() { c } else { format!("{c}\n\n{answers}") }));
