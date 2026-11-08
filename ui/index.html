@@ -458,7 +458,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .qbtns { display:flex; gap:6px; } .qedit { width:24px; height:24px; border-radius:50%; color:var(--dim); background:var(--hover); } .qedit:hover { background:var(--soft); color:var(--accent); } .qedit svg { width:12px; height:12px; } /* #199 round, side by side ∵ stacked overflowed 1-line rows */
 .qgrip { flex:none; align-self:stretch; display:flex; flex-direction:column; } .qgrip .qdrag { flex:1; } .qmv { border:0; background:none; color:var(--dim); padding:0; width:22px; height:9px; font-size:9px; line-height:9px; cursor:pointer; border-radius:3px; } .qmv:hover:not(:disabled) { background:var(--hover); color:var(--accent); } .qmv:disabled { opacity:.25; cursor:default; } /* #218 ⤒/⤓ send to top/bottom */
 .ti:hover > .qpill { opacity:1; pointer-events:auto; } .ti.qghost > .qpill, .ti.sortable-fallback > .qpill { display:none; } /* #193 drag: no panel on placeholder/clone */
-.chips { display:flex; flex-wrap:wrap; gap:4px; } .chips .pill { cursor:pointer; opacity:.45; display:inline-flex; align-items:center; gap:3px; line-height:18px; } .chips .pill .i { width:12px; height:12px; } .chips .pill.on { opacity:1; }
+.chips { display:flex; flex-wrap:wrap; gap:4px; } .chips .pill { cursor:pointer; opacity:.45; display:inline-flex; align-items:center; gap:3px; line-height:18px; } .chips .pill .i { width:12px; height:12px; } .chips .pill.on, .chips .pill.add { opacity:1; } .chips .pill.add { border-style:dashed; }
 /* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
 .ti.qghost { background:color-mix(in srgb, var(--accent) 14%, transparent); outline:1px dashed var(--accent); outline-offset:-1px; border-radius:6px; }
 .ti.qghost > * { opacity:.35; } .ti.sortable-fallback { opacity:.95 !important; background:var(--card); box-shadow:0 6px 18px #0004; border-radius:6px; cursor:grabbing; }
@@ -2845,12 +2845,13 @@ async function editIssue(n) {
 }
 function eiDraw(pid, n, x, meta) {
   const L = new Set(x.labels.map(l => l.name)), A = new Set(x.assignees.map(a => a.login)), labels = meta.labels || [], people = [...new Set([...(meta.people || []), ...A])];
-  const chip = (k, v, on, c) => `<span class="pill${c ? ' lbl' : ''}${on ? ' on' : ''}" data-k="${k}" data-v="${esc(v)}"${c ? ` style="--lc:#${esc(c)}"` : ''} onclick="this.classList.toggle('on')">${esc(v)}</span>`;
+  // #222 assignees = same .lbl shape as labels (accent) so both rows line up; Invite = dashed action, never dimmed
+  const chip = (k, v, on, c) => `<span class="pill lbl${on ? ' on' : ''}" data-k="${k}" data-v="${esc(v)}" style="--lc:${c ? '#' + esc(c) : 'var(--accent)'}" onclick="this.classList.toggle('on')">${esc(v)}</span>`;
   dlg(`<h2 style="margin:0 0 10px;font-size:17px">Issue #${n}</h2>
     <label class="fl">Title<input id="eiT" value="${esc(x.title)}"></label>
     <label class="fl" style="margin-top:8px">Description<textarea id="eiB" rows="8">${esc(x.body)}</textarea></label>
     <div class="fl" style="margin-top:8px">Labels<div class="chips">${labels.map(l => chip('L', l.name, L.has(l.name), l.color || '888')).join('') || '<span class="faint">No labels in this repo</span>'}</div></div>
-    <div class="fl" style="margin-top:8px">Assignees<div class="chips">${people.map(p => chip('A', p, A.has(p))).join('') }<span class="pill" title="Invite a collaborator (GitHub tab)" onclick="collabGo()">${icon('plus')}Invite…</span></div></div>
+    <div class="fl" style="margin-top:8px">Assignees<div class="chips">${people.map(p => chip('A', p, A.has(p))).join('') }<span class="pill lbl add" style="--lc:var(--accent)" title="Invite a collaborator (GitHub tab)" onclick="collabGo()">${icon('plus')}Invite…</span></div></div>
     <div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button><button class="btn primary" id="eiGo">Save</button></div>`);
   $('eiGo').onclick = async () => {
     const on = k => new Set([...$('dlg').querySelectorAll(`.chips .pill.on[data-k="${k}"]`)].map(e => e.dataset.v)), nl = on('L'), na = on('A');
