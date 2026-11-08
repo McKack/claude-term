@@ -3535,7 +3535,7 @@ async function drawServices() {
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>` + secretsFold(files)
     // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
     + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services and secrets set up.</p><button class="btn sm primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button>
-      ${svcFeats(ids).length ? `<button class="btn sm block" onclick="svcWire()" title="Claude checks the code for each one; missing ones become tasks waiting on you (how it should look and work)">${icon('sparkle')}Check the app uses ${svcFeats(ids).map(id => esc(SERVICES[id].name)).join(', ')}</button>` : ''}</div>
+      ${svcFeats(ids).length ? `<button class="btn sm block" onclick="svcWire()" title="Claude checks the code for each one; missing ones become tasks waiting on you (how it should look and work)">${icon('sparkle')}Check the app uses ${svcFeats(ids).map(id => esc(SERVICES[id].name)).join(', ')}</button>` : `<button class="btn sm ghost block" onclick="svcMenu(this)" title="Sign-in, database, payments, email or monitoring: once added, Claude can check the app really uses them and file what's missing">${icon('plus')}Add an in-app feature (sign-in, payments…)</button>`}</div>
       <button class="newpill" id="newPill" onclick="$('nextStep').scrollIntoView({behavior: 'smooth', block: 'end'})">${icon('down')}New!</button>` : '');
   if ($('nextStep')) new IntersectionObserver(([e]) => { if (e.isIntersecting && $('newPill')) $('newPill').hidden = true; }).observe($('nextStep'));
   if (ids.includes('google')) drawCloud();
