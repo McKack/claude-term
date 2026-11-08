@@ -1732,7 +1732,10 @@ pub fn att_save(dir: &str, images: &[serde_json::Value]) -> Vec<String> {
     let _ = std::fs::create_dir_all(&d);
     images.iter().enumerate().filter_map(|(i, x)| {
         let ext = x["media_type"].as_str().unwrap_or("image/png").rsplit('/').next().unwrap_or("png").replace("jpeg", "jpg");
-        let name = format!("{}-{i}.{ext}", new_id());
+        // #239 attachment stem kept (sanitized) ∴ viewer/issue show the name the composer used; none → index
+        let stem: String = x["name"].as_str().map(|n| n.rsplit_once('.').map_or(n, |s| s.0)).unwrap_or("").chars()
+            .filter(|c| c.is_ascii_alphanumeric() || "-_".contains(*c)).take(60).collect();
+        let name = format!("{}{i}-{}.{ext}", new_id(), if /* {i}: same id + stem twice can't collide */ stem.is_empty() { i.to_string() } else { stem });
         std::fs::write(d.join(&name), b64(x["data"].as_str()?)?).ok()?;
         Some(format!("{shown}/{name}"))
     }).collect()

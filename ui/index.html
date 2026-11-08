@@ -149,14 +149,18 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 #log:not(.term) .msg.tool:hover .tn { color:var(--dim); text-decoration-color:var(--faint); }
 .msg.tool .tp { flex:none; display:inline-flex; gap:2px; align-items:center; font-size:11px; padding:0 6px; border-radius:99px; background:var(--soft); color:var(--accent); }
 .msg.tool .tp .i { width:11px; height:11px; }
-.viewer { width:92vw; height:90vh; display:grid; grid-template-rows:auto minmax(0,1fr); }
-.vbar { display:flex; gap:8px; align-items:center; padding:10px 12px 10px 18px; border-bottom:1px solid var(--line); }
+/* #239 viewer = floating window: header drags (vDrag), CSS resize corner, size kept in VBOX; tools = left column */
+.viewer { width:92vw; height:90vh; min-width:360px; min-height:260px; max-width:none; resize:both; overflow:hidden; display:grid; grid-template-rows:auto minmax(0,1fr); grid-template-columns:auto minmax(0,1fr); }
+.vbar { grid-column:1/-1; display:flex; gap:8px; align-items:center; padding:8px 12px; border-bottom:1px solid var(--line); cursor:grab; user-select:none; }
+.vbar:active { cursor:grabbing; } .vbar button, .vbar input { cursor:pointer; }
+.vthumb { width:30px; height:30px; flex:none; object-fit:cover; border-radius:6px; border:1px solid var(--line); }
 .vname { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.vprev svg { rotate:180deg; }
+.vtools { display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 8px; border-right:1px solid var(--line); overflow:auto; }
+.vtools .seg { flex-direction:column; } .vtools .seg button { padding:7px; }
 .vstage { position:relative; display:grid; place-items:center; padding:14px; min-height:0; overflow:hidden; }
-.vstage > img, #edC { max-width:100%; max-height:calc(90vh - 90px); object-fit:contain; border-radius:6px; display:block; }
+.vstage > img, #edC { max-width:100%; object-fit:contain; border-radius:6px; display:block; }
 #edWrap { position:relative; } #edC { cursor:crosshair; touch-action:none; }
-.varrow { position:absolute; top:50%; translate:0 -50%; width:40px; height:40px; border-radius:50%; background:var(--card); box-shadow:var(--shadow); z-index:1; }
-.varrow.l { left:14px; } .varrow.l svg { rotate:180deg; } .varrow.r { right:14px; }
 .ednote { position:absolute; width:240px; display:flex; align-items:flex-end; gap:4px; padding:3px 4px 3px 8px; border:2px solid; border-radius:8px; background:var(--card); }
 .ednote textarea { flex:1; border:0; padding:2px 0; background:none; resize:none; min-height:0; font-size:12.5px; box-shadow:none; overflow:hidden; } .ednote .ib { width:22px; height:22px; }
 .ednote.col { width:auto; padding:3px; cursor:pointer; border-radius:50%; } .ednote.col .i { width:14px; height:14px; display:block; }
@@ -1369,7 +1373,7 @@ function put(box, e) {
     el.append(e.text);
   }
   if (e.kind === 'claude' && box._shots?.length) { // images Claude read since its last message → thumbs on this one
-    const imgs = box._shots.map(f => ({path: f, name: f.split(/[\\/]/).pop()})); box._shots = [];
+    const imgs = box._shots.map(f => ({path: f, name: f.split(/[\\/]/).pop().replace(/^[0-9a-f]{8,}-(?!\d+\.\w+$)/, '')})); box._shots = []; // #239 att_save = <id>-<attachment stem>.<ext> → show the attachment's own name
     const th = document.createElement('div'); th.className = 'thumbs'; el.querySelector('.msg')?.prepend(th);
     imgs.forEach((x, k) => { const im = document.createElement('img'); im.title = x.path; th.append(im);
       shotUrl(x.path).then(u => { x.url = im.src = u; }, () => im.remove());
@@ -1681,14 +1685,21 @@ let ED = null, edColor = (() => { try { return localStorage.penColor || '#ff4d4f
 const ETOOLS = [['sel', 'cursor', 'Move: drag a shape to move it, corner square resizes a box, Delete removes'], ['pen', 'pen', 'Pen: draw freehand'], ['line', 'line', 'Line: straight line'], ['box', 'boxnote', 'Box + note: drag a box, then type a note for it'], ['erase', 'eraser', 'Eraser: click a shape to remove it']]; // #238 icons + data-tip
 function editImage() {
   const m = VW.imgs[VW.i], n = VW.imgs.length;
-  const arrow = (d, cls) => n > 1 ? `<button class="ib varrow ${cls}" title="${d < 0 ? 'Previous' : 'Next'} (${d < 0 ? '←' : '→'})" onclick="stepViewer(${d})">${icon('chev')}</button>` : '';
-  dlg(`<div class="vbar"><span class="grow vname">${esc(m.name)}${n > 1 ? ` <span class="faint">${VW.i + 1} / ${n}</span>` : ''}</span>
-    <span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
-    <input type="color" id="edColor" value="${edColor}" title="Colour (applies at once, also to the selected shape)">
-    <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>
+  const arrow = d => `<button class="ib${d < 0 ? ' vprev' : ''}" title="${d < 0 ? 'Previous' : 'Next'} (${d < 0 ? '←' : '→'})" onclick="stepViewer(${d})">${icon('chev')}</button>`;
+  dlg(`<div class="vbar" onpointerdown="vDrag(event)"><img class="vthumb" src="${m.url}" alt=""><span class="vname">${esc(m.name)}</span>
+    ${n > 1 ? `${arrow(-1)}<span class="faint">${VW.i + 1} / ${n}</span>${arrow(1)}` : ''}<span class="grow"></span>
     <button class="btn primary sm" id="edSave" onclick="edDone()"${VW.map ? ' disabled title="Nothing changed yet"' : ''}>${VW.map ? 'Save' : 'Add to message'}</button>
     <button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
-    <div class="vstage">${arrow(-1, 'l')}<div id="edWrap"><canvas id="edC"></canvas></div>${arrow(1, 'r')}</div>`, 'viewer');
+    <div class="vtools"><span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
+    <input type="color" id="edColor" value="${edColor}" title="Colour (applies at once, also to the selected shape)">
+    <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button></div>
+    <div class="vstage"><div id="edWrap"><canvas id="edC"></canvas></div></div>`, 'viewer');
+  const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
+  if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; }
+  // canvas fits the stage (any window size); notes re-placed ∵ scale changed. VBOX = size kept across steps/opens (session)
+  new ResizeObserver(() => { if (!V.isConnected) return; const c = $('edC'); if (V.style.width) VBOX = [V.offsetWidth, V.offsetHeight];
+    c.style.maxHeight = S.clientHeight - 28 + 'px'; if (ED) edNotes(); vClamp(); }).observe(V);
+  const d = $('dlg'); if (!d.style.left) { const r = d.getBoundingClientRect(); Object.assign(d.style, {margin: '0', right: 'auto', bottom: 'auto', left: r.left + 'px', top: r.top + 'px'}); } // pinned where it opened ∴ resize corner tracks the mouse (centred = grows both ways)
   $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; ED.sel = null; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); edDraw(); });
   $('edColor').oninput = e => { edColor = e.target.value; try { localStorage.penColor = edColor; } catch {} if (ED?.sel) { edSnap(); ED.sel.color = edColor; edDraw(); edNotes(); } };
   const img = new Image();
@@ -1714,6 +1725,13 @@ function editImage() {
   };
   img.src = m.ed?.orig || m.url;
 }
+let VBOX = null;
+// #239 window may hang ≤50% past the left/right/bottom app edges; top ≥ 0 ∴ the header (drag handle) stays reachable
+function vClamp(dx = 0, dy = 0) { const d = $('dlg'); if (!d.style.left) return; const r = d.getBoundingClientRect();
+  d.style.left = Math.max(-r.width / 2, Math.min(innerWidth - r.width / 2, r.left + dx)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - r.height / 2, r.top + dy)) + 'px'; }
+function vDrag(e) { if (e.button || e.target.closest('button, input')) return; e.preventDefault(); let px = e.clientX, py = e.clientY;
+  const mv = ev => { vClamp(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY; }, up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
+  addEventListener('pointermove', mv); addEventListener('pointerup', up); }
 const edDirty = () => { const b = $('edSave'); if (b) { b.disabled = false; b.removeAttribute('title'); } }; // #232 Save greyed till a change
 const edSnap = () => { edDirty(); ED.undo.push(JSON.stringify([ED.ops, ED.nmax])); ED.undo.splice(0, ED.undo.length - 50); };
 const edMove = (o, dx, dy) => { if (o.t === 'pen') o.pts = o.pts.map(([x, y]) => [x + dx, y + dy]); else if (o.t === 'line') { o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; } else { o.x += dx; o.y += dy; } };
@@ -1767,7 +1785,7 @@ document.addEventListener('keydown', e => {
   if (ED?.sel && !typing && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); edSnap(); ED.ops.splice(ED.ops.indexOf(ED.sel), 1); ED.sel = null; edDraw(); edNotes(); }
   if (!typing && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
 });
-$('dlg').addEventListener('close', () => { VW = ED = null; });
+$('dlg').addEventListener('close', () => { VW = ED = null; $('dlg').style.cssText = ''; }); // #239 drop the viewer's pinned spot (dlg is shared)
 function addImage(file) {
   const r = new FileReader();
   const rid = () => Array.from({length: 3}, () => Math.random().toString(36).slice(2, 5).padEnd(3, '0')).join('-');
@@ -1863,7 +1881,7 @@ const filedNote = (n, now, urgent) => now
 async function fileAsk(pid, t, a) {
   // #220: images → Rust saves them + lists their paths in the body (was names only → the session on the issue never saw them)
   const fs = a.filter(x => x.path), body = t + noteTxt(a) + (fs.length ? `\n\nAttached files:\n${fs.map(x => '- ' + x.path).join('\n')}` : '');
-  try { const url = await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data}))}); const n = +(String(url).match(/\/issues\/(\d+)/)?.[1] || 0);
+  try { const url = await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data, name: x.name}))}); const n = +(String(url).match(/\/issues\/(\d+)/)?.[1] || 0);
     if (n) { (FRESH[pid] ||= []).push({number: n, title: t.split('\n')[0].slice(0, 90), url: String(url).trim(), labels: [{name: 'clauracle'}, {name: 'task', color: '888'}], assignees: [], t: Date.now()}); issueRedraw(pid); }
     pollTeam(); return n; }
   catch (e) { toast(`Couldn't file it as an issue: ${e}`, 'warn'); return 0; }
@@ -2168,7 +2186,7 @@ async function addProject() {
 }
 
 // ---- dialogs ----
-function dlg(html, cls = 'small-dlg') { const d = $('dlg'); d.className = 'glass'; d.innerHTML = `<div class="${cls}">${html}</div>`; if (!d.open) d.showModal(); }
+function dlg(html, cls = 'small-dlg') { const d = $('dlg'); d.className = 'glass'; if (cls !== 'viewer') d.style.cssText = ''; /* #239 viewer's pinned spot */ d.innerHTML = `<div class="${cls}">${html}</div>`; if (!d.open) d.showModal(); }
 const closeDlg = () => $('dlg').close();
 const sw = (on, change) => `<label class="sw"><input type="checkbox" ${on ? 'checked' : ''} onchange="${change}"><i></i></label>`;
 const optRow = (title, hint, control) => `<div class="opt-row"><div class="grow"><div>${title}</div>${hint ? `<small class="dim">${hint}</small>` : ''}</div>${control}</div>`;
