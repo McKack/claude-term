@@ -186,11 +186,16 @@ pub fn mac_key_setup(m: &NetMac, pw: &str) -> Result<(), String> {
         if !o.ok { return Err(format!("ssh-keygen: {}", o.stderr.trim())); }
     }
     let k = std::fs::read_to_string(&pubk).map_err(|e| e.to_string())?;
+    ssh_key_install(&mac_to(m), &k, pw).map_err(|e| e.replace("{who}", "Mac").replace("SSH is off on that server", "Remote Login is off on the Mac"))
+}
+
+/// pubkey → `to`'s authorized_keys (dedup) over one password login; shared by #160 Mac + #166 website hosts. Errors carry {who}.
+pub fn ssh_key_install(to: &str, k: &str, pw: &str) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut c = command(&which("ssh").ok_or("ssh not found")?);
     c.args(["-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new", "-o", "PubkeyAuthentication=no",
             // ponytail: password only ∵ wrong pw → fallback to keyboard-interactive hung (macOS, #171); kbd-only sshd → "Wrong…" msg, add kbd back w/ a timeout if seen
-            "-o", "PreferredAuthentications=password", "-o", "NumberOfPasswordPrompts=1", &mac_to(m),
+            "-o", "PreferredAuthentications=password", "-o", "NumberOfPasswordPrompts=1", to,
             "umask 077; mkdir -p ~/.ssh; k=$(cat); grep -qxF \"$k\" ~/.ssh/authorized_keys 2>/dev/null || echo \"$k\" >> ~/.ssh/authorized_keys"])
         .env("SSH_ASKPASS", exe).env("SSH_ASKPASS_REQUIRE", "force").env("DISPLAY", ":0").env("CLAURACLE_ASKPASS", pw)
         .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
@@ -200,8 +205,31 @@ pub fn mac_key_setup(m: &NetMac, pw: &str) -> Result<(), String> {
     if o.status.success() { return Ok(()); }
     let e = String::from_utf8_lossy(&o.stderr);
     let l = e.lines().filter(|l| !l.trim().is_empty() && !l.starts_with("Warning: Permanently added")).last().unwrap_or("ssh failed").trim();
-    Err(if l.contains("Permission denied") { "Wrong Mac username or password".into() }
-        else if l.contains("onnection refused") { "Remote Login is off on the Mac".into() } else { l.to_string() })
+    Err(if l.contains("Permission denied") { "Wrong {who} username or password".into() }
+        else if l.contains("onnection refused") { "SSH is off on that server".into() } else { l.to_string() })
+}
+
+/// #166 website deploy key: ed25519 pair in a temp dir → SITE_SSH_PRIVATE_KEY + SITE_SSH_PUBLIC_KEY in `env`; rerun = same pubkey.
+/// Own private key pasted w/o pubkey → refuse (no overwrite). → pubkey (for the panel / ssh_key_install).
+pub fn deploy_key(env: &std::path::Path, comment: &str) -> Result<String, String> {
+    let have = env_parse(&std::fs::read_to_string(env).unwrap_or_default());
+    let get = |k: &str| have.iter().find(|(x, v)| x == k && !v.is_empty()).map(|(_, v)| v.clone());
+    if let Some(k) = get("SITE_SSH_PUBLIC_KEY") { return Ok(k); }
+    if get("SITE_SSH_PRIVATE_KEY").is_some() { return Err("SITE_SSH_PRIVATE_KEY is already set (your own key): clear it to make a new one".into()); }
+    let dir = std::env::temp_dir().join(format!("clauracle-key-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let f = dir.join("k");
+    let o = run("ssh-keygen", &["-q", "-t", "ed25519", "-N", "", "-C", comment, "-f", &f.to_string_lossy()], None, &[]);
+    let r = (|| {
+        if !o.ok { return Err(format!("ssh-keygen: {}", o.stderr.trim())); }
+        let pk = std::fs::read_to_string(&f).map_err(|e| e.to_string())?;
+        let pubk = std::fs::read_to_string(dir.join("k.pub")).map_err(|e| e.to_string())?.trim().to_string();
+        env_put(env, &[("SITE_SSH_PRIVATE_KEY", Some(pk.trim_end())), ("SITE_SSH_PUBLIC_KEY", Some(pubk.as_str()))])?;
+        Ok(pubk)
+    })();
+    let _ = std::fs::remove_dir_all(&dir); // private key lives only in .env
+    r
 }
 
 /// #160 Xcode CLT: pops Apple's install dialog on the Mac (user clicks Install there).
@@ -1948,6 +1976,22 @@ pub fn push_phone(topic: &str, title: &str, body: &str) {
 
 #[cfg(test)]
 mod tests {
+    /// #166: deploy key → both .env keys, multi-line private key round-trips, rerun = same pubkey
+    #[test]
+    fn deploy_key_fills_env_once() {
+        if super::which("ssh-keygen").is_none() { return; }
+        let d = std::env::temp_dir().join(format!("clauracle-dk-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&d);
+        let env = d.join(".env");
+        std::fs::write(&env, "A=1\n").unwrap();
+        let k = super::deploy_key(&env, "t").unwrap();
+        assert!(k.starts_with("ssh-ed25519 "));
+        let kv = super::env_parse(&std::fs::read_to_string(&env).unwrap());
+        let pk = &kv.iter().find(|(x, _)| x == "SITE_SSH_PRIVATE_KEY").unwrap().1;
+        assert!(pk.starts_with("-----BEGIN OPENSSH PRIVATE KEY-----\n") && pk.ends_with("-----END OPENSSH PRIVATE KEY-----"));
+        assert_eq!(super::deploy_key(&env, "t").unwrap(), k);
+        let _ = std::fs::remove_dir_all(&d);
+    }
     /// #77: temp (C:) → target/ (D: here) = cross-drive copy path; same drive elsewhere = rename path. Read-only file ≈ git objects.
     #[test]
     fn move_dir_moves_across_drives() {

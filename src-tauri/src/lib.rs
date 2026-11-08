@@ -1203,6 +1203,10 @@ fn site_auto(st: St, pid: String, host: String) -> R<String> {
                 .set("Content-Type", "application/json").send_string("{}").map_err(err)?.into_string().ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
             fill("NETLIFY_SITE_ID", v["id"].as_str().ok_or("Netlify returned no site id")?)
         }
+        "sshkey" => { // #166 deploy key → .env; → pubkey (UI copies it for the panel)
+            let name = std::path::Path::new(&p.path).file_name().unwrap_or_default().to_string_lossy().to_string();
+            store::deploy_key(&envp, &format!("clauracle-deploy-{name}"))
+        }
         "supabase" => { // #164 Management API w/ a personal token → URL + legacy anon/service_role keys
             let tok = format!("Bearer {}", get("SUPABASE_ACCESS_TOKEN")?);
             let api = |path: &str| -> R<Value> { ureq::get(&format!("https://api.supabase.com/v1/{path}")).set("Authorization", &tok)
@@ -1263,6 +1267,16 @@ fn site_auto(st: St, pid: String, host: String) -> R<String> {
         }
         _ => Err("nothing to automate for this host".into()),
     }
+}
+
+/// #166 plain SSH/VPS: deploy pubkey → SITE_SSH_USER@SITE_SSH_HOST's authorized_keys w/ one password login (never stored).
+#[tauri::command(async)]
+fn site_key_install(st: St, pid: String, pw: String) -> R<()> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let env = store::env_parse(&std::fs::read_to_string(std::path::Path::new(&p.path).join(".env")).unwrap_or_default());
+    let get = |k: &str| env.iter().find(|(x, v)| x == k && !v.is_empty()).map(|(_, v)| v.clone()).ok_or(format!("fill {k} first"));
+    let (host, user, k) = (get("SITE_SSH_HOST")?, get("SITE_SSH_USER")?, get("SITE_SSH_PUBLIC_KEY")?);
+    store::ssh_key_install(&format!("{user}@{host}"), &k, &pw).map_err(|e| e.replace("{who}", "SSH"))
 }
 
 /// #40: HTTP status per URL (0 = unreachable); the release check uses it for /privacy + /terms being live.
@@ -1942,7 +1956,7 @@ pub fn run() {
             continue_now, set_lessons, report_save, report_get, report_pdf, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

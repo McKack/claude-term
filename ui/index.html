@@ -3097,7 +3097,9 @@ const fillStep = (k, svc = 'website') => ({t: `Fill **${k}**`, k, a: () => `<but
 const autoStep = (h, t, b, k, svc = 'website') => ({t, h, k, a: () => `<button class="btn sm primary" onclick="siteAuto('${h}', this, '${svc}')">${icon('sparkle')}${b}</button>`});
 async function siteAuto(h, b, svc = 'website') {
   b.disabled = true; b.innerHTML = '<span class="spin"></span>' + b.textContent;
-  try { const v = await call('site_auto', {pid: cur, host: h}); toast(h === 'ghpages' ? 'GitHub Pages on' : 'Filled: ' + v, 'ok');
+  try { const v = await call('site_auto', {pid: cur, host: h});
+    if (h === 'sshkey') { copy(v); toast('Deploy key in .env, public key copied: paste it where the next step says', 'ok'); }
+    else toast(h === 'ghpages' ? 'GitHub Pages on' : 'Filled: ' + v, 'ok');
     stepSet(svc, SERVICES[svc].steps.findIndex(y => y.h === h)); drawRight(); }
   catch (e) { toast(String(e), 'err'); drawServices(); }
 }
@@ -3155,18 +3157,34 @@ const SERVICES = {
     steps: ['Pay the app fee and make the app in Steamworks', 'Get a Web API key'], links: [['Steamworks', 'https://partner.steamgames.com/apps'], ['Web API key', 'https://steamcommunity.com/dev/apikey']]},
 };
 // #40 website hosts: fields (.env keys) + easiest setup path per kind. ponytail: static list, add one = an entry
+// #166 KEYSTEP = lib site_auto sshkey (ssh-keygen → SITE_SSH_PRIVATE/PUBLIC_KEY, rerun = copy pubkey again); keyInstall = password once → authorized_keys
 const SSHK = ['SITE_SSH_HOST', 'SITE_SSH_USER', 'SITE_SSH_PRIVATE_KEY', 'SITE_PATH'], A_REC = 'an **A** record to the server\'s IP (shown in the panel)';
+const KEYSTEP = autoStep('sshkey', 'Clauracle makes a deploy key and copies its **public key** (click again to copy it again)', 'Make deploy key', 'SITE_SSH_PRIVATE_KEY');
+const SSHFILL = what => ({t: `Fill host = your server name, user = ${what}, path = SITE_PATH`, k: 'SITE_SSH_HOST', a: () => `<button class="btn sm" onclick="fillKeys('website', ['SITE_SSH_HOST', 'SITE_SSH_USER', 'SITE_PATH'])">${icon('key')}Fill in</button>`});
+function keyInstall() {
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">Install the deploy key</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Logs in once with the server password to add the key. The password is not saved.</p>
+    ${field('Password', `<input id="kiPw" type="password" onkeydown="event.key=='Enter'&&keyInstallGo()">`)}<p id="kiMsg" class="err" style="font-size:13px"></p>
+    <div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button><button id="kiBtn" class="btn primary" onclick="keyInstallGo()">Install</button></div>`);
+  $('kiPw').focus();
+}
+async function keyInstallGo() {
+  const b = $('kiBtn'); b.disabled = true; b.innerHTML = '<span class="spin"></span>Installing…';
+  try { await call('site_key_install', {pid: cur, pw: $('kiPw').value}); closeDlg(); toast('Deploy key installed', 'ok');
+    stepSet('website', SERVICES.website.steps.findIndex(y => y.h === 'keyinst')); }
+  catch (e) { $('kiMsg').textContent = e; b.disabled = false; b.textContent = 'Install'; }
+}
 const HOSTS = {
   cpanel: {name: 'cPanel', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
     steps: ['In cPanel: **Domains** › **Create a New Domain** with your subdomain; its document root is **SITE_PATH** (like public_html/app)',
-      '**SSH Access** › **Manage SSH Keys** › **Generate a New Key**, then **Authorize** it and view the private key', 'Fill the keys: host = your server name, user = cPanel username, key = that private key']},
+      KEYSTEP, '**SSH Access** › **Manage SSH Keys** › **Import Key**: paste the public key, then **Authorize** it', SSHFILL('cPanel username')]},
   directadmin: {name: 'DirectAdmin', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
     steps: ['**Subdomain Management**: add the subdomain; folder = **SITE_PATH** (like domains/example.com/public_html/app)',
-      '**SSH Keys**: add or create a key (no SSH menu? ask your host to enable SSH)', 'Fill the keys: host = your server name, user = DirectAdmin username, key = the private key']},
+      KEYSTEP, '**SSH Keys** › **Paste key**: the public key (no SSH menu? ask your host to enable SSH)', SSHFILL('DirectAdmin username')]},
   plesk: {name: 'Plesk', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
-    steps: ['**Websites & Domains** › **Add Subdomain**; its document root is **SITE_PATH**', '**Web Hosting Access**: set SSH access to /bin/bash, add your public key under **SSH Keys**', 'Fill the keys']},
+    steps: ['**Websites & Domains** › **Add Subdomain**; its document root is **SITE_PATH**', '**Web Hosting Access**: set SSH access to /bin/bash', KEYSTEP, '**SSH Keys** › **Add**: paste the public key', SSHFILL('the subscription system user')]},
   ssh: {name: 'SSH / SFTP server (VPS)', how: 'rsync over SSH into SITE_PATH (served by the web server there)', keys: SSHK, dns: A_REC, links: [],
-    steps: ['Make a web root for the subdomain on the server (like /var/www/app) and a server block / vhost for it with HTTPS (Caddy does it by itself)', 'Put your public key in ~/.ssh/authorized_keys', 'Fill the keys']},
+    steps: ['Make a web root for the subdomain on the server (like /var/www/app) and a server block / vhost for it with HTTPS (Caddy does it by itself)', SSHFILL('your login on it'), KEYSTEP,
+      {t: 'Clauracle installs the key with your server password (asked once, not saved)', h: 'keyinst', a: () => `<button class="btn sm primary" onclick="keyInstall()">${icon('key')}Install key</button>`}]},
   cfpages: {name: 'Cloudflare Pages', how: 'wrangler pages deploy', keys: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'], dns: 'add it under the Pages project › **Custom domains** (Cloudflare makes the CNAME)',
     steps: ['**My Profile** › **API Tokens** › **Create Token** with **Cloudflare Pages: Edit**', fillStep('CLOUDFLARE_API_TOKEN'), autoStep('cfpages', 'Clauracle reads your **Account ID** with that token', 'Get Account ID', 'CLOUDFLARE_ACCOUNT_ID')],
     links: [['API tokens', 'https://dash.cloudflare.com/profile/api-tokens']]},
