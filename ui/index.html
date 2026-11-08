@@ -306,6 +306,7 @@ pre.diff .ctx { color:var(--faint); }
 /* Services all set → Next step (to Build & Release) + sticky "New!" pill till it's scrolled into view */
 .nextstep { margin-top:14px; padding:14px; border-radius:14px; background:var(--soft); text-align:center; } .nextstep p { margin:0 0 10px; }
 .newpill { position:sticky; bottom:8px; display:flex; align-items:center; gap:4px; margin:10px auto 0; border:0; border-radius:99px; padding:6px 12px 6px 8px; background:var(--accent); color:#fff; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:var(--shadow); } .newpill[hidden] { display:none; }
+.ghsteps { margin-top:10px; } .ghsteps .sn { cursor:default; } .ghsteps .sn:hover { outline:0; } .qbox { max-height:320px; overflow-y:auto; margin:4px 0 8px; } .runm { grid-template-columns:repeat(2, 1fr); }
 .stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
 .stepper b { color:var(--text); font-weight:600; } .stepper .btnrow { margin-top:8px; align-items:center; } .stepper .keys { margin-top:8px; }
 /* stepper buttons never squeeze: nowrap + wrap row; a button alone on its line grows full width; non-buttons go below */
@@ -665,8 +666,9 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const icon = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
 const P = (id = cur) => S.projects.find(p => p.id === id);
 const nick = id => (S.accounts.find(a => a.id === id) || {nick: id}).nick;
-const MODES = {off: ['Off', 'Plain chat; only the context limit hands over'], manual: ['Manual', 'Stops when a task is done; you press Continue'],
-  auto: ['Auto', 'Clears and continues by itself until a limit'], auto_answer: ['Auto + answers', 'Also answers what it can; holds only real decisions']};
+// #216 named by what they do (clearing between tasks = how, always on); context-limit handover = AI card slider, every mode
+const MODES = {off: ['Just chat', 'No task list: tasks run only when you ask'], manual: ['One at a time', 'Finishes a task, then waits for your Start'],
+  auto: ['Keep going', 'Works through the task list, fresh context per task, until a limit, a question or an empty list'], auto_answer: ['Keep going + answer', 'Like Keep going, and answers what it can itself; holds only real decisions']};
 const MODELS = {'': 'Default', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku'};
 const EFFORTS = {'': 'Default', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max'};
 // short forms for the status row; full names in the menus. PERMS order = level 1..4 (least → most freedom)
@@ -2637,12 +2639,43 @@ const issueHtml = x => { const t = (x.number ? `<a data-url="${esc(x.url)}">#${x
   L = x.labels.filter(l => l.name !== 'clauracle').map(l => `<span class="pill lbl" style="--lc:#${esc(l.color || '888')}">${esc(l.name)}</span>`).join('');
   return L ? `<span class="tc">${t}</span><span class="lbls">${L}</span>` : t; };
 // after the drag queue: suggestions (Accept/Dismiss), others' issues (who), new-issue field
-const issuesRest = (then = '') => { const iq = issueQ(cur), me = (team[cur]?.me || '').toLowerCase();
-  return `<div class="tlist">${teamTasks(cur).filter(isIdea).map((x, i) => tli(issueHtml(x), {cls: 'sug',
-      end: `<button class="ib" title="Accept: queue it" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: close the issue" onclick="planWait(${i}, false)">${icon('x')}</button>`})).join('')
-    + teamTasks(cur).filter(x => !isIdea(x) && !isWait(x) && !iq.includes(x)).map(x => tli(issueHtml(x), {cls: 'in_progress', end: `<span class="pill">${esc(x.assignees.map(a => a.login).join(', '))}</span>`})).join('')}</div>
-    ${then}${teamTasks(cur).some(isWait) ? `<div class="label row" style="gap:4px;align-items:center">Waiting on you<button class="ib" title="${WAIT_TIP}" onclick="toast(WAIT_TIP, 'info')">${icon('info')}</button></div><div class="tlist">${teamTasks(cur).filter(isWait).map(x => tli(issueHtml(x), {cls: 'sug', end: `<button class="btn sm" title="You did your part: back into the AI's queue" onclick="taskDo('unblock', ${x.number})">${icon('check')}Done</button>`})).join('')}</div>` : ''}
-    <div class="row"><input id="newTask" class="grow" placeholder="New issue (task)" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add issue" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`; };
+// #216 issue-mode pieces (GitHub tab steps + the plain list in issuesRest)
+const issueParts = () => { const iq = issueQ(cur);
+  return {sug: teamTasks(cur).filter(isIdea).map((x, i) => tli(issueHtml(x), {cls: 'sug',
+      end: `<button class="ib" title="Accept: queue it" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: close the issue" onclick="planWait(${i}, false)">${icon('x')}</button>`})).join(''),
+    others: teamTasks(cur).filter(x => !isIdea(x) && !isWait(x) && !iq.includes(x)).map(x => tli(issueHtml(x), {cls: 'in_progress', end: `<span class="pill">${esc(x.assignees.map(a => a.login).join(', '))}</span>`})).join(''),
+    wait: teamTasks(cur).filter(isWait).map(x => tli(issueHtml(x), {cls: 'sug', end: `<button class="btn sm" title="You did your part: back into the AI's queue" onclick="taskDo('unblock', ${x.number})">${icon('check')}Done</button>`})).join(''),
+    add: `<div class="row"><input id="newTask" class="grow" placeholder="New issue (task)" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add issue" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`}; };
+/* #216 GitHub tab = steps (like service setup): 1 Tasks (scroll box, drag order, edge autoscroll) 2 Run the task list (= Clear &
+   Continue p.cont, same setting as the status-bar loop menu; stop reason from Rust's "Paused:"/"Queue is empty" notes) 3 Then. Rest folded. */
+function ghSteps(iq, qRows, t, open, fin, dn) {
+  const p = P(), x = issueParts(), n = iq[0]?.number, L = a => `<div class="tlist">${a}</div>`;
+  const now = [...open.map(y => tli(esc(y.status === 'in_progress' && y.activeForm || y.content), {cls: y.status})), ...fin.slice(-3).map(y => tli(esc(y.content), {done: 1, cls: 'completed', tip: y.content}))].join('')
+    + dn.map(y => tli(esc(y), {done: 1, cls: 'completed', tip: y})).join('');
+  const nw = teamTasks(cur).filter(isWait).length, ns = teamTasks(cur).filter(isIdea).length;
+  return `<ol class="stepper ghsteps">
+    <li><span class="sn">1</span><div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>${iq.length ? `<span class="pill">${iq.length}</span>` : ''}${iq.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}</div>
+      <div class="qbox">${iq.length || busy[cur] ? qRows : empty('No open tasks: add one below or just ask in the chat')}</div>${x.add}</li>
+    <li><span class="sn">2</span><div class="label">Run the task list</div>${runStep(p, n)}</li>
+    <li><span class="sn">3</span>${thenRow(p)}</li></ol>`
+    + (nw ? fold('w-wait', `Waiting on you<button class="ib" title="${WAIT_TIP}" onclick="event.preventDefault(); toast(WAIT_TIP, 'info')">${icon('info')}</button>`, L(x.wait), nw) : '')
+    + (ns ? fold('w-sug', 'Suggestions', L(x.sug), ns) : '')
+    + (x.others ? fold('w-others', 'Taken by others', L(x.others)) : '')
+    + (now ? fold('w-act', 'Activity', L(now)) : '');
+}
+function runStep(p, n) {
+  const w = workOf(cur), q = p.questions.length;
+  const last = (logs[cur] || []).findLast(e => e.kind === 'user' || e.kind === 'note' && /^(Paused:|Queue is empty)/.test(e.text));
+  const why = busy[cur] ? (w ? `Working on #${w}` : 'Working…') + (p.cont.startsWith('auto') ? ' · keeps going until a limit, a question or an empty list' : p.cont === 'manual' ? ' · then waits for you' : '')
+    : q ? `Paused: ${q} question${q > 1 ? 's' : ''} for you` : p.cont !== 'off' && last?.kind === 'note' ? esc(last.text)
+    : !n ? 'Nothing queued' : p.cont === 'off' ? 'Tasks run only when you ask' : `Next: #${n}`;
+  const act = q && !busy[cur] ? `<button class="btn sm" onclick="hiddenQs[cur] = false; qsOpen[cur] = true; drawLog()">Answer</button>`
+    : !busy[cur] && n && p.cont !== 'off' ? `<button class="btn primary sm" onclick="playTask(${n})">${icon('play')}Start #${n}</button>` : '';
+  return `<div class="btnrow runm">${Object.entries(MODES).map(([k, [l, h]]) => `<button class="btn sm${p.cont === k ? ' primary' : ''}" title="${esc(h)}" onclick="setP({cont: '${k}'})">${l}</button>`).join('')}</div>
+    <div class="row" style="gap:8px;margin-top:8px;align-items:center"><span class="grow dim" style="font-size:12.5px">${why}</span>${act}</div>`;
+}
+const issuesRest = (then = '') => { const x = issueParts();
+  return `<div class="tlist">${x.sug}${x.others}</div>${then}${x.wait ? `<div class="label row" style="gap:4px;align-items:center">Waiting on you<button class="ib" title="${WAIT_TIP}" onclick="toast(WAIT_TIP, 'info')">${icon('info')}</button></div><div class="tlist">${x.wait}</div>` : ''}${x.add}`; };
 const nextUp = pid => { const iq = issueQ(pid); if (iq) return iq.map(x => `#${x.number} ${x.title}`); const q = S.queues?.[pid] || []; return q.length ? q : teamTasks(pid).filter(x => !isDoing(x)).map(x => `#${x.number} ${x.title}`); };
 function tasksHtml() {
   const t = team[cur];
@@ -3859,6 +3892,9 @@ function drawAtp() {
   const w = workOf(cur), closing = busy[cur] && w && !iq.some(x => x.number === w); // #41 closed but turn still verifying
   if (w && iq?.some(x => x.number === w)) WSEEN.add(w); // #56: seen open → its absence = closed; never seen = just filed, list not refreshed
   const L = a => `<div class="tlist">${a.join('')}</div>`;
+  const qRows = L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
+          ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
+            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit" title="Edit issue" onclick="event.stopPropagation(); editIssue(${iq[i].number})">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
   const wt = iq ? teamTasks(cur).filter(isIdea).map(x => `#${x.number} ${x.title}`) : S.waits?.[cur] || [];
   const tasks = ((wt.length && !iq ? `<div class="label" title="${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: your AI noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
         end: `<button class="ib" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: ${iq ? 'close the issue' : 'remove from PLAN.md'}" onclick="planWait(${i}, false)">${icon('x')}</button>`}))) : '')
@@ -3870,9 +3906,7 @@ function drawAtp() {
         ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
         ${iq && pl.length > 1 ? `<button class="btn sm" title="Turn ${pl.slice(1).map(o => o.file).join(', ')} into task issues (removed from the files after)\n${estTok()}" onclick="plansToIssues()">${icon('gh')}File as issues</button>`
           : !iq && P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
-        + L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
-          ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
-            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit" title="Edit issue" onclick="event.stopPropagation(); editIssue(${iq[i].number})">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"')
+        + qRows
         + (iq ? issuesRest(tab === 'gh' ? thenRow(P()) : '') : '')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}${iq ? ' · not issues yet' : ''}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
@@ -3882,7 +3916,7 @@ function drawAtp() {
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
     : S.agents_on ? empty('No helper agents started in this session', `<button class="btn ghost sm" onclick="openSettings('agents')">${icon('gear')}Agent settings</button>`)
     : empty('Helper agents are off', `<button class="btn sm" onclick="agentsOn()">${icon('bot')}Switch on</button><button class="btn ghost sm" onclick="openSettings('agents')">${icon('gear')}Agent settings</button>`);
-  const h = tab === 'agents' ? agents : tasks;
+  const h = tab === 'agents' ? agents : iq && tab === 'gh' ? ghSteps(iq, qRows, t, open, fin, dn) : tasks;
   if (qDragging) return; // mid-drag: a rebuild would drop the row
   if (el._h === h) return; // drawChrome → drawRails → here on every keystroke: same HTML → keep DOM (open rows, animations)
   el.innerHTML = el._h = h;
@@ -3916,7 +3950,7 @@ async function cleanPlan() {
 var qDragging = false; // var, not let: drawAtp may run before this line (TDZ)
 function qSortable(list) {
   if (!window.Sortable) return; // ponytail: vendored file missing → no reorder, list still renders
-  Sortable.create(list, {handle: '.qdrag', draggable: '.ti', forceFallback: true, fallbackOnBody: true, /* #193 clone in body: in-list clone mis-placed (relative .ti/scroll) + stayed as ghost */ animation: 150, ghostClass: 'qghost',
+  Sortable.create(list, {handle: '.qdrag', draggable: '.ti', forceFallback: true, fallbackOnBody: true, /* #193 clone in body: in-list clone mis-placed (relative .ti/scroll) + stayed as ghost */ animation: 150, ghostClass: 'qghost', scroll: true, scrollSensitivity: 50, scrollSpeed: 12, bubbleScroll: true, /* #216 drag to the box edge -> scrolls */
     onStart: () => { qDragging = true; document.body.classList.add('dragging'); },
     onEnd: async ({oldIndex: from, newIndex: to}) => { qDragging = false; document.body.classList.remove('dragging');
       if (to === from) return;
