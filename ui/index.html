@@ -278,7 +278,7 @@ pre.diff .ctx { color:var(--faint); }
 .respawn { animation:respawn .5s ease-out; } @keyframes respawn { from { opacity:0; translate:0 -12px; } }
 #skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skelav, #log.term #skel .cm { display:none; }
 /* #195 head row shown → skeleton hides its own avatar row; pills stay as its centred line */
-#skel.hd > .crow { display:none; } #skel.hd { margin-top:0; } #dockpill { display:flex; justify-content:center; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
+#skel.hd > .crow { display:none; } #skel.hd { margin-top:10px; } #log:has(#dockpill > :not([hidden])) { padding-bottom:12px; } /* #236 even pill gap: room above, less below */ #dockpill { display:flex; justify-content:center; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
 /* #225/#230/#232 live head: zero-height sticky #stickav (ring + timer) sits right before the newest head row (child of .col ∴ sticks for the rest of the log);
    the row's own avatar hides; name/time never follow. top counts from inside #log's 62px padding ∴ -14 = 48px from the window top; margin-bottom = -.col gap */
 #stickav { position:sticky; top:-14px; height:0; margin-bottom:-12px; z-index:3; } #stickav .tav { position:absolute; left:-44px; top:0; } #log { padding-left:56px; } /* #233 live avatar in the left gutter, outside the column; 56px pad keeps the gutter on narrow windows */ .crow.stick > :is(.av, .tav) { visibility:hidden; }
