@@ -278,7 +278,7 @@ pre.diff .ctx { color:var(--faint); }
 .respawn { animation:respawn .5s ease-out; } @keyframes respawn { from { opacity:0; translate:0 -12px; } }
 #skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skelav, #log.term #skel .cm { display:none; }
 /* #195 head row shown → skeleton hides its own avatar row; pills stay as its centred line */
-#skel.hd > .crow { display:none; } #skel.hd { margin-top:10px; } #log:has(#dockpill > :not([hidden])) { padding-bottom:12px; } /* #236 even pill gap: room above, less below */ #dockpill { display:flex; justify-content:center; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
+#skel.hd > .crow { display:none; } #skel.hd { margin-top:10px; } #log:has(#dockpill > :not([hidden])) { padding-bottom:0; } #skel.hd:has(#dockpill > :not([hidden])) { margin-top:30px; } /* #236/#238 pill centred: below = empty #qrow ~35px ∴ 0 pad + ~34 above (card→pill) */ #dockpill { display:flex; justify-content:center; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
 /* #225/#230/#232 live head: zero-height sticky #stickav (ring + timer) sits right before the newest head row (child of .col ∴ sticks for the rest of the log);
    the row's own avatar hides; name/time never follow. top counts from inside #log's 62px padding ∴ -14 = 48px from the window top; margin-bottom = -.col gap */
 #stickav { position:sticky; top:-14px; height:0; margin-bottom:-12px; z-index:3; } #stickav .tav { position:absolute; left:-44px; top:0; } #log { padding-left:56px; } /* #233 live avatar in the left gutter, outside the column; 56px pad keeps the gutter on narrow windows */ .crow.stick > :is(.av, .tav) { visibility:hidden; }
@@ -618,6 +618,9 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14 4l6 6-7 7-6-6zM7 11l-3 3c-1 1-1 4-1 6 2 0 5 0 6-1l3-3"/></symbol>
   <symbol id="i-sparkle"viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
   <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21M22 21H7M5 11l9 9"/></symbol>
+  <symbol id="i-cursor" viewBox="0 0 24 24"><path d="M5 3l14 7-6 2-2 6z"/></symbol>
+  <symbol id="i-line" viewBox="0 0 24 24"><path d="M5 19L19 5"/></symbol>
+  <symbol id="i-boxnote" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h10M7 14h6"/></symbol>
 </svg>
 
 <aside id="side">
@@ -1614,6 +1617,8 @@ function addEntry(pid, e) {
 // ---- composer: text, pasted images (previews), attached files ----
 const hasInput = () => $('prompt').value.trim() || (atts[cur] || []).length;
 const stem = n => n.replace(/\.\w+$/, '');
+// #217 notes live on the attachment; #238: also in the filed issue body + file/isQ checks (were session-only → the ask got lost)
+const noteTxt = a => a.filter(x => x.notes?.length).map(x => `\n\nNotes on [${stem(x.name)}] (numbered boxes):\n${x.notes.join('\n')}`).join('');
 // #227 file-type icon for pills/thumbs: image | doc | code | file
 const fIcon = n => /\.(png|jpe?g|gif|webp|bmp|svg|ico)$/i.test(n) ? 'image' : /\.(md|txt|pdf|docx?|rtf|csv|log)$/i.test(n) ? 'doc' : /\.(js|ts|tsx|jsx|rs|py|go|java|c|cpp|h|cs|rb|php|html|css|json|toml|ya?ml|sh|ps1|kt|swift)$/i.test(n) ? 'code' : 'file';
 // #227 composer ref = "[ name ]": em space = icon slot, en space = right pad (a textarea can't pad a range); stripped on send
@@ -1673,12 +1678,12 @@ const stepViewer = d => { VW.i = (VW.i + d + VW.imgs.length) % VW.imgs.length; d
    (PNG ∵ tokens ∝ pixels, not format; JPG blurs text). Attachment keeps a.ed = {orig, ops, nmax} → re-edit stays vector + box numbers
    never repeat (nmax persists); a.notes = ["1. …"] → sent inside the message (sendNow), never typed into the composer. */
 let ED = null, edColor = (() => { try { return localStorage.penColor || '#ff4d4f'; } catch { return '#ff4d4f'; } })();
-const ETOOLS = [['sel', 'Select', 'Select: drag to move, corner square resizes a box, Delete removes'], ['pen', 'Pen', 'Draw freehand'], ['line', 'Line', 'Straight line'], ['box', 'Box + note', 'Drag a box, then type a note for it'], ['erase', 'Eraser', 'Click a shape to remove it']];
+const ETOOLS = [['sel', 'cursor', 'Move: drag a shape to move it, corner square resizes a box, Delete removes'], ['pen', 'pen', 'Pen: draw freehand'], ['line', 'line', 'Line: straight line'], ['box', 'boxnote', 'Box + note: drag a box, then type a note for it'], ['erase', 'eraser', 'Eraser: click a shape to remove it']]; // #238 icons + data-tip
 function editImage() {
   const m = VW.imgs[VW.i], n = VW.imgs.length;
   const arrow = (d, cls) => n > 1 ? `<button class="ib varrow ${cls}" title="${d < 0 ? 'Previous' : 'Next'} (${d < 0 ? '←' : '→'})" onclick="stepViewer(${d})">${icon('chev')}</button>` : '';
   dlg(`<div class="vbar"><span class="grow vname">${esc(m.name)}${n > 1 ? ` <span class="faint">${VW.i + 1} / ${n}</span>` : ''}</span>
-    <span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" title="${t}">${l}</button>`).join('')}</span>
+    <span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
     <input type="color" id="edColor" value="${edColor}" title="Colour (applies at once, also to the selected shape)">
     <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>
     <button class="btn primary sm" id="edSave" onclick="edDone()"${VW.map ? ' disabled title="Nothing changed yet"' : ''}>${VW.map ? 'Save' : 'Add to message'}</button>
@@ -1794,11 +1799,12 @@ function send() {
   // Chained per project → order kept while gh runs. Edited queued ones were filed already (text carries the note)
   // #93: a plain question (ends "?", not "can you…/please"; or "btw …") → not filed: answered + ```tasks cards (sugCards)
   // #212: doubt → file (a lost ask costs more than a filed question): Q only if ONE short sentence, no change/bug words
-  const isQ = issueOn(pid) && !FILED_RE.test(t) && !QNOTE_RE.test(t) && !ASK_RE.test(t) && t.trim().split(/\s+/).length <= 30 && !/[.!?:]\s+\S/.test(t.trim())
+  const nw = noteTxt(a).split(/\s+/).length - 1; // #238 words in image notes count as the ask (a short text + notes = still a task)
+  const isQ = issueOn(pid) && !nw && !FILED_RE.test(t) && !QNOTE_RE.test(t) && !ASK_RE.test(t) && t.trim().split(/\s+/).length <= 30 && !/[.!?:]\s+\S/.test(t.trim())
     && (/\?\s*$/.test(t) || /^\s*btw\b/i.test(t));
   // #142: a short status/unblock reply ("I've turned the Mac on", "done, try again") = context for the blocked task, not new work
-  const isS = issueOn(pid) && !isQ && !FILED_RE.test(t) && !QNOTE_RE.test(t) && STATUS_RE.test(t) && t.trim().split(/\s+/).length <= 25;
-  const file = issueOn(pid) && !isQ && !isS && !/^\s*\//.test(t) && t.trim().split(/\s+/).length >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
+  const isS = issueOn(pid) && !isQ && !nw && !FILED_RE.test(t) && !QNOTE_RE.test(t) && STATUS_RE.test(t) && t.trim().split(/\s+/).length <= 25;
+  const file = issueOn(pid) && !isQ && !isS && !/^\s*\//.test(t) && t.trim().split(/\s+/).length + nw >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
   // #101: bubble shows now (⏱ while filing) unless it'd queue/triage anyway; the chain re-checks below
   // #103: queued (turn running) → bubble now too, ⏱ Queued; QB ties it to its queue item
   const opt = !(contWaiting(pid) && !a.length) ? userEntry(pid, t, a, {st: busy[pid] || RESTARTING ? 'queue' : 'pend'}) : null;
@@ -1856,7 +1862,7 @@ const filedNote = (n, now, urgent) => now
 // → issue number, 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
   // #220: images → Rust saves them + lists their paths in the body (was names only → the session on the issue never saw them)
-  const fs = a.filter(x => x.path), body = t + (fs.length ? `\n\nAttached files:\n${fs.map(x => '- ' + x.path).join('\n')}` : '');
+  const fs = a.filter(x => x.path), body = t + noteTxt(a) + (fs.length ? `\n\nAttached files:\n${fs.map(x => '- ' + x.path).join('\n')}` : '');
   try { const url = await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data}))}); const n = +(String(url).match(/\/issues\/(\d+)/)?.[1] || 0);
     if (n) { (FRESH[pid] ||= []).push({number: n, title: t.split('\n')[0].slice(0, 90), url: String(url).trim(), labels: [{name: 'clauracle'}, {name: 'task', color: '888'}], assignees: [], t: Date.now()}); issueRedraw(pid); }
     pollTeam(); return n; }
@@ -1945,7 +1951,7 @@ const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tic
 const INBOX = {};
 function sendNow(pid, {text: t, atts: a, work}, e) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
-  const nt = a.filter(x => x.notes?.length).map(x => `\n\nNotes on [${stem(x.name)}] (numbered boxes):\n${x.notes.join('\n')}`).join(''); // #217 notes live on the attachment
+  const nt = noteTxt(a);
   if (e) { reBub(e, t, a); if (e.st !== 'pend') tick(e, 'pend'); }
   else e = userEntry(pid, t, a);
   (UNREAD[pid] ||= []).push(e);
