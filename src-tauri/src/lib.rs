@@ -1174,7 +1174,7 @@ fn bundle_id(st: St, pid: String) -> R<serde_json::Value> {
 }
 
 /// #161 website host setup done by code instead of the user: ghpages = Pages on w/ Actions source (gh api);
-/// cfpages = CLOUDFLARE_ACCOUNT_ID from the token; netlify = new site → NETLIFY_SITE_ID. → value shown/filled.
+/// cfpages = CLOUDFLARE_ACCOUNT_ID from the token; netlify = new site → NETLIFY_SITE_ID; #164 services supabase/firebase too. → value shown/filled.
 #[tauri::command(async)]
 fn site_auto(st: St, pid: String, host: String) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
@@ -1202,6 +1202,64 @@ fn site_auto(st: St, pid: String, host: String) -> R<String> {
             let v: Value = ureq::post("https://api.netlify.com/api/v1/sites").set("Authorization", &format!("Bearer {}", get("NETLIFY_AUTH_TOKEN")?))
                 .set("Content-Type", "application/json").send_string("{}").map_err(err)?.into_string().ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
             fill("NETLIFY_SITE_ID", v["id"].as_str().ok_or("Netlify returned no site id")?)
+        }
+        "supabase" => { // #164 Management API w/ a personal token → URL + legacy anon/service_role keys
+            let tok = format!("Bearer {}", get("SUPABASE_ACCESS_TOKEN")?);
+            let api = |path: &str| -> R<Value> { ureq::get(&format!("https://api.supabase.com/v1/{path}")).set("Authorization", &tok)
+                .call().map_err(err)?.into_string().map_err(|e| e.to_string()).and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string())) };
+            let ps = api("projects")?;
+            let ps = ps.as_array().cloned().unwrap_or_default();
+            // pick: ref in a filled SUPABASE_URL → only project → name = folder name; ponytail: no create (needs org, region, db password)
+            let want = get("SUPABASE_URL").ok().and_then(|u| u.split("//").nth(1)?.split('.').next().map(String::from));
+            let dir = std::path::Path::new(&p.path).file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+            let pr = ps.iter().find(|x| want.as_deref().is_some_and(|w| x["id"] == w))
+                .or(if ps.len() == 1 { ps.first() } else { None })
+                .or_else(|| ps.iter().find(|x| x["name"].as_str().is_some_and(|n| n.to_lowercase() == dir)))
+                .ok_or_else(|| if ps.is_empty() { "make a Supabase project first".to_string() } else {
+                    format!("several projects ({}): fill SUPABASE_URL with the one to use", ps.iter().filter_map(|x| x["name"].as_str()).collect::<Vec<_>>().join(", ")) })?;
+            let r = pr["id"].as_str().ok_or("project without id")?;
+            let keys = api(&format!("projects/{r}/api-keys?reveal=true"))?;
+            let key = |n: &str| keys.as_array().and_then(|a| a.iter().find(|k| k["name"] == n)).and_then(|k| k["api_key"].as_str()).map(String::from).ok_or(format!("no {n} key"));
+            let (anon, svc) = (key("anon")?, key("service_role")?);
+            let url = format!("https://{r}.supabase.co");
+            store::env_put(&envp, &[("SUPABASE_URL", Some(url.as_str())), ("SUPABASE_ANON_KEY", Some(anon.as_str())), ("SUPABASE_SERVICE_ROLE_KEY", Some(svc.as_str()))])?;
+            Ok("SUPABASE_URL + keys".into())
+        }
+        "firebase" => { // #164 Firebase Management API w/ the project's gcloud account: addFirebase if needed → web app → its config
+            if p.gcp.is_empty() { return Err("pick the Google Cloud project under the Google service first".into()); }
+            let g = p.gcp.clone();
+            let _ = store::gcloud(&["services", "enable", "firebase.googleapis.com"], &p.gaccount, &g); // already on → no-op
+            let o = store::run("gcloud", &["auth", "print-access-token"], None, &store::gcloud_env(&p.gaccount, ""));
+            if !o.ok { return Err(format!("gcloud: {}", o.stderr.trim())); }
+            let tok = format!("Bearer {}", o.stdout.trim());
+            let fb = |m: &str, path: &str, body: Option<&str>| -> R<Value> {
+                let rq = ureq::request(m, &format!("https://firebase.googleapis.com/v1beta1/{path}")).set("Authorization", &tok).set("x-goog-user-project", &g);
+                let rs = match body { Some(b) => rq.set("Content-Type", "application/json").send_string(b), None => rq.call() };
+                rs.map_err(err)?.into_string().map_err(|e| e.to_string()).and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()))
+            };
+            // long-running op → poll ≤60s
+            let wait = |mut v: Value| -> R<Value> {
+                for _ in 0..30 {
+                    if v["done"] == true { return if v["error"].is_null() { Ok(v["response"].clone()) } else { Err(v["error"]["message"].as_str().unwrap_or("failed").into()) }; }
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    v = fb("GET", v["name"].as_str().ok_or("no operation name")?, None)?;
+                }
+                Err("Firebase took too long: try again in a minute".into())
+            };
+            let apps = match fb("GET", &format!("projects/{g}/webApps"), None) {
+                Ok(v) => v,
+                Err(e) if e.starts_with("404") || e.starts_with("403") => { wait(fb("POST", &format!("projects/{g}:addFirebase"), Some("{}"))?)?; Value::Null }
+                Err(e) => return Err(e),
+            };
+            let id = match apps["apps"][0]["appId"].as_str() {
+                Some(a) => a.to_string(),
+                None => wait(fb("POST", &format!("projects/{g}/webApps"), Some(&serde_json::json!({"displayName": g}).to_string()))?)?["appId"].as_str().ok_or("no app id")?.to_string(),
+            };
+            let c = fb("GET", &format!("projects/{g}/webApps/{id}/config"), None)?;
+            let s = |k: &str| c[k].as_str().unwrap_or("").to_string();
+            let kv = [("FIREBASE_API_KEY", s("apiKey")), ("FIREBASE_AUTH_DOMAIN", s("authDomain")), ("FIREBASE_PROJECT_ID", s("projectId")), ("FIREBASE_APP_ID", s("appId"))];
+            store::env_put(&envp, &kv.iter().map(|(k, v)| (*k, Some(v.as_str()))).collect::<Vec<_>>())?;
+            Ok("Firebase web config".into())
         }
         _ => Err("nothing to automate for this host".into()),
     }

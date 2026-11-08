@@ -3091,6 +3091,16 @@ const APIS = {'run.googleapis.com': 'Cloud Run', 'cloudbuild.googleapis.com': 'C
   'storage.googleapis.com': 'Cloud Storage', 'firestore.googleapis.com': 'Firestore', 'firebase.googleapis.com': 'Firebase',
   'maps-backend.googleapis.com': 'Maps JavaScript', 'places-backend.googleapis.com': 'Places', 'people.googleapis.com': 'People (profile)',
   'gmail.googleapis.com': 'Gmail', 'drive.googleapis.com': 'Drive', 'calendar-json.googleapis.com': 'Calendar'};
+// #161 host steps code does: fillStep = key dialog, autoStep = store-side action (lib site_auto) → ticks the step; above SERVICES ∵ TDZ
+// #164 same for services: svc = SERVICES id the step lives in (supabase/firebase → site_auto arms too)
+const fillStep = (k, svc = 'website') => ({t: `Fill **${k}**`, k, a: () => `<button class="btn sm" onclick="fillKeys('${svc}', ['${k}'])">${icon('key')}Fill in</button>`});
+const autoStep = (h, t, b, k, svc = 'website') => ({t, h, k, a: () => `<button class="btn sm primary" onclick="siteAuto('${h}', this, '${svc}')">${icon('sparkle')}${b}</button>`});
+async function siteAuto(h, b, svc = 'website') {
+  b.disabled = true; b.innerHTML = '<span class="spin"></span>' + b.textContent;
+  try { const v = await call('site_auto', {pid: cur, host: h}); toast(h === 'ghpages' ? 'GitHub Pages on' : 'Filled: ' + v, 'ok');
+    stepSet(svc, SERVICES[svc].steps.findIndex(y => y.h === h)); drawRight(); }
+  catch (e) { toast(String(e), 'err'); drawServices(); }
+}
 // ---- Services: what a project signs in with, takes payments through, ships to. Links, steps and its .env keys in one place ----
 // ponytail: a static list, no AI. Add one = an entry here
 const SERVICES = {
@@ -3107,9 +3117,12 @@ const SERVICES = {
   auth0: {name: 'Auth0', note: 'Hosted sign-in', keys: ['AUTH0_DOMAIN', 'AUTH0_CLIENT_ID', 'AUTH0_CLIENT_SECRET'], links: [['Dashboard', 'https://manage.auth0.com/']]},
   clerk: {name: 'Clerk', note: 'Hosted sign-in', keys: ['CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY'], links: [['Dashboard', 'https://dashboard.clerk.com/']]},
   supabase: {name: 'Supabase', note: 'Database, auth, storage', keys: ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'],
-    steps: ['Make a project', 'API settings: copy the URL and keys'], links: [['Projects', 'https://supabase.com/dashboard/projects'], ['API keys', 'https://supabase.com/dashboard/project/_/settings/api']]},
+    steps: ['Make a project (pick the one to use by filling **SUPABASE_URL** if you have several)', '**Account** › **Access Tokens** › **Generate new token**', fillStep('SUPABASE_ACCESS_TOKEN', 'supabase'),
+      autoStep('supabase', 'Clauracle reads the URL and keys with that token', 'Fill URL & keys', 'SUPABASE_SERVICE_ROLE_KEY', 'supabase')],
+    links: [['Projects', 'https://supabase.com/dashboard/projects'], ['Access tokens', 'https://supabase.com/dashboard/account/tokens']]},
   firebase: {name: 'Firebase', note: 'Auth, Firestore, hosting', keys: ['FIREBASE_API_KEY', 'FIREBASE_AUTH_DOMAIN', 'FIREBASE_PROJECT_ID', 'FIREBASE_APP_ID'],
-    steps: ['Add a project (or pick your Google Cloud one)', 'Project settings: add a web app and copy its config'], links: [['Console', 'https://console.firebase.google.com/']]},
+    steps: ['Pick the Google account and Cloud project under the **Google** service', autoStep('firebase', 'Clauracle adds Firebase and a web app to that project and fills its config', 'Fill config', 'FIREBASE_APP_ID', 'firebase')],
+    links: [['Console', 'https://console.firebase.google.com/']]},
   stripe: {name: 'Stripe', note: 'Payments', keys: ['STRIPE_PUBLISHABLE_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'],
     steps: ['Copy the API keys (test mode first)', 'Add a webhook endpoint and copy its signing secret'], links: [['API keys', 'https://dashboard.stripe.com/apikeys'], ['Webhooks', 'https://dashboard.stripe.com/webhooks']]},
   resend: {name: 'Resend', note: 'Email', keys: ['RESEND_API_KEY'], steps: ['Verify your domain', 'Make an API key'], links: [['Domains', 'https://resend.com/domains'], ['API keys', 'https://resend.com/api-keys']]},
@@ -3142,15 +3155,6 @@ const SERVICES = {
     steps: ['Pay the app fee and make the app in Steamworks', 'Get a Web API key'], links: [['Steamworks', 'https://partner.steamgames.com/apps'], ['Web API key', 'https://steamcommunity.com/dev/apikey']]},
 };
 // #40 website hosts: fields (.env keys) + easiest setup path per kind. ponytail: static list, add one = an entry
-// #161 host steps code does: fillStep = key dialog, autoStep = store-side action (lib site_auto) → ticks the step
-const fillStep = k => ({t: `Fill **${k}**`, k, a: () => `<button class="btn sm" onclick="fillKeys('website', ['${k}'])">${icon('key')}Fill in</button>`});
-const autoStep = (h, t, b, k) => ({t, h, k, a: () => `<button class="btn sm primary" onclick="siteAuto('${h}', this)">${icon('sparkle')}${b}</button>`});
-async function siteAuto(h, b) {
-  b.disabled = true; b.innerHTML = '<span class="spin"></span>' + b.textContent;
-  try { const v = await call('site_auto', {pid: cur, host: h}); toast(h === 'ghpages' ? 'GitHub Pages on' : 'Filled: ' + v, 'ok');
-    stepSet('website', HOSTS[h].steps.findIndex(y => y.h === h)); drawRight(); }
-  catch (e) { toast(String(e), 'err'); drawServices(); }
-}
 const SSHK = ['SITE_SSH_HOST', 'SITE_SSH_USER', 'SITE_SSH_PRIVATE_KEY', 'SITE_PATH'], A_REC = 'an **A** record to the server\'s IP (shown in the panel)';
 const HOSTS = {
   cpanel: {name: 'cPanel', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
@@ -3203,7 +3207,7 @@ function sitePrompt() {
 }
 async function siteMake() { const text = sitePrompt(); if (await sure(`Ask your AI?\n\n${text}\n${estTok()}`)) sendNow(cur, {text, atts: []}); }
 const svcOf = p => [...new Set([...(p.gcp ? ['google'] : []), ...(p.services || [])])].filter(id => SERVICES[id]);
-async function svcAdd(id) { await setP({services: [...svcOf(P()), id]}); await refresh(); drawRight(); }
+async function svcAdd(id) { await setP({services: [...svcOf(P()), ...(id === 'firebase' ? ['google'] : []), id]}); /* firebase needs the Google card's account+project */ await refresh(); drawRight(); }
 async function svcRemove(id) { await setP({services: svcOf(P()).filter(x => x !== id)}); await refresh(); drawRight(); }
 // #162 type › provider › service; an id may sit in several types; provider '' = no caption; unlisted ids → Other
 const SVCTYPE = {'Sign-in': {Google: ['google', 'firebase'], Apple: ['apple'], GitHub: ['github'], Microsoft: ['microsoft'], Discord: ['discord'], Auth0: ['auth0'], Clerk: ['clerk'], Supabase: ['supabase']},
@@ -3280,8 +3284,7 @@ function stepReset(id) { delete (STEPS[cur] || {})[id]; try { localStorage.steps
 // auto-tick from checks: .env keys / repo secrets ⇒ earlier steps done. s.a = auto idx already applied ∴ a manual untick sticks
 const MAC4 = ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_TEAM_ID'];
 function stepAuto(id) {
-  if (id === 'website') return (SERVICES.website.steps || []).flatMap((x, i) => x.k && envKeys.have.has(x.k) ? [i] : []); // #161 key set ⇒ step done
-  if (id !== 'macsign') return [];
+  if (id !== 'macsign') return (SERVICES[id].steps || []).flatMap((x, i) => x.k && envKeys.have.has(x.k) ? [i] : []); // #161 key set ⇒ step done
   const h = k => envKeys.have.has(k), sec = SECRETS[cur];
   if (sec && SERVICES.macsign.keys.every(k => sec.includes(k))) return [0, 1, 2, 3, 4];
   return [...(MAC4.every(h) ? [0, 1, 2] : []), ...(h('APPLE_ID') && h('APPLE_PASSWORD') ? [3] : [])];
