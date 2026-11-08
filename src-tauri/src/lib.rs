@@ -408,6 +408,39 @@ async fn refresh_catalog(st: St<'_>) -> R<Value> {
     Ok(json!(cfg.catalog))
 }
 
+/// #213 Extensions › Find: search skills.sh (skills) | MCP registry (servers). Raw JSON → UI maps it.
+#[tauri::command]
+async fn ext_find(kind: String, q: String) -> R<Value> {
+    let u = if kind == "skill" { "https://skills.sh/api/search?limit=20&q=" } else { "https://registry.modelcontextprotocol.io/v0/servers?limit=30&search=" };
+    let url = format!("{u}{}", q.bytes().map(|c| if c.is_ascii_alphanumeric() || b"-_.".contains(&c) { (c as char).to_string() } else { format!("%{c:02X}") }).collect::<String>());
+    tauri::async_runtime::spawn_blocking(move || ureq::get(&url).call().map_err(|e| e.to_string())?.into_string().map_err(|e| e.to_string()))
+        .await.map_err(|e| e.to_string())?
+        .and_then(|s| serde_json::from_str(&s).map_err(|e| e.to_string()))
+}
+
+/// #213 install user-wide. skill: a = "owner/repo", b = skill id → `npx skills add` (Claude Code only, copied ∵ Windows
+/// symlinks need admin). mcp: a = name, b = http(s) url (remote) | npm package (stdio via npx). Names from the web → validated.
+#[tauri::command]
+async fn ext_add(kind: String, a: String, b: String) -> R<()> {
+    let ok = regex::Regex::new(r"^@?[A-Za-z0-9_][A-Za-z0-9_./:@-]*$").unwrap();
+    if !ok.is_match(&a) || !(ok.is_match(&b) || b.starts_with("https://") && !b.contains(char::is_whitespace)) { return Err("odd name, not installing".into()); }
+    let home = dirs::home_dir().unwrap_or_default().to_string_lossy().to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let o = if kind == "skill" {
+            store::run("npx", &["-y", "skills", "add", &a, "-s", &b, "-g", "-a", "claude-code", "--copy", "-y"], Some(&home), &[])
+        } else {
+            let name = a.rsplit('/').next().unwrap_or(&a).to_string(); // registry names are reverse-DNS "io.github.x/name"
+            if b.starts_with("http") { store::run("claude", &["mcp", "add", "-s", "user", "--transport", "http", &name, &b], Some(&home), &[]) }
+            else { // Windows: npx is a .cmd shim → cmd /c (what `claude mcp add` itself asks for)
+                let mut c = vec!["mcp", "add", "-s", "user", &name, "--"];
+                if cfg!(windows) { c.extend(["cmd", "/c"]); }
+                c.extend(["npx", "-y", &b]);
+                store::run("claude", &c, Some(&home), &[]) }
+        };
+        if o.ok { Ok(()) } else { Err(format!("{}{}", o.stderr, o.stdout).trim().chars().take(400).collect()) }
+    }).await.map_err(|e| e.to_string())?
+}
+
 /// scope: "global", an account id (defaults for new projects) or "project:<id>".
 #[tauri::command]
 fn set_off(st: St, item: String, off: bool, scope: String) {
@@ -1729,7 +1762,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
-            continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, set_off,
+            continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_links, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])

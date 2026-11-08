@@ -3464,9 +3464,46 @@ async function askLegacy(pid) {
   SET ||= await call('settings');
   pickItems('project:' + pid, `Choose what your AI can use in ${p.name}`, onOf(p));
 }
+/* #213 Extensions › Find & install: skills.sh (skills) | MCP registry (servers) → ext_add (user-wide) → rescan → picked for
+   the open project at once (allow-lists: else installed-but-off). EXF = last search, kept while Settings reopens. */
+const EXF = {k: 'skill', q: '', r: null, busy: {}};
+// registry entry → [install arg, why not]: remote http w/o required headers | npm pkg w/o required env; else just a link
+const mcpHow = s => { const r = (s.remotes || []).find(r => r.type === 'streamable-http' && !(r.headers || []).some(h => h.isRequired));
+  if (r) return [r.url]; const n = (s.packages || []).find(p => p.registryType === 'npm' && !(p.environmentVariables || []).some(e => e.isRequired));
+  return n ? [n.identifier] : [null, 'needs keys or setup: see its page']; };
+function extRows() {
+  const r = EXF.r; if (!r) return EXF.q ? skel(60, 'b100') : '<p class="dim">Search the open skills directory (skills.sh) or the MCP registry. Installs are user-wide; the open project gets them switched on.</p>';
+  if (r.err) return `<p class="err">${esc(r.err)}</p>`;
+  if (!r.length) return '<p class="dim">Nothing found. Try another word.</p>';
+  const have = new Set(SET.catalog.map(i => i.label.toLowerCase()));
+  return `<div class="box">${r.map((x, i) => optRow(x.url ? `<a href="#" data-url="${esc(x.url)}">${esc(x.name)}</a>` : esc(x.name), esc(x.note),
+    have.has(x.name.toLowerCase()) ? '<span class="dim">Installed</span>' : !x.a ? `<span class="dim" title="${esc(x.why)}">Manual</span>`
+    : `<button class="btn sm" ${EXF.busy[i] ? 'disabled' : ''} onclick="extAdd(${i}, this)">${EXF.busy[i] ? 'Installing…' : icon('plus') + 'Install'}</button>`)).join('')}</div>`;
+}
+const extDraw = () => { const el = $('exr'); if (el) el.innerHTML = extRows(); };
+async function extFind() {
+  EXF.k = $('exk').value; EXF.q = $('exq').value.trim(); EXF.r = null; EXF.busy = {}; if (!EXF.q) return extDraw(); extDraw();
+  try { const j = await call('ext_find', {kind: EXF.k, q: EXF.q});
+    EXF.r = EXF.k === 'skill' ? (j.skills || []).map(x => ({name: x.name, note: `${x.source} · ${(x.installs || 0).toLocaleString()} installs`, a: x.source, b: x.skillId, url: 'https://skills.sh/' + x.id}))
+      : (j.servers || []).filter(x => x._meta?.['io.modelcontextprotocol.registry/official']?.isLatest !== false).map(({server: s}) => { const [b, why] = mcpHow(s);
+          return {name: s.name.split('/').pop(), note: s.description || '', a: b && s.name, b, why, url: s.repository?.url || s.websiteUrl}; });
+  } catch (e) { EXF.r = {err: String(e)}; }
+  extDraw();
+}
+async function extAdd(i, btn) {
+  const x = EXF.r[i], before = new Set(SET.catalog.map(c => c.id)); EXF.busy[i] = 1; extDraw();
+  try { await call('ext_add', {kind: EXF.k, a: x.a, b: x.b});
+    const cat = await call('refresh_catalog'), add = cat.map(c => c.id).filter(id => !before.has(id)), p = P();
+    if (p && add.length) await call('set_items', {scope: 'project:' + p.id, items: [...new Set([...onOf(p), ...add])]});
+    toast(`${x.name} installed${p && add.length ? ', on for ' + p.name : ''}`, 'ok'); await reloadSettings('cx');
+  } catch (e) { delete EXF.busy[i]; extDraw(); toast(`${x.name}: ${e}`, 'err'); }
+}
 function cxPage() {
   return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
     <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => reloadSettings())">${icon('loop')}Rescan</button></p>
+    ${fold('g-find', 'Find &amp; install', `<p class="row"><select id="exk">${options({skill: 'Skills', mcp: 'Connections (MCP)'}, EXF.k)}</select>
+      <input id="exq" class="grow" placeholder="Search, e.g. pdf, postgres, figma" value="${esc(EXF.q)}" onkeydown="if(event.key==='Enter')extFind()">
+      <button class="btn" onclick="extFind()">${icon('search')}Search</button></p><div id="exr">${extRows()}</div>`, EXF.q ? 1 : 0)}
     ${cxGroup('g-cx', 'Connections &amp; Skills', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}
     ${fold('g-agents', 'Helper agents', optRow('Give helper agents to your AI', '', sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')) + agentsPage(),
       S.agents_on ? `${AGENTS.filter(a => a.on).length}/${AGENTS.length}` : 'off')}
