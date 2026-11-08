@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- After a task: "Done! Worked for Xh Ym" with a See report window (what was done, what failed with fix buttons, a timeline), plus meeting-ready PDF reports for the task or the last 7 days.
 - Settings › Extensions: find and install new skills (skills.sh) and MCP connections (MCP registry) right there; new installs are switched on for the open project.
 - Task list: the queue is now called "Next" with the "Then" step right below it; row actions (Edit, Start, drag) sit in a soft fade panel, and drag-to-reorder works again.
 - Image attachments in the message box show as clean thumbnails at their real shape, squeeze to fit, and scroll with arrows when there are many.

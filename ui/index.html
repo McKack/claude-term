@@ -176,6 +176,16 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .sh-p { color:#8c877e; } .sh-c { color:#f0c674; font-weight:600; } .sh-s { color:#a8d982; } .sh-v { color:#8fb8ff; } .sh-f { color:#c49cf0; } .sh-o { color:#f28b82; } .sh-m { color:#7a756c; font-style:italic; }
 pre.termout { background:#161514; color:#d8d4cb; padding:8px 12px; white-space:pre-wrap; overflow-wrap:anywhere; } pre.errout { color:var(--err); }
 .small-dlg.wide { width:min(820px,94vw); }
+.rtiles { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; } .rtile { background:var(--side); border:1px solid var(--line); border-radius:12px; padding:10px; display:grid; justify-items:start; gap:2px; }
+.rtile b { font-size:20px; } .rtile small { color:var(--dim); } .rtile .i { color:var(--accent); }
+.rrow, .rfail { display:flex; gap:8px; align-items:flex-start; } .rrow .i { color:#3fbf6f; flex:none; margin-top:2px; } .rfail .i { color:var(--err); flex:none; margin-top:2px; } .rfail { padding:8px 0; border-bottom:1px solid var(--line); }
+.rrow code, .rfail code { overflow-wrap:anywhere; font-size:12px; } .rfail pre { margin:6px 0; }
+.rfiles { display:flex; flex-wrap:wrap; gap:6px; } .rfiles .btn.on { border-color:var(--accent); color:var(--accent); }
+.rtl .rstep { display:flex; gap:10px; align-items:flex-start; position:relative; padding-bottom:14px; } .rtl .rstep > small:first-child { width:44px; flex:none; text-align:right; }
+.rtl .rstep > i { width:10px; height:10px; border-radius:50%; background:var(--accent); flex:none; margin-top:4px; } .rtl .rstep:not(:last-child) > i::after { content:''; position:absolute; left:58px; top:16px; bottom:0; width:2px; background:var(--line); }
+.rtl .rstep.tot > i { background:#3fbf6f; } .rhead h2 { font-size:18px; }
+.rpdf.busy .i { animation:spin .8s linear infinite; }
+@media (max-width:600px) { .rtiles { grid-template-columns:repeat(2,1fr); } }
 pre.diff { margin:0; padding:8px 0; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; white-space:pre; }
 pre.diff > .ctx, pre.diff > .del, pre.diff > .add { display:block; padding:0 10px; } /* diff rows only, not colour spans */
 pre.diff:not(:has(> .ctx, > .del, > .add)) { padding:8px 12px; white-space:pre-wrap; overflow-wrap:anywhere; } /* commands, output, JSON */
@@ -1382,11 +1392,12 @@ function entry(e) {
   // #169 ticks after the chain: as its own if, its `else` overwrote md() replies with plain text
   if (e.kind === 'user' && e.st && view === 'chat') { d.insertAdjacentHTML('beforeend', tickHtml(e)); USEREL.set(e, d); }
   if (view === 'chat' && e.kind === 'note' && e.ts) d.dataset.ts = tm(e.ts); // shown above via CSS ::before
+  if (e.rid) d.dataset.rid = e.rid;
   if (view === 'chat' && e.kind === 'note' && NOTEACT[e.act]) d.insertAdjacentHTML('beforeend', ` <button class="btn sm" onclick="${NOTEACT[e.act][1]}">${NOTEACT[e.act][0]}</button>`);
   return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
 }
 // note buttons (#170 Built! / Build failed): label, handler (cur = the project shown)
-const NOTEACT = {run: [icon('play') + 'Run', "call('run_step', {pid: cur, step: 'run'})"], restart: ['Restart into it', "call('restart_into', {pid: cur})"], out: ['See output', "rightTab('build'); setTimeout(() => $('buildOut')?.scrollIntoView({block: 'nearest'}))"]};
+const NOTEACT = {run: [icon('play') + 'Run', "call('run_step', {pid: cur, step: 'run'})"], restart: ['Restart into it', "call('restart_into', {pid: cur})"], rep: [icon('list') + 'See report', 'repOpen(this.parentElement.dataset.rid)'], out: ['See output', "rightTab('build'); setTimeout(() => $('buildOut')?.scrollIntoView({block: 'nearest'}))"]};
 // chat look: avatar (Clauracle's icon | your GitHub picture) + name · time over the bubble
 const tm = ts => { const d = ts ? new Date(ts) : null; if (!d || isNaN(d)) return '';
   const t = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
@@ -1483,6 +1494,63 @@ function toolDlg(es, title = es[0].text) {
     <div class="dscroll${wrap ? ' wrap' : ''}">${body}</div>
     <div class="btns"><button class="btn primary" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');
 }
+/* #214 task report: code-built from the log when a turn that called mcp__clauracle__ready ends (no AI tokens).
+   Slice = entries since the last report note (old ones too ∵ a task can span handovers). Worked = Σ gaps ≤ 10m.
+   REPS[rid] = memory copy; disk copy 7 days (report_save/get) → 7-day PDF. ponytail: diffs cut at 4k chars each. */
+const REPS = {}, REPBUSY = {}, REPGAP = 600e3;
+const workMs = l => { let s = 0, p = 0; for (const e of l) { const t = Date.parse(e.ts); if (!t) continue; if (p && t > p) s += Math.min(t - p, REPGAP); p = t; } return s; };
+function repDone(pid) {
+  const l = logs[pid] || [], i = l.findLastIndex(e => e.act === 'rep'), sl = l.slice(i + 1);
+  if (!sl.some(e => e.kind === 'tool' && /^mcp__clauracle__ready/.test(e.text))) return;
+  const res = new Map(sl.filter(e => e.result_of).map(e => [e.result_of, e])), cut = s => (s || '').slice(0, 4000);
+  const ops = sl.filter(e => e.kind === 'tool' && !isProcess(e)).map(e => { const r = res.get(e.id), d = e.detail || {}, f = d.file_path || d.notebook_path;
+    return {t: toolName(e), text: e.text.replace(/^↳ /, '').slice(0, 300), cmd: typeof d.command === 'string' ? d.command.slice(0, 600) : '', ts: e.ts,
+      ok: r?.kind !== 'err', err: r?.kind === 'err' ? r.text.slice(0, 800) : '', out: r && r.kind !== 'err' ? r.text.slice(0, 300) : '', f: f ? relOf(pid, f) : '',
+      d: 'old_string' in d ? [[cut(d.old_string), cut(d.new_string)]] : Array.isArray(d.edits) ? d.edits.map(x => [cut(x.old_string), cut(x.new_string)]) : typeof d.content === 'string' ? [['', cut(d.content)]] : null}; });
+  const now = new Date().toISOString(), segs = [];
+  for (const e of sl) { if (e.kind === 'user' || !segs.length) segs.push({ts: e.ts || now, title: e.kind === 'user' ? bare(e.text).split('\n')[0].slice(0, 120) : 'Started', l: []}); segs.at(-1).l.push(e); }
+  const segOut = segs.map((s, k) => { const c = s.l.filter(e => e.kind === 'tool').map(e => e.detail?.command || '').join('\n'), fs = new Set(s.l.map(e => e.detail?.file_path).filter(Boolean));
+    return {ts: s.ts, end: segs[k + 1]?.ts || now, title: s.title, ms: workMs(s.l), n: s.l.filter(e => e.kind === 'tool' && !isProcess(e)).length, files: fs.size,
+      closed: [...c.matchAll(/gh issue close (\d+)/g)].map(m => +m[1]), filed: [...s.l.filter(e => e.result_of && e.kind !== 'err').map(e => e.text).join('\n').matchAll(/\/issues\/(\d+)\s*$/gm)].map(m => +m[1])}; });
+  const rid = Date.now(), rep = {id: rid, project: P(pid)?.name, t0: sl.find(e => e.ts)?.ts || now, t1: now, ms: Math.max(workMs(sl), 60e3) /* dur() floors */, ops, segs: segOut};
+  REPS[rid] = rep; call('report_save', {pid, rep}).catch(() => {});
+  addEntry(pid, {kind: 'note', text: `Done! Worked for ${dur(rep.ms)}.`, act: 'rep', rid, ts: now});
+}
+async function repOpen(rid, tb = 'done') {
+  const pid = cur, r = REPS[rid] ||= await call('report_get', {pid, id: +rid}).catch(() => null);
+  if (!r) return toast("That report is older than 7 days, or wasn't saved.", 'warn');
+  const ok = r.ops.filter(o => o.ok), bad = r.ops.filter(o => !o.ok), files = {};
+  for (const o of r.ops) if (o.f && o.d) (files[o.f] ||= {n: 0, d: [], w: o.t === 'Write'}).d.push(...o.d), files[o.f].n++;
+  const closed = r.segs.flatMap(s => s.closed), counts = {}; ok.filter(o => !o.cmd).forEach(o => counts[o.t] = (counts[o.t] || 0) + 1);
+  const tile = (n, l, i) => `<div class="rtile">${icon(i)}<b>${n}</b><small>${l}</small></div>`;
+  const body = tb === 'done' ? `<div class="rtiles">${tile(dur(r.ms), 'worked', 'timer')}${tile(ok.filter(o => o.cmd).length, 'commands', 'term')}${tile(Object.keys(files).length, 'files', 'file')}${tile(closed.length, 'issues closed', 'check')}</div>
+      ${ok.filter(o => o.cmd).map(o => `<div class="rrow">${icon('check')}<code class="grow">${esc(o.cmd.split('\n')[0])}</code><small class="faint">${tm(o.ts)}</small></div>`).join('') || '<p class="dim">No commands run.</p>'}
+      ${Object.keys(counts).length ? `<p class="faint" style="margin:6px 0">${Object.entries(counts).map(([t, n]) => `${esc(t)} ×${n}`).join(' · ')}</p>` : ''}
+      ${Object.keys(files).length ? `<h3>Files touched</h3><div class="rfiles">${Object.entries(files).map(([f, x]) => `<button class="btn sm" data-rf="${esc(f)}">${icon(x.w ? 'file' : 'new')}${esc(f.split('/').pop())}${x.n > 1 ? ` <span class="pill">×${x.n}</span>` : ''}</button>`).join('')}</div><div id="rdiff"></div>` : ''}`
+    : tb === 'fail' ? bad.map((o, k) => { const m = missOf(o.err); return `<div class="rfail">${icon('warn')}<div class="grow" style="min-width:0"><code>${esc((o.cmd || o.text).split('\n')[0])}</code>
+        <pre class="diff errout">${esc(o.err.trim().split('\n').slice(-6).join('\n'))}</pre><div class="row" style="gap:6px">${m ? `<button class="btn sm primary" data-fix="${k}">${esc(m.label)}</button>` : ''}<button class="btn sm" data-ask="${k}">${icon('chat')}Ask AI to fix</button></div></div></div>`; }).join('') || `<p class="dim">${icon('check')} Nothing failed.</p>`
+    : `<div class="rtl">${r.segs.map(s => `<div class="rstep"><small class="mono faint">${tm(s.ts)}</small><i></i><div class="grow" style="min-width:0"><b>${esc(s.title)}</b>
+        <div class="faint" style="font-size:12px">${s.n} steps · ${s.files} files${s.closed.map(n => ` · <span class="pill">closed #${n}</span>`).join('')}${s.filed.map(n => ` · <span class="pill">filed #${n}</span>`).join('')}</div></div><small>${dur(s.ms)}</small></div>`).join('')}
+        <div class="rstep tot"><small class="mono faint">${tm(r.t1)}</small><i></i><b class="grow">Done</b><b>${dur(r.ms)}</b></div></div>`;
+  const tabs = [['done', 'check', 'Completed', ok.length], ['fail', 'warn', 'Failed', bad.length], ['tl', 'clock', 'Timeline', '']];
+  dlg(`<div class="rhead"><h2 style="margin:0">Done! Worked for ${dur(r.ms)}</h2><small class="dim">${esc(r.project || '')} · ${tm(r.t0)} – ${tm(r.t1)}</small>
+      <div class="seg" style="margin-top:10px">${tabs.map(([k, i, l, n]) => `<button class="${k === tb ? 'on' : ''}" data-rt="${k}">${icon(i)}${l}${n !== '' ? ` <span class="pill">${n}</span>` : ''}</button>`).join('')}</div></div>
+    <div class="dscroll wrap rbody">${body}</div>
+    <div class="btns"><button class="btn rpdf" onclick="repPdf('${rid}')">${icon('claude')}Write a detailed report (.pdf)</button><button class="btn rpdf" onclick="repPdf()">${icon('cal')}Write a 7-day report (.pdf)</button><span class="grow"></span><button class="btn primary" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');
+  const d = $('dlg'); repBtns();
+  d.querySelectorAll('[data-rt]').forEach(b => b.onclick = () => repOpen(rid, b.dataset.rt));
+  d.querySelectorAll('[data-rf]').forEach(b => b.onclick = () => { d.querySelectorAll('[data-rf]').forEach(x => x.classList.toggle('on', x === b)); $('rdiff').innerHTML = `<p class="mono faint" style="margin:10px 0 4px">${esc(b.dataset.rf)}</p>` + files[b.dataset.rf].d.map(([a, z]) => diff(a, z)).join(''); });
+  d.querySelectorAll('[data-fix]').forEach(b => b.onclick = async () => { const m = missOf(bad[b.dataset.fix].err); b.disabled = true; toast(m.label + '…');
+    try { await call('fix_missing', {pid, kind: m.k, name: m.n, feat: m.f || null, pkg: m.pkg || null}); toast('Done: ' + m.label, 'ok'); DEPSC = null; } catch (e) { toast(String(e), 'err'); b.disabled = false; } });
+  d.querySelectorAll('[data-ask]').forEach(b => b.onclick = () => { const o = bad[b.dataset.ask]; closeDlg(); putPrompt(`This failed during the last task; fix it:\n${o.cmd || o.text}\n${o.err.trim().split('\n').slice(-6).join('\n')}`); });
+}
+const repBtns = () => document.querySelectorAll('.rpdf').forEach(b => { b.disabled = !!REPBUSY[cur]; b.classList.toggle('busy', !!REPBUSY[cur]); });
+async function repPdf(rid, pid = cur) { // rid = that task, none = 7-day; Sonnet in the background, buttons off meanwhile (any window)
+  if (REPBUSY[pid]) return; REPBUSY[pid] = true; repBtns(); toast('Writing the report in the background (Sonnet)…');
+  try { const f = await call('report_pdf', {pid, rep: rid ? REPS[rid] : null}); toast('Report ready: ' + f.split(/[\\/]/).pop(), 'ok'); }
+  catch (e) { toast(String(e), 'err'); }
+  delete REPBUSY[pid]; repBtns();
+}
 // streaming text: #live is the bubble (deltas rewrite it); its row goes when the full entry lands
 function liveEl(pid) { const d = document.createElement('div'); d.className = 'msg claude'; d.id = 'live'; d.innerHTML = md(live[pid]);
   return view === 'chat' ? chatRow('claude', d, new Date().toISOString()) : d; }
@@ -1491,7 +1559,7 @@ function addEntry(pid, e) {
   // writing plan/handover/changes = wrapping up → "Preparing plan…"; reading them (every fresh start) ≠ that, and real work after ends it
   const wrap = isProcess(e) && (/^mcp__clauracle__/.test(e.text) || /^(Edit|MultiEdit|Write)\b/.test(toolName(e)));
   if (busy[pid] && (wrap ? !hand[pid] : e.kind === 'tool' && !isProcess(e) && hand[pid] === 'soft')) { hand[pid] = wrap ? 'soft' : false; if (pid === cur) drawChrome(); }
-  if (!e.ts && (e.kind === 'user' || e.kind === 'claude' || e.kind === 'note')) e.ts = new Date().toISOString();
+  e.ts ||= new Date().toISOString(); // all kinds: #214 report timeline/worked time
   (logs[pid] ||= []).push(e);
   if (e.kind === 'tool' && /^(Edit|MultiEdit|Write|NotebookEdit)\b/.test(toolName(e)) && (e.detail?.file_path || e.detail?.notebook_path)) {
     (EDITS[pid] ||= {})[relOf(pid, e.detail.file_path || e.detail.notebook_path)] = Date.now(); if (pid === cur) badgeFiles();
@@ -1870,7 +1938,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
   status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
-    if (d.busy === false) { if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; delete PEND[d.pid]; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
+    if (d.busy === false) { repDone(d.pid); if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; delete PEND[d.pid]; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) { const r = cq && P(d.pid).ready, t = nextUp(d.pid)[0]; contGo(d.pid); if (r) contNote(d.pid, t); } else { if (cq) contQ[d.pid] = true; /* Continue clicked + msgs queued: msgs first, Continue after (was dropped) */ flushQueue(d.pid); } }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
@@ -3375,7 +3443,7 @@ function sjumpFill() { const s = $('sjump'); if (!s) return;
   s.innerHTML = '<option value="">Jump to…</option>' + sjumpEls().map((e, i) => `<option value="${i}">${esc(e.querySelector('.label')?.textContent.trim() || '')}</option>`).join('');
   s.hidden = s.options.length < 3; }
 function sjumpGo(s) { const el = sjumpEls()[s.value]; s.value = ''; if (el) jumpTo(() => el); }
-const FOOT = {projects: () => mp ? `<button class="btn" onclick="removeProject()">Remove project</button>` : ''};
+const FOOT = {projects: () => mp ? `<button class="btn rpdf" onclick="repPdf(null, mp)">${icon('cal')}7-day report (.pdf)</button><button class="btn" onclick="removeProject()">Remove project</button>` : ''};
 function ghPage() {
   return `<p class="dim">GitHub accounts live in the GitHub CLI. Each project gets its own account's token, so any number can be signed in at once.</p>
     <div class="box">${ghUsers.map(u => optRow('@' + esc(u), '', `<button class="btn ghost" onclick="rmGh('${esc(u)}')">Log out</button>`)).join('') || '<p class="dim">None yet.</p>'}</div>

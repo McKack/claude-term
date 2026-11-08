@@ -1482,6 +1482,110 @@ fn open_in_browser(exe: String, profile: String, url: String) -> R<()> {
     c.arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
+// ---- #214 task reports: UI builds the plain report from the log; kept 7 days outside the project ----
+
+const REP_KEEP: u64 = 7 * 86400;
+fn rep_dir(pid: &str) -> R<std::path::PathBuf> {
+    if pid.is_empty() || !pid.chars().all(|c| c.is_ascii_alphanumeric() || "-_".contains(c)) { return Err("bad project id".into()); }
+    Ok(store::home().join("reports").join(pid))
+}
+/// Reports of the last 7 days, oldest first; older files deleted on the way.
+fn rep_list(pid: &str) -> R<Vec<Value>> {
+    let d = rep_dir(pid)?;
+    let mut l: Vec<(std::path::PathBuf, Value)> = std::fs::read_dir(&d).into_iter().flatten().flatten().filter_map(|f| {
+        let p = f.path();
+        if p.extension()? != "json" { return None; }
+        let age = f.metadata().ok()?.modified().ok()?.elapsed().map(|e| e.as_secs()).unwrap_or(0);
+        if age > REP_KEEP { let _ = std::fs::remove_file(&p); return None; }
+        Some((p.clone(), serde_json::from_str(&std::fs::read_to_string(&p).ok()?).ok()?))
+    }).collect();
+    l.sort_by(|a, b| a.0.cmp(&b.0)); // names = ms timestamps
+    Ok(l.into_iter().map(|x| x.1).collect())
+}
+
+#[tauri::command(async)]
+fn report_save(pid: String, rep: Value) -> R<()> {
+    let d = rep_dir(&pid)?;
+    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    let id = rep["id"].as_u64().unwrap_or((store::now() * 1000.0) as u64); // = UI rid (Date.now) → report_get
+    std::fs::write(d.join(format!("{id}.json")), rep.to_string()).map_err(|e| e.to_string())?;
+    rep_list(&pid).map(|_| ()) // prunes
+}
+
+#[tauri::command(async)]
+fn report_get(pid: String, id: u64) -> R<Value> {
+    let t = std::fs::read_to_string(rep_dir(&pid)?.join(format!("{id}.json"))).map_err(|e| e.to_string())?;
+    serde_json::from_str(&t).map_err(|e| e.to_string())
+}
+
+/// rep = one task's report, None = the 7-day report. Sonnet (medium effort) writes the prose as an HTML fragment, a
+/// headless Chromium (Edge/Chrome) prints it → PDF in ~/.clauracle/reports/<pid>/pdf, opened. ponytail: no browser → Err.
+#[tauri::command(async)]
+fn report_pdf(st: St, pid: String, rep: Option<Value>) -> R<String> {
+    use std::io::Write;
+    let p = st.project(&pid).ok_or("project removed")?;
+    let week = rep.is_none();
+    let reps = match rep { Some(r) => vec![r], None => rep_list(&pid)? };
+    if reps.is_empty() { return Err("No reports from the last 7 days yet: one is saved each time a task finishes.".into()); }
+    let mut data = serde_json::to_string(&reps).unwrap_or_default();
+    if data.len() > 80_000 { data = data.chars().take(80_000).collect(); } // ponytail: cut, Sonnet still sees most of the week
+    let what = if week { "the last 7 days of work (one JSON object per finished task)" } else { "one finished task" };
+    let prompt = format!("Write a short, sleek report for a team meeting about {what} on the software project \"{}\". \
+        Output ONLY an HTML fragment (no <html>/<head>/<body>, no markdown, no code fences). Sections as <h2>: Summary (2-3 sentences), \
+        What was done (<ul>), Problems spotted (failed commands, missing tools; skip if none), Time (a small <table> of tasks and durations), \
+        Suggestions (2-4 concrete next steps). Plain business tone, no filler. Data:\n{data}", p.name);
+    let claude = store::which("claude").ok_or("Claude Code isn't installed")?;
+    let base = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).map(|a| a.base_url.clone()).unwrap_or_default();
+    let d = rep_dir(&pid)?.join("pdf");
+    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    let mut c = store::command(&claude);
+    for k in ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDECODE"] { c.env_remove(k); }
+    // cwd = report dir: no project CLAUDE.md/hooks loaded ∴ cheap; no tools needed
+    c.args(["-p", "--model", "sonnet", "--effort", "medium", "--output-format", "text"]).envs(store::account_env(&p.account, &base))
+        .current_dir(&d).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    let mut ch = c.spawn().map_err(|e| e.to_string())?;
+    track(ch.id());
+    ch.stdin.take().unwrap().write_all(prompt.as_bytes()).map_err(|e| e.to_string())?;
+    let o = ch.wait_with_output().map_err(|e| e.to_string())?;
+    let body = String::from_utf8_lossy(&o.stdout).trim().trim_start_matches("```html").trim_matches('`').trim().to_string();
+    if !o.status.success() || body.is_empty() { return Err(format!("Report writer failed: {}", String::from_utf8_lossy(&o.stderr).trim())); }
+    let logo = include_str!("../../assets/icon.svg");
+    let logo = &logo[logo.find("<svg").unwrap_or(0)..];
+    let date = chrono_ish();
+    let html = format!(r#"<!doctype html><meta charset="utf-8"><title>{n} report</title><style>
+@page{{margin:18mm}}body{{font:11pt/1.5 "Segoe UI",system-ui,sans-serif;color:#222;max-width:720px;margin:auto}}
+header{{display:flex;gap:14px;align-items:center;border-bottom:3px solid #D77655;padding-bottom:12px;margin-bottom:8px}}
+header svg{{width:48px;height:48px}}h1{{margin:0;font-size:20pt}}header small{{color:#777}}
+h2{{color:#D77655;font-size:13pt;margin:20px 0 6px}}table{{border-collapse:collapse;width:100%}}td,th{{border-bottom:1px solid #eee;padding:4px 6px;text-align:left}}
+code{{background:#f4f1ef;padding:0 4px;border-radius:3px}}</style>
+<header>{logo}<div><small>Clauracle · {kind}</small><h1>{n}</h1><small>{date}</small></div></header>{body}"#,
+        n = html_esc(&p.name), kind = if week { "7-day report" } else { "Task report" });
+    let stem = format!("{}-{}", if week { "7-day" } else { "task" }, (store::now()) as u64);
+    let hf = d.join(format!("{stem}.html"));
+    let pf = d.join(format!("{stem}.pdf"));
+    std::fs::write(&hf, html).map_err(|e| e.to_string())?;
+    let exe = store::browsers().iter().find_map(|b| b["exe"].as_str().map(String::from)).ok_or("No Chrome/Edge found to print the PDF")?;
+    let r = std::process::Command::new(&exe).args(["--headless=new", "--disable-gpu", "--no-pdf-header-footer"])
+        .arg(format!("--print-to-pdf={}", pf.display())).arg(format!("file:///{}", hf.display().to_string().replace('\\', "/"))).output();
+    if !pf.exists() { return Err(format!("PDF print failed{}", r.err().map(|e| format!(": {e}")).unwrap_or_default())); }
+    let _ = tauri_plugin_opener::open_path(&pf, None::<&str>);
+    Ok(pf.to_string_lossy().into())
+}
+fn html_esc(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;") }
+/// "2026-11-08 14:05 UTC" w/o a date crate: civil-from-days (Hinnant).
+fn chrono_ish() -> String { civil(store::now() as i64) }
+fn civil(s: i64) -> String {
+    let (z, t) = (s.div_euclid(86400) + 719468, s.rem_euclid(86400));
+    let era = z.div_euclid(146097);
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let dd = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    format!("{}-{m:02}-{dd:02} {:02}:{:02} UTC", yoe + era * 400 + (m <= 2) as i64, t / 3600, t % 3600 / 60)
+}
+
 /// In-app browser: one child webview "web" laid over the Browser tab's placeholder. Profile dir ~/.clauracle/browser,
 /// shared by all projects ∴ logins persist + are shared. rect None → hide. nav → load url (else only move/resize).
 /// No IPC for it: capabilities need `remote.urls` for external pages. Its navigations → event `weburl` (address bar).
@@ -1766,7 +1870,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
-            continue_now, set_lessons, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
+            continue_now, set_lessons, report_save, report_get, report_pdf, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_links, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
@@ -1801,4 +1905,14 @@ fn newer_versions() {
 fn toml_versions() {
     assert_eq!(toml_version("[package]\nname = \"x\"\nversion = \"0.1.2\"\n").as_deref(), Some("0.1.2"));
     assert_eq!(toml_version("[package]\nversion.workspace = true\n"), None);
+}
+
+#[cfg(test)]
+mod rep_tests {
+    #[test]
+    fn civil_dates() {
+        assert_eq!(super::civil(0), "1970-01-01 00:00 UTC");
+        assert_eq!(super::civil(1_794_150_300), "2026-11-08 15:05 UTC");
+        assert_eq!(super::civil(951_782_400), "2000-02-29 00:00 UTC");
+    }
 }
