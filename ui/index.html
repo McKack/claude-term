@@ -1054,7 +1054,9 @@ function statsHtml(p) {
 /* #179 global statusline (all projects): usage (current project's account, else first), AI working (which + what + agents), builds.
    Redrawn by drawChrome + 1s tick; el._h = last html → no DOM churn. Cards = popovers */
 const gbusy = () => S.projects.filter(p => busy[p.id]), gbuilds = () => S.projects.filter(p => builds[p.id]?.busy);
-const blast = pid => (builds[pid]?.out || '').split('\n').filter(l => l.trim()).at(-1) || 'Starting…';
+const blast = (pid, n) => { const ls = (builds[pid]?.out || '').slice(builds[pid]?.from || 0).split('\n').filter(l => l.trim()); return n ? (ls.length ? ls.slice(-n) : ['Starting…']) : ls.at(-1) || 'Starting…'; };
+// #262 file names a build makes = last build's outputs (GHI builds, newest within 10 min of the top one); '' = none known yet
+const bnames = pid => { const b = GHI[pid]?.g?.builds || [], t = b[0]?.mtime; return [...new Set(b.filter(x => t - x.mtime < 600).map(x => x.name))].slice(0, 4).join(' · '); };
 function drawGbar() {
   const el = $('gbar'); if (!el) return;
   const p = cur && P(), acct = p ? p.account : S.accounts[0]?.id, u = S.usage[acct] || {};
@@ -1096,13 +1098,18 @@ function gCard(btn, kind) {
     card.innerHTML = `<h5>Activity</h5><div id="gacts">${acts()}</div>` + (cur ? statsHtml(P()) : '');
     const ga = card.querySelector('#gacts'), iv = setInterval(() => { if (!card.isConnected) return clearInterval(iv); const h = acts(); if (ga._h !== h) ga.innerHTML = ga._h = h; }, 1000); ga._h = acts();
   } else {
-    const bd = gbuilds(), done = S.projects.map(p => ({p, b: builds[p.id]})).filter(x => x.b?.at && !x.b.busy).sort((a, b) => b.b.at - a.b.at).slice(0, 4);
-    card.innerHTML = `<h5>Builds</h5>${bd.map(x => row(x.id, '<span class="spin"></span>', x.name)
-        + `<div class="dim sel" style="font-size:12px;margin:0 0 2px 20px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(blast(x.id))}</div>`
-        + `<div class="gact">${act('Output', go(x.id, 'build'))}${act(icon('stop') + 'Stop', `call('stop_build', {pid: '${x.id}'}); ${close}`, 'ghost')}</div>`).join('') || '<p class="dim">No builds running</p>'}
+    // #262 busy row: output file names (last build's, GHI cache) + last 3 output lines, live (1s); Output → Build tab log, flashed
+    const ell = 'font-size:12px;margin:0 0 2px 20px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    const bhtml = () => { const bd = gbuilds(), done = S.projects.map(p => ({p, b: builds[p.id]})).filter(x => x.b?.at && !x.b.busy).sort((a, b) => b.b.at - a.b.at).slice(0, 4);
+      return `<div class="row"><h5 class="grow">Builds</h5>${cur && !builds[cur]?.busy ? act(icon('hammer') + 'Build local copy', `buildLocal(cur); ${close}`, 'ghost') : ''}</div>${bd.map(x => row(x.id, '<span class="spin"></span>', x.name)
+        + (bnames(x.id) ? `<div class="sel" style="${ell}" data-tip="${esc(bnames(x.id))}">${esc(bnames(x.id))}</div>` : '')
+        + blast(x.id, 3).map(l => `<div class="dim sel mono" style="${ell};font-size:11px">${esc(l)}</div>`).join('')
+        + `<div class="gact">${act('Output', `openProject('${x.id}').then(() => { rightTab('build'); jumpTo('#buildOut'); }); ${close}`)}${act(icon('stop') + 'Stop', `call('stop_build', {pid: '${x.id}'}); ${close}`, 'ghost')}</div>`).join('') || '<p class="dim">No builds running</p>'}
       ${done.length ? `<h5>Finished</h5>${done.map(({p, b}) => row(p.id, `<span class="${b.ok ? 'ok' : 'bad'}">${icon(b.ok ? 'check' : 'x')}</span>`, p.name, `<span class="dim">${gago(b.at)}</span>`)
-          + `<div class="gact">${act('Output', go(p.id, 'build'))}${b.ok ? (b.own ? act('Restart into it', `call('restart_into', {pid: '${p.id}'})`, 'primary') : p.build.run ? act(icon('play') + 'Run', `call('run_step', {pid: '${p.id}', step: 'run'}); ${close}`, 'primary') : '')
-            : act(icon('hammer') + 'Build again', `call('run_step', {pid: '${p.id}', step: 'build'}); ${close}`, 'primary')}</div>`).join('')}` : ''}`;
+          + `<div class="gact">${act('Output', `openProject('${p.id}').then(() => { rightTab('build'); jumpTo('#buildOut'); }); ${close}`)}${b.ok ? (b.own ? act('Restart into it', `call('restart_into', {pid: '${p.id}'})`, 'primary') : p.build.run ? act(icon('play') + 'Run', `call('run_step', {pid: '${p.id}', step: 'run'}); ${close}`, 'primary') : '')
+            : act(icon('hammer') + 'Build again', `call('run_step', {pid: '${p.id}', step: 'build'}); ${close}`, 'primary')}</div>`).join('')}` : ''}`; };
+    card.innerHTML = card._h = bhtml();
+    const iv = setInterval(() => { if (!card.isConnected) return clearInterval(iv); const h = bhtml(); if (card._h !== h) card.innerHTML = card._h = h; }, 1000);
   }
   document.body.append(card); card.showPopover(); shutOn(card, kind); drawTimes();
   card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
@@ -1955,7 +1962,7 @@ T.event.listen('tauri://drag-drop', e => { $('composer').classList.remove('drop'
 function send() {
   const t = unpad($('prompt').value), a = atts[cur] || []; // #227 pill pads are display-only
   if (!t.trim() && !a.length) return;
-  if (!a.length && !editing[cur] && (/^\s*\/build\b/i.test(t) || BUILD_RE.test(t))) { $('prompt').value = ''; grow(); keepDraft(); return buildLocal(cur, /^\s*\/build\s+all\b/i.test(t)); }
+  if (!a.length && !editing[cur] && (/^\s*\/build\b/i.test(t) || BUILD_RE.test(t))) { $('prompt').value = ''; grow(); keepDraft(); return buildLocal(cur, (t.match(/^\s*\/build\s+(all|windows|linux|macos|ios|android)\b/i)?.[1] || '').toLowerCase()); }
   const ed = editing[cur]; delete editing[cur];
   $('prompt').value = ed ? ed.prev.text : ''; atts[cur] = ed ? ed.prev.atts : []; grow(); drawAtts(); drawEditBar();
   const pid = cur;
@@ -2213,7 +2220,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
   usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },
-  commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = [{name: 'build', argumentHint: '[all]', description: 'Clauracle: build a local copy and run it (all = every target)'}, ...d.commands.map(c => typeof c === 'string' ? {name: c} : c)]; },
+  commands: () => { if (Array.isArray(d.commands)) cmds[d.pid] = [{name: 'build', argumentHint: '[windows|linux|macos|ios|android|all]', description: 'Clauracle: build a local copy and run it; or build one target / all'}, ...d.commands.map(c => typeof c === 'string' ? {name: c} : c)]; },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.step === 'build' && b.busy && d.line && d.pid === cur && tab === 'build' && /\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/i.test(d.line) && /Finished \d+ bundle/.test(b.out.slice(b.from || 0))) drawRight(); /* #174 an artifact landed → tick it */
@@ -2665,14 +2672,15 @@ const RELB = {};
 // #120: busy at once (event confirms) → spinner + bar; no 2nd click → 2nd cargo blocked on the build-dir lock
 const buildNow = () => { const b = builds[cur] ||= {out: ''}; b.from = b.out.length; b.busy = true; b.manual = true; drawRight(); tabDots(); call('run_step', {pid: cur, step: 'build'}).catch(() => { builds[cur].busy = false; drawRight(); tabDots(); }); };
 /* /build (or "build and run a new local copy"): THIS machine's build in plain code (no WSL / Network Mac passes), then run it;
-   Clauracle's own repo restarts into it. Never filed, never queued behind tasks. /build all = every target, no run. */
+   Clauracle's own repo restarts into it. Never filed, never queued behind tasks. /build all = every target, /build <os> (#262) = that target only (Rust build:<os>); neither runs. */
 const BUILD_RE = /^\s*(please\s+|can you\s+|now\s+)*((do|make) (me )?a\s+)?(new\s+)?(local\s+)?(re)?build(\s+(it|clauracle|a new (local )?copy))?,?\s+(and|\+|&|then)\s+(run|restart|launch|start)(\s+(it|into it|the new (one|build|copy)|a new (local )?copy( of (it|yourself|clauracle))?))?[.!]*\s*$/i;
-async function buildLocal(pid, all) {
+async function buildLocal(pid, tg = '') { // tg: '' = this OS + run | 'all' | windows|linux|macos|ios|android
+  if (tg === HOST) tg = ''; const all = tg === 'all', nm = TGT.flatMap(g => g[2]).find(x => x[0] === tg)?.[2];
   const b = builds[pid] ||= {out: ''}; b.from = b.out.length; b.busy = true; b.manual = true; if (pid === cur) drawRight(); tabDots();
-  addEntry(pid, {kind: 'note', text: all ? 'Building every target…' : 'Building a local copy…', pill: 'hammer', ts: new Date().toISOString()});
-  const ok = await call('run_step', {pid, step: all ? 'build' : 'local'}).catch(() => false);
+  addEntry(pid, {kind: 'note', text: all ? 'Building every target…' : nm ? `Building for ${nm}…` : 'Building a local copy…', pill: 'hammer', ts: new Date().toISOString()});
+  const ok = await call('run_step', {pid, step: all ? 'build' : tg ? 'build:' + tg : 'local'}).catch(() => false);
   if (!ok) return addEntry(pid, {kind: 'note', text: 'Build failed', act: 'out', ts: new Date().toISOString()});
-  if (all) return addEntry(pid, {kind: 'note', text: 'Built every target', ts: new Date().toISOString()});
+  if (tg) return addEntry(pid, {kind: 'note', text: all ? 'Built every target' : `Built for ${nm}`, ts: new Date().toISOString()});
   addEntry(pid, {kind: 'note', text: 'Built: starting it', ts: new Date().toISOString()});
   // own repo → swap into it, else Run; own-repo swap error shown ∵ the old Run fallback started `tauri dev`, which the single-instance guard swallowed → "nothing happened"
   call('restart_into', {pid}).catch(e => /own repo/.test(e) ? call('run_step', {pid, step: 'run'}) : addEntry(pid, {kind: 'note', text: `Couldn't swap into the new build: ${e}`, ts: new Date().toISOString()}));

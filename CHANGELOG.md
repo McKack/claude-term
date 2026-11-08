@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- `/build windows|linux|macos|ios|android|all` builds one target (plain `/build` = a local copy for this computer). The Builds card shows the files being built and the last 3 output lines, jumps to the full log, and has a quick "Build local copy" button.
 - Settings: the Projects manager and Accounts page are tidier: a 1-2-3 setup guide until a project or your accounts are set up, and sections that fold into a one-line summary once filled in.
 - Clauracle now speaks as itself: buttons and tips say "Clauracle" instead of "AI", and replies address you by name.
 - Services: when everything is set up but no sign-in/payments/email-type service is chosen, the card offers to add one (that unlocks "Check the app uses …").

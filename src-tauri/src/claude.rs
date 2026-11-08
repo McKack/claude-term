@@ -1164,14 +1164,27 @@ fn shell(cmd: &str) -> tokio::process::Command {
     c
 }
 
+/// #262 desktop build cmd → its mobile twin (ponytail: Tauri + Flutter only; others → None = "unknown" error)
+fn mobile_cmd(cmd: &str, t: &str) -> Option<String> {
+    if cmd.contains("tauri build") { return Some(cmd.replacen("tauri build", &format!("tauri {t} build"), 1)); }
+    if cmd.contains("flutter build") { return Some(format!("flutter build {}", if t == "ios" { "ipa" } else { "apk" })); }
+    None
+}
+
 /// Runs one step. `run` stays up (a dev server or the app): it's started, not awaited, and replaces the last one.
 /// Returns (ok, last 40 lines of output).
 pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -> (bool, String) {
     let Some(p) = st.project(pid) else { return (false, String::new()) };
     // "local" (/build, "build and run"): the build command on THIS machine only, no WSL / Network Mac passes
-    let local = step == "local";
-    let step = if local { "build" } else { step };
-    let cmd = step_cmd(&p, step);
+    // #262 "build:<os>" (/build windows|linux|macos|ios|android): only that target's pass; host os = same as local
+    let only = step.strip_prefix("build:").filter(|t| *t != std::env::consts::OS);
+    let local = step == "local" || step.starts_with("build:") && only.is_none();
+    let step = if local || only.is_some() { "build" } else { step };
+    let mut cmd = step_cmd(&p, step);
+    if let Some(t @ ("ios" | "android")) = only { cmd = match mobile_cmd(&cmd, t) { Some(c) => c, None => {
+        let e = format!("No {t} build command known for `{cmd}` (Tauri / Flutter only)"); emit(app, "build", json!({"pid": pid, "step": step, "line": e, "done": false})); return (false, e); } }; }
+    if only.is_some_and(|t| !["ios", "android", "linux", "macos"].contains(&t) || t == "ios" && !cfg!(target_os = "macos")) {
+        let e = format!("Can't build {} on this computer", only.unwrap()); emit(app, "build", json!({"pid": pid, "step": step, "line": e, "done": false})); return (false, e); }
     if cmd.trim().is_empty() {
         return (true, String::new());
     }
@@ -1180,9 +1193,9 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     let marker = store::home().join(format!("building-{pid}"));
     if step == "build" { let _ = std::fs::write(&marker, ""); }
     let sign = store::sign_env(&p.path);
-    let mut cmds = vec![(cmd.clone(), shell(&cmd), None::<String>)];
+    let mut cmds = if matches!(only, Some("linux" | "macos")) { vec![] } else { vec![(cmd.clone(), shell(&cmd), None::<String>)] }; // linux/macos alone = only their WSL / Mac pass
     // #131: Windows + Linux target + WSL → 2nd pass in WSL (args set by Rust, no cmd.exe quoting); WSLENV forwards signing keys
-    if cfg!(windows) && step == "build" && !local && p.targets.iter().any(|t| t == "linux") && store::wsl_ok() {
+    if cfg!(windows) && step == "build" && (only == Some("linux") || only.is_none() && !local && p.targets.iter().any(|t| t == "linux")) && store::wsl_ok() {
         let mut w = tokio::process::Command::new("wsl");
         w.args(["-e", "bash", "-lc", &store::wsl_script(pid, &cmd)])
             .env("WSLENV", sign.iter().map(|(k, _)| k.as_str()).chain(std::env::var("WSLENV").ok().as_deref()).collect::<Vec<_>>().join(":"));
@@ -1192,7 +1205,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     }
     // #149: non-Mac host + macos target + Network Mac → sync tree, build over ssh (script + #150 signing env on stdin), pull bundles
     let mac = st.cfg.lock().unwrap().mac.clone();
-    let remote = !cfg!(target_os = "macos") && step == "build" && !local && p.targets.iter().any(|t| t == "macos") && !mac.host.trim().is_empty();
+    let remote = !cfg!(target_os = "macos") && step == "build" && (only == Some("macos") || only.is_none() && !local && p.targets.iter().any(|t| t == "macos")) && !mac.host.trim().is_empty();
     if remote {
         let mut c = tokio::process::Command::new("ssh");
         c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new",
@@ -1201,6 +1214,9 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
         c.creation_flags(0x0800_0000);
         cmds.push((format!("ssh {}: {cmd} (macOS)", mac.host.trim()), c, Some(store::mac_script(&mac, pid, &cmd, &sign))));
     }
+    if cmds.is_empty() { // linux/macos alone with no WSL / Network Mac
+        let e = format!("Can't build {} here: {}", only.unwrap_or("it"), if only == Some("macos") { "set up a Network Mac (Settings › Build & Release)" } else { "needs WSL on Windows" });
+        emit(app, "build", json!({"pid": pid, "step": step, "line": e, "done": false})); return (false, e); }
     let mut tail: VecDeque<String> = VecDeque::new();
     let mut ok = true;
     for (shown, mut c, input) in cmds {
@@ -1288,7 +1304,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     if step == "build" { let _ = std::fs::remove_file(&marker); }
     let stopped = STOPPED.lock().unwrap().remove(pid);
     emit(app, "build", json!({"pid": pid, "step": step, "line": if ok { "✓ done" } else if stopped { "■ stopped" } else { "✗ failed" }, "done": ok,
-        "own": step == "build" && ok && own_repo(st, pid)}));
+        "own": step == "build" && only.is_none() && ok && own_repo(st, pid)}));
     (ok, tail.into_iter().collect::<Vec<_>>().join("\n"))
 }
 
@@ -1545,6 +1561,13 @@ pub fn history(session: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mobile_cmd_rewrites_tauri_and_flutter() {
+        assert_eq!(mobile_cmd("npx tauri build", "android").as_deref(), Some("npx tauri android build"));
+        assert_eq!(mobile_cmd("flutter build windows", "ios").as_deref(), Some("flutter build ipa"));
+        assert_eq!(mobile_cmd("make", "ios"), None);
+    }
 
     #[test]
     fn queue_move_keeps_blocks_and_renumbers() {
