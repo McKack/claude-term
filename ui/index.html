@@ -2595,6 +2595,7 @@ function nextStep(p) {
 // others' (same rule as store::task_queue), in P.order (local; unlisted → after, by number). null → PLAN.md mode / not loaded
 const issueOn = pid => !!(P(pid)?.owner && P(pid)?.gh);
 const isIdea = x => x.labels.some(l => l.name === 'suggestion');
+const WAIT_TIP = "Blocked on something only you can do (the issue says what). Do it, then click Done: back into the AI's queue."; // #209 (i) tip: hover title, tap → toast
 const isWait = x => x.labels.some(l => l.name === 'needs-user'); // blocked on the user: "Waiting on you", not the AI queue
 /* #41 issue a turn works on, per project; localStorage ∵ app swap mid-turn → resumed turn still finishes it. Set on
    first busy sight (= first open issue), dropped when idle + closed or on clear-continue → "Finishing up #N…" while busy+closed */
@@ -2628,11 +2629,11 @@ const issueHtml = x => { const t = (x.number ? `<a data-url="${esc(x.url)}">#${x
   L = x.labels.filter(l => l.name !== 'clauracle').map(l => `<span class="pill lbl" style="--lc:#${esc(l.color || '888')}">${esc(l.name)}</span>`).join('');
   return L ? `<span class="tc">${t}</span><span class="lbls">${L}</span>` : t; };
 // after the drag queue: suggestions (Accept/Dismiss), others' issues (who), new-issue field
-const issuesRest = () => { const iq = issueQ(cur), me = (team[cur]?.me || '').toLowerCase();
+const issuesRest = (then = '') => { const iq = issueQ(cur), me = (team[cur]?.me || '').toLowerCase();
   return `<div class="tlist">${teamTasks(cur).filter(isIdea).map((x, i) => tli(issueHtml(x), {cls: 'sug',
       end: `<button class="ib" title="Accept: queue it" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: close the issue" onclick="planWait(${i}, false)">${icon('x')}</button>`})).join('')
     + teamTasks(cur).filter(x => !isIdea(x) && !isWait(x) && !iq.includes(x)).map(x => tli(issueHtml(x), {cls: 'in_progress', end: `<span class="pill">${esc(x.assignees.map(a => a.login).join(', '))}</span>`})).join('')}</div>
-    ${teamTasks(cur).some(isWait) ? `<div class="label">Waiting on you</div><p class="dim" style="margin:0 0 4px;font-size:12px">The AI is blocked on something only you can do (the issue says what). Do it, then click Done: the task goes back into the AI's queue.</p><div class="tlist">${teamTasks(cur).filter(isWait).map(x => tli(issueHtml(x), {cls: 'sug', end: `<button class="btn sm" title="You did your part: back into the AI's queue" onclick="taskDo('unblock', ${x.number})">${icon('check')}Done</button>`})).join('')}</div>` : ''}
+    ${then}${teamTasks(cur).some(isWait) ? `<div class="label row" style="gap:4px;align-items:center">Waiting on you<button class="ib" title="${WAIT_TIP}" onclick="toast(WAIT_TIP, 'info')">${icon('info')}</button></div><div class="tlist">${teamTasks(cur).filter(isWait).map(x => tli(issueHtml(x), {cls: 'sug', end: `<button class="btn sm" title="You did your part: back into the AI's queue" onclick="taskDo('unblock', ${x.number})">${icon('check')}Done</button>`})).join('')}</div>` : ''}
     <div class="row"><input id="newTask" class="grow" placeholder="New issue (task)" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add issue" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`; };
 const nextUp = pid => { const iq = issueQ(pid); if (iq) return iq.map(x => `#${x.number} ${x.title}`); const q = S.queues?.[pid] || []; return q.length ? q : teamTasks(pid).filter(x => !isDoing(x)).map(x => `#${x.number} ${x.title}`); };
 function tasksHtml() {
@@ -3864,7 +3865,7 @@ function drawAtp() {
         + L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
           ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
             end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit" title="Edit issue" onclick="event.stopPropagation(); editIssue(${iq[i].number})">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"')
-        + (iq ? issuesRest() + (tab === 'gh' ? thenRow(P()) : '') : '')
+        + (iq ? issuesRest(tab === 'gh' ? thenRow(P()) : '') : '')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}${iq ? ' · not issues yet' : ''}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
     || empty(`Your AI's task list and ${iq ? 'open task issues' : "PLAN.md's queue"} show here`, `<button class="btn sm" onclick="putPrompt('${iq ? 'Plan this as GitHub task issues: ' : 'Plan this in PLAN.md: '}')">${icon('list')}Plan with your AI</button>`);
