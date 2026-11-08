@@ -285,7 +285,7 @@ pre.diff .ctx { color:var(--faint); }
 #skel.hd > .crow { display:none; } #skel.hd { margin-top:10px; } #log:has(#dockpill > :not([hidden])) { padding-bottom:0; } #skel.hd:has(#dockpill > :not([hidden])) { margin-top:30px; } /* #236/#238 pill centred: below = empty #qrow ~35px ∴ 0 pad + ~34 above (card→pill) */ #dockpill { display:flex; justify-content:center; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
 /* #225/#230/#232 live head: zero-height sticky #stickav (ring + timer) sits right before the newest head row (child of .col ∴ sticks for the rest of the log);
    the row's own avatar hides; name/time never follow. top counts from inside #log's 62px padding ∴ -14 = 48px from the window top; margin-bottom = -.col gap */
-#stickav { position:sticky; top:-14px; height:0; margin-bottom:-12px; z-index:3; } #stickav .tav { position:absolute; left:-44px; top:0; } #log { padding-left:56px; } /* #233 live avatar in the left gutter, outside the column; 56px pad keeps the gutter on narrow windows */ .crow.stick > :is(.av, .tav) { visibility:hidden; }
+#stickav { position:sticky; top:-14px; height:0; margin-bottom:-12px; z-index:3; } #stickav .tav { position:absolute; left:0; top:0; } /* #241 live avatar in the regular .crow avatar column (was #233's gutter) */ .crow.stick > :is(.av, .tav) { visibility:hidden; }
 #dockpill > * { padding:5px 14px; }
 .crow.thead { margin-bottom:-8px; } /* #189 head row over a termcard: card tucks under the name */ #log.term .crow.thead { display:none; }
 /* #181 terminal turn thinking: no Thinking pill → avatar ring runs the Working shimmer + timer badge (data-t); #189 on the head's .tav */
