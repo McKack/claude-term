@@ -3446,14 +3446,16 @@ const SERVICES = {
   // steps: string | {t, a: () => action html}; **x** = UI name on the other site (bold); gh:'step' = Send button lives in a step
   macsign: {name: 'Mac signing', note: 'Developer ID: Mac builds open without the "unidentified developer" block', gh: 'step',
     keys: ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_TEAM_ID', 'APPLE_ID', 'APPLE_PASSWORD'],
-    steps: [{t: 'Make the signing request: **devid.csr** lands in your **Downloads** and Apple\'s page opens', a: () => `<button class="btn sm primary" onclick="appleCsr()">Make signing request</button>`,
+    get steps() { return [{t: 'Make the signing request: **devid.csr** lands in your **Downloads** and Apple\'s page opens', a: () => `<button class="btn sm primary" onclick="appleCsr()">Make signing request</button>`,
         u: s => s.csr ? `<div class="under dim mono" title="Copy" style="cursor:pointer" onclick="copy(this.textContent)">${esc(s.csr)}</div>` : ''},
       {t: 'At Apple pick **Developer ID Application**, then **G2 Sub-CA** › **Continue**, choose **devid.csr** › **Continue** › **Download**', a: () => `<button class="btn sm" data-url="${APPLE_CERTS}">Certificates</button>`},
       {t: 'Clauracle picks the downloaded **.cer** up from **Downloads** by itself and fills the first four keys', a: () => `<button class="btn sm" onclick="appleCer()">Load .cer…</button><small class="dim" id="cerWait"></small>`},
       {t: 'Make an **App-Specific Password** (under **Sign-In and Security**), then fill **APPLE_ID** (your Apple account email) and **APPLE_PASSWORD**',
         a: () => `<button class="btn sm" data-url="https://account.apple.com/account/manage">App-specific password</button><button class="btn sm" onclick="fillKeys('macsign', ['APPLE_ID', 'APPLE_PASSWORD'])">${icon('key')}Fill in</button>`},
-      {t: 'Send to GitHub: CI then signs and notarizes Mac builds', a: () => `<button class="btn sm" onclick="toSecrets('macsign', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets</button><small class="dim" id="sec-macsign"></small><p class="err" id="secErr-macsign" style="font-size:13px"></p>`},
-      {t: 'Optional: register the **App ID** only if the app uses capabilities like iCloud or push', u: () => bundleRow(true) + `<div class="btnrow"><button class="btn sm" data-url="https://developer.apple.com/account/resources/identifiers/add/bundleId">Register App ID</button></div>`}]},
+      /* #267 CI off (default) → local/Network Mac builds sign from .env (relItems sign row): no secrets step */
+      S.ci_builds ? {t: 'Send to GitHub: CI then signs and notarizes Mac builds', a: () => `<button class="btn sm" onclick="toSecrets('macsign', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets</button><small class="dim" id="sec-macsign"></small><p class="err" id="secErr-macsign" style="font-size:13px"></p>`}
+        : 'Done: local Mac builds sign and notarize with these keys from **.env** (CI builds are off, so nothing goes to GitHub)',
+      {t: 'Optional: register the **App ID** only if the app uses capabilities like iCloud or push', u: () => bundleRow(true) + `<div class="btnrow"><button class="btn sm" data-url="https://developer.apple.com/account/resources/identifiers/add/bundleId">Register App ID</button></div>`}]; }}, /* getter ∵ S.ci_builds read at draw time (#267) */
   appstore: {name: 'App Store Connect', note: 'iOS / macOS releases', keys: ['ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_PRIVATE_KEY'],
     steps: ['Identifiers › + › App IDs › App: Explicit, paste the Bundle ID below, tick the capabilities the app uses', 'Certificates › + › Apple Distribution (iOS) or Mac App Distribution + Mac Installer Distribution (macOS)',
       'Profiles › + › App Store Connect: pick the App ID and certificate, download the profile', 'Make the app record with the same Bundle ID', 'Integrations: make an API key (for uploads from CI)'],
@@ -3593,7 +3595,7 @@ async function drawServices() {
       + (id === 'appstore' ? bundleRow() : '')
       + `<div class="keys">${x.keys.map(k => `<div><span>${k}</span>${envKeys.have.has(k) ? '<small class="ok">set</small>' : '<small class="faint">missing</small>'}</div>`).join('')}</div>`
       + (miss.length ? `<button class="btn primary block" onclick="fillKeys('${id}')">${icon('key')}Fill in ${miss.length} key${miss.length > 1 ? 's' : ''}</button>` : '')
-      + (x.gh === true ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
+      + (x.gh === true && S.ci_builds /* #267 local builds read .env */ ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
       (id === 'website' && !siteReady() ? '<span class="pill" style="background:var(--hover);color:var(--dim)">set up</span>'
         : `<span class="pill" ${miss.length ? 'style="background:var(--hover);color:var(--dim)"' : ''}>${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`)
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
