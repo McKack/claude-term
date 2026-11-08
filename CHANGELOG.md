@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Composer: attachment references are plain @[name] tags; removing an attachment also removes its tags; typing @ lists project files to attach and reference.
 - Staged releases: a finished build for every picked platform is kept as a staged release (its files and commit are saved, so later edits don't spoil it) and the version moves up for the next build. They're listed under Build & Release › Release, each with Skip (deletes its files) and Release. Only the lowest version can be released.
 - Pick the project's licence in Settings › Projects › Licence. The release checklist says "Choose" (or "Confirm" when a LICENSE file is already there) and jumps straight to it.
 - `/build windows|linux|macos|ios|android|all` builds one target (plain `/build` = a local copy for this computer). The Builds card shows the files being built and the last 3 output lines, jumps to the full log, and has a quick "Build local copy" button.

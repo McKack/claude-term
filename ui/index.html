@@ -117,7 +117,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
 .cm .tk { margin-left:6px; color:var(--faint); display:inline-flex; } .cm .tk.read { color:#34b7f1; } .cm .tk.fail { color:var(--err); } .cm .tk .i { width:13px; height:13px; vertical-align:-2px; }
 .rpill { display:inline-flex; align-items:center; gap:4px; padding:0 8px 0 6px; border-radius:99px; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); } .rpill svg { width:1em; height:1em; flex:none; }
-#pback .fic { position:relative; } #pback .fic svg { position:absolute; left:0; top:50%; width:.8em; height:.8em; transform:translateY(-50%); color:var(--accent); } /* #227 icon over the em-space slot */
+#pback .fic { position:relative; } #pback .fic svg { position:absolute; left:.2em; top:50%; width:.8em; height:.8em; transform:translateY(-50%); color:var(--accent); } /* #270 icon over the "@[" slot */
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
 /* #250 = composer .att.img: 56px high, real aspect, 56..220px wide, 10px radius, gap 8 */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; max-width:100%; }
@@ -1683,31 +1683,34 @@ function addEntry(pid, e) {
 const hasInput = () => $('prompt').value.trim() || (atts[cur] || []).length;
 const stem = n => n.replace(/\.\w+$/, '');
 // #217 notes live on the attachment; #238: also in the filed issue body + file/isQ checks (were session-only → the ask got lost)
-const noteTxt = a => a.filter(x => x.notes?.length).map(x => `\n\nNotes on [${stem(x.name)}] (numbered boxes):\n${x.notes.join('\n')}`).join('');
+const noteTxt = a => a.filter(x => x.notes?.length).map(x => `\n\nNotes on @[${stem(x.name)}] (numbered boxes):\n${x.notes.join('\n')}`).join('');
 // #227 file-type icon for pills/thumbs: image | doc | code | file
 const fIcon = n => /\.(png|jpe?g|gif|webp|bmp|svg|ico)$/i.test(n) ? 'image' : /\.(md|txt|pdf|docx?|rtf|csv|log)$/i.test(n) ? 'doc' : /\.(js|ts|tsx|jsx|rs|py|go|java|c|cpp|h|cs|rb|php|html|css|json|toml|ya?ml|sh|ps1|kt|swift)$/i.test(n) ? 'code' : 'file';
-// #227 composer ref = "[ name ]": em space = icon slot, en space = right pad (a textarea can't pad a range); stripped on send
-const PADL = '  ', PADR = ' ', unpad = t => t.split(`[${PADL}`).join('[').split(`${PADR}]`).join(']'); // #233 U+2007 figure space = non-breaking ∴ icon never wraps away from its name (ponytail: a hyphen in the name can still wrap)
-// #227 chat bubble: [ref] naming one of the message's files → same pill
-const refPills = (t, names) => esc(unpad(t)).replace(/\[([^\]\n]+)\]/g, (m, n) => { const f = names.find(x => stem(x) === n.replace(/&amp;/g, '&') || x === n); return f ? `<span class="rpill">${icon(fIcon(f))}${n}</span>` : m; });
+// #270 composer ref = plain "@[name]" (same text in prompt, logs, issues); mirror draws the icon over "@[". unpad: old drafts' "[  name ]" pads → @[name]
+const unpad = t => t.replace(/\[\u2007\u2007([^\]\n]*?)\u2002\]/g, '@[$1]'), reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// #227 chat bubble: @[ref] (old logs: [ref]) naming one of the message's files → same pill
+const refPills = (t, names) => esc(unpad(t)).replace(/@?\[([^\]\n]+)\]/g, (m, n) => { const f = names.find(x => stem(x) === n.replace(/&amp;/g, '&') || x === n); return f ? `<span class="rpill">${icon(fIcon(f))}${n}</span>` : m; });
 function attRef(i) { // inserts [name w/o extension] at the caret; a space before/after only where the neighbour isn't one already
-  const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = `[${PADL}${stem(atts[cur][i].name)}${PADR}]`;
+  const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = `@[${stem(atts[cur][i].name)}]`;
   const ins = (s && !/\s/.test(v[s - 1]) ? ' ' : '') + r + (e < v.length && /\s/.test(v[e]) ? '' : ' ');
   el.setRangeText(ins, s, e, 'end'); el.focus(); grow(); keepDraft();
 }
+// #270 remove → its @[name] tags go too (+ one trailing space), unless another attachment shares the name
+function rmAtt(i) { const n = stem(atts[cur].splice(i, 1)[0].name), p = $('prompt');
+  if (!atts[cur].some(a => stem(a.name) === n)) { p.value = p.value.replace(new RegExp(`@\\[${reEsc(n)}\\] ?`, 'g'), ''); grow(); } drawAtts(); }
 const refB = i => `<button class="aref" title="Refer to it in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button>`; // #237 image thumbs: bottom-right; file chips: top bar (too short for 2 rows)
 function drawAtts() {
   $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
-    <span class="abtns">${a.url ? '' : refB(i)}<button title="Remove" onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button></span>${a.url ? `<span class="abtns bot">${refB(i)}</span>` : ''}
+    <span class="abtns">${a.url ? '' : refB(i)}<button title="Remove" onclick="rmAtt(${i})">${icon('x')}</button></span>${a.url ? `<span class="abtns bot">${refB(i)}</span>` : ''}
     ${a.notes?.length ? `<button class="anote" title="${esc(a.notes.join('\n').slice(0, 160))}&#10;(click to edit the notes)" onclick="viewAtt(${i}); editImage()">${icon('doc')}</button>` : ''}</div>`).join('');
   attArr(); pbDraw(); if (cur) { drawChrome(); keepDraft(); }
 }
 // #217 [ref] pills: #pback mirrors the textarea text; refs naming an attachment get a <mark> behind them (a textarea can't style
-// its own text). Click inside one → highlight + scroll its thumb, image → viewer. Icon drawn over the PADL char (same width ∴ mirror stays aligned)
+// its own text). Click inside one → highlight + scroll its thumb, image → viewer. Icon drawn over the "@[" chars (same text ∴ mirror stays aligned)
 const attAt = name => { name = name.replace(/[   ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
 function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.style.right = p.offsetWidth - p.clientWidth + 'px'; /* #231 scrollbar (max-height hit) narrows the textarea's lines → mirror must wrap the same or the caret drifts */
-  b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m; const l = n.startsWith(PADL), rr = n.endsWith(PADR), x = n.slice(l ? PADL.length : 0, rr ? -1 : undefined);
-    return `<mark><i>[</i>${l ? `<i class="fic">${PADL}${icon(fIcon(atts[cur][i].name))}</i>` : ''}${x}<i>${rr ? PADR : ''}]</i></mark>`; }) + '\n'; pbSync(); }
+  b.innerHTML = esc(p.value).replace(/@\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m;
+    return `<mark><i class="fic">@[${icon(fIcon(atts[cur][i].name))}</i>${n}<i>]</i></mark>`; }) + '\n'; pbSync(); }
 // #258 sync now + next frame ∵ Chromium reveals the caret (scrolls) after the input event/keys, not always w/ a timely scroll event → text drifted till the user scrolled
 const pbSync = () => { const f = () => $('pback').scrollTop = $('prompt').scrollTop; f(); requestAnimationFrame(f); };
 ['scroll', 'keyup', 'mouseup', 'select'].forEach(e => $('prompt').addEventListener(e, pbSync));
@@ -2158,16 +2161,28 @@ function editQueued(i) {
 const cmds = {}; let slashSel = 0;
 const slashMatches = () => { const m = /^\/(\S*)$/.exec($('prompt').value);
   return m && cur ? (cmds[cur] || []).filter(c => c.name.toLowerCase().startsWith(m[1].toLowerCase())).slice(0, 8) : []; };
+// #270 "@x" before the caret → project files (HEAT list = git ls-files, shared w/ the Hot tab cache); name-prefix hits first, then shorter paths
+let atLoading = 0;
+const atMatches = () => { const p = $('prompt'), q = /(?:^|\s)@([^\s@[\]]*)$/.exec(p.value.slice(0, p.selectionStart))?.[1]?.toLowerCase(); if (q == null || !cur) return [];
+  const fs = HEAT[cur]?.d.files, pid = cur; if (!fs) { if (!atLoading) atLoading = call('file_heat', {pid}).then(d => { HEAT[pid] ||= {t: Date.now(), d}; atLoading = 0; drawSlash(); }, () => atLoading = 0); return []; }
+  const r = f => (f.split('/').pop().toLowerCase().startsWith(q) ? 0 : 1e4) + f.length;
+  return fs.map(f => f[0]).filter(f => f.toLowerCase().includes(q)).sort((a, b) => r(a) - r(b)).slice(0, 8); };
+const menuXs = () => { const s = slashMatches(); return s.length ? s : atMatches(); }; // commands are objects, files strings
 function drawSlash() {
-  const xs = slashMatches(), el = $('slash');
+  const xs = menuXs(), el = $('slash');
   slashSel = Math.min(slashSel, Math.max(xs.length - 1, 0));
   el.hidden = !xs.length;
-  el.innerHTML = xs.map((c, i) => `<button class="${i === slashSel ? 'on' : ''}" onmousedown="event.preventDefault(); pickSlash(${i})"><b>/${esc(c.name)}</b>
-    ${c.argumentHint ? `<span class="faint">${esc(c.argumentHint)}</span>` : ''}<small>${esc(c.description || '')}</small></button>`).join('');
+  el.innerHTML = xs.map((c, i) => `<button class="${i === slashSel ? 'on' : ''}" onmousedown="event.preventDefault(); pickSlash(${i})">${typeof c === 'string' ? `${icon(fIcon(c))}<b>${esc(c.split('/').pop())}</b><small>${esc(c)}</small>` : `<b>/${esc(c.name)}</b>
+    ${c.argumentHint ? `<span class="faint">${esc(c.argumentHint)}</span>` : ''}<small>${esc(c.description || '')}</small>`}</button>`).join('');
 }
-function pickSlash(i) { const c = slashMatches()[i]; if (c) { $('prompt').value = '/' + c.name + ' '; slashSel = 0; drawSlash(); grow(); } }
+function pickSlash(i) { const c = menuXs()[i]; if (typeof c === 'string') return pickAt(c); if (c) { $('prompt').value = '/' + c.name + ' '; slashSel = 0; drawSlash(); grow(); } }
+// #270 picked file → path attachment (sent as "Attached files", like a dropped one) + its @[name] tag in place of "@query"
+function pickAt(rel) { const p = $('prompt'), c = p.selectionStart, s = p.value.lastIndexOf('@', c - 1), root = P().path, sep = root.includes('\\') ? '\\' : '/';
+  const abs = root.replace(/[\\/]+$/, '') + sep + rel.split('/').join(sep), a = (atts[cur] ||= []); let i = a.findIndex(x => x.path === abs);
+  if (i < 0) i = a.push({name: rel.split('/').pop(), path: abs}) - 1;
+  p.setSelectionRange(s, c); attRef(i); slashSel = 0; drawAtts(); drawSlash(); }
 $('prompt').addEventListener('keydown', e => {
-  const xs = $('slash').hidden ? [] : slashMatches();
+  const xs = $('slash').hidden ? [] : menuXs();
   if (xs.length) {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); slashSel = (slashSel + (e.key === 'ArrowDown' ? 1 : xs.length - 1)) % xs.length; return drawSlash(); }
     if (e.key === 'Escape') return void ($('slash').hidden = true);
