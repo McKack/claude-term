@@ -275,7 +275,8 @@ pre.diff .ctx { color:var(--faint); }
 .respawn { animation:respawn .5s ease-out; } @keyframes respawn { from { opacity:0; translate:0 -12px; } }
 #skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skelav, #log.term #skel .cm { display:none; }
 /* #195 head row shown → pills move to #dockpill: floats in the dock's empty top strip, takes no log space (chat never pushed up) */
-#skel.hd { display:none; } #dock .col { position:relative; } #dockpill { position:absolute; bottom:calc(100% + 5px); left:36px; display:flex; max-width:calc(100% - 36px); }
+#skel.hd { display:none; } #dock .col { position:relative; } #dockpill { position:absolute; bottom:calc(100% + 5px); left:50%; transform:translateX(-50%); display:flex; max-width:100%; pointer-events:none; } /* #225 always here, centred: never pushes the chat */
+.crow.stick { position:sticky; top:52px; z-index:3; width:max-content; } .crow.stick .cm { background:var(--bg); border-radius:99px; padding-right:10px; } /* #225 live turn head (avatar ring + timer) sticks under the header */
 #dockpill > * { padding:5px 14px; }
 .crow.thead { margin-bottom:-8px; } /* #189 head row over a termcard: card tucks under the name */ #log.term .crow.thead { display:none; }
 /* #181 terminal turn thinking: no Thinking pill → avatar ring runs the Working shimmer + timer badge (data-t); #189 on the head's .tav */
@@ -354,7 +355,7 @@ pre.diff .ctx { color:var(--faint); }
 #composer.drop { border-color:var(--accent); border-style:dashed; }
 #prompt { width:100%; border:0; padding:4px 0; resize:none; min-height:26px; max-height:260px; background:none; box-shadow:none; position:relative; display:block; color:transparent; caret-color:var(--text); } /* #223 text drawn by #pback ∴ [ ] can hide */
 #pwrap { position:relative; } #pback { position:absolute; inset:0; padding:4px 0; white-space:pre-wrap; overflow-wrap:break-word; color:var(--text); pointer-events:none; overflow:hidden; } #pback mark i { font-style:normal; color:transparent; }
-#pback mark { color:inherit; background:var(--soft); border-radius:6px; box-shadow:0 0 0 2px var(--soft); }
+#pback mark { color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); border-radius:99px; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); box-decoration-break:clone; -webkit-box-decoration-break:clone; } /* #225 real pill: hidden [ ] = its side padding */
 .att.hl { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
 #slash { display:flex; flex-direction:column; max-height:280px; overflow:auto; margin:0 0 6px -6px; padding-bottom:6px; border-bottom:1px solid var(--line); }
 #slash[hidden] { display:none; }
@@ -627,10 +628,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
-    <div class="col" id="skel" hidden><div class="crow claude"><span id="skelav"><svg class="av"><use href="#i-logo"/></svg></span><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div>
-      <div id="handpill" hidden>Preparing handover…</div>
-      <div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div></div>
-  <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col"><div id="dockpill"></div>
+    <div class="col" id="skel" hidden><div class="crow claude"><span id="skelav"><svg class="av"><use href="#i-logo"/></svg></span><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div></div></div></div></div>
+  <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col"><div id="dockpill"><div id="handpill" hidden>Preparing handover…</div><div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div>
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onmouseenter="readyMore(this)" onclick="if (!event.target.closest('button') &amp;&amp; readyMore(this)) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
@@ -1166,7 +1165,7 @@ setInterval(() => {
 // Working… pill = what's really going on: the running tool (or Thinking) + elapsed, ticking each second
 const doing = {}; // pid → {text, id, t}: set by tool lines / busy, back to Thinking when that tool's result lands
 const setDoing = (pid, text, id) => { doing[pid] = {text, id, t: Date.now(), sh: /^Running: (Bash|PowerShell)/.test(text)}; }; // #124 sh → the terminal card is the pill
-let workT = null;
+let workT = null; const TURN0 = {}; // #225 pid → turn start (head avatar timer)
 /* ONE working indicator: every terminal row whose call has no result yet (PEND; parallel calls too) wears the shimmer + its
    own timer; the Working pill shows only when no running row is visible (Thinking, or a call outside the chat cards) */
 const PEND = {}; // pid → Map(tool id → start ms), cleared when the turn ends
@@ -1180,19 +1179,17 @@ function workTick() {
     $('log').querySelectorAll('.tl > div.run').forEach(x => !rows.includes(x) && x.classList.remove('run'));
     for (const r of rows) { r.classList.add('run'); r.dataset.t = mmss(now - Math.min(...r._es.filter(e => PEND[cur].has(e.id)).map(e => PEND[cur].get(e.id)))); }
     const d = doing[cur] || {text: 'Thinking', t: now}, hd = turnHead(), av = hd?.querySelector('.tav');
-    $('skel').classList.toggle('hd', !!hd); pillHome(!!hd); // #189 the turn's head row already shows avatar + name
-    // #181 turn uses the terminal preview (a live termcard after the last user msg) + Thinking → head avatar ring + badge, no pill
-    const tt = !!av && !rows.length && d.text === 'Thinking' && !!busy[cur] && $('handpill').hidden && [...$('log').querySelectorAll('.termcard:not(.old), .crow.user')].pop()?.classList.contains('termcard');
+    $('skel').classList.toggle('hd', !!hd); // #189 the turn's head row already shows avatar + name
+    $('log').querySelectorAll('.crow.stick').forEach(x => x !== hd && x.classList.remove('stick')); hd?.classList.toggle('stick', hd.matches('.thead'));
+    // #225 live head: avatar ring + turn timer while busy; pill always centred in #dockpill
     $('log').querySelectorAll('.tav.on').forEach(x => x !== av && x.classList.remove('on'));
-    av?.classList.toggle('on', tt); if (tt) av.dataset.t = mmss(now - d.t);
-    $('workpill').hidden = !busy[cur] || !$('handpill').hidden || rows.length > 0 || tt;
+    av?.classList.toggle('on', !!busy[cur]); if (av) av.dataset.t = mmss(now - (TURN0[cur] || d.t)); // #225 ring + turn timer whenever busy
+    $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
     $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - d.t)}`; };
   if (on && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!on && workT) { clearInterval(workT); workT = null; }
-  if (on) draw(); else { $('log').querySelectorAll('.tl > div.run, .tav.on').forEach(x => x.classList.remove('run', 'on')); $('skel').classList.remove('hd'); pillHome(false); }
+  if (on) draw(); else { $('log').querySelectorAll('.tl > div.run, .tav.on').forEach(x => x.classList.remove('run', 'on')); $('skel').classList.remove('hd'); $('log').querySelectorAll('.crow.stick').forEach(x => x.classList.remove('stick')); }
 }
-// #195 pills: under the skeleton's own avatar (turn not started yet) | in the dock's empty strip (head row up the chat)
-function pillHome(dock) { const to = dock ? $('dockpill') : $('skel').querySelector('.cb'); if ($('workpill').parentNode !== to) to.append($('handpill'), $('workpill')); }
 // #189 live turn's Clauracle head after the last user msg (chat view, busy) → skeleton drops its own avatar
 function turnHead() {
   const c = $('log').firstElementChild; if (!busy[cur] || view !== 'chat' || !c || c.id === 'skel') return null;
@@ -1998,7 +1995,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
-  status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) setDoing(d.pid, 'Thinking'); const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
+  status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) { setDoing(d.pid, 'Thinking'); TURN0[d.pid] = Date.now(); } const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
     if (d.busy === false) { repDone(d.pid); if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; delete PEND[d.pid]; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) { const r = cq && P(d.pid).ready, t = nextUp(d.pid)[0]; contGo(d.pid); if (r) contNote(d.pid, t); } else { if (cq) contQ[d.pid] = true; /* Continue clicked + msgs queued: msgs first, Continue after (was dropped) */ flushQueue(d.pid); } }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
