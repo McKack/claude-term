@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- The chat log keeps everything it showed, task reports included, across a fresh session and an app restart; only the history limit drops the oldest greyed-out messages.
 - Release checks now require an app icon source (SVG, or PNG of at least 1024 px) from Beta up; the Build row lists one file per line by platform and links the last release; a finished task shows its "Done! See report" note again. Image editor: round colour picker, box numbers never show "undefined"; image thumbnails show Refer bottom-right and the note as a small dot that grows on hover.
 - Multi-line text boxes grow with their text instead of showing a resize corner; issues filed with screenshots no longer put your local folder path on GitHub.
 - The Working pill is now the last centred line of the chat and scrolls with it, instead of staying pinned to the bottom.

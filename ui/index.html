@@ -1258,6 +1258,18 @@ const permItems = () => [{title: 'Permissions (level)'}, ...Object.entries(PERMS
 const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
 
 const LOADED = new Set(); // pids whose transcript is in logs[]
+/* #243 the page's log on disk (log_save → open_project `saved`) ∵ transcripts lack UI-only notes (task reports…) + only 2 sessions.
+   saved + transcript lines newer than its last ts (turn ran on after the last save). No save yet → transcripts as before. */
+function restoreLog(info) {
+  const h = info.history, sv = Array.isArray(info.saved) ? info.saved : null;
+  if (!sv) return h.length ? [...h, {kind: 'note', text: 'Resumed session'}] : [];
+  const last = Math.max(0, ...sv.map(e => Date.parse(e.ts) || 0)), cur = h.filter(e => !e.old), i = cur.findLastIndex(e => (Date.parse(e.ts) || 0) && Date.parse(e.ts) <= last);
+  const add = last ? cur.slice(i + 1) : [];
+  return [...sv, ...add, ...(sv.at(-1)?.text === 'Resumed session' && !add.length ? [] : [{kind: 'note', text: 'Resumed session', ts: new Date().toISOString()}])];
+}
+// asks = live (Rust re-sends); strings cut at 8k (big Write/diff bodies) ∵ file size. Only after LOADED ∵ an early save would overwrite the disk log
+const LOGT = {}, saveLog = pid => { if (!LOADED.has(pid)) return; clearTimeout(LOGT[pid]); LOGT[pid] = setTimeout(() =>
+  call('log_save', {pid, log: JSON.parse(JSON.stringify((logs[pid] || []).filter(x => x.kind !== 'ask'), (k, v) => typeof v === 'string' && v.length > 8000 ? v.slice(0, 8000) + '…' : v))}).catch(() => {}), 2000); };
 async function openProject(pid) {
   if (!P(pid)) return;
   if (cur) texts[cur] = $('prompt').value;
@@ -1268,7 +1280,7 @@ async function openProject(pid) {
   drawProjects(); drawChrome(); drawAtts(); drawQueue(); drawEditBar();
   const info = await call('open_project', {pid});
   // transcript once per run, BEFORE whatever arrived meanwhile (resumed-turn lines, flushed queue) ∵ `!logs[pid]` skipped it → chat looked lost after every restart
-  if (!LOADED.has(pid)) { LOADED.add(pid); logs[pid] = [...(info.history.length ? [...info.history, {kind: 'note', text: 'Resumed session'}] : []), ...(logs[pid] || [])]; }
+  if (!LOADED.has(pid)) { LOADED.add(pid); logs[pid] = [...restoreLog(info), ...(logs[pid] || [])]; }
   if (info.busy) busy[pid] = true; // never → false here: Rust busy is false during armed build steps while the UI must stay busy (status events own that)
   if (pid !== cur) return; // switched again while loading
   $('branch').hidden = !info.branch; $('branch').textContent = info.branch;
@@ -1605,7 +1617,7 @@ function addEntry(pid, e) {
   const wrap = isProcess(e) && (/^mcp__clauracle__/.test(e.text) || /^(Edit|MultiEdit|Write)\b/.test(toolName(e)));
   if (busy[pid] && (wrap ? !hand[pid] : e.kind === 'tool' && !isProcess(e) && hand[pid] === 'soft')) { hand[pid] = wrap ? 'soft' : false; if (pid === cur) drawChrome(); }
   e.ts ||= new Date().toISOString(); // all kinds: #214 report timeline/worked time
-  (logs[pid] ||= []).push(e);
+  (logs[pid] ||= []).push(e); saveLog(pid);
   if (e.kind === 'tool' && /^(Edit|MultiEdit|Write|NotebookEdit)\b/.test(toolName(e)) && (e.detail?.file_path || e.detail?.notebook_path)) {
     (EDITS[pid] ||= {})[relOf(pid, e.detail.file_path || e.detail.notebook_path)] = Date.now(); if (pid === cur) badgeFiles();
   }
@@ -1984,7 +1996,7 @@ const fnames = t => (t.match(/\n📎 (.+)$/)?.[1] || '').split(', ').filter(Bool
 const utext = (t, a) => { const f = a.filter(x => x.path); return t + (f.length ? `\n📎 ${f.map(x => x.name).join(', ')}` : ''); };
 const userEntry = (pid, t, a, e = {}) => { addEntry(pid, Object.assign(e, {kind: 'user', st: e.st || 'pend', text: utext(t, a), images: a.filter(x => x.data).map(x => ({url: x.url, name: x.name}))}));
   e.log = !!logs[pid]?.includes(e); return e; }; // log false = a handover turn hid it
-const unEntry = (pid, e) => { logs[pid] = (logs[pid] || []).filter(x => x !== e); (USEREL.get(e)?.closest('.crow') || USEREL.get(e))?.remove(); e.log = false; };
+const unEntry = (pid, e) => { logs[pid] = (logs[pid] || []).filter(x => x !== e); saveLog(pid); (USEREL.get(e)?.closest('.crow') || USEREL.get(e))?.remove(); e.log = false; };
 const qBub = (pid, m) => { const e = userEntry(pid, m.text, m.atts, {st: 'queue'}); if (e.log) QB.set(m, e); };
 const qDrop = (pid, m) => { const e = m && QB.get(m); if (e) { unEntry(pid, e); QB.delete(m); } };
 // filed note → #N chip: re-render the bubble with the final text
@@ -2060,7 +2072,7 @@ const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading
 const keepOld = pid => (logs[pid] || []).filter(x => x.kind !== 'ask').slice(-300).map(x => ({...x, old: true}));
 function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); /* first: a drawing error can't swallow the Continue */
   hiddenQs[cur] = false; qsOpen[cur] = true; P().ready = false; $('ready').hidden = true;
-  logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; readNote(cur, true); drawLog(); }
+  logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; saveLog(cur); readNote(cur, true); drawLog(); }
 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
@@ -2081,7 +2093,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; setTimeout(() => { if (!RESTARTING) return; RESTARTING = false; toast("Restart didn't happen: queued messages are sending again.", "warn"); Object.keys(queue).forEach(flushQueue); }, 20000); }, // relaunch spawn failed → app lives on; RESTARTING stuck = queue frozen forever
-  cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note' && !x.cont)) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note' && !x.cont)) { logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; saveLog(d.pid); } /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   pushed: () => { ghiStale(d.pid); if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; const o = P(d.id); S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { if (d.keep) $('suggest').hidden = true; drawChrome(); drawLog(); if (o?.build?.after !== d.build?.after) drawRight(); /* #227 Then picker follows any change (answer applied by AI, Settings) at once */ } },

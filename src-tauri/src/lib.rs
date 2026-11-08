@@ -131,7 +131,9 @@ fn open_project(app: AppHandle, st: St, pid: String) -> R<Value> {
     let mut history: Vec<Value> = p.prev_session.as_deref().map(claude::history).unwrap_or_default().into_iter()
         .map(|mut e| { e["old"] = json!(true); e }).collect();
     history.extend(p.session.as_deref().map(claude::history).unwrap_or_default());
-    Ok(json!({"branch": store::git_branch(&p.path), "busy": live.busy.load(SeqCst), "history": history}))
+    // #243 saved = the page's own log (UI-only notes like task reports too), survives clear + restart; null = never saved
+    let saved: Value = log_file(&pid).ok().and_then(|f| std::fs::read_to_string(f).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+    Ok(json!({"branch": store::git_branch(&p.path), "busy": live.busy.load(SeqCst), "history": history, "saved": saved}))
 }
 
 /// Who should run the repo at `path` (store::suggest); None if it isn't on GitHub. gh calls, so off the main thread.
@@ -1610,6 +1612,15 @@ fn open_in_browser(exe: String, profile: String, url: String) -> R<()> {
 // ---- #214 task reports: UI builds the plain report from the log; kept 7 days outside the project ----
 
 const REP_KEEP: u64 = 7 * 86400;
+fn log_file(pid: &str) -> R<std::path::PathBuf> { rep_dir(pid)?; /* validates pid */ Ok(store::home().join("logs").join(format!("{pid}.json"))) }
+/// #243 chat log of a project as the page shows it (capped by the page), read back by open_project.
+#[tauri::command(async)]
+fn log_save(pid: String, log: Value) -> R<()> {
+    let f = log_file(&pid)?;
+    std::fs::create_dir_all(f.parent().unwrap()).map_err(|e| e.to_string())?;
+    store::write_atomic(&f, log.to_string().as_bytes()).map_err(|e| e.to_string())
+}
+
 fn rep_dir(pid: &str) -> R<std::path::PathBuf> {
     if pid.is_empty() || !pid.chars().all(|c| c.is_ascii_alphanumeric() || "-_".contains(c)) { return Err("bad project id".into()); }
     Ok(store::home().join("reports").join(pid))
@@ -1995,7 +2006,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
-            continue_now, set_lessons, report_save, report_get, report_pdf, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
+            continue_now, set_lessons, report_save, report_get, log_save, report_pdf, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
