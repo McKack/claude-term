@@ -514,7 +514,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .code pre { margin:0; padding:8px 12px 8px 0; white-space:pre; min-width:max-content; } .code.wrap pre { white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; }
 .code i { font-style:normal; } .code .hk { color:#c678dd; } .code .hs { color:#98c379; } .code .hc { color:var(--faint); font-style:italic; } .code .hn { color:#d19a66; } .code .ht { color:#61afef; }
 :root:not([data-theme=dark]) .code .hk { color:#a626a4; } :root:not([data-theme=dark]) .code .hs { color:#50a14f; } :root:not([data-theme=dark]) .code .hn { color:#986801; } :root:not([data-theme=dark]) .code .ht { color:#4078f2; }
-.flist > div { display:flex; gap:8px; align-items:center; padding:6px 8px; border-radius:8px; cursor:pointer; min-width:0; } .flist > div:hover { background:var(--hover); } .flist small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.tree small { overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .code pre > div { display:grid; grid-template-columns:var(--lw) 1fr; } /* #231 one row per line: line no. = ::before (not copied), wrapped lines indent under the text */
 .code pre > div::before { counter-increment:l; content:counter(l); color:var(--faint); text-align:right; padding-right:8px; margin-right:12px; border-right:1px solid var(--line); -webkit-user-select:none; user-select:none; }
 #web { width:100%; height:calc(100vh - 175px); border:1px solid var(--line); border-radius:10px; background:#fff; }
@@ -3297,7 +3297,7 @@ function recentFiles() {
 async function drawCode() {
   const file = codeAt[cur]?.file, box = $('rbody');
   if (!file) { const r = recentFiles();
-    box.innerHTML = r.length ? `<h3 style="margin:0 0 8px">Recently worked on</h3><div class="flist">${r.map(f => `<div data-p="${esc(f)}" onclick="previewFile(this.dataset.p)">${icon(fIcon(f))}<span class="mono">${esc(f.split('/').pop())}</span><small class="faint">${esc(f.split('/').slice(0, -1).join('/'))}</small></div>`).join('')}</div>`
+    box.innerHTML = r.length ? `<p class="faint" style="margin:0 0 6px 8px;font-size:12px">Recently worked on</p><div class="tree">${r.map(f => `<div data-p="${esc(f)}" title="${esc(f)}" onclick="previewFile(this.dataset.p)">${icon('file')}${esc(f.split('/').pop())}<small class="faint">${esc(f.split('/').slice(0, -1).join('/'))}</small></div>`).join('')}</div>`
       : '<p class="dim">Pick a file on the left.</p>';
     if (UI.lc || UI.st !== 'files') { UI.lc = false; setSide('files'); } return; }
   const wrap = localStorage.codeWrap !== '0'; // #231 wrap ON by default, choice remembered (like the diff dialog)
