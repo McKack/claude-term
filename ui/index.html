@@ -1112,8 +1112,8 @@ function drawTimes() {
   const sum = x.you + x.ai || 1, C = {you: 'var(--ok)', ai: 'var(--accent)', any: 'var(--dim)'};
   // #201 skeleton once per project/session, then only text + widths change ∵ innerHTML each tick killed the hover tooltip (flash)
   if (el._k !== cur + x.start) { el._k = cur + x.start;
-    const it = (k, ic, l, t) => `<span class="row" style="gap:6px;white-space:nowrap" data-tip="${t}"><span class="tic" style="background:${C[k]}">${icon(ic)}</span>${l} <b data-k="${k}"></b></span>`;
-    el.innerHTML = `<div class="row" style="font-size:12px;gap:14px;margin-top:4px">${it('you', 'user', 'You', 'You, active (2 min without input counts as idle)')}${it('ai', 'sparkle', 'AI', 'AI working')}<span class="grow"></span>${it('any', 'clock', 'Total', 'Total: either going, since ' + esc(tm(new Date(x.start).toISOString())))}</div>
+    const it = (k, ic, l, t) => /* #207 label only in tip ∵ row overflowed card */ `<span class="row" style="gap:6px;white-space:nowrap" data-tip="${t}"><span class="tic" style="background:${C[k]}">${icon(ic)}</span><b data-k="${k}"></b></span>`;
+    el.innerHTML = `<div class="row" style="font-size:12px;gap:14px;margin-top:4px">${it('you', 'user', 'You', 'You: active (2 min without input counts as idle)')}${it('ai', 'sparkle', 'AI', 'AI: working')}<span class="grow"></span>${it('any', 'clock', 'Total', 'Total: either going, since ' + esc(tm(new Date(x.start).toISOString())))}</div>
       <div class="ubar"><i style="background:${C.you}"></i><i style="background:${C.ai}"></i></div>`; }
   el.querySelectorAll('[data-k]').forEach(b => { const v = dur(x[b.dataset.k]); if (b.textContent !== v) b.textContent = v; });
   const [i1, i2] = el.querySelectorAll('.ubar i'); i1.style.width = x.you / sum * 100 + '%'; i2.style.width = x.ai / sum * 100 + '%';
