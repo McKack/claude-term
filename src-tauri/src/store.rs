@@ -672,13 +672,12 @@ pub fn deps() -> serde_json::Value {
     m
 }
 
-/// #137 Graph view: project files (git ls-files, else a walk; ≤ 3000) + links found in each file's first 8 KB:
-/// quoted paths (JS/TS import/require, CSS @import, HTML src/href, C #include, JSON), Rust `mod x;`, Python imports.
-/// Resolve: relative to the file, then the root, + common extensions / index files. ponytail: no tsconfig paths/aliases,
-/// no `use crate::` (mod already links it); a quoted word that happens to name a sibling file counts as a link.
-pub fn file_links(dir: &str) -> serde_json::Value {
+/// #221 Hot files: project files (git ls-files, else a walk; ≤ 3000) + size + 30-day churn from `git log --numstat`.
+/// → {files: [[path, bytes, churn, [commit idx ≤ 8, newest first]]], commits: [[hash, unix secs, subject]]}.
+/// ponytail: --no-renames (rename = delete + add); churn = added + deleted lines, binary = 0.
+pub fn file_heat(dir: &str) -> serde_json::Value {
     let root = Path::new(dir);
-    let o = run("git", &["ls-files", "-co", "--exclude-standard"], Some(dir), &[]);
+    let o = run("git", &["-c", "core.quotePath=false", "ls-files", "-co", "--exclude-standard"], Some(dir), &[]);
     let mut files: Vec<String> = if o.ok { o.stdout.lines().map(String::from).collect() } else {
         fn walk(root: &Path, p: &Path, out: &mut Vec<String>) {
             let Ok(rd) = std::fs::read_dir(p) else { return };
@@ -693,51 +692,23 @@ pub fn file_links(dir: &str) -> serde_json::Value {
     };
     files.truncate(3000);
     let idx: HashMap<&str, usize> = files.iter().enumerate().map(|(i, f)| (f.as_str(), i)).collect();
-    // join + normalize (`..`, `.`); None = escapes the root
-    let norm = |base: &str, c: &str| -> Option<String> {
-        let mut v: Vec<&str> = if c.starts_with('/') { vec![] } else { base.split('/').filter(|s| !s.is_empty()).collect() };
-        for s in c.split('/') { match s { "" | "." => {}, ".." => { v.pop()?; }, s => v.push(s) } }
-        Some(v.join("/"))
-    };
-    const EXT: [&str; 18] = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".rs", ".py", ".css", ".scss", ".vue", ".svelte",
-        "/index.ts", "/index.js", "/mod.rs", "/__init__.py"];
-    let q = regex::Regex::new(r#"["'`]([^"'`\s<>{}()$]{1,200})["'`]"#).unwrap();
-    let rmod = regex::Regex::new(r"(?m)^\s*(?:pub(?:\([a-z]+\))?\s+)?mod\s+([a-z_][a-z0-9_]*)\s*;").unwrap();
-    let py = regex::Regex::new(r"(?m)^\s*(?:from\s+(\.*[\w.]*)\s+import|import\s+([\w.]+))").unwrap();
-    let mut links = std::collections::BTreeSet::new();
-    for (i, f) in files.iter().enumerate() {
-        let mut head = vec![0u8; 8192];
-        let n = std::fs::File::open(root.join(f)).and_then(|mut h| std::io::Read::read(&mut h, &mut head)).unwrap_or(0);
-        head.truncate(n);
-        if n == 0 || head.contains(&0) { continue; }
-        let t = String::from_utf8_lossy(&head);
-        let d = f.rsplit_once('/').map_or("", |x| x.0);
-        let mut cands: Vec<(String, String)> = q.captures_iter(&t).map(|c| (d.to_string(), c[1].split(['?', '#']).next().unwrap_or("").to_string())).collect();
-        if f.ends_with(".rs") {
-            let stem = f.rsplit('/').next().unwrap_or("").trim_end_matches(".rs");
-            let md = if ["lib", "main", "mod"].contains(&stem) { d.to_string() } else { format!("{d}/{stem}") };
-            cands.extend(rmod.captures_iter(&t).map(|c| (md.clone(), c[1].to_string())));
+    let mut heat = vec![(0u64, Vec::<usize>::new()); files.len()];
+    let mut commits = vec![];
+    let log = run("git", &["-c", "core.quotePath=false", "log", "--since=30.days", "--numstat", "--no-renames", "--format=%x01%h%x09%ct%x09%s"], Some(dir), &[]);
+    for l in log.stdout.lines() {
+        if let Some(h) = l.strip_prefix('\u{1}') {
+            let mut p = h.splitn(3, '\t');
+            commits.push(serde_json::json!([p.next(), p.next().and_then(|t| t.parse::<i64>().ok()), p.next()])); continue;
         }
-        if f.ends_with(".py") {
-            for c in py.captures_iter(&t) {
-                let m = c.get(1).or(c.get(2)).map_or("", |m| m.as_str());
-                let dots = m.len() - m.trim_start_matches('.').len();
-                let path = m.trim_start_matches('.').replace('.', "/");
-                let base = if dots > 0 { let mut b = d.to_string(); for _ in 1..dots { b = b.rsplit_once('/').map_or(String::new(), |x| x.0.to_string()); } b } else { String::new() };
-                cands.push((base, path));
-            }
-        }
-        for (base, c) in cands {
-            if c.is_empty() || c.contains("://") { continue; }
-            'find: for b in [base.as_str(), ""] {
-                let Some(p) = norm(b, &c) else { continue };
-                for e in EXT {
-                    if let Some(&j) = idx.get(format!("{p}{e}").as_str()) { if j != i { links.insert((i.min(j), i.max(j))); } break 'find; }
-                }
-            }
-        }
+        let mut p = l.splitn(3, '\t');
+        let (Some(a), Some(d), Some(f), Some(c)) = (p.next(), p.next(), p.next(), commits.len().checked_sub(1)) else { continue };
+        let Some(&i) = idx.get(f) else { continue };
+        heat[i].0 += a.parse::<u64>().unwrap_or(0) + d.parse::<u64>().unwrap_or(0);
+        if heat[i].1.len() < 8 { heat[i].1.push(c); }
     }
-    serde_json::json!({"files": files, "links": links.into_iter().map(|(a, b)| [a, b]).collect::<Vec<_>>()})
+    let out: Vec<_> = files.iter().zip(heat).map(|(f, (ch, cs))|
+        serde_json::json!([f, std::fs::metadata(root.join(f)).map_or(0, |m| m.len()), ch, cs])).collect();
+    serde_json::json!({"files": out, "commits": commits})
 }
 
 /// #131: WSL has a real distro (docker-desktop* = Docker's own, can't build). `wsl -l -q` prints UTF-16 → strip NULs.
@@ -1995,22 +1966,26 @@ mod tests {
         let mut perm = std::fs::metadata(b.join("p/.git/objects/ab/cd")).unwrap().permissions(); #[allow(clippy::permissions_set_readonly_false)] perm.set_readonly(false);
         let _ = std::fs::set_permissions(b.join("p/.git/objects/ab/cd"), perm); let _ = std::fs::remove_dir_all(&b);
     }
-    /// #137: JS relative import w/o ext, Rust mod, Python relative import, quoted root path; lone file unlinked
+    /// #221: churn = added + deleted over 30 days, commit list newest first, untouched file = 0
     #[test]
-    fn file_links_finds_header_links() {
-        let d = std::env::temp_dir().join(format!("clauracle-links-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        for (f, t) in [("web/a.js", "import b from './b';\n"), ("web/b.js", "x"), ("src/lib.rs", "pub mod store;\nmod x;"), ("src/store.rs", ""),
-            ("src/x/mod.rs", "// \"web/b.js\""), ("py/m.py", "from .n import k"), ("py/n.py", ""), ("alone.txt", "hi")] {
-            let p = d.join(f); std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, t).unwrap();
-        }
-        let v = file_links(d.to_str().unwrap());
-        let files: Vec<String> = serde_json::from_value(v["files"].clone()).unwrap();
-        let mut got: Vec<(String, String)> = v["links"].as_array().unwrap().iter().map(|l| {
-            let (a, b) = (files[l[0].as_u64().unwrap() as usize].clone(), files[l[1].as_u64().unwrap() as usize].clone()); if a < b { (a, b) } else { (b, a) } }).collect();
-        got.sort();
-        let s = |a: &str, b: &str| (a.to_string(), b.to_string());
-        assert_eq!(got, vec![s("py/m.py", "py/n.py"), s("src/lib.rs", "src/store.rs"), s("src/lib.rs", "src/x/mod.rs"), s("src/x/mod.rs", "web/b.js"), s("web/a.js", "web/b.js")]);
+    fn file_heat_counts_churn() {
+        let d = std::env::temp_dir().join(format!("clauracle-heat-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).unwrap();
+        let ds = d.to_str().unwrap();
+        let git = |a: &[&str]| assert!(run("git", &[&["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"], a].concat(), Some(ds), &[]).ok, "git {a:?}");
+        git(&["init", "-q"]);
+        std::fs::write(d.join("a.txt"), "1\n2\n").unwrap(); std::fs::write(d.join("b.txt"), "x\n").unwrap();
+        git(&["add", "."]); git(&["commit", "-qm", "first (#1)"]);
+        std::fs::write(d.join("a.txt"), "1\n3\n").unwrap();
+        git(&["commit", "-qam", "second (#2)"]);
+        let v = file_heat(ds);
+        let f = |n: &str| v["files"].as_array().unwrap().iter().find(|x| x[0] == n).unwrap().clone();
+        assert_eq!(f("a.txt")[2], 4); // 2 added + (1 added, 1 deleted)
+        assert_eq!(f("b.txt")[2], 1);
+        assert_eq!(f("a.txt")[1], 4);
+        let subj = |i: &serde_json::Value| v["commits"][i.as_u64().unwrap() as usize][2].clone();
+        let a = f("a.txt"); let cs = a[3].as_array().unwrap();
+        assert_eq!((subj(&cs[0]), subj(&cs[1])), (serde_json::json!("second (#2)"), serde_json::json!("first (#1)")));
         let _ = std::fs::remove_dir_all(&d);
     }
 

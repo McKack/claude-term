@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- The Graph side tab is now **Hot**: a map of your files sized by size and coloured by how much they changed in the last 30 days; click one to see its recent commits and the tasks behind them.
 - Tasks list: click a task to edit it, labels as coloured dots, the editor opens instantly from cache; tasks the AI starts are claimed on GitHub so teammates skip them.
 - Pasted images drop a clickable [ref] into your message; image notes live on the image (notepad icon) instead of in the text; the image editor now has movable, resizable, erasable boxes and lines, a smoother pen and multi-line notes that fold away.
 - After a task: "Done! Worked for Xh Ym" with a See report window (what was done, what failed with fix buttons, a timeline), plus meeting-ready PDF reports for the task or the last 7 days.
