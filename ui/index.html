@@ -1791,7 +1791,7 @@ function editImage() {
   };
   img.src = m.ed?.orig || m.url;
 }
-let VBOX = null, VF = null; // VBOX = window size kept across steps/opens (session); VF = file in the File viewer {name, path?, text?}
+let VBOX = (() => { try { return JSON.parse(localStorage.vbox || 'null'); } catch { return null; } })(), VF = null; // VBOX = window size kept across steps/opens/restarts (localStorage.vbox); VF = file in the File viewer {name, path?, text?}
 /* #247 one File viewer window (image editor template): head = left of the bar, act = right buttons (before ✕),
    tools = left toolbar (contextual per file type), stage = content; fit(stage) on every resize */
 function vWin(head, act, tools, stage, fit, zoom) {
@@ -1799,8 +1799,9 @@ function vWin(head, act, tools, stage, fit, zoom) {
   dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${zoom ? `<span class="vzoom"><button class="ib" title="Zoom out (Ctrl −)" onclick="vZoom(1/1.25)">${icon('minus')}</button><input type="range" min="10" max="800" value="100" oninput="vZoom(this.value / 100 / VZ.s)" data-tip="Zoom: wheel, Ctrl + / −, Ctrl 0 = fit. Middle-drag pans"><button class="ib" title="Zoom in (Ctrl +)" onclick="vZoom(1.25)">${icon('plus')}</button><small class="faint" id="vzp">100%</small></span><span class="grow"></span>` : ''}${act}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="vtools">${tools}</div><div class="vstage">${stage}</div>`, 'viewer');
   const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
-  if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; }
-  new ResizeObserver(() => { if (!V.isConnected) return; if (V.style.width) VBOX = [V.offsetWidth, V.offsetHeight]; fit?.(S); vClamp(); }).observe(V);
+  if (VBOX) { V.style.width = Math.min(VBOX[0], innerWidth - 16) + 'px'; V.style.height = Math.min(VBOX[1], innerHeight - 16) + 'px'; }
+  // #261 offsetWidth 0 = dlg closing (display:none) → don't keep, else reopens at min size
+  new ResizeObserver(() => { if (!V.isConnected || !V.offsetWidth) return; if (V.style.width) { VBOX = [V.offsetWidth, V.offsetHeight]; try { localStorage.vbox = JSON.stringify(VBOX); } catch {} } fit?.(S); vClamp(); }).observe(V);
   const d = $('dlg'); if (!d.style.left) { const r = d.getBoundingClientRect(); Object.assign(d.style, {margin: '0', right: 'auto', bottom: 'auto', left: r.left + 'px', top: r.top + 'px'}); } // pinned where it opened ∴ resize corner tracks the mouse (centred = grows both ways)
   if (!zoom) return;
   S.onwheel = e => { if (zoom === 'text' && !e.ctrlKey) return; e.preventDefault(); vZoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, e); }; // text: plain wheel scrolls
