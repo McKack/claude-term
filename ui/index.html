@@ -120,7 +120,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 /* thumbnails: fixed tiles, cropped (the viewer shows the whole image); wrap, never wider than the bubble */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
 .msg .thumbs img { width:96px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
-.crow .cb, .msg.user { min-width:0; } #log { overflow-x:hidden; } #log::-webkit-scrollbar-track { margin:52px 0 40px; } /* thumb stops short of the top mask (52px) + #dock overlap (40px) */
+.crow .cb, .msg.user { min-width:0; } #log { overflow-x:hidden; } #log::-webkit-scrollbar-track { margin:52px 0 20px; } /* thumb stops short of the top mask (52px) + #dock overlap (20px) */
 .crow { display:flex; gap:10px; align-items:flex-start; } .crow.user { flex-direction:row-reverse; }
 .crow > .av { border-color:var(--bg); } /* 26px = the name row's height: avatar sits in line with name + time */
 .crow .cm { min-height:26px; } .crow.claude .msg.claude { background:var(--card); border:1px solid var(--line); padding:9px 14px; border-radius:4px 16px 16px 16px; }
@@ -253,12 +253,12 @@ pre.diff .ctx { color:var(--faint); }
 
 /* composer */
 /* dock overlays the log's bottom: transparent at its top, fading into the page behind pills + composer */
-#dock { padding:40px 24px 14px; margin-top:-40px; position:relative; z-index:2; pointer-events:none;
-  background:linear-gradient(to bottom, transparent, var(--bg) 40px); }
+#dock { padding:20px 24px 14px; margin-top:-20px; position:relative; z-index:2; pointer-events:none;
+  background:linear-gradient(to bottom, transparent, var(--bg) 20px); } /* #232 overlap 40→20: less dead space under the last line */
 #dock .col > * { pointer-events:auto; }
 #jump { position:absolute; top:0; left:50%; transform:translateX(-50%); pointer-events:auto; gap:4px; }
-#workpill, #handpill, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:48px; }
-#log.term + #dock { background:linear-gradient(to bottom, transparent, var(--term) 40px); }
+#workpill, #handpill, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:28px; }
+#log.term + #dock { background:linear-gradient(to bottom, transparent, var(--term) 20px); }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
   overflow:hidden; overflow-wrap:anywhere; color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
 #dock .col { gap:8px; }
@@ -277,16 +277,17 @@ pre.diff .ctx { color:var(--faint); }
 .respawn { animation:respawn .5s ease-out; } @keyframes respawn { from { opacity:0; translate:0 -12px; } }
 #skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skelav, #log.term #skel .cm { display:none; }
 /* #195 head row shown → skeleton hides its own avatar row; pills stay as its centred line */
-#skel.hd > .crow { display:none; } #dockpill { display:flex; justify-content:center; margin-top:8px; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
-.crow.stick { position:sticky; top:52px; z-index:3; width:max-content; container-type:scroll-state; } /* #225 live turn head (avatar ring + timer) sticks under the header */
-@container scroll-state(stuck: top) { .crow.stick .cb { visibility:hidden; } } /* #230 stuck → only avatar + timer follow; name/time stay put. ponytail: WebKit (mac/linux) lacks scroll-state → name follows there */
+#skel.hd > .crow { display:none; } #skel.hd { margin-top:0; } #dockpill { display:flex; justify-content:center; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
+/* #225/#230/#232 live head: zero-height sticky #stickav (ring + timer) sits right before the newest head row (child of .col ∴ sticks for the rest of the log);
+   the row's own avatar hides; name/time never follow. top counts from inside #log's 62px padding ∴ -14 = 48px from the window top; margin-bottom = -.col gap */
+#stickav { position:sticky; top:-14px; height:0; margin-bottom:-12px; z-index:3; } #stickav .tav { position:absolute; left:0; top:0; } .crow.stick > :is(.av, .tav) { visibility:hidden; }
 #dockpill > * { padding:5px 14px; }
 .crow.thead { margin-bottom:-8px; } /* #189 head row over a termcard: card tucks under the name */ #log.term .crow.thead { display:none; }
 /* #181 terminal turn thinking: no Thinking pill → avatar ring runs the Working shimmer + timer badge (data-t); #189 on the head's .tav */
 :is(#skelav, .tav) { position:relative; flex:none; display:grid; padding:2px; margin:-2px; border-radius:50%; } :is(#skelav, .tav) > .av { border-color:var(--bg); }
 :is(#skelav, .tav).on { background:linear-gradient(90deg, var(--line) 25%, var(--accent) 50%, var(--line) 75%) 0 0/200% 100%; animation:shimmer 1.8s linear infinite; }
 :is(#skelav, .tav).on::after { content:attr(data-t); position:absolute; right:-10px; bottom:-7px; font:600 9.5px system-ui; font-variant-numeric:tabular-nums; color:#fff; background:var(--accent); padding:1px 4px; border-radius:7px; border:1.5px solid var(--bg); }
-#handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:4px 16px 16px 16px; border:1px solid var(--line);
+#handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:99px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
 /* #105 skeleton bar: text-line height (13.5px font) ∴ swap-in ≈ no jump */
@@ -323,13 +324,13 @@ pre.diff .ctx { color:var(--faint); }
 .stdone > svg:first-child { width:28px; height:28px; padding:6px; box-sizing:border-box; border-radius:50%; background:var(--ok); color:#fff; flex:none; }
 .stdone span { flex:1; } .stdone > svg:last-child { color:var(--dim); transition:transform .15s; } .stdone.open > svg:last-child { transform:rotate(180deg); }
 /* Services all set → Next step (to Build & Release) + sticky "New!" pill till it's scrolled into view */
-.nextstep { margin-top:14px; padding:14px; border-radius:14px; background:var(--soft); text-align:center; } .nextstep p { margin:0 0 10px; }
+.nextstep { margin-top:14px; padding:14px; border-radius:14px; background:var(--soft); text-align:center; } .nextstep p { margin:0 0 10px; font-size:13px; color:var(--dim); } /* #232 same as the GitHub tab one (inside .stepper) */
 .newpill { position:sticky; bottom:8px; display:flex; align-items:center; gap:4px; margin:10px auto 0; border:0; border-radius:99px; padding:6px 12px 6px 8px; background:var(--accent); color:#fff; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:var(--shadow); } .newpill[hidden] { display:none; }
 .ghsteps { margin-top:10px; } .ghsteps .sn { cursor:default; } .ghsteps .sn:hover { outline:0; } .qbox { max-height:320px; overflow-y:auto; margin:4px 0 8px; } .runm { grid-template-columns:repeat(2, 1fr); }
 .stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
 .stepper b { color:var(--text); font-weight:600; } .stepper .btnrow { margin-top:8px; align-items:center; } .stepper .keys { margin-top:8px; }
 /* stepper buttons never squeeze: nowrap + wrap row; a button alone on its line grows full width; non-buttons go below */
-.stepper .btnrow { display:flex; flex-wrap:wrap; } .stepper .btnrow .btn { flex:1 1 auto; white-space:nowrap; } .stepper .btnrow > :not(.btn) { flex-basis:100%; }
+.stepper .btnrow { display:flex; flex-wrap:wrap; } .stepper .seg { flex-wrap:wrap; min-width:0; } /* #232 target buttons wrap, never clipped */ .stepper .btnrow .btn { flex:1 1 auto; white-space:nowrap; } .stepper .btnrow > :not(.btn) { flex-basis:100%; }
 .keys.st > div { flex-direction:column; gap:2px; } .keys.st small { overflow-wrap:anywhere; }
 .warn a { color:inherit; text-decoration:underline; cursor:pointer; }
 #ready, #suggest { display:flex; gap:12px; align-items:center; padding:9px 10px 9px 16px; border-radius:12px; background:var(--soft); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -1183,9 +1184,16 @@ function workTick() {
   const draw = () => { const rows = runRows(), now = Date.now();
     $('log').querySelectorAll('.tl > div.run').forEach(x => !rows.includes(x) && x.classList.remove('run'));
     for (const r of rows) { r.classList.add('run'); r.dataset.t = mmss(now - Math.min(...r._es.filter(e => PEND[cur].has(e.id)).map(e => PEND[cur].get(e.id)))); }
-    const d = doing[cur] || {text: 'Thinking', t: now}, hd = turnHead(), av = hd?.querySelector('.tav');
+    const d = doing[cur] || {text: 'Thinking', t: now}, hd = turnHead();
+    let sa = $('stickav'); // #232 one sticky avatar for the newest head row
+    if (hd && !sa) { sa = Object.assign(document.createElement('div'), {id: 'stickav'}); sa.innerHTML = '<span class="tav"><svg class="av"><use href="#i-logo"/></svg></span>'; }
+    if (hd && sa.nextElementSibling !== hd) { hd.before(sa); // overlay the row's own avatar (reply rows sit indented + raised): measure unstuck, once per new head
+      sa.style.position = 'static'; const s0 = sa.getBoundingClientRect(), a0 = hd.querySelector('.av').getBoundingClientRect(), dy = a0.top - s0.top; sa.style.position = '';
+      Object.assign(sa.firstElementChild.style, {left: a0.left - s0.left + 'px', top: dy + 'px'}); sa.style.top = -14 - dy + 'px'; } // stuck: avatar at 48px whatever dy
+    else if (!hd) sa?.remove();
+    const av = hd && sa.firstElementChild;
     $('skel').classList.toggle('hd', !!hd); // #189 the turn's head row already shows avatar + name
-    $('log').querySelectorAll('.crow.stick').forEach(x => x !== hd && x.classList.remove('stick')); hd?.classList.toggle('stick', hd.matches('.thead'));
+    $('log').querySelectorAll('.crow.stick').forEach(x => x !== hd && x.classList.remove('stick')); hd?.classList.add('stick');
     // #225 live head: avatar ring + turn timer while busy; pill always centred in #dockpill
     $('log').querySelectorAll('.tav.on').forEach(x => x !== av && x.classList.remove('on'));
     av?.classList.toggle('on', !!busy[cur]); if (av) av.dataset.t = mmss(now - (TURN0[cur] || d.t)); // #225 ring + turn timer whenever busy
@@ -1193,14 +1201,14 @@ function workTick() {
     $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - d.t)}`; };
   if (on && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!on && workT) { clearInterval(workT); workT = null; }
-  if (on) draw(); else { $('log').querySelectorAll('.tl > div.run, .tav.on').forEach(x => x.classList.remove('run', 'on')); $('skel').classList.remove('hd'); $('log').querySelectorAll('.crow.stick').forEach(x => x.classList.remove('stick')); }
+  if (on) draw(); else { $('log').querySelectorAll('.tl > div.run, .tav.on').forEach(x => x.classList.remove('run', 'on')); $('skel').classList.remove('hd'); $('log').querySelectorAll('.crow.stick').forEach(x => x.classList.remove('stick')); $('stickav')?.remove(); }
 }
 // #189 live turn's Clauracle head after the last user msg (chat view, busy) → skeleton drops its own avatar
 function turnHead() {
   const c = $('log').firstElementChild; if (!busy[cur] || view !== 'chat' || !c || c.id === 'skel') return null;
   const r = [...c.querySelectorAll(':scope > .crow.user, :scope > .crow.claude')], u = r.findLastIndex(x => x.classList.contains('user'));
-  // #196 newest head (last .thead after the user msg = live termcard's), ≠ first row ∵ interim text/cards add later heads
-  return u < 0 ? null : r.slice(u + 1).findLast(x => x.classList.contains('thead')) || r[u + 1] || null;
+  // #196/#232 newest head row (thead or text row with its own avatar) after the user msg ∴ only the bottom-most one sticks + rings
+  return u < 0 ? null : r.slice(u + 1).findLast(x => !x.classList.contains('cont')) || null;
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
 const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
@@ -1650,15 +1658,7 @@ function viewAtt(i) {
   openViewer(map.map(k => a[k]), map.indexOf(i), map);
 }
 function openViewer(imgs, i, map) { VW = {imgs, i, map}; drawViewer(); }
-function drawViewer() {
-  ED = null;
-  const m = VW.imgs[VW.i], n = VW.imgs.length;
-  const arrow = (d, cls) => n > 1 ? `<button class="ib varrow ${cls}" title="${d < 0 ? 'Previous' : 'Next'} (${d < 0 ? '←' : '→'})" onclick="stepViewer(${d})">${icon('chev')}</button>` : '';
-  dlg(`<div class="vbar"><span class="grow vname">${esc(m.name)}${n > 1 ? ` <span class="faint">${VW.i + 1} / ${n}</span>` : ''}</span>
-    <button class="btn sm" onclick="editImage()">${icon('new')}${VW.map ? 'Edit' : 'Edit and resend'}</button>
-    <button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
-    <div class="vstage">${arrow(-1, 'l')}<img src="${m.url}" alt="">${arrow(1, 'r')}</div>`, 'viewer');
-}
+function drawViewer() { ED = null; editImage(); } // #232 opens straight in edit mode (ponytail: arrows step = unsaved marks dropped)
 const stepViewer = d => { VW.i = (VW.i + d + VW.imgs.length) % VW.imgs.length; drawViewer(); };
 /* #217 vector editor: ops = shapes (pen pts | line | box+note), selectable/movable/resizable/erasable; flattened to one PNG on save
    (PNG ∵ tokens ∝ pixels, not format; JPG blurs text). Attachment keeps a.ed = {orig, ops, nmax} → re-edit stays vector + box numbers
@@ -1666,14 +1666,15 @@ const stepViewer = d => { VW.i = (VW.i + d + VW.imgs.length) % VW.imgs.length; d
 let ED = null, edColor = (() => { try { return localStorage.penColor || '#ff4d4f'; } catch { return '#ff4d4f'; } })();
 const ETOOLS = [['sel', 'Select', 'Select: drag to move, corner square resizes a box, Delete removes'], ['pen', 'Pen', 'Draw freehand'], ['line', 'Line', 'Straight line'], ['box', 'Box + note', 'Drag a box, then type a note for it'], ['erase', 'Eraser', 'Click a shape to remove it']];
 function editImage() {
-  const m = VW.imgs[VW.i];
-  dlg(`<div class="vbar"><span class="grow vname">${esc(m.name)}</span>
+  const m = VW.imgs[VW.i], n = VW.imgs.length;
+  const arrow = (d, cls) => n > 1 ? `<button class="ib varrow ${cls}" title="${d < 0 ? 'Previous' : 'Next'} (${d < 0 ? '←' : '→'})" onclick="stepViewer(${d})">${icon('chev')}</button>` : '';
+  dlg(`<div class="vbar"><span class="grow vname">${esc(m.name)}${n > 1 ? ` <span class="faint">${VW.i + 1} / ${n}</span>` : ''}</span>
     <span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" title="${t}">${l}</button>`).join('')}</span>
     <input type="color" id="edColor" value="${edColor}" title="Colour (applies at once, also to the selected shape)">
     <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>
-    <button class="btn ghost sm" onclick="drawViewer()">Cancel</button>
-    <button class="btn primary sm" onclick="edDone()">${VW.map ? 'Save' : 'Add to message'}</button></div>
-    <div class="vstage"><div id="edWrap"><canvas id="edC"></canvas></div></div>`, 'viewer');
+    <button class="btn primary sm" id="edSave" onclick="edDone()"${VW.map ? ' disabled title="Nothing changed yet"' : ''}>${VW.map ? 'Save' : 'Add to message'}</button>
+    <button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
+    <div class="vstage">${arrow(-1, 'l')}<div id="edWrap"><canvas id="edC"></canvas></div>${arrow(1, 'r')}</div>`, 'viewer');
   $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; ED.sel = null; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); edDraw(); });
   $('edColor').oninput = e => { edColor = e.target.value; try { localStorage.penColor = edColor; } catch {} if (ED?.sel) { edSnap(); ED.sel.color = edColor; edDraw(); edNotes(); } };
   const img = new Image();
@@ -1698,7 +1699,8 @@ function editImage() {
   };
   img.src = m.ed?.orig || m.url;
 }
-const edSnap = () => { ED.undo.push(JSON.stringify([ED.ops, ED.nmax])); ED.undo.splice(0, ED.undo.length - 50); };
+const edDirty = () => { const b = $('edSave'); if (b) { b.disabled = false; b.removeAttribute('title'); } }; // #232 Save greyed till a change
+const edSnap = () => { edDirty(); ED.undo.push(JSON.stringify([ED.ops, ED.nmax])); ED.undo.splice(0, ED.undo.length - 50); };
 const edMove = (o, dx, dy) => { if (o.t === 'pen') o.pts = o.pts.map(([x, y]) => [x + dx, y + dy]); else if (o.t === 'line') { o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; } else { o.x += dx; o.y += dy; } };
 const segD = (x, y, a, b, c, d) => { const l = (c - a) ** 2 + (d - b) ** 2, t = l ? Math.max(0, Math.min(1, ((x - a) * (c - a) + (y - b) * (d - b)) / l)) : 0; return Math.hypot(x - a - t * (c - a), y - b - t * (d - b)); };
 function edHit(x, y) { const r = ED.w * 4; // topmost shape within r of its stroke (box: inside too)
@@ -1726,12 +1728,12 @@ function edNotes(focus) {
     const d = Object.assign(document.createElement('div'), {className: 'ednote' + (o.col ? ' col' : '')});
     d.style.left = o.x * s + 'px'; d.style.top = (o.y + o.h) * s + 6 + 'px'; d.style.borderColor = o.color;
     if (o.col) { d.innerHTML = icon('doc'); d.title = o.n + '. ' + (o.note || 'Empty note'); d.onclick = () => { o.col = false; edNotes(o); }; return W.append(d); }
-    d.innerHTML = `<textarea rows="1" placeholder="${o.n}. Note (Ctrl+Enter folds)" title="Enter = new line · ✓ = done · Ctrl+Enter folds it to an icon"></textarea><button class="ib" title="Done">${icon('check')}</button>`;
-    const t = d.querySelector('textarea'); t.value = o.note; t.rows = Math.max(1, o.note.split('\n').length);
-    t.oninput = () => { o.note = t.value; t.rows = Math.max(1, t.value.split('\n').length); };
+    d.innerHTML = `<textarea rows="1" placeholder="${o.n}. Note (Ctrl+Enter folds)" title="Enter = new line · ✓ or Ctrl+Enter = done (folds it to an icon)"></textarea><button class="ib" title="Done">${icon('check')}</button>`;
+    const t = d.querySelector('textarea'), fit = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }; // #232 grows on soft wraps too
+    t.value = o.note; t.oninput = () => { o.note = t.value; fit(); edDirty(); };
     t.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); o.col = true; edNotes(); } };
-    d.querySelector('button').onclick = () => t.blur();
-    W.append(d); if (o === focus) setTimeout(() => t.focus());
+    d.querySelector('button').onclick = () => { o.col = true; edNotes(); }; // ✓ = done → folds like Ctrl+Enter (#232: blur alone looked dead)
+    W.append(d); fit(); if (o === focus) setTimeout(() => t.focus());
   });
 }
 function edUndo() { const u = ED?.undo.pop(); if (u) { [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = null; edDraw(); edNotes(); } }
@@ -1748,7 +1750,7 @@ document.addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
   if (ED && (e.ctrlKey || e.metaKey) && e.key === 'z' && !typing) { e.preventDefault(); edUndo(); }
   if (ED?.sel && !typing && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); edSnap(); ED.ops.splice(ED.ops.indexOf(ED.sel), 1); ED.sel = null; edDraw(); edNotes(); }
-  if (!ED && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
+  if (!typing && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
 });
 $('dlg').addEventListener('close', () => { VW = ED = null; });
 function addImage(file) {
@@ -2388,6 +2390,7 @@ const bfiles = (p, files) => { const done = bdone(builds[cur]), loc = (p.targets
   const exp = loc.flatMap(x => { const f = files.filter(f => TGTEXT[x].test(f.name)).map(f => f.name); return f.length ? f.map(n => [n, done.includes(n)]) : [[tgtName(x), done.some(n => TGTEXT[x].test(n))]]; });
   return exp.map(([n, ok]) => `<span class="bfile${ok ? '' : ' shim'}">${esc(n)}${ok ? icon('check') : ''}</span>`).join(''); };
 const relFilesFor = (pid, v) => v ? relPick(GHI[pid]?.g?.builds || [], v).filter(b => fver(b.name) === v) : [];
+const stHead = (t, a = '') => `<div class="label row" style="gap:4px;align-items:center;margin-bottom:6px">${t}<span class="grow"></span>${a}</div>`; // #232 Build tab step title row
 async function relWizard(p, force, cached) { // cached → draw RELC as is (caller ensures it exists)
   const pid = cur, k = p.stage ? SK.indexOf(p.stage) : -1, to = RELTO[pid] ?? Math.max(k, 0);
   if (!cached && (force || !RELC[pid] || Date.now() - RELC[pid].t > 60e3)) {
@@ -2401,9 +2404,9 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   }
   const c = RELC[pid].c, re = `<button class="ib" title="Check again" onclick="relRefresh()">${icon('loop')}</button>`;
   const ask = `<button class="btn${k < 0 ? ' primary' : ''}" onclick="relAsk('summary')">${icon('sparkle')}What's missing for ${relNext(p)}?</button>`;
-  if (c.err) return sec('Release', `<p class="err">${esc(c.err)}</p>`, re);
-  if (k < 0 && RELTO[pid] == null) return sec('Release', `<p class="dim" style="margin:0 0 8px">Walk this project to a release: alpha → beta → release candidate → published. Each stage has its own checklist, stricter going up.</p>
-    <div class="btnrow col">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`, re);
+  if (c.err) return stHead('Release', re) + (`<p class="err">${esc(c.err)}</p>`);
+  if (k < 0 && RELTO[pid] == null) return stHead('Release', re) + (`<p class="dim" style="margin:0 0 8px">Walk this project to a release: alpha → beta → release candidate → published. Each stage has its own checklist, stricter going up.</p>
+    <div class="btnrow col">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`);
   const tv = (c.tag || '').replace(/^v/, ''), cv = (c.version || '').replace(/^v/, '');
   if (tv && SEMV.test(cv) && vcmp(cv, tv) <= 0 && !c.bumping) { // #121 auto-bump past the latest tag (patch); once per check
     c.bumping = 1; const nv = vnext(cv, tv);
@@ -2418,9 +2421,10 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const up = to > k, gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, ''); // up: moving a stage (or starting)
   const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : '';
   // Release = publish v<version> (that version's build files) on GitHub + set the stage; grayed out till every check is green
-  const act = RELBUSY[pid] ? `<button class="btn primary" disabled><i class="spin"></i>Publishing…</button>` : `<button class="btn primary" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this)">${icon('rocket')}Release v${esc(v)} as ${STAGES[SK[to]]}</button>`; /* #122 RELBUSY survives redraws */
-  return sec('Release', `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}${gi?.release?.tagName ? ` · latest <a data-url="${esc(gi.release.url)}" style="cursor:pointer;color:var(--accent)">${esc(gi.release.tagName)}</a>` : ''}</p>${seg}
-    <div>${items.map(row).join('')}</div><div class="btnrow col">${act}${ask}</div>`, (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re);
+  const act = RELBUSY[pid] ? `<button class="btn sm primary block" disabled><i class="spin"></i>Publishing…</button>` : `<button class="btn sm primary block" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this)">${icon('rocket')}Release v${esc(v)} as ${STAGES[SK[to]]}</button>`; /* #122 RELBUSY survives redraws */
+  return stHead('Release', (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re) + `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}${gi?.release?.tagName ? ` · latest <a data-url="${esc(gi.release.url)}" style="cursor:pointer;color:var(--accent)">${esc(gi.release.tagName)}</a>` : ''}</p>${seg}
+    <div>${items.map(row).join('')}</div><div class="btnrow col">${ask}</div>
+    <div class="nextstep"><p>${why ? esc(why) : 'Ready to build!'}</p>${act}</div>`; // #232 Release button in the next-step box
 }
 /* #123 recheck CI while a run is in flight (one timer per project; only while Build & Release shows it) */
 const CIPOLL = {};
@@ -2510,12 +2514,11 @@ const svcJump = s => (svcOf(P()).includes(s) ? Promise.resolve() : svcAdd(s)).th
   jumpTo(() => { const el = $('rbody').querySelectorAll(':scope > section.sec')[svcOf(P()).indexOf(s)]; return el?.querySelector('.keys') && el; }); });
 const tgtReady = (p, id) => !tgtWhy(p, id);
 const tgtHtml = p => { const t = p.targets || [];
-  return fold('p-targets', 'Target platforms', (t.length ? '' : '<p class="dim" style="margin:0 0 8px;font-size:13px">Not picked yet: tap what this project ships to.</p>')
+  return stHead('Target platforms', t.length ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${t.filter(id => tgtReady(p, id)).length}/${t.length}</span>` : '') + ((t.length ? '' : '<p class="dim" style="margin:0 0 8px;font-size:13px">Not picked yet: tap what this project ships to.</p>')
     + TGT.map(([g, xs]) => `<div class="row" style="gap:8px;margin-bottom:6px"><small class="dim" style="width:56px">${g}</small><span class="seg">${xs.map(([id, ic, n, d]) => { const w = tgtWhy(p, id), on = t.includes(id);
       return `<button class="${on ? 'on' : ''}" ${w ? 'style="opacity:.4"' : ''} data-tip="${esc(w ? w[0] + (on ? ' · click to unpick' : ' · click to fix') : d)}" onclick="${w && !on ? esc(w[1]) : `tgtFlip('${id}')`}">${icon(ic)}${n}</button>`; }).join('')}</span></div>`).join('')
     + (t.some(id => !tgtReady(p, id)) ? `<p style="margin:4px 0 6px;font-size:13px">${icon('info')} Not ready, Release is blocked till fixed or unpicked: ${t.filter(id => !tgtReady(p, id)).map(tgtName).join(', ')} (hover for why)</p>` : '')
-    + '<small class="dim">* optional for Alpha and Beta; Release candidate and up need it (Services &amp; Secrets)</small>', 0,
-    t.length ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${t.filter(id => tgtReady(p, id)).length}/${t.length}</span>` : '');
+    + '<small class="dim">* optional for Alpha and Beta; Release candidate and up need it (Services &amp; Secrets)</small>');
 };
 /* #128 Actions minutes this month (owner's billing report, 10-min cache). No `user` scope → one-click re-login adding it.
    Limit reached = last CI run's annotation (#123) says billing/spending limit → red + budgets link. */
@@ -2547,7 +2550,7 @@ async function tgtFlip(id) {
 }
 // Build tab body. live=false → cache only (no git/gh calls), live=true → refetch what's stale (force → all)
 async function buildHtml(p, has, live, force) {
-  const pid0 = cur, wait = t => sec(t, skel(70, 45, 'b100'));
+  const pid0 = cur;
   if (live && MAC[pid0] === undefined) MAC[pid0] = await call('ships_mac', {pid: pid0}).catch(() => false);
   if (live) await depsGet(); // tgtWhy: local tools per target (60s cache)
   if (live && S.ci_builds) await actLoad(pid0, force === true); // #128
@@ -2556,16 +2559,18 @@ async function buildHtml(p, has, live, force) {
   const mac = macOn(p, pid0);
   let c = GHI[pid0];
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) { ghiSet(pid0, g); c = GHI[pid0]; } }
-  // #34: "Manual commands" fold (closed by default); no Deploy button ∵ Release runs the deploy command after publishing
-  return tgtHtml(p) + actHtml() + fold('p-cmds', 'Manual commands', has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+  // #232 stepper ① targets ② manual build ③ release (+ next-step box w/ Release); #34: no Deploy button ∵ Release runs the deploy command after publishing
+  return `<ol class="stepper ghsteps"><li><span class="sn">1</span>${tgtHtml(p)}</li>
+    <li><span class="sn">2</span>${stHead('Manual build', `<button class="ib" title="Edit commands (tasks build by themselves: see Then on the GitHub tab)" onclick="buildSet()">${icon('gear')}</button>`)}${has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
-        : live || GUESS[pid0] ? await guessHtml() : skel('b45'), 0, `<button class="ib" title="Edit commands" onclick="buildSet()">${icon('gear')}</button>`)
+        : live || GUESS[pid0] ? await guessHtml() : skel('b45')}</li>
+    <li><span class="sn">3</span>${live || RELC[pid0] ? await relWizard(p, live && force === true, !live) : stHead('Release') + skel(70, 45, 'b100')}</li></ol>`
+      + actHtml()
       + (!svcOf(p).includes('macsign') && mac
         ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
           <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
-      + (live || RELC[pid0] ? await relWizard(p, live && force === true, !live) : wait('Release'))
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
 }
 /* #182 p.build.after = '<build|smart>[_run][_deploy]', '' = nothing; 'smart_build' = smart, nothing after; legacy 'smart' = smart_run (Rust same) */
