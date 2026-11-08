@@ -294,6 +294,9 @@ pre.diff .ctx { color:var(--faint); }
 :is(#skelav, .tav).on::after { content:attr(data-t); position:absolute; right:-10px; bottom:-7px; font:600 9.5px system-ui; font-variant-numeric:tabular-nums; color:#fff; background:var(--accent); padding:1px 4px; border-radius:7px; border:1.5px solid var(--bg); }
 #handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:9px 16px; border-radius:99px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
+/* #244 log note as a pill (Building…): same look as #workpill; shimmer stops once any note follows (Built!/failed) */
+.npill { display:inline-flex; gap:6px; align-items:center; font-size:12.5px; padding:5px 14px; border-radius:99px; border:1px solid var(--line); background:var(--side); } .npill .i { color:var(--accent); }
+.npill.on { background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; } .msg.note:has(~ .msg.note) .npill.on { animation:none; background:var(--side); }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
 /* #105 skeleton bar: text-line height (13.5px font) ∴ swap-in ≈ no jump */
 .sk { display:block; height:12px; margin:5px 0; border-radius:6px; background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
@@ -1444,6 +1447,7 @@ function entry(e) {
     : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
   else if (e.kind === 'user' && view === 'chat') { d.innerHTML = refPills(bare(e.text), fnames(e.text)); for (const [, n] of e.text.matchAll(new RegExp(FILED_RE, 'g'))) d.insertAdjacentHTML('beforeend', `<span class="filedtag" data-tip="Filed as task #${n}">#${n}</span>`); }
+  else if (e.pill) d.innerHTML = `<span class="npill${builds[cur]?.busy && e === logs[cur]?.findLast(x => x.pill) ? ' on' : ''}">${icon(e.pill)}${esc(e.text)}</span>`; // #244 Thinking-pill look; shimmer while its build runs
   else d.textContent = e.text;
   // #169 ticks after the chain: as its own if, its `else` overwrote md() replies with plain text
   if (e.kind === 'user' && e.st && view === 'chat') { d.insertAdjacentHTML('beforeend', tickHtml(e)); USEREL.set(e, d); }
@@ -2547,7 +2551,7 @@ const buildNow = () => { const b = builds[cur] ||= {out: ''}; b.from = b.out.len
 const BUILD_RE = /^\s*(please\s+|can you\s+|now\s+)*((do|make) (me )?a\s+)?(new\s+)?(local\s+)?(re)?build(\s+(it|clauracle|a new (local )?copy))?,?\s+(and|\+|&|then)\s+(run|restart|launch|start)(\s+(it|into it|the new (one|build|copy)|a new (local )?copy( of (it|yourself|clauracle))?))?[.!]*\s*$/i;
 async function buildLocal(pid, all) {
   const b = builds[pid] ||= {out: ''}; b.from = b.out.length; b.busy = true; b.manual = true; if (pid === cur) drawRight(); tabDots();
-  addEntry(pid, {kind: 'note', text: all ? 'Building every target…' : 'Building a local copy…', ts: new Date().toISOString()});
+  addEntry(pid, {kind: 'note', text: all ? 'Building every target…' : 'Building a local copy…', pill: 'hammer', ts: new Date().toISOString()});
   const ok = await call('run_step', {pid, step: all ? 'build' : 'local'}).catch(() => false);
   if (!ok) return addEntry(pid, {kind: 'note', text: 'Build failed', act: 'out', ts: new Date().toISOString()});
   if (all) return addEntry(pid, {kind: 'note', text: 'Built every target', ts: new Date().toISOString()});
