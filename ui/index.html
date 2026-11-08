@@ -366,9 +366,9 @@ pre.diff .ctx { color:var(--faint); }
 /* #200 AI card Usage: full-width bars under their label; context bar carries the hand-over slider (range over it, thumb only) */
 .acard .ubar { position:relative; display:flex; height:6px; border-radius:3px; background:var(--line2); margin-top:4px; } .acard .ubar i { display:block; height:100%; background:var(--accent); border-radius:3px; }
 .acard .ubar i:not(:last-child) { border-radius:3px 0 0 3px; } .acard .ubar i + i { border-radius:0 3px 3px 0; }
-.acard .ubar input { position:absolute; inset:-6px 0; width:100%; height:18px; margin:0; appearance:none; -webkit-appearance:none; background:transparent; cursor:ew-resize; }
-.acard .ubar input::-webkit-slider-runnable-track { background:transparent; height:18px; } .acard .ubar input::-webkit-slider-thumb { -webkit-appearance:none; width:6px; height:18px; border-radius:3px; background:var(--text); border:2px solid var(--bg, #fff); box-sizing:border-box; }
-.acard .tpill { display:inline-flex; align-items:center; gap:4px; padding:1px 7px; border-radius:9px; font-size:11px; color:#fff; } .acard .tpill .i { width:12px; height:12px; }
+.acard .ubar input { position:absolute; inset:-6px 0; width:100%; height:18px; margin:0; padding:0; border:0; border-radius:0; outline:none; appearance:none; -webkit-appearance:none; background:transparent; cursor:ew-resize; } /* #201 no global input border */
+.acard .ubar input::-webkit-slider-runnable-track { background:transparent; height:18px; } .acard .ubar input::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; margin-top:2px; border-radius:50%; background:var(--card); border:3px solid var(--accent); box-sizing:border-box; box-shadow:0 1px 4px rgba(0,0,0,.35); transition:transform .12s; } .acard .ubar input:hover::-webkit-slider-thumb, .acard .ubar input:active::-webkit-slider-thumb { transform:scale(1.2); } /* #201 app knob, not native bar */
+.acard .tic { display:inline-grid; place-items:center; flex:none; width:20px; height:20px; border-radius:50%; color:#fff; } .acard .tic .i, .acard .tic svg { width:12px; height:12px; } /* #201 colour only on the icon circle */
 .gdot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse .8s ease-in-out infinite alternate; flex:none; } /* #179 */
 #status button:hover { color:var(--text); background:var(--hover); } #status b { color:var(--dim); font-weight:500; }
 #status > span, #status button > span { display:inline-flex; gap:4px; align-items:center; } #status .i { width:14px; height:14px; }
@@ -958,8 +958,8 @@ const limTip = v => +v ? `Hand over at ${v}%: when context reaches this, Claurac
 function statsHtml(p) {
   const u = S.usage[p.account] || {}, a = S.accounts.find(x => x.id === p.account), c = ctx[cur], n = tk(cur).now;
   // #200 one Usage section: label row, full-width bar under it; 5h + weekly share a line (reset → tooltip)
-  const half = (k, l, ic) => `<div class="grow" style="font-size:12px" title="${l} usage: ${u[k] ?? '?'}%${resetIn(p.account, k) ? '\n' + resetIn(p.account, k) : ''}"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span>${u[k] ?? '?'}%</div><div class="ubar"><i style="width:${u[k] || 0}%"></i></div></div>`;
-  return `<h5>AI account · ${esc(p.name)}</h5><button class="pick" id="scAcct" title="AI account, model and effort">${a ? avAI(a) : icon('user')}<span class="grow">${esc(nick(p.account))}<small class="dim" style="display:block">${esc(MODELS[p.model] || p.model)}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}</small></span>${icon('down')}</button>
+  const half = (k, l, ic) => `<div class="grow" style="font-size:12px" data-tip=""${l} usage: ${u[k] ?? '?'}%${resetIn(p.account, k) ? '\n' + resetIn(p.account, k) : ''}"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span>${u[k] ?? '?'}%</div><div class="ubar"><i style="width:${u[k] || 0}%"></i></div></div>`;
+  return `<h5>AI Account</h5><button class="pick" id="scAcct" title="AI account, model and effort"><span class="grow">${esc(nick(p.account))}<small class="dim" style="display:block">${esc(MODELS[p.model] || p.model)}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}</small></span>${icon('down')}</button>
     <h5>Usage</h5><div style="font-size:12px"><div class="row" style="gap:6px">${icon('doc')}<span class="grow">Context <span id="scLimV" class="faint"></span></span>${c ?? '?'}%${n ? ` (${kt(n)})` : ''}</div>
       <div class="ubar"><i style="width:${c || 0}%"></i><input id="scLim" type="range" min="0" max="95" value="${p.context_limit}" title="${limTip(p.context_limit)}"></div></div>
     ${tk(cur).saved ? `<div class="row faint" style="font-size:11px;gap:6px" title="Clear-continue: each turn after a clear would otherwise re-read the cleared context. Counted once per turn (tool calls re-read it too), so the real saving is higher.">${icon('loop')}<span class="grow">Saved by Clauracle (est.)</span>${kt(tk(cur).saved)} tokens</div>` : ''}
@@ -975,7 +975,7 @@ function drawGbar() {
   const el = $('gbar'); if (!el) return;
   const p = cur && P(), acct = p ? p.account : S.accounts[0]?.id, u = S.usage[acct] || {};
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%${resetIn(acct, k) ? ', ' + resetIn(acct, k) : ''}">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
-  const wk = gbusy(), bd = gbuilds(), what = x => doing[x.id]?.text || 'Thinking', wait = gwait(), last = glast();
+  const wk = gbusy(), bd = gbuilds(), what = () => 'Working…' /* #203 short state only; command → card tooltip */, wait = gwait(), last = glast();
   // #195 ONE AI button (left): activity + context + usage; its card = activity, account/model, context, usage, timers
   const lead = wk.length ? `<i class="gdot"></i><span class="gt">${wk.length > 1 ? `AI working in ${wk.length} projects` : `<b>${esc(wk[0].name)}</b> · ${esc(what(wk[0]))}`}</span>${(n => n ? `<span>${icon('bot')}${n}</span>` : '')(wk.reduce((n, x) => n + agentsOf(x.id).filter(a => a.running).length, 0))}`
     : wait.length ? `${icon('sparkle')}<span class="gt">${wait.length > 1 ? `${wait.length} projects waiting on you` : `<b>${esc(wait[0].name)}</b> · ${esc(wait[0].why)}`}</span>`
@@ -1000,15 +1000,16 @@ function gCard(btn, kind) {
   const close = "this.closest('[popover]').hidePopover()";
   const row = (pid, lead, name, tail = '') => `<div class="row" style="font-size:12px;gap:6px;cursor:pointer" onclick="${go(pid)}">${lead}<b class="grow">${esc(name)}</b>${tail}</div>`;
   if (kind === 'ai') {
-    const wk = gbusy(), wt = gwait();
-    // #200 ONE activity list: current project first, then working, then waiting; status on the right; no Continue (the dock has it)
-    const ls = [...new Set([...(cur ? [P()] : []), ...wk, ...wt.map(x => S.projects.find(p => p.id === x.id))])].sort((a, b) => (b.id === cur) - (a.id === cur));
-    const why = Object.fromEntries(wt.map(x => [x.id, x.why]));
-    card.innerHTML = `<h5>Activity</h5>${ls.map(x => { const on = busy[x.id], ag = on ? agentsOf(x.id).filter(a => a.running) : [], w = WORK[x.id];
-        return row(x.id, on ? '<i class="gdot"></i>' : why[x.id] ? icon('sparkle') : '<i class="gdot" style="background:var(--line2);animation:none"></i>', x.name, `<span class="dim" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w && on ? '#' + w + ' · ' : ''}${esc(on ? doing[x.id]?.text || 'Thinking' : why[x.id] || 'Idle')}</span>`
+    // #201 short state (Working…/Ready/Idle), full command in the tooltip; acts() re-run each second while open (only on change)
+    const acts = () => { const wk = gbusy(), wt = gwait(), why = Object.fromEntries(wt.map(x => [x.id, x.why]));
+      // #200 ONE activity list: current project first, then working, then waiting; status on the right; no Continue (the dock has it)
+      const ls = [...new Set([...(cur ? [P()] : []), ...wk, ...wt.map(x => S.projects.find(p => p.id === x.id))])].sort((a, b) => (b.id === cur) - (a.id === cur));
+      return ls.map(x => { const on = busy[x.id], ag = on ? agentsOf(x.id).filter(a => a.running) : [], w = WORK[x.id];
+        return row(x.id, on ? '<i class="gdot"></i>' : why[x.id] ? icon('sparkle') : '<i class="gdot" style="background:var(--line2);animation:none"></i>', x.name, `<span class="dim" style="white-space:nowrap"${on ? ` data-tip="${esc(doing[x.id]?.text || 'Thinking')}"` : ''}>${w && on ? '#' + w + ' · ' : ''}${on ? 'Working…' : why[x.id] ? (why[x.id] === 'ready to continue' ? 'Ready' : esc(why[x.id])) : 'Idle'}</span>`
           + (on ? `<button class="ib" title="Stop" onclick="event.stopPropagation(); call('interrupt', {pid: '${x.id}'}); ${close}">${icon('stop')}</button>` : ''))
-          + ag.map(a => `<div class="dim" style="font-size:12px;margin:0 0 2px 13px">${icon('bot')} ${esc(a.type)}: ${esc(a.desc)}${a.last ? ' · ' + esc(a.last) : ''}</div>`).join(''); }).join('') || '<p class="dim">Nothing running</p>'}`
-      + (cur ? statsHtml(P()) : '');
+          + ag.map(a => `<div class="dim" style="font-size:12px;margin:0 0 2px 13px">${icon('bot')} ${esc(a.type)}: ${esc(a.desc)}${a.last ? ' · ' + esc(a.last) : ''}</div>`).join(''); }).join('') || '<p class="dim">Nothing running</p>'; };
+    card.innerHTML = `<h5>Activity</h5><div id="gacts">${acts()}</div>` + (cur ? statsHtml(P()) : '');
+    const ga = card.querySelector('#gacts'), iv = setInterval(() => { if (!card.isConnected) return clearInterval(iv); const h = acts(); if (ga._h !== h) ga.innerHTML = ga._h = h; }, 1000); ga._h = acts();
   } else {
     const bd = gbuilds(), done = S.projects.map(p => ({p, b: builds[p.id]})).filter(x => x.b?.at && !x.b.busy).sort((a, b) => b.b.at - a.b.at).slice(0, 4);
     card.innerHTML = `<h5>Builds</h5>${bd.map(x => row(x.id, '<span class="spin"></span>', x.name)
@@ -1108,11 +1109,14 @@ const dur = ms => { const m = Math.floor(ms / 60e3); return m < 60 ? `${m}m` : `
 function drawTimes() {
   const x = cur && TIMES[cur], el = $('stime'); if (!el || !x) return;
   // #200 one stacked bar: whole bar = total; You / AI segments by share (they overlap in time ∴ share of you+ai, not of total)
-  const sum = x.you + x.ai || 1, C = {you: 'var(--ok)', ai: 'var(--accent)'};
-  const pill = (k, ic, l, t) => `<span class="tpill" style="background:${C[k]}" title="${t}">${icon(ic)}${l} ${dur(x[k])}</span>`;
-  const h = `<div class="row" style="font-size:12px;gap:6px;margin-top:2px" title="This session, since ${esc(tm(new Date(x.start).toISOString()))}">${pill('you', 'user', 'You', 'You, active (2 min without input counts as idle)')}${pill('ai', 'sparkle', 'AI', 'AI working')}<span class="grow"></span><span title="Total: either going">${icon('clock')} ${dur(x.any)}</span></div>
-    <div class="ubar"><i style="width:${x.you / sum * 100}%;background:${C.you}"></i><i style="width:${x.ai / sum * 100}%;background:${C.ai}"></i></div>`;
-  if (el._h !== h) el.innerHTML = el._h = h;
+  const sum = x.you + x.ai || 1, C = {you: 'var(--ok)', ai: 'var(--accent)', any: 'var(--dim)'};
+  // #201 skeleton once per project/session, then only text + widths change ∵ innerHTML each tick killed the hover tooltip (flash)
+  if (el._k !== cur + x.start) { el._k = cur + x.start;
+    const it = (k, ic, l, t) => `<span class="row" style="gap:6px;white-space:nowrap" data-tip="${t}"><span class="tic" style="background:${C[k]}">${icon(ic)}</span>${l} <b data-k="${k}"></b></span>`;
+    el.innerHTML = `<div class="row" style="font-size:12px;gap:14px;margin-top:4px">${it('you', 'user', 'You', 'You, active (2 min without input counts as idle)')}${it('ai', 'sparkle', 'AI', 'AI working')}<span class="grow"></span>${it('any', 'clock', 'Total', 'Total: either going, since ' + esc(tm(new Date(x.start).toISOString())))}</div>
+      <div class="ubar"><i style="background:${C.you}"></i><i style="background:${C.ai}"></i></div>`; }
+  el.querySelectorAll('[data-k]').forEach(b => { const v = dur(x[b.dataset.k]); if (b.textContent !== v) b.textContent = v; });
+  const [i1, i2] = el.querySelectorAll('.ubar i'); i1.style.width = x.you / sum * 100 + '%'; i2.style.width = x.ai / sum * 100 + '%';
 }
 setInterval(() => {
   const now = Date.now(), dt = now - lastTick; lastTick = now;
