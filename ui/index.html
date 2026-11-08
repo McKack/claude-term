@@ -331,7 +331,7 @@ pre.diff .ctx { color:var(--faint); }
 .stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
 .stepper b { color:var(--text); font-weight:600; } .stepper .btnrow { margin-top:8px; align-items:center; } .stepper .keys { margin-top:8px; }
 /* stepper buttons never squeeze: nowrap + wrap row; a button alone on its line grows full width; non-buttons go below */
-.stepper .btnrow { display:flex; flex-wrap:wrap; } .stepper .seg { flex-wrap:wrap; min-width:0; } /* #232 target buttons wrap, never clipped */ .stepper .btnrow .btn { flex:1 1 auto; white-space:nowrap; } .stepper .btnrow > :not(.btn) { flex-basis:100%; }
+.stepper .btnrow { display:flex; flex-wrap:wrap; } .stepper .seg { flex-wrap:wrap; min-width:0; } /* #232 target buttons wrap, never clipped */ .tgtrow .seg { flex:1; } .tgtrow .seg button { flex:1 1 auto; justify-content:center; white-space:nowrap; } /* #235 wrapped button fills the row, no lone stub */ .stepper .btnrow .btn { flex:1 1 auto; white-space:nowrap; } .stepper .btnrow > :not(.btn) { flex-basis:100%; }
 .keys.st > div { flex-direction:column; gap:2px; } .keys.st small { overflow-wrap:anywhere; }
 .warn a { color:inherit; text-decoration:underline; cursor:pointer; }
 #ready, #suggest { display:flex; gap:12px; align-items:center; padding:9px 10px 9px 16px; border-radius:12px; background:var(--soft); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -2380,7 +2380,7 @@ function relItems(c, p) {
    ponytail: file type = platform, no arch check */
 const HOST = /Windows/.test(navigator.userAgent) ? 'windows' : /Mac/.test(navigator.userAgent) ? 'macos' : 'linux';
 const TGTEXT = {windows: /\.(exe|msi|msix)$/i, macos: /\.(dmg|pkg)$/i, linux: /\.(appimage|deb|rpm)$/i, ios: /\.ipa$/i, android: /\.(apk|aab)$/i};
-const tgtName = id => TGT.flatMap(g => g[1]).find(x => x[0] === id)?.[2] || id;
+const tgtName = id => TGT.flatMap(g => g[2]).find(x => x[0] === id)?.[2] || id;
 const tgtSplit = (p, c, files) => { const t = p.targets || [], here = tgtLocal; // #123: all picked ∵ unready must block Release, not drop out silently
   const ci = t.filter(x => !here(x));
   return {ci, miss: ci.filter(x => !(c.ci_os || []).includes(x)), lack: t.filter(here).filter(x => !files.some(f => TGTEXT[x].test(f.name)))}; };
@@ -2476,8 +2476,8 @@ const ciBusy = pid => { const r = RELC[pid]?.c?.ci; return !!r && r.status !== '
 const bBusy = pid => builds[pid]?.busy || ciBusy(pid);
 const buildingBtn = sm => `<button class="btn${sm ? ' sm' : ''}" disabled><i class="spin"></i>Building…</button>`;
 // Target platforms (#25): p.targets; [] = not picked → Mac follows ships_mac (MAC). *signing/notarizing optional
-const TGT = [['Desktop', [['windows', 'win', 'Windows', 'setup .exe (signed*)'], ['macos', 'apple', 'macOS', '.dmg with .app (notarized*)'], ['linux', 'term', 'Linux', '.AppImage']]],
-  ['Mobile', [['ios', 'phone', 'iOS', 'App Store / TestFlight'], ['android', 'android', 'Android', '.apk / .aab']]]];
+const TGT = [['monitor', 'Desktop', [['windows', 'win', 'Windows', 'setup .exe (signed*)'], ['macos', 'apple', 'macOS', '.dmg with .app (notarized*)'], ['linux', 'term', 'Linux', '.AppImage']]],
+  ['phone', 'Mobile', [['ios', 'apple', 'iOS', 'App Store / TestFlight'], ['android', 'android', 'Android', '.apk / .aab']]]];
 const macOn = (p, pid) => p.targets?.length ? p.targets.includes('macos') : !!MAC[pid];
 /* #34 readiness: a target is ready when this computer has its tools (local builds; DEPSC) and, from RC up, its signing/store
    service is set up (TGTSVC). Not ready → faded; click = its fix (Dependencies / add the service), not a pick; picked but
@@ -2516,7 +2516,7 @@ const svcJump = s => (svcOf(P()).includes(s) ? Promise.resolve() : svcAdd(s)).th
 const tgtReady = (p, id) => !tgtWhy(p, id);
 const tgtHtml = p => { const t = p.targets || [];
   return stHead('Target platforms', t.length ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${t.filter(id => tgtReady(p, id)).length}/${t.length}</span>` : '') + ((t.length ? '' : '<p class="dim" style="margin:0 0 8px;font-size:13px">Not picked yet: tap what this project ships to.</p>')
-    + TGT.map(([g, xs]) => `<div class="row" style="gap:8px;margin-bottom:6px"><small class="dim" style="width:56px">${g}</small><span class="seg">${xs.map(([id, ic, n, d]) => { const w = tgtWhy(p, id), on = t.includes(id);
+    + TGT.map(([gi, g, xs]) => `<div class="row tgtrow" style="gap:8px;margin-bottom:6px"><span class="dim" data-tip="${g}">${icon(gi)}</span><span class="seg">${xs.map(([id, ic, n, d]) => { const w = tgtWhy(p, id), on = t.includes(id);
       return `<button class="${on ? 'on' : ''}" ${w ? 'style="opacity:.4"' : ''} data-tip="${esc(w ? w[0] + (on ? ' · click to unpick' : ' · click to fix') : d)}" onclick="${w && !on ? esc(w[1]) : `tgtFlip('${id}')`}">${icon(ic)}${n}</button>`; }).join('')}</span></div>`).join('')
     + (t.some(id => !tgtReady(p, id)) ? `<p style="margin:4px 0 6px;font-size:13px">${icon('info')} Not ready, Release is blocked till fixed or unpicked: ${t.filter(id => !tgtReady(p, id)).map(tgtName).join(', ')} (hover for why)</p>` : '')
     + '<small class="dim">* optional for Alpha and Beta; Release candidate and up need it (Services &amp; Secrets)</small>');
