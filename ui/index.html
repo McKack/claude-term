@@ -151,7 +151,9 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 #edWrap { position:relative; } #edC { cursor:crosshair; touch-action:none; }
 .varrow { position:absolute; top:50%; translate:0 -50%; width:40px; height:40px; border-radius:50%; background:var(--card); box-shadow:var(--shadow); z-index:1; }
 .varrow.l { left:14px; } .varrow.l svg { rotate:180deg; } .varrow.r { right:14px; }
-.ednote { position:absolute; width:220px; font-size:12.5px; padding:4px 8px; border:2px solid; border-radius:8px; background:var(--card); }
+.ednote { position:absolute; width:240px; display:flex; align-items:flex-end; gap:4px; padding:3px 4px 3px 8px; border:2px solid; border-radius:8px; background:var(--card); }
+.ednote textarea { flex:1; border:0; padding:2px 0; background:none; resize:none; font-size:12.5px; box-shadow:none; } .ednote .ib { width:22px; height:22px; }
+.ednote.col { width:auto; padding:3px; cursor:pointer; border-radius:50%; } .ednote.col .i { width:14px; height:14px; display:block; }
 .thumbs img { cursor:zoom-in; }
 /* shell commands in chat: a little dark terminal window, same in both themes */
 .termcard { background:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #161514); border:1px solid color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #2e2c2a); border-radius:10px; overflow:hidden; box-shadow:var(--shadow); margin:3px 0; max-width:100%; }
@@ -347,7 +349,10 @@ pre.diff .ctx { color:var(--faint); }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
 #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 60%, var(--line2)); }
 #composer.drop { border-color:var(--accent); border-style:dashed; }
-#prompt { width:100%; border:0; padding:4px 0; resize:none; min-height:26px; max-height:260px; background:none; box-shadow:none; }
+#prompt { width:100%; border:0; padding:4px 0; resize:none; min-height:26px; max-height:260px; background:none; box-shadow:none; position:relative; display:block; }
+#pwrap { position:relative; } #pback { position:absolute; inset:0; padding:4px 0; white-space:pre-wrap; overflow-wrap:break-word; color:transparent; pointer-events:none; overflow:hidden; }
+#pback mark { color:transparent; background:var(--soft); border-radius:6px; box-shadow:0 0 0 2px var(--soft); }
+.att.hl { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
 #slash { display:flex; flex-direction:column; max-height:280px; overflow:auto; margin:0 0 6px -6px; padding-bottom:6px; border-bottom:1px solid var(--line); }
 #slash[hidden] { display:none; }
 #slash button { display:flex; flex-wrap:wrap; gap:2px 8px; align-items:baseline; text-align:left; border:0; background:none; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:13px; }
@@ -358,10 +363,13 @@ pre.diff .ctx { color:var(--faint); }
 .aarr { position:absolute; top:2px; bottom:8px; z-index:1; width:24px; border:0; padding:0; cursor:pointer; color:var(--text); background:linear-gradient(to right, var(--card) 40%, transparent); display:grid; place-items:center; }
 .aarr.r { right:0; background:linear-gradient(to left, var(--card) 40%, transparent); } .aarr[hidden] { display:none; } .aarr svg { width:16px; height:16px; }
 .att.img { flex:0 1 auto; min-width:56px; height:56px; padding:0; overflow:hidden; } .att.img img { width:100%; height:100%; border-radius:0; display:block; }
-.att { flex:none; position:relative; display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--bg); font-size:12px; padding:4px 26px 4px 6px; max-width:220px; }
+.att { flex:none; position:relative; display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--bg); font-size:12px; padding:4px 52px 4px 6px; max-width:220px; }
 .att img { width:44px; height:44px; object-fit:cover; border-radius:7px; } .att span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.att button { position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; border:0; background:var(--hover); color:var(--dim); cursor:pointer; display:grid; place-items:center; padding:0; }
-.att button svg { width:11px; height:11px; } .att button.aref { top:auto; bottom:3px; }
+.att .abtns { position:absolute; top:0; right:0; display:flex; gap:3px; padding:3px 3px 6px 14px; border-radius:0 10px 0 12px; background:linear-gradient(to right, transparent, var(--side) 12px); opacity:0; transition:opacity .12s; }
+.att:hover .abtns, .att.hl .abtns, .att:not(.img) .abtns { opacity:1; }
+.att .abtns button { width:20px; height:20px; border-radius:50%; border:0; background:var(--hover); color:var(--dim); cursor:pointer; display:grid; place-items:center; padding:0; }
+.att .abtns button:hover { background:var(--soft); color:var(--accent); } .att .abtns button svg { width:11px; height:11px; }
+.att .anote { position:absolute; left:3px; bottom:3px; width:20px; height:20px; border-radius:50%; border:0; background:var(--accent); color:#fff; display:grid; place-items:center; padding:0; cursor:pointer; } .att .anote svg { width:11px; height:11px; }
 .tb { display:flex; align-items:center; gap:2px; margin-top:4px; }
 #send { width:32px; height:32px; border-radius:50%; border:0; background:var(--primary); color:var(--ink); display:grid; place-items:center; cursor:pointer; }
 #send:hover { background:var(--primary2); } #send:disabled { opacity:.4; cursor:default; }
@@ -625,7 +633,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <div id="composer">
       <div id="slash" hidden></div>
       <div id="attw"><button class="aarr" onclick="attScroll(-1)"><svg class="i" style="transform:scaleX(-1)"><use href="#i-chev"/></svg></button><div id="atts" onscroll="attArr()"></div><button class="aarr r" onclick="attScroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
-      <textarea id="prompt" rows="1" placeholder="Message Clauracle..."></textarea>
+      <div id="pwrap"><div id="pback" aria-hidden="true"></div><textarea id="prompt" rows="1" placeholder="Message Clauracle..."></textarea></div>
       <div class="tb">
         <button class="ib" title="Attach files" onclick="pickFiles()"><svg class="i"><use href="#i-clip"/></svg></button>
         <button class="ib" id="tPony" title="Ponytail: the simplest code that works" onclick="setP({ponytail:!P().ponytail})"><svg class="i"><use href="#i-feather"/></svg></button>
@@ -1577,16 +1585,28 @@ function addEntry(pid, e) {
 
 // ---- composer: text, pasted images (previews), attached files ----
 const hasInput = () => $('prompt').value.trim() || (atts[cur] || []).length;
-function attRef(i) { // inserts [name] at the caret; a space before/after only where the neighbour isn't one already
-  const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = `[${atts[cur][i].name}]`;
+const stem = n => n.replace(/\.\w+$/, '');
+function attRef(i) { // inserts [name w/o extension] at the caret; a space before/after only where the neighbour isn't one already
+  const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = `[${stem(atts[cur][i].name)}]`;
   const ins = (s && !/\s/.test(v[s - 1]) ? ' ' : '') + r + (e < v.length && /\s/.test(v[e]) ? '' : ' ');
   el.setRangeText(ins, s, e, 'end'); el.focus(); grow(); keepDraft();
 }
 function drawAtts() {
   $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon('file') + `<span>${esc(a.name)}</span>`}
-    <button onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button><button class="aref" title="Refer to this image in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button></div>`).join('');
-  attArr(); if (cur) { drawChrome(); keepDraft(); }
+    <span class="abtns"><button class="aref" title="Refer to it in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button><button title="Remove" onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button></span>
+    ${a.notes?.length ? `<button class="anote" title="${esc(a.notes.join('\n').slice(0, 160))}&#10;(click to edit the notes)" onclick="viewAtt(${i}); editImage()">${icon('doc')}</button>` : ''}</div>`).join('');
+  attArr(); pbDraw(); if (cur) { drawChrome(); keepDraft(); }
 }
+// #217 [ref] pills: #pback mirrors the textarea text; refs naming an attachment get a <mark> behind them (a textarea can't style
+// its own text). Click inside one → highlight + scroll its thumb, image → viewer. ponytail: no file-type icon inside the text (plain textarea)
+const attAt = name => (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name);
+function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return;
+  b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => attAt(n.replace(/&amp;/g, '&')) >= 0 ? `<mark>${m}</mark>` : m) + '\n'; b.scrollTop = p.scrollTop; }
+$('prompt').addEventListener('scroll', () => $('pback').scrollTop = $('prompt').scrollTop);
+$('prompt').addEventListener('click', () => { const p = $('prompt'), c = p.selectionStart, v = p.value, o = v.lastIndexOf('[', c), z = v.indexOf(']', o);
+  if (o < 0 || z < c || v.slice(o, z).includes('\n')) return; const i = attAt(v.slice(o + 1, z)); if (i < 0) return;
+  const t = $('atts').children[i]; document.querySelectorAll('.att.hl').forEach(x => x.classList.remove('hl')); t?.classList.add('hl'); t?.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'smooth'});
+  setTimeout(() => t?.classList.remove('hl'), 2500); if (atts[cur][i].url) viewAtt(i); });
 // #192 scroll arrows only toward hidden thumbs; ResizeObserver ∵ composer width changes w/o a redraw
 function attArr() { const el = $('atts'), [l, r] = $('attw').querySelectorAll('.aarr'); l.hidden = el.scrollLeft < 1; r.hidden = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1; }
 const attScroll = d => $('atts').scrollBy({left: d * $('atts').clientWidth * .8, behavior: 'smooth'});
@@ -1618,73 +1638,94 @@ function drawViewer() {
     <div class="vstage">${arrow(-1, 'l')}<img src="${m.url}" alt="">${arrow(1, 'r')}</div>`, 'viewer');
 }
 const stepViewer = d => { VW.i = (VW.i + d + VW.imgs.length) % VW.imgs.length; drawViewer(); };
+/* #217 vector editor: ops = shapes (pen pts | line | box+note), selectable/movable/resizable/erasable; flattened to one PNG on save
+   (PNG ∵ tokens ∝ pixels, not format; JPG blurs text). Attachment keeps a.ed = {orig, ops, nmax} → re-edit stays vector + box numbers
+   never repeat (nmax persists); a.notes = ["1. …"] → sent inside the message (sendNow), never typed into the composer. */
 let ED = null, edColor = (() => { try { return localStorage.penColor || '#ff4d4f'; } catch { return '#ff4d4f'; } })();
+const ETOOLS = [['sel', 'Select', 'Select: drag to move, corner square resizes a box, Delete removes'], ['pen', 'Pen', 'Draw freehand'], ['line', 'Line', 'Straight line'], ['box', 'Box + note', 'Drag a box, then type a note for it'], ['erase', 'Eraser', 'Click a shape to remove it']];
 function editImage() {
   const m = VW.imgs[VW.i];
   dlg(`<div class="vbar"><span class="grow vname">${esc(m.name)}</span>
-    <span class="seg" id="edTools"><button data-tool="pen" class="on" title="Draw freehand">Pen</button><button data-tool="box" title="Drag a box, then type a note for it">Box + note</button></span>
-    <input type="color" id="edColor" value="${edColor}" title="Colour" onchange="edColor=this.value; try{localStorage.penColor=edColor}catch{}">
+    <span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" title="${t}">${l}</button>`).join('')}</span>
+    <input type="color" id="edColor" value="${edColor}" title="Colour (applies at once, also to the selected shape)">
     <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>
     <button class="btn ghost sm" onclick="drawViewer()">Cancel</button>
     <button class="btn primary sm" onclick="edDone()">${VW.map ? 'Save' : 'Add to message'}</button></div>
     <div class="vstage"><div id="edWrap"><canvas id="edC"></canvas></div></div>`, 'viewer');
-  $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+  $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; ED.sel = null; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); edDraw(); });
+  $('edColor').oninput = e => { edColor = e.target.value; try { localStorage.penColor = edColor; } catch {} if (ED?.sel) { edSnap(); ED.sel.color = edColor; edDraw(); edNotes(); } };
   const img = new Image();
   img.onload = () => {
     const c = $('edC'); c.width = img.naturalWidth; c.height = img.naturalHeight;
-    ED = {img, ops: [], tool: 'pen', cur: null, w: Math.max(3, img.naturalWidth / 300)};
-    edDraw();
+    ED = {img, ops: structuredClone(m.ed?.ops || []), nmax: m.ed?.nmax || 0, tool: 'pen', cur: null, sel: null, drag: null, undo: [], w: Math.max(3, img.naturalWidth / 300)};
+    edDraw(); edNotes();
     const pt = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
-    c.onpointerdown = e => { c.setPointerCapture(e.pointerId); const [x, y] = pt(e);
-      ED.cur = ED.tool === 'pen' ? {t: 'pen', color: edColor, pts: [[x, y]]} : {t: 'box', color: edColor, x, y, w: 0, h: 0, note: ''}; ED.ops.push(ED.cur); };
-    c.onpointermove = e => { if (!ED.cur) return; const [x, y] = pt(e);
-      if (ED.cur.t === 'pen') ED.cur.pts.push([x, y]); else { ED.cur.w = x - ED.cur.x; ED.cur.h = y - ED.cur.y; } edDraw(); };
-    c.onpointerup = () => { const o = ED.cur; ED.cur = null; if (!o) return;
-      if (o.t === 'box') { // normalise; a click without a drag is no box
-        if (Math.abs(o.w) < 8 || Math.abs(o.h) < 8) ED.ops.pop();
-        else { if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } edDraw(); edNotes(ED.ops.indexOf(o)); return; } }
+    c.onpointerdown = e => { c.setPointerCapture(e.pointerId); const [x, y] = pt(e), t = ED.tool;
+      if (t === 'sel' || t === 'erase') { const o = edHit(x, y); if (t === 'erase') { if (o) { edSnap(); ED.ops.splice(ED.ops.indexOf(o), 1); edDraw(); edNotes(); } return; }
+        ED.sel = o; if (o) { edSnap(); ED.drag = {x, y, rs: o.t === 'box' && Math.hypot(x - o.x - o.w, y - o.y - o.h) < ED.w * 5}; } edDraw(); return; }
+      edSnap(); ED.cur = t === 'pen' ? {t, color: edColor, pts: [[x, y]]} : t === 'line' ? {t, color: edColor, x1: x, y1: y, x2: x, y2: y} : {t: 'box', color: edColor, x, y, w: 0, h: 0, note: ''}; ED.ops.push(ED.cur); };
+    c.onpointermove = e => { const [x, y] = pt(e);
+      if (ED.drag && ED.sel) { const o = ED.sel, dx = x - ED.drag.x, dy = y - ED.drag.y; ED.drag.x = x; ED.drag.y = y;
+        if (ED.drag.rs) { o.w = Math.max(8, o.w + dx); o.h = Math.max(8, o.h + dy); } else edMove(o, dx, dy); edDraw(); edNotes(); return; }
+      const o = ED.cur; if (!o) return;
+      if (o.t === 'pen') { const [px, py] = o.pts.at(-1); if (Math.hypot(x - px, y - py) > ED.w / 2) o.pts.push([x, y]); } else if (o.t === 'line') { o.x2 = x; o.y2 = y; } else { o.w = x - o.x; o.h = y - o.y; } edDraw(); };
+    c.onpointerup = () => { ED.drag = null; const o = ED.cur; ED.cur = null; if (!o) return;
+      if (o.t === 'box') { if (Math.abs(o.w) < 8 || Math.abs(o.h) < 8) { ED.ops.pop(); ED.undo.pop(); }
+        else { if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } o.n = ++ED.nmax; edDraw(); return edNotes(o); } }
       edDraw(); };
   };
-  img.src = m.url;
+  img.src = m.ed?.orig || m.url;
 }
-const edBoxes = () => ED.ops.filter(o => o.t === 'box');
-function edDraw() {
+const edSnap = () => { ED.undo.push(JSON.stringify([ED.ops, ED.nmax])); ED.undo.splice(0, ED.undo.length - 50); };
+const edMove = (o, dx, dy) => { if (o.t === 'pen') o.pts = o.pts.map(([x, y]) => [x + dx, y + dy]); else if (o.t === 'line') { o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; } else { o.x += dx; o.y += dy; } };
+const segD = (x, y, a, b, c, d) => { const l = (c - a) ** 2 + (d - b) ** 2, t = l ? Math.max(0, Math.min(1, ((x - a) * (c - a) + (y - b) * (d - b)) / l)) : 0; return Math.hypot(x - a - t * (c - a), y - b - t * (d - b)); };
+function edHit(x, y) { const r = ED.w * 4; // topmost shape within r of its stroke (box: inside too)
+  return [...ED.ops].reverse().find(o => o.t === 'box' ? x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r
+    : o.t === 'line' ? segD(x, y, o.x1, o.y1, o.x2, o.y2) < r : o.pts.some((p, k) => segD(x, y, ...p, ...(o.pts[k + 1] || p)) < r)) || null; }
+function edDraw(flat) {
   const c = $('edC'), g = c.getContext('2d');
   g.drawImage(ED.img, 0, 0); g.lineCap = g.lineJoin = 'round';
   for (const o of ED.ops) {
-    g.strokeStyle = g.fillStyle = o.color; g.lineWidth = ED.w;
-    if (o.t === 'pen') { g.beginPath(); o.pts.forEach(([x, y], k) => k ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); continue; }
-    g.strokeRect(o.x, o.y, o.w, o.h);
-    const n = edBoxes().indexOf(o) + 1, r = ED.w * 4; // numbered tag on the corner = the note's number in the prompt
+    g.strokeStyle = g.fillStyle = o.color; g.lineWidth = ED.w; g.setLineDash(!flat && o === ED.sel ? [ED.w * 3, ED.w * 2] : []); g.beginPath();
+    if (o.t === 'pen') { const p = o.pts; g.moveTo(...p[0]); for (let k = 1; k < p.length - 1; k++) g.quadraticCurveTo(...p[k], (p[k][0] + p[k + 1][0]) / 2, (p[k][1] + p[k + 1][1]) / 2); g.lineTo(...p.at(-1)); g.stroke(); continue; } // smoothed: curves through midpoints
+    if (o.t === 'line') { g.moveTo(o.x1, o.y1); g.lineTo(o.x2, o.y2); g.stroke(); continue; }
+    g.strokeRect(o.x, o.y, o.w, o.h); g.setLineDash([]);
+    const r = ED.w * 4; // numbered tag on the corner = the note's number in the message
     g.beginPath(); g.arc(o.x, o.y, r, 0, 7); g.fill();
-    g.fillStyle = '#fff'; g.font = `bold ${r * 1.2}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(n, o.x, o.y);
+    g.fillStyle = '#fff'; g.font = `bold ${r * 1.2}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(o.n, o.x, o.y);
+    if (!flat && o === ED.sel) { g.fillStyle = o.color; g.fillRect(o.x + o.w - r / 2, o.y + o.h - r / 2, r, r); } // resize handle
   }
 }
-// one note field under each box (screen coordinates over the scaled canvas)
+// note per box under it: multiline (Enter = new line), ✓ confirms, Ctrl+Enter folds it to a notepad icon (click = open)
 function edNotes(focus) {
-  const c = $('edC'), s = c.clientWidth / c.width;
-  $('edWrap').querySelectorAll('.ednote').forEach(x => x.remove());
-  edBoxes().forEach((o, k) => {
-    const inp = Object.assign(document.createElement('input'), {className: 'ednote', value: o.note, placeholder: `${k + 1}. Note for this area`});
-    inp.style.left = o.x * s + 'px'; inp.style.top = (o.y + o.h) * s + 6 + 'px'; inp.style.borderColor = o.color;
-    inp.oninput = () => o.note = inp.value; inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); };
-    $('edWrap').append(inp);
-    if (ED.ops.indexOf(o) === focus) setTimeout(() => inp.focus());
+  const c = $('edC'), s = c.clientWidth / c.width, W = $('edWrap');
+  W.querySelectorAll('.ednote').forEach(x => x.remove());
+  ED.ops.filter(o => o.t === 'box').forEach(o => {
+    const d = Object.assign(document.createElement('div'), {className: 'ednote' + (o.col ? ' col' : '')});
+    d.style.left = o.x * s + 'px'; d.style.top = (o.y + o.h) * s + 6 + 'px'; d.style.borderColor = o.color;
+    if (o.col) { d.innerHTML = icon('doc'); d.title = o.n + '. ' + (o.note || 'Empty note'); d.onclick = () => { o.col = false; edNotes(o); }; return W.append(d); }
+    d.innerHTML = `<textarea rows="1" placeholder="${o.n}. Note for this area (Ctrl+Enter folds it)"></textarea><button class="ib" title="Done">${icon('check')}</button>`;
+    const t = d.querySelector('textarea'); t.value = o.note; t.rows = Math.max(1, o.note.split('\n').length);
+    t.oninput = () => { o.note = t.value; t.rows = Math.max(1, t.value.split('\n').length); };
+    t.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); o.col = true; edNotes(); } };
+    d.querySelector('button').onclick = () => t.blur();
+    W.append(d); if (o === focus) setTimeout(() => t.focus());
   });
 }
-function edUndo() { if (ED?.ops.length) { ED.ops.pop(); edDraw(); edNotes(); } }
+function edUndo() { const u = ED?.undo.pop(); if (u) { [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = null; edDraw(); edNotes(); } }
 function edDone() {
-  const m = VW.imgs[VW.i], url = $('edC').toDataURL('image/png'), name = m.name.replace(/\.\w+$/, '') + ' (marked).png';
-  const notes = edBoxes().map((o, k) => o.note.trim() && `${k + 1}. ${o.note.trim()}`).filter(Boolean);
-  const a = {name, url, media_type: 'image/png', data: url.split(',')[1]};
-  if (VW.map) atts[cur][VW.map[VW.i]] = a; else (atts[cur] ||= []).push(a);
-  const p = $('prompt');
-  if (notes.length) p.value += (p.value ? '\n\n' : '') + `Notes on ${name} (numbered boxes):\n` + notes.join('\n');
-  ED = null; closeDlg(); drawAtts(); grow(); p.focus();
+  const m = VW.imgs[VW.i]; ED.sel = null; edDraw(true);
+  const url = $('edC').toDataURL('image/png'), name = m.name.replace(/\.\w+$/, '') + '.png'; // same stem ∴ [refs] in the text still match
+  const notes = ED.ops.filter(o => o.t === 'box' && o.note.trim()).map(o => `${o.n}. ${o.note.trim()}`);
+  const a = {name, url, media_type: 'image/png', data: url.split(',')[1], ed: {orig: m.ed?.orig || m.url, ops: ED.ops, nmax: ED.nmax}, notes};
+  if (VW.map) atts[cur][VW.map[VW.i]] = a; else { (atts[cur] ||= []).push(a); attRef(atts[cur].length - 1); }
+  ED = null; closeDlg(); drawAtts(); grow(); $('prompt').focus();
 }
 document.addEventListener('keydown', e => {
   if (!$('dlg').open || !VW) return;
-  if (ED && (e.ctrlKey || e.metaKey) && e.key === 'z' && document.activeElement?.tagName !== 'INPUT') { e.preventDefault(); edUndo(); }
+  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
+  if (ED && (e.ctrlKey || e.metaKey) && e.key === 'z' && !typing) { e.preventDefault(); edUndo(); }
+  if (ED?.sel && !typing && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); edSnap(); ED.ops.splice(ED.ops.indexOf(ED.sel), 1); ED.sel = null; edDraw(); edNotes(); }
   if (!ED && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
 });
 $('dlg').addEventListener('close', () => { VW = ED = null; });
@@ -1692,7 +1733,7 @@ function addImage(file) {
   const r = new FileReader();
   const rid = () => Array.from({length: 3}, () => Math.random().toString(36).slice(2, 5).padEnd(3, '0')).join('-');
   const name = !file.name || /^image\.\w+$/i.test(file.name) ? rid() + '.' + ((file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')) : file.name;
-  r.onload = () => { (atts[cur] ||= []).push({name, url: r.result, media_type: file.type, data: r.result.split(',')[1]}); drawAtts(); };
+  r.onload = () => { (atts[cur] ||= []).push({name, url: r.result, media_type: file.type, data: r.result.split(',')[1]}); attRef(atts[cur].length - 1); drawAtts(); };
   r.readAsDataURL(file);
 }
 const addPaths = paths => { for (const p of paths) (atts[cur] ||= []).push({name: p.split(/[\\/]/).pop(), path: p}); drawAtts(); };
@@ -1863,12 +1904,13 @@ const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tic
 const INBOX = {};
 function sendNow(pid, {text: t, atts: a, work}, e) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
+  const nt = a.filter(x => x.notes?.length).map(x => `\n\nNotes on [${stem(x.name)}] (numbered boxes):\n${x.notes.join('\n')}`).join(''); // #217 notes live on the attachment
   if (e) { reBub(e, t, a); if (e.st !== 'pend') tick(e, 'pend'); }
   else e = userEntry(pid, t, a);
   (UNREAD[pid] ||= []).push(e);
   if (work) P(pid).work = work;
   const sm = {text: t, atts: a, work}; (INBOX[pid] ||= []).push(sm); keepDraft(pid, true);
-  call('send', {pid, text: t, images: images.map(x => ({media_type: x.media_type, data: x.data, name: x.name})), files, work: work || null})
+  call('send', {pid, text: t + nt, images: images.map(x => ({media_type: x.media_type, data: x.data, name: x.name})), files, work: work || null})
     .then(() => e.st === 'pend' && tick(e, 'sent'), err => { tick(e, 'fail'); INBOX[pid] = INBOX[pid].filter(x => x !== sm); (queue[pid] ||= []).push(sm); if (pid === cur) drawQueue(); keepDraft(pid, true); toast(`Message not sent (kept in the queue): ${err}`, 'err'); });
 }
 // one row of pills (first words; click = edit), ‹ › scroll it when it overflows
@@ -1915,7 +1957,7 @@ $('prompt').addEventListener('keydown', e => {
   if (e.key === 'Tab' && cur) { e.preventDefault(); const k = Object.keys(PERMS), i = k.indexOf(P().mode); setP({mode: k[(i + (e.shiftKey ? k.length - 1 : 1)) % k.length]}); } // #116 Tab/Shift+Tab cycles permission mode (like Claude Code)
   if (e.key === 'ArrowUp' && !hasInput() && queue[cur]?.length) { e.preventDefault(); editQueued(queue[cur].length - 1); }
 });
-const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
+const grow = () => { const t = $('prompt'); t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; pbDraw(); };
 let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
 $('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { if (!chromeRAF) chromeRAF = requestAnimationFrame(() => { chromeRAF = 0; drawChrome(); }); keepDraft(); } });
 // Continue/auto-clear → "Reading handover…" pill (same spot as Working…) until Claude's first own line/tool or turn end
