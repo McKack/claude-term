@@ -453,6 +453,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 /* #192 row actions = fade panel over the row end (like the chat's edge fade): Edit/Play stacked, ⋮ handle right, all v-centred */
 .ti { position:relative; } .qpill { position:absolute; right:0; top:0; bottom:0; display:flex; align-items:center; gap:6px; padding:0 2px 0 30px; background:linear-gradient(to right, transparent, var(--side) 26px); opacity:0; pointer-events:none; transition:opacity .15s; }
 .qbtns { display:flex; gap:6px; } .qedit { width:24px; height:24px; border-radius:50%; color:var(--dim); background:var(--hover); } .qedit:hover { background:var(--soft); color:var(--accent); } .qedit svg { width:12px; height:12px; } /* #199 round, side by side ∵ stacked overflowed 1-line rows */
+.qgrip { flex:none; align-self:stretch; display:flex; flex-direction:column; } .qgrip .qdrag { flex:1; } .qmv { border:0; background:none; color:var(--dim); padding:0; width:22px; height:9px; font-size:9px; line-height:9px; cursor:pointer; border-radius:3px; } .qmv:hover:not(:disabled) { background:var(--hover); color:var(--accent); } .qmv:disabled { opacity:.25; cursor:default; } /* #218 ⤒/⤓ send to top/bottom */
 .ti:hover > .qpill { opacity:1; pointer-events:auto; } .ti.qghost > .qpill, .ti.sortable-fallback > .qpill { display:none; } /* #193 drag: no panel on placeholder/clone */
 .chips { display:flex; flex-wrap:wrap; gap:4px; } .chips .pill { cursor:pointer; opacity:.45; display:inline-flex; align-items:center; gap:3px; line-height:18px; } .chips .pill .i { width:12px; height:12px; } .chips .pill.on { opacity:1; }
 /* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
@@ -769,8 +770,10 @@ const say = text => sure(String(text), 'OK', '');
 document.addEventListener('click', e => { const u = e.target.closest('[data-url]')?.dataset.url; if (u) { e.preventDefault(); T.opener.openUrl(u); } });
 
 // ---- popover menus ----
+let MENU_A = null, MENU_T = 0; // #218 anchor of the open menu: clicking it again closes (outside mousedown already did) instead of reopening
 function menuAt(anchor, items) {
-  closeMenu();
+  if (anchor === MENU_A && Date.now() - MENU_T < 400) return;
+  closeMenu(); MENU_A = anchor;
   buildMenu(items, anchor.getBoundingClientRect(), false);
   setTimeout(() => document.addEventListener('mousedown', outside), 0);
 }
@@ -803,7 +806,7 @@ function buildMenu(items, r, side, level = 0) {
   return m;
 }
 const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
-function closeMenu() { document.querySelectorAll('.menu').forEach(x => x.remove()); document.removeEventListener('mousedown', outside); }
+function closeMenu() { if (document.querySelector('.menu')) MENU_T = Date.now(); document.querySelectorAll('.menu').forEach(x => x.remove()); document.removeEventListener('mousedown', outside); }
 // right-click: own menu on chat msgs, tool rows, Files tree, projects; WebView default only in inputs / over a selection
 const copy = t => navigator.clipboard.writeText(t);
 const absOf = rel => { const b = P().path.replace(/[\\/]+$/, ''), s = b.includes('\\') ? '\\' : '/'; return b + s + rel.replace(/\//g, s); };
@@ -962,7 +965,10 @@ function missCheck(pid, t) {
     toast(x.label + '…'); try { await call('fix_missing', {pid, kind: x.k, name: x.n, feat: x.f || null, pkg: x.pkg || null}); toast('Done: ' + x.label, 'ok'); DEPSC = null; }
     catch (e) { toast(String(e), 'err'); } }]);
 }
+// #218 opener toggles its card: light-dismiss fires on pointerdown, so the same click must not reopen it
+const SHUT = {}, reopen = k => Date.now() - (SHUT[k] || 0) < 400, shutOn = (card, k) => card.addEventListener('toggle', e => e.newState === 'closed' && (SHUT[k] = Date.now()));
 function acctCard(btn) {
+  if (reopen('acct')) return;
   const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0];
   const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
   // #197: header (+ restart top-right) + Settings bottom-right only; account/model picker lives in #status (per project = chat)
@@ -970,7 +976,7 @@ function acctCard(btn) {
     <div class="who">${p?.gh ? avGh(p.gh, 'lg') : avAI(a, 'lg')}<span class="grow" style="min-width:0"><b>${esc(a.nick)}</b><small class="dim">${p?.gh ? '@' + esc(p.gh) + ' on GitHub' : 'No GitHub account'}${p ? ' · ' + esc(p.name) : ''}</small></span>
     <button class="ib" id="acRestart" style="align-self:flex-start" title="Restart Clauracle: sessions, running turns and unsent input all come back">${icon('loop')}</button></div>`;
   card.innerHTML += `<div class="row" style="justify-content:flex-end"><button class="btn" data-go="">${icon('gear')}Settings</button></div>`;
-  document.body.append(card); card.showPopover();
+  document.body.append(card); card.showPopover(); shutOn(card, 'acct');
   card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
   card.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { card.hidePopover(); openSettings(b.dataset.go || undefined); });
   card.querySelector('#acRestart')?.addEventListener('click', () => call('restart'));
@@ -1018,6 +1024,7 @@ const gwait = () => S.projects.filter(x => !busy[x.id] && (x.questions?.length |
 const glast = () => S.projects.map(p => ({p, b: builds[p.id]})).filter(x => x.b?.at && !x.b.busy).sort((a, b) => b.b.at - a.b.at)[0];
 const gago = t => { const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + 'm ago' : Math.round(s / 3600) + 'h ago'; };
 function gCard(btn, kind) {
+  if (reopen(kind)) return;
   const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
   const go = (pid, t) => `openProject('${pid}').then(() => ${t ? `rightTab('${t}')` : '0'}); this.closest('[popover]').hidePopover()`;
   const act = (label, js, cls = '') => `<button class="btn sm ${cls}" onclick="event.stopPropagation(); ${js}">${label}</button>`;
@@ -1043,7 +1050,7 @@ function gCard(btn, kind) {
           + `<div class="gact">${act('Output', go(p.id, 'build'))}${b.ok ? (b.own ? act('Restart into it', `call('restart_into', {pid: '${p.id}'})`, 'primary') : p.build.run ? act(icon('play') + 'Run', `call('run_step', {pid: '${p.id}', step: 'run'}); ${close}`, 'primary') : '')
             : act(icon('hammer') + 'Build again', `call('run_step', {pid: '${p.id}', step: 'build'}); ${close}`, 'primary')}</div>`).join('')}` : ''}`;
   }
-  document.body.append(card); card.showPopover(); drawTimes();
+  document.body.append(card); card.showPopover(); shutOn(card, kind); drawTimes();
   card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
   const q = id => card.querySelector('#' + id);
   if (q('scLim')) { q('scLim').oninput = e => { e.target.title = limTip(e.target.value); q('scLimV').textContent = '· hand over ' + (+e.target.value ? e.target.value + '%' : 'off'); };
@@ -4065,7 +4072,7 @@ function drawAtp() {
   const L = a => `<div class="tlist">${a.join('')}</div>`;
   const qRows = L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
           ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
-            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
+            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<span class="qgrip"><button class="qmv" title="Move to top"${i ? '' : ' disabled'} onclick="event.stopPropagation(); qMove(${i}, 0)">⤒</button><button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button><button class="qmv" title="Move to bottom"${i < q.length - 1 ? '' : ' disabled'} onclick="event.stopPropagation(); qMove(${i}, ${q.length - 1})">⤓</button></span></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
   const wt = iq ? teamTasks(cur).filter(isIdea).map(x => `#${x.number} ${x.title}`) : S.waits?.[cur] || [];
   const tasks = ((wt.length && !iq ? `<div class="label" title="${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: your AI noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
         end: `<button class="ib" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: ${iq ? 'close the issue' : 'remove from PLAN.md'}" onclick="planWait(${i}, false)">${icon('x')}</button>`}))) : '')
@@ -4123,14 +4130,17 @@ function qSortable(list) {
   if (!window.Sortable) return; // ponytail: vendored file missing → no reorder, list still renders
   Sortable.create(list, {handle: '.qdrag', draggable: '.ti', forceFallback: true, fallbackOnBody: true, /* #193 clone in body: in-list clone mis-placed (relative .ti/scroll) + stayed as ghost */ animation: 150, ghostClass: 'qghost', scroll: true, scrollSensitivity: 50, scrollSpeed: 12, bubbleScroll: true, /* #216 drag to the box edge -> scrolls */
     onStart: () => { qDragging = true; document.body.classList.add('dragging'); },
-    onEnd: async ({oldIndex: from, newIndex: to}) => { qDragging = false; document.body.classList.remove('dragging');
+    onEnd: ({oldIndex: from, newIndex: to}) => { qDragging = false; document.body.classList.remove('dragging'); qMove(from, to); }});
+}
+// queue row from → to: drag drop + #218 ⤒/⤓ arrows; issue mode = P.order, else PLAN.md via plan_move
+async function qMove(from, to) {
       if (to === from) return;
       const iq = issueQ(cur); if (iq) { // issue mode: order is local (P.order), no file write
         iq.splice(to, 0, iq.splice(from, 1)[0]); const order = iq.map(x => x.number); P().order = order; $('atp')._h = null; drawAtp();
         return call('update_project', {pid: cur, changes: {order}}).catch(er => addEntry(cur, {kind: 'err', text: 'Reorder failed: ' + er})); }
       const q = S.queues?.[cur]; if (!q) return;
       const text = q[from]; q.splice(to, 0, q.splice(from, 1)[0]); $('atp')._h = null; drawAtp();
-      try { await call('plan_move', {pid: cur, from, to, text}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Reorder failed: ' + er}); } refresh(); }});
+      try { await call('plan_move', {pid: cur, from, to, text}); } catch (er) { addEntry(cur, {kind: 'err', text: 'Reorder failed: ' + er}); } refresh();
 }
 // task text → HTML with the concrete bits in accent: `code`, paths/files (a/b, x.ext), identifiers (camelCase, snake_case, fn())
 // ponytail: regex heuristic; misses plain-word names, fine for a confirm
