@@ -2339,9 +2339,9 @@ const closeDlg = () => $('dlg').close();
 const sw = (on, change) => `<label class="sw"><input type="checkbox" ${on ? 'checked' : ''} onchange="${change}"><i></i></label>`;
 const optRow = (title, hint, control) => `<div class="opt-row"><div class="grow"><div>${title}</div>${hint ? `<small class="dim">${hint}</small>` : ''}</div>${control}</div>`;
 // collapsible section: open state remembered per key (only when clicked); never clicked → open when it has something.
-// count (number or short text) shows as a pill; buttons in `actions` don't toggle it
+// count (number or short text) shows as a pill = collapsed summary; buttons in `actions` don't toggle it; open = default when never clicked (#257: filled → false)
 const folds = (() => { try { return JSON.parse(localStorage.folds || '{}'); } catch { return {}; } })();
-const fold = (key, title, body, count = 0, actions = '') => `<details class="sec fold" data-f="${key}" ${(folds[key] ?? !!count) ? 'open' : ''}>
+const fold = (key, title, body, count = 0, actions = '', open = !!count) => `<details class="sec fold" data-f="${key}" ${(folds[key] ?? open) ? 'open' : ''}>
   <summary class="sh" onclick="setTimeout(() => { folds['${key}'] = this.parentNode.open; try { localStorage.folds = JSON.stringify(folds); } catch {} })">${icon('chev')}<span class="label">${title}</span>
   ${count ? `<span class="pill">${count}</span>` : ''}<span onclick="event.preventDefault()">${actions}</span></summary><div class="sc">${body}</div></details>`;
 // #105 skeleton: skel(60, 40) = bars at those % widths; 'b60' = button-height bar
@@ -2363,6 +2363,16 @@ async function pickRoot() {
   const dir = await T.dialog.open({directory: true, title: 'Projects folder'});
   if (dir) { await call('set_projects_dir', {dir}); openSettings('projects'); }
 }
+/* #257 setup 1-2-3 at the top of the Projects manager; gone once every step is done (the folds below show summaries) */
+function projSteps(p) {
+  const st = [
+    [!!p.gh, 'Pick its GitHub account', `<div class="btnrow"><select onchange="setM({gh:this.value})">${options({'': 'None', ...Object.fromEntries(SET.gh_users.map(u => [u, '@' + u]))}, p.gh)}</select>${SET.gh_users.length ? '' : `<button class="btn" onclick="openSettings('gh')">${icon('plus')}Add a GitHub account</button>`}</div>`, 'p-acct'],
+    [!!p.build.build, 'Set the build and run commands', '', 'p-build'],
+    [onOf(p).some(id => !builtin(id)), 'Pick its connections and skills', '', 'p-cx']];
+  if (st.every(s => s[0])) return '';
+  return `<div class="label" style="margin:14px 0 8px">Set up</div><ol class="stepper">${st.map(([ok, t, body, f], i) => `<li class="${ok ? 'done' : ''}"><button class="sn" onclick="jumpTo('[data-f=${f}]')">${ok ? icon('check') : i + 1}</button>
+    <b>${t}</b>${ok ? '' : body || `<div class="btnrow"><button class="btn" onclick="jumpTo('[data-f=${f}]')">Set up</button></div>`}</li>`).join('')}</ol>`;
+}
 function projectsPage() {
   if (!P(mp)) mp = cur || S.projects[0]?.id;
   const root = `<div class="grid2" style="grid-template-columns:120px 1fr;margin-top:0"><span>Projects folder</span><span class="row">
@@ -2377,27 +2387,29 @@ function projectsPage() {
     <button onclick="closeDlg(); menuAt($('projects'), addItems())">${icon('plus')}<span>Add project</span></button><div id="availBox"></div></div>
     <div><div class="row"><input value="${esc(p.name)}" onchange="this.value.trim() ? setM({name:this.value.trim()}) : (this.value = this.defaultValue)" title="Display name in Clauracle only; the folder and repo keep their names" placeholder="Project name" style="font-size:17px;font-weight:600" class="grow"></div>
     <small class="dim sel mono">${esc(p.path)}</small><div id="placeBox" class="row" style="gap:6px;margin:6px 0 0;min-height:30px"></div>
-    <p class="dim">The project is the source of truth: these stay with it whichever AI account runs it.</p>
-    <div class="grid2">
+    ${projSteps(p)}
+    ${fold('p-acct', 'Accounts', `<p class="dim" style="margin:0 0 8px;font-size:13px">The project is the source of truth: these stay with it whichever AI account runs it.</p><div class="grid2" style="margin-top:0">
       <span>GitHub account</span><select onchange="setM({gh:this.value})">${options({'': 'None', ...Object.fromEntries(SET.gh_users.map(u => [u, '@' + u]))}, p.gh)}</select>
       ${p.gh && mp === cur ? `<span>Collaborators</span><span><button class="btn ghost sm" onclick="collabGo()">${icon('user')}List & invite…</button></span>` : '' /* #113: lives in the GitHub tab (open project only) */}
-      <span>AI account</span><select onchange="setM({account:this.value})">${options(Object.fromEntries(S.accounts.map(a => [a.id, a.nick])), p.account)}</select>
+      <span>AI account</span><select onchange="setM({account:this.value})">${options(Object.fromEntries(S.accounts.map(a => [a.id, a.nick])), p.account)}</select></div>`,
+      [p.gh ? '@' + p.gh : 'no GitHub', S.accounts.find(a => a.id === p.account)?.nick].filter(Boolean).join(' · '), '', !p.gh)}
+    ${fold('p-sess', 'Session', `<div class="grid2" style="margin-top:0">
       <span>Model</span><select onchange="setM({model:this.value})">${options(MODELS, p.model)}</select>
       <span>Permissions</span><select onchange="setM({mode:this.value})">${options(PERMS, p.mode)}</select>
       <span>Clear & continue</span><select onchange="setM({cont:this.value})">${options(Object.fromEntries(Object.entries(MODES).map(([k, v]) => [k, v[0]])), p.cont)}</select>
       <span>Hand over at</span><span class="row"><input type="number" min="0" max="95" value="${p.context_limit}" style="width:76px" onchange="setM({context_limit:+this.value})"><small class="dim">% of the context window (0 = never)</small></span>
-    </div>
+    </div>`, [MODELS[p.model], PERMS[p.mode]].filter(Boolean).join(' · '), '', false)}
     ${fold('p-save', 'Options', `<div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
       ${(p.allow || []).length ? /* 3 rows: title / tags / description (#53) ∵ side-by-side squeezed the text */ `<div class="opt-row" style="display:block"><div>Always allowed</div><span class="row wrap" style="gap:4px;margin:6px 0">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ${icon('x')}</span>`).join('')}</span><small class="dim">Tools this project runs without asking</small></div>` : ''}
       ${optRow('Credit Claude in commits', 'Off: no Co-Authored-By or "Generated with" lines; Claude never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
       ${optRow('Keep .env away from Clauracle', 'Clauracle can\'t read or edit .env files; manage them in Services &amp; Secrets › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
-    </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on')}
+    </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on', '', false)}
     ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
       <span>After each task</span><span>${thenBtn(p, 'm')}</span>
       <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Clauracle to fix</small></label></div>`,
-      ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3')}
+      ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3', '', !p.build.build)}
     ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Storage Janitor cleans them on its own: after 14 days without commits, over 10 GB, or when the drive runs low (also old Claude Code versions and, on a low drive, Claude transcripts older than 14 days).</p>
       <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
     ${cxGroup('p-cx', 'Connections &amp; Skills', 'project:' + p.id, p)}${cxFold('p-plugin', 'Plugins & mods', 'plugin', 'project:' + p.id, p)}
@@ -3759,7 +3771,7 @@ const reloadSettings = p => { SET = null; return openSettings(p); };
 async function openSettings(p) {
   const same = !p || p === page; // re-render of the same tab keeps its scroll
   if (p) page = {gh: 'ai', agents: 'cx'}[p] || p;
-  if (p === 'gh' || p === 'agents') setTimeout(() => jumpTo(p === 'gh' ? '#set-gh' : '[data-f=g-agents]')); // #168 aliases land on their section
+  if (p === 'gh' || p === 'agents') setTimeout(() => jumpTo(p === 'gh' ? '[data-f=a-gh]' : '[data-f=g-agents]')); // #168 aliases land on their section
   if (!$('dlg').open) dlg(`<div style="padding:20px">${skel(30, 'b100', 'b100', 'b100', 70, 'b100', 'b100')}<small class="dim">The first time asks Claude Code which connections it has</small></div>`, 'prefs');
   if (!SET || !AGENTS) [SET, AGENTS] = await Promise.all([call('settings'), call('agents')]);
   else if (same) await refresh(); // after a change: state is a cheap in-process read
@@ -3800,12 +3812,12 @@ const cxCount = (kind, scope, x) => { const xs = cxItems(kind, scope);
 const cxKinds = k => k === 'cx' ? ['mcp', 'skill'] : [k];
 const cxAB = (kind, scope) => cxKinds(kind).flatMap(k => cxItems(k, scope)).length > 1
   ? ['All', 'None'].map(l => `<button class="btn ghost sm cxab" onclick="event.preventDefault(); cxAll(this, '${kind}', '${esc(scope)}', ${l === 'All'})">${l}</button>`).join('') : '';
-const cxFold = (key, title, kind, scope, x) => fold(key, title, `<div class="box">${cxList(kind, scope, x)}</div>`, cxCount(kind, scope, x), cxAB(kind, scope));
+const cxFold = (key, title, kind, scope, x) => fold(key, title, `<div class="box">${cxList(kind, scope, x)}</div>`, cxCount(kind, scope, x), cxAB(kind, scope), scope === 'global');
 // #32: Connections + Skills = one fold, a sub-section each (own All/None) + All/None for both; pill = both summed
 const cxGroup = (key, title, scope, x) => { const n = ['mcp', 'skill'].map(k => cxCount(k, scope, x).split('/').map(Number));
   return fold(key, title, [['mcp', 'Connections'], ['skill', 'Skills']].map(([k, l]) => `<div class="cxsub"><div class="label row" style="margin:6px 0 4px"><span class="grow">${l}</span>
     ${cxAB(k, scope)}</div>
-    <div class="box">${cxList(k, scope, x)}</div></div>`).join(''), `${n[0][0] + n[1][0]}/${n[0][1] + n[1][1]}`, cxAB('cx', scope)); };
+    <div class="box">${cxList(k, scope, x)}</div></div>`).join(''), `${n[0][0] + n[1][0]}/${n[0][1] + n[1][1]}`, cxAB('cx', scope), scope === 'global' || !(n[0][0] + n[1][0])); }; // #257 per project/account: open only while nothing is picked
 // fold pill = on/total of its switches, redrawn in place (toggles don't re-render the page)
 const cxLive = el => { const d = el.closest('details.fold'), xs = [...d.querySelectorAll('.sc .sw input')], p = d.querySelector(':scope > summary .pill');
   if (p) p.textContent = `${xs.filter(c => c.checked).length}/${xs.length}`; };
@@ -4028,18 +4040,25 @@ const youFind = el => { const q = el.value.trim().toLowerCase();
   el.closest('.you').querySelectorAll('.chips .pill:not(.on)').forEach(c => c.hidden = !!q && !c.textContent.toLowerCase().includes(q)); };
 function youHtml() {
   const y = S.you || {}, tags = y.tags || [], all = [...new Set([...tags, ...YOU_TAGS])];
-  return `<div class="you"><div class="label">You</div><p class="dim" style="margin:4px 0 8px;font-size:13px">Optional. The nickname is what Clauracle calls you in every project. Interests and preferences sit in a small file Clauracle reads only when it's tailoring a choice to you, so they cost no tokens otherwise.</p>
+  return fold('a-you', 'You', `<div class="you"><p class="dim" style="margin:0 0 8px;font-size:13px">Optional. The nickname is what Clauracle calls you in every project. Interests and preferences sit in a small file Clauracle reads only when it's tailoring a choice to you, so they cost no tokens otherwise.</p>
     <div class="grid2"><span>Nickname</span><input value="${esc(y.nick || '')}" placeholder="${esc(P()?.gh || 'e.g. Kim')} (default: your GitHub name)" onchange="you({nick: this.value})">
       <span>Interests</span><div><input placeholder="Search or add your own (Enter)" style="width:100%;margin-bottom:6px" oninput="youFind(this)" onkeydown="if (event.key === 'Enter' && this.value.trim()) youTag(this.value.trim())">
         <div class="chips">${all.map(t => `<span class="pill${tags.includes(t) ? ' on' : ''}" onclick="youTag(${esc(JSON.stringify(t))})">${esc(t)}</span>`).join('')}</div></div>
       <span>Preferences</span><textarea style="width:100%;min-height:60px;font-size:13px" placeholder="e.g. TypeScript over JS, short answers, explain like I'm new to Rust, dark UIs" onchange="you({prefs: this.value})">${esc(y.prefs || '')}</textarea>
-    </div></div><div class="label" style="margin-top:18px">AI accounts</div>`;
+    </div></div>`, [y.nick, tags.length && tags.length + ' interests', y.prefs && 'preferences'].filter(Boolean).join(' · ') || 'optional', '', false);
+}
+/* #257 Accounts 1-2-3 while setup is missing (AI login + GitHub); step 3 (You) optional → never keeps it up */
+function acctSteps() {
+  const st = [[S.accounts.length > 0, 'Sign in to Claude', `<div class="btnrow"><button class="btn primary" onclick="addAcctDlg()">${icon('plus')}Add account</button></div>`],
+    [ghUsers.length > 0, 'Add a GitHub account', `<div class="btnrow">${S.gh ? `<button class="btn primary" onclick="jumpTo('[data-f=a-gh]'); addGh()">${icon('plus')}Add GitHub account</button>` : `<button class="btn primary" onclick="install('gh', this).then(() => reloadSettings())">Install the GitHub CLI</button>`}</div>`],
+    [!!(S.you?.nick || S.you?.tags?.length), 'Tell Clauracle about you (optional)', `<div class="btnrow"><button class="btn" onclick="jumpTo('[data-f=a-you]')">Open You</button></div>`]];
+  if (st[0][0] && st[1][0]) return '';
+  return `<ol class="stepper" style="margin-bottom:14px">${st.map(([ok, t, body], i) => `<li class="${ok ? 'done' : ''}"><span class="sn">${ok ? icon('check') : i + 1}</span><b>${t}</b>${ok ? '' : body}</li>`).join('')}</ol>`;
 }
 function aiPage() {
   const pools = [...new Set(S.accounts.map(a => a.pool).filter(Boolean))];
   const meter = (v, l) => v == null ? '' : `<small class="dim">${l} <span class="bar"><i style="width:${v}%"></i></span> ${v}%</small>`;
-  return youHtml() + `<div class="row" style="align-items:flex-start;gap:12px"><p class="dim grow" style="margin-top:0">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>
-    <button class="btn primary" onclick="addAcctDlg()">${icon('plus')}Add account</button></div>`
+  return acctSteps() + youHtml() + sec('AI accounts', `<p class="dim" style="margin:0 0 8px;font-size:13px">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>`
     + S.accounts.map(a => { const u = S.usage[a.id] || {}; return `<details class="acct"><summary>
       <span class="chev">${icon('chev')}</span>${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : a.base_url ? esc(a.base_url) : 'setup-token'}</small>
       ${a.pool ? `<span class="pill">${esc(a.pool)}</span>` : ''}${a.id === S.default_account ? '<span class="pill">default</span>' : ''}<span class="grow"></span>${meter(u.five_hour, '5h')} ${meter(u.seven_day, 'week')}</summary>
@@ -4054,13 +4073,13 @@ function aiPage() {
       </div>
       ${cxGroup('a-cx', 'Connections &amp; Skills for new projects', a.id, a)}${cxFold('a-plugin', 'Plugins & mods for new projects', 'plugin', a.id, a)}
       <div class="btns"><button class="btn" onclick="csAcct('${esc(a.id)}')">${icon('sliders')}Advanced AI settings</button><span class="grow"></span>${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
-        ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join('')
-    + `<div class="label" id="set-gh" style="margin-top:18px">GitHub accounts</div>${ghPage()}
-    <p class="dim" style="font-size:13px">CI builds: <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>
-    <div class="label" style="margin-top:18px">Lessons</div>
-    <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules Clauracle records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
+        ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join(''),
+      `<button class="btn primary sm" onclick="addAcctDlg()">${icon('plus')}Add account</button>`)
+    + `${fold('a-gh', 'GitHub accounts', ghPage() + `<p class="dim" style="font-size:13px">CI builds: <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>`,
+      ghUsers.map(u => '@' + u).join(' · '), '', !ghUsers.length)}
+    ${fold('a-lessons', 'Lessons', `<p class="dim" style="margin:0 0 6px;font-size:13px">Never-again rules Clauracle records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
     <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
-      onchange="call('set_lessons', {lessons: this.value.split('\\n')}).then(refresh)">${esc((S.lessons || []).join('\n'))}</textarea>`;
+      onchange="call('set_lessons', {lessons: this.value.split('\\n')}).then(refresh)">${esc((S.lessons || []).join('\n'))}</textarea>`, (S.lessons || []).filter(Boolean).length || '', '', false)}`;
 }
 const limitsOf = id => S.accounts.find(a => a.id === id).limits;
 // own dropdown ∵ native <datalist> popup = off-style WebView box; typing a new name stays in the input

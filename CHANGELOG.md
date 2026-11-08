@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Settings: the Projects manager and Accounts page are tidier: a 1-2-3 setup guide until a project or your accounts are set up, and sections that fold into a one-line summary once filled in.
 - Clauracle now speaks as itself: buttons and tips say "Clauracle" instead of "AI", and replies address you by name.
 - Services: when everything is set up but no sign-in/payments/email-type service is chosen, the card offers to add one (that unlocks "Check the app uses …").
 - Right-click anywhere now opens Clauracle's own menu: Cut/Copy/Paste/Select all in text boxes, Open/Copy link, Copy image, Copy selection.
