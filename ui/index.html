@@ -481,7 +481,6 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 /* #192 row actions = fade panel over the row end (like the chat's edge fade): Edit/Play stacked, ⋮ handle right, all v-centred */
 .ti { position:relative; } .qpill { position:absolute; right:0; top:0; bottom:0; display:flex; align-items:center; gap:6px; padding:0 2px 0 30px; background:linear-gradient(to right, transparent, var(--side) 26px); opacity:0; pointer-events:none; transition:opacity .15s; }
 .qbtns { display:flex; gap:6px; } .qedit { width:24px; height:24px; border-radius:50%; color:var(--dim); background:var(--hover); } .qedit:hover { background:var(--soft); color:var(--accent); } .qedit svg { width:12px; height:12px; } /* #199 round, side by side ∵ stacked overflowed 1-line rows */
-.qgrip { flex:none; align-self:stretch; display:flex; flex-direction:column; } .qgrip .qdrag { flex:1; } .qmv { border:0; background:none; color:var(--dim); padding:0; width:22px; height:9px; font-size:9px; line-height:9px; cursor:pointer; border-radius:3px; } .qmv:hover:not(:disabled) { background:var(--hover); color:var(--accent); } .qmv:disabled { opacity:.25; cursor:default; } /* #218 ⤒/⤓ send to top/bottom */
 .ti:hover > .qpill { opacity:1; pointer-events:auto; } .ti.qghost > .qpill, .ti.sortable-fallback > .qpill { display:none; } /* #193 drag: no panel on placeholder/clone */
 .chips { display:flex; flex-wrap:wrap; gap:4px; } .chips .pill { cursor:pointer; opacity:.45; display:inline-flex; align-items:center; gap:3px; line-height:18px; } .chips .pill .i { width:12px; height:12px; } .chips .pill.on, .chips .pill.add { opacity:1; } .chips .pill.add { border-style:dashed; }
 /* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
@@ -4484,7 +4483,7 @@ function drawAtp() {
   const L = a => `<div class="tlist">${a.join('')}</div>`;
   const qRows = L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
           ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
-            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if Clauracle is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<span class="qgrip"><button class="qmv" title="Move to top"${i ? '' : ' disabled'} onclick="event.stopPropagation(); qMove(${i}, 0)">⤒</button><button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button><button class="qmv" title="Move to bottom"${i < q.length - 1 ? '' : ' disabled'} onclick="event.stopPropagation(); qMove(${i}, ${q.length - 1})">⤓</button></span></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
+            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if Clauracle is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'} · right-click: Move to top/bottom"></button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
   const wt = iq ? teamTasks(cur).filter(isIdea).map(x => `#${x.number} ${x.title}`) : S.waits?.[cur] || [];
   const tasks = ((wt.length && !iq ? `<div class="label" title="${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: Clauracle noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
         end: `<button class="ib" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: ${iq ? 'close the issue' : 'remove from PLAN.md'}" onclick="planWait(${i}, false)">${icon('x')}</button>`}))) : '')
@@ -4542,8 +4541,11 @@ function qSortable(list) {
   Sortable.create(list, {handle: '.qdrag', draggable: '.ti', forceFallback: true, fallbackOnBody: true, /* #193 clone in body: in-list clone mis-placed (relative .ti/scroll) + stayed as ghost */ animation: 150, ghostClass: 'qghost', scroll: true, scrollSensitivity: 50, scrollSpeed: 12, bubbleScroll: true, /* #216 drag to the box edge -> scrolls */
     onStart: () => { qDragging = true; document.body.classList.add('dragging'); },
     onEnd: ({oldIndex: from, newIndex: to}) => { qDragging = false; document.body.classList.remove('dragging'); qMove(from, to); }});
+  list.oncontextmenu = e => { const r = e.target.closest('.ti'), d = r?.querySelector('.qdrag'); if (!d) return; e.preventDefault(); e.stopPropagation(); /* #281 own menu, not the global one */
+    const all = [...list.querySelectorAll('.qdrag')], i = all.indexOf(d), n = all.length - 1;
+    menuAt({getBoundingClientRect: () => ({left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY, height: 0})}, [i && {icon: 'up', label: 'Move to top', run: () => qMove(i, 0)}, i < n && {icon: 'down', label: 'Move to bottom', run: () => qMove(i, n)}].filter(Boolean)); };
 }
-// queue row from → to: drag drop + #218 ⤒/⤓ arrows; issue mode = P.order, else PLAN.md via plan_move
+// queue row from → to: drag drop + #281 right-click Move to top/bottom; issue mode = P.order, else PLAN.md via plan_move
 async function qMove(from, to) {
       if (to === from) return;
       const iq = issueQ(cur); if (iq) { // issue mode: order is local (P.order), no file write
