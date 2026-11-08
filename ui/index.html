@@ -2642,12 +2642,13 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
     ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with Clauracle'}</button>` : ''}</div>${x.dh ? `<small class="dim" style="display:block;padding-left:24px">${x.dh}</small>` : ''}`; /* #182 dh below the row: full width, not squeezed by the Building… button */
   const seg = `<span class="seg">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, '');
-  const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : '';
+  // #265 build in flight → say so (was an enabled-looking button under "Ready to build!")
+  const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : bBusy(pid) ? 'Building… Release unlocks when it finishes' : '';
   // Release = publish v<version> (that version's build files) on GitHub + set the stage; grayed out till every check is green
   const act = RELBUSY[pid] ? `<button class="btn sm primary block" disabled><i class="spin"></i>Publishing…</button>` : `<button class="btn sm primary block" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this)">${icon('rocket')}Release v${esc(v)} as ${STAGES[SK[to]]}</button>`; /* #122 RELBUSY survives redraws */
   return stHead('Release', (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re) + `<div class="row" style="gap:8px;align-items:center;margin-bottom:8px"><span class="dim">Stage:</span>${seg}</div>
     <div>${items.map(row).join('')}</div>
-    <div class="nextstep"><p>${why ? esc(why) : 'Ready to build!'}</p>${act}</div><div class="btnrow col" style="margin-top:8px">${ask}</div>`; /* #237 header = Stage + switcher only; ask under the Release box */ // #232 Release button in the next-step box
+    <div class="nextstep"><p>${why ? esc(why) : 'Ready to release!'}</p>${act}</div><div class="btnrow col" style="margin-top:8px">${ask}</div>`; /* #237 header = Stage + switcher only; ask under the Release box */ // #232 Release button in the next-step box
 }
 /* #123 recheck CI while a run is in flight (one timer per project; only while Build & Release shows it) */
 const CIPOLL = {};
