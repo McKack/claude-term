@@ -437,7 +437,11 @@ async fn ext_add(kind: String, a: String, b: String) -> R<()> {
                 c.extend(["npx", "-y", &b]);
                 store::run("claude", &c, Some(&home), &[]) }
         };
-        if o.ok { Ok(()) } else { Err(format!("{}{}", o.stderr, o.stdout).trim().chars().take(400).collect()) }
+        if o.ok { return Ok(()); }
+        // CLI spinners → strip ANSI, keep the tail (the actual error is last)
+        let t = regex::Regex::new(r"\x1b\[[0-9;?]*[A-Za-z]").unwrap().replace_all(&format!("{}{}", o.stdout, o.stderr), "").trim().to_string();
+        let c: Vec<char> = t.chars().collect();
+        Err(c[c.len().saturating_sub(300)..].iter().collect())
     }).await.map_err(|e| e.to_string())?
 }
 
