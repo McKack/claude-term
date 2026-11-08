@@ -1155,11 +1155,12 @@ function workTick() {
 }
 // #195 pills: under the skeleton's own avatar (turn not started yet) | in the dock's empty strip (head row up the chat)
 function pillHome(dock) { const to = dock ? $('dockpill') : $('skel').querySelector('.cb'); if ($('workpill').parentNode !== to) to.append($('handpill'), $('workpill')); }
-// #189 live turn's Clauracle head: first Claude row after the last user msg (chat view, busy) → skeleton drops its own avatar
+// #189 live turn's Clauracle head after the last user msg (chat view, busy) → skeleton drops its own avatar
 function turnHead() {
   const c = $('log').firstElementChild; if (!busy[cur] || view !== 'chat' || !c || c.id === 'skel') return null;
   const r = [...c.querySelectorAll(':scope > .crow.user, :scope > .crow.claude')], u = r.findLastIndex(x => x.classList.contains('user'));
-  return u < 0 ? null : r[u + 1] || null;
+  // #196 newest head (last .thead after the user msg = live termcard's), ≠ first row ∵ interim text/cards add later heads
+  return u < 0 ? null : r.slice(u + 1).findLast(x => x.classList.contains('thead')) || r[u + 1] || null;
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
 const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
