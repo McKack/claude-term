@@ -878,8 +878,10 @@ document.addEventListener('contextmenu', e => {
       return new Promise(r => c.toBlob(r)); }).then(b => navigator.clipboard.write([new ClipboardItem({'image/png': b})])).then(() => toast('Image copied', 'ok'), err => toast('Copy failed: ' + err, 'err'))}, // → png ∵ clipboard only takes image/png
     img && /^https?:/.test(img.src) && {icon: 'doc', label: 'Copy image address', run: () => copy(img.src)}].filter(Boolean);
   let items;
-  const msg = t.closest('.msg'), tool = t.closest('.tl > div'), file = t.closest('#files .tree > div[data-p]'), proj = t.closest('.proj[data-id]');
-  if (tool?._es) { const d = tool._es[0].detail || {}, f = d.file_path || d.notebook_path || d.path;
+  const msg = t.closest('.msg'), tool = t.closest('.tl > div'), file = t.closest('#files .tree > div[data-p]'), proj = t.closest('.proj[data-id]'), vt = t.closest('.vtext');
+  if (vt) items = [sel && {icon: 'copy', label: 'Copy', run: () => copy(sel)}, // #282 file viewer: Select all = its text only (not the whole page)
+    {icon: 'list', label: 'Select all', run: () => { const r = document.createRange(); r.selectNodeContents(vt); getSelection().removeAllRanges(); getSelection().addRange(r); }}].filter(Boolean);
+  else if (tool?._es) { const d = tool._es[0].detail || {}, f = d.file_path || d.notebook_path || d.path;
     items = [typeof d.command === 'string' && {icon: 'doc', label: 'Copy command', run: () => copy(d.command)},
       f && {icon: 'doc', label: 'Copy path', run: () => copy(f)}, f && {icon: 'file', label: 'Open file', run: () => openFile(f)},
       {icon: 'term', label: 'Details', run: () => tool.click()}].filter(Boolean); }
