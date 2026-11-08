@@ -115,7 +115,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
 .msg.user .tk { margin-left:6px; font-size:11px; color:var(--faint); white-space:nowrap; } .msg.user .tk.read { color:#34b7f1; letter-spacing:-3px; padding-right:3px; } .msg.user .tk.fail { color:var(--err); font-weight:700; } .msg.user .tk .i { width:11px; height:11px; vertical-align:-1px; }
 .rpill { display:inline-flex; align-items:center; gap:4px; padding:0 8px 0 6px; border-radius:99px; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); } .rpill svg { width:1em; height:1em; flex:none; }
-#pback .fic { position:relative; } #pback .fic svg { position:absolute; left:.05em; top:50%; width:1em; height:1em; transform:translateY(-50%); color:var(--accent); } /* #227 icon over the em-space slot */
+#pback .fic { position:relative; } #pback .fic svg { position:absolute; left:0; top:50%; width:.8em; height:.8em; transform:translateY(-50%); color:var(--accent); } /* #227 icon over the em-space slot */
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
 /* thumbnails: fixed tiles, cropped (the viewer shows the whole image); wrap, never wider than the bubble */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
@@ -488,9 +488,10 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 /* edited-lately badge: count pill (folder, < 1 min) or dot; opacity set in badgeFiles, eased between its 5s ticks */
 .tree .eb { margin-left:auto; flex:none; min-width:8px; height:8px; border-radius:99px; background:var(--accent); transition:opacity 5s linear; }
 .tree .eb:not(:empty) { min-width:18px; height:16px; padding:0 5px; color:var(--ink); font-size:10.5px; font-weight:700; line-height:16px; text-align:center; }
-.code { display:grid; grid-template-columns:auto 1fr; font:12.5px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); }
-.code .ln { color:var(--faint); text-align:right; padding:8px 8px 8px 10px; border-right:1px solid var(--line); white-space:pre; user-select:none; }
-.code pre { margin:0; padding:8px 12px; white-space:pre; }
+.code { font:12.5px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); counter-reset:l; }
+.code pre { margin:0; padding:8px 12px 8px 0; white-space:pre; min-width:max-content; } .code.wrap pre { white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; }
+.code pre > div { display:grid; grid-template-columns:var(--lw) 1fr; } /* #231 one row per line: line no. = ::before (not copied), wrapped lines indent under the text */
+.code pre > div::before { counter-increment:l; content:counter(l); color:var(--faint); text-align:right; padding-right:8px; margin-right:12px; border-right:1px solid var(--line); -webkit-user-select:none; user-select:none; }
 #web { width:100%; height:calc(100vh - 175px); border:1px solid var(--line); border-radius:10px; background:#fff; }
 /* phone preview: a 390×844 viewport (iPhone-ish) in a bezel, shrunk with zoom to fit the panel */
 /* bezel = padding on a dark box (not a border: the screen's own rounded clip avoids light AA seams at the corners) */
@@ -1617,7 +1618,7 @@ function drawAtts() {
 // #217 [ref] pills: #pback mirrors the textarea text; refs naming an attachment get a <mark> behind them (a textarea can't style
 // its own text). Click inside one → highlight + scroll its thumb, image → viewer. Icon drawn over the PADL char (same width ∴ mirror stays aligned)
 const attAt = name => { name = name.replace(/[  ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
-function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return;
+function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.style.right = p.offsetWidth - p.clientWidth + 'px'; /* #231 scrollbar (max-height hit) narrows the textarea's lines → mirror must wrap the same or the caret drifts */
   b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m; const l = n.startsWith(PADL), rr = n.endsWith(PADR), x = n.slice(l ? 1 : 0, rr ? -1 : undefined);
     return `<mark><i>[</i>${l ? `<i class="fic">${PADL}${icon(fIcon(atts[cur][i].name))}</i>` : ''}${x}<i>${rr ? PADR : ''}]</i></mark>`; }) + '\n'; b.scrollTop = p.scrollTop; }
 $('prompt').addEventListener('scroll', () => $('pback').scrollTop = $('prompt').scrollTop);
@@ -2804,9 +2805,9 @@ function ghSteps(iq, qRows, t, open, fin, dn) {
   const nw = teamTasks(cur).filter(isWait).length, ns = teamTasks(cur).filter(isIdea).length;
   return `<ol class="stepper ghsteps">
     <li><span class="sn">1</span><div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>${iq.length ? `<span class="pill">${iq.length}</span>` : ''}${iq.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}</div>
-      <div class="qbox">${iq.length || busy[cur] ? qRows : empty('No open tasks: add one below or just ask in the chat')}</div>${x.add}</li>
-    <li><span class="sn">2</span><div class="label">Run the task list</div>${runStep(p, n)}</li>
-    <li><span class="sn">3</span>${thenRow(p)}</li></ol>`
+      ${iq.length || busy[cur] ? `<div class="qbox">${qRows}</div>` : `<div class="nextstep" style="margin:4px 0 8px"><p>No tasks! Set up Services and Secrets?</p><button class="btn sm primary block" onclick="rightTab('svc')">Next step: Services &amp; Secrets ${icon('go')}</button></div>`}${x.add}</li>
+    ${iq.length || busy[cur] ? `<li><span class="sn">2</span><div class="label">Run the task list</div>${runStep(p, n)}</li>
+    <li><span class="sn">3</span>${thenRow(p)}</li>` : ''}</ol>`
     + (nw ? fold('w-wait', `Waiting on you<button class="ib" title="${WAIT_TIP}" onclick="event.preventDefault(); toast(WAIT_TIP, 'info')">${icon('info')}</button>`, L(x.wait), nw) : '')
     + (ns ? fold('w-sug', 'Suggestions', L(x.sug), ns) : '')
     + (x.others ? fold('w-others', 'Taken by others', L(x.others)) : '')
@@ -2974,10 +2975,12 @@ function previewFile(rel) {
 async function drawCode() {
   const file = codeAt[cur]?.file, box = $('rbody');
   if (!file) { box.innerHTML = '<p class="dim">Pick a file on the left.</p>'; if (UI.lc || UI.st !== 'files') { UI.lc = false; setSide('files'); } return; }
-  const head = `<div class="crumbs mono">${esc(file)}</div>`;
+  const wrap = localStorage.codeWrap !== '0'; // #231 wrap ON by default, choice remembered (like the diff dialog)
+  const head = `<div class="row" style="align-items:flex-start"><div class="crumbs mono grow" style="overflow-wrap:anywhere">${esc(file)}</div><button class="ib${wrap ? ' on' : ''}" title="Wrap long lines"
+    onclick="const c=$('rbody').querySelector('.code'),w=c.classList.toggle('wrap');try{localStorage.codeWrap=w?'1':'0'}catch{}this.classList.toggle('on',w)">${icon('wrap')}</button></div>`;
   let text;
   try { text = await call('read_file', {pid: cur, rel: file}); } catch (e) { box.innerHTML = head + `<p class="dim">${esc(e)}</p>`; return; }
-  box.innerHTML = head + `<div class="code"><div class="ln">${text.split('\n').map((_, i) => i + 1).join('\n')}</div><pre class="sel">${esc(text)}</pre></div>`;
+  box.innerHTML = head + `<div class="code${wrap ? ' wrap' : ''}"><pre class="sel" style="--lw:calc(${String(text.split('\n').length).length}ch + 20px)">${text.split('\n').map(l => `<div>${esc(l)}</div>`).join('')}</pre></div>`;
 }
 function setSide(t) { UI.st = t; layout(); drawSide(); }
 function toggleLeft() { UI.lc = !UI.lc; layout(); }
@@ -3293,7 +3296,7 @@ async function drawServices() {
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>` + secretsFold(files)
     // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
-    + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services and secrets set up.</p><button class="btn primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button></div>
+    + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services and secrets set up.</p><button class="btn sm primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button></div>
       <button class="newpill" id="newPill" onclick="$('nextStep').scrollIntoView({behavior: 'smooth', block: 'end'})">${icon('down')}New!</button>` : '');
   if ($('nextStep')) new IntersectionObserver(([e]) => { if (e.isIntersecting && $('newPill')) $('newPill').hidden = true; }).observe($('nextStep'));
   if (ids.includes('google')) drawCloud();
