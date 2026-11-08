@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Right-click anywhere now opens Clauracle's own menu: Cut/Copy/Paste/Select all in text boxes, Open/Copy link, Copy image, Copy selection.
 - Composer: the caret no longer drifts away from the text in long prompts.
 - Image editor: the cursor shows the selected tool; a click with the pen draws a dot; a click with Box + note places just the numbered point; a new width menu sets line thickness and arrowheads on lines.
 - File viewer: zoom with the wheel, Ctrl + / − / 0 or the header slider; pan images with the middle mouse button.

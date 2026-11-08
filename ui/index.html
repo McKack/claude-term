@@ -852,8 +852,23 @@ const absOf = rel => { const b = P().path.replace(/[\\/]+$/, ''), s = b.includes
 function quote(t) { const ta = $('prompt'); ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/, '\n\n') : '') + t.trim().replace(/^/gm, '> ') + '\n\n';
   ta.dispatchEvent(new Event('input')); ta.focus(); }
 document.addEventListener('contextmenu', e => {
-  const t = e.target, sel = String(getSelection()).trim();
-  if (t.closest('input, textarea, [contenteditable]')) return;
+  const t = e.target, sel = String(getSelection()).trim(), at = items => { e.preventDefault(); menuAt({getBoundingClientRect: () => ({left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY, height: 0})}, items); };
+  const ed = t.closest('input:not([type=checkbox],[type=radio],[type=range],[type=button],[type=file]), textarea, [contenteditable]:not([contenteditable=false])');
+  if (ed) { // #253 own Cut/Copy/Paste/Select all; menu click steals focus → refocus + restore the saved selection before each edit
+    const ce = !('value' in ed), ro = ed.readOnly || ed.disabled, pw = ed.type === 'password';
+    let s = 0, en = 0; try { s = ed.selectionStart; en = ed.selectionEnd; } catch {} // number/email inputs throw
+    const rg = ce && getSelection().rangeCount ? getSelection().getRangeAt(0).cloneRange() : null;
+    const txt = ce ? sel : (ed.value || '').slice(s, en), back = () => { ed.focus(); if (rg) { getSelection().removeAllRanges(); getSelection().addRange(rg); } else try { ed.setSelectionRange(s, en); } catch {} };
+    return at([txt && !ro && !pw && {icon: 'x', label: 'Cut', run: () => { copy(txt); back(); document.execCommand('delete'); }},
+      txt && !pw && {icon: 'copy', label: 'Copy', run: () => copy(txt)},
+      !ro && {icon: 'clip', label: 'Paste', run: () => navigator.clipboard.readText().then(v => { back(); document.execCommand('insertText', false, v); }).catch(err => toast('Paste blocked: ' + err, 'err'))},
+      {icon: 'list', label: 'Select all', run: () => { ed.focus(); ce ? document.execCommand('selectAll') : ed.select(); }}].filter(Boolean));
+  }
+  const a = t.closest('a[href], [data-url]'), url = a && (a.dataset.url || a.href), img = t.closest('img');
+  const media = [url && !/^(javascript|#)/.test(a.getAttribute('href') || '') && {icon: 'globe', label: 'Open link', run: () => T.opener.openUrl(url)}, url && {icon: 'copy', label: 'Copy link', run: () => copy(url)},
+    img && {icon: 'image', label: 'Copy image', run: () => fetch(img.src).then(r => r.blob()).then(b => createImageBitmap(b)).then(bm => { const c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; c.getContext('2d').drawImage(bm, 0, 0);
+      return new Promise(r => c.toBlob(r)); }).then(b => navigator.clipboard.write([new ClipboardItem({'image/png': b})])).then(() => toast('Image copied', 'ok'), err => toast('Copy failed: ' + err, 'err'))}, // → png ∵ clipboard only takes image/png
+    img && /^https?:/.test(img.src) && {icon: 'doc', label: 'Copy image address', run: () => copy(img.src)}].filter(Boolean);
   let items;
   const msg = t.closest('.msg'), tool = t.closest('.tl > div'), file = t.closest('#files .tree > div[data-p]'), proj = t.closest('.proj[data-id]');
   if (tool?._es) { const d = tool._es[0].detail || {}, f = d.file_path || d.notebook_path || d.path;
@@ -869,9 +884,9 @@ document.addEventListener('contextmenu', e => {
     items = [{icon: 'folder', label: 'Open', run: () => openProject(id)}, {icon: 'gear', label: 'Settings', run: () => openManager(id)},
       {icon: 'folder', label: 'Show in folder', run: () => T.opener.revealItemInDir(P(id).path).catch(alert)}, '-',
       {icon: 'x', label: 'Remove from Clauracle', run: () => { mp = id; removeProject(); }}]; }
-  if (sel && !items) return; // plain selection: keep the WebView's Copy
-  e.preventDefault();
-  if (items) { menuAt({getBoundingClientRect: () => ({left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY, height: 0})}, items); }
+  if (!items && sel) items = [{icon: 'copy', label: 'Copy', run: () => copy(sel)}];
+  items = [...media, ...(media.length && items ? ['-'] : []), ...(items || [])];
+  items.length ? at(items) : e.preventDefault(); // nowhere useful → no menu (never the WebView's)
 });
 const addItems = () => [{icon: 'plus', label: 'New project', hint: 'Local for now; publish to GitHub later', run: newLocal},
   {icon: 'folder', label: 'Open folder', run: addProject}, {icon: 'gh', label: 'Clone from GitHub', run: openClone}];
