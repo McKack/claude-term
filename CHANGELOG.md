@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Services › Stripe: **Make webhook** adds the endpoint on your website address and fills `STRIPE_WEBHOOK_SECRET`.
 - Website hosts over SSH (cPanel, DirectAdmin, Plesk, VPS): **Make deploy key** creates the key and copies its public key for the panel; on a plain server **Install key** adds it with your password once (not saved).
 - The Graph side tab is now **Hot**: a map of your files sized by size and coloured by how much they changed in the last 30 days; click one to see its recent commits and the tasks behind them.
 - Tasks list: click a task to edit it, labels as coloured dots, the editor opens instantly from cache; tasks the AI starts are claimed on GitHub so teammates skip them.

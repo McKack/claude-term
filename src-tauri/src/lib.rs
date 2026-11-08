@@ -1203,6 +1203,16 @@ fn site_auto(st: St, pid: String, host: String) -> R<String> {
                 .set("Content-Type", "application/json").send_string("{}").map_err(err)?.into_string().ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
             fill("NETLIFY_SITE_ID", v["id"].as_str().ok_or("Netlify returned no site id")?)
         }
+        "stripe" => { // #163 webhook endpoint on the website address → STRIPE_WEBHOOK_SECRET (secret only in the create response)
+            let d = p.site["domain"].as_str().filter(|d| !d.is_empty()).ok_or("set the website address under Website first")?;
+            let url = format!("https://{d}/api/stripe/webhook"); // ponytail: fixed path; the AI wires its handler there
+            let ev = ["checkout.session.completed", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "invoice.payment_failed"];
+            let mut form = vec![("url", url.as_str())];
+            form.extend(ev.iter().map(|e| ("enabled_events[]", *e)));
+            let v: Value = ureq::post("https://api.stripe.com/v1/webhook_endpoints").set("Authorization", &format!("Bearer {}", get("STRIPE_SECRET_KEY")?))
+                .send_form(&form).map_err(err)?.into_string().ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+            fill("STRIPE_WEBHOOK_SECRET", v["secret"].as_str().ok_or("Stripe returned no signing secret")?).map(|_| format!("STRIPE_WEBHOOK_SECRET ({url})"))
+        }
         "sshkey" => { // #166 deploy key → .env; → pubkey (UI copies it for the panel)
             let name = std::path::Path::new(&p.path).file_name().unwrap_or_default().to_string_lossy().to_string();
             store::deploy_key(&envp, &format!("clauracle-deploy-{name}"))
