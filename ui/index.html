@@ -118,9 +118,9 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .rpill { display:inline-flex; align-items:center; gap:4px; padding:0 8px 0 6px; border-radius:99px; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); } .rpill svg { width:1em; height:1em; flex:none; }
 #pback .fic { position:relative; } #pback .fic svg { position:absolute; left:0; top:50%; width:.8em; height:.8em; transform:translateY(-50%); color:var(--accent); } /* #227 icon over the em-space slot */
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
-/* thumbnails: fixed tiles, cropped (the viewer shows the whole image); wrap, never wider than the bubble */
-.msg .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
-.msg .thumbs img { width:96px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
+/* #250 = composer .att.img: 56px high, real aspect, 56..220px wide, 10px radius, gap 8 */
+.msg .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; max-width:100%; }
+.msg .thumbs img { width:auto; height:56px; min-width:56px; max-width:min(220px, 100%); object-fit:cover; border-radius:10px; border:1px solid var(--line); background:var(--bg); display:block; }
 .crow .cb, .msg.user { min-width:0; } #log { overflow-x:hidden; } #log::-webkit-scrollbar-track { margin:52px 0 20px; } /* thumb stops short of the top mask (52px) + #dock overlap (20px) */
 .crow { display:flex; gap:10px; align-items:flex-start; } .crow.user { flex-direction:row-reverse; }
 .crow > .av { border-color:var(--bg); } /* 26px = the name row's height: avatar sits in line with name + time */
