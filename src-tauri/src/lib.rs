@@ -332,6 +332,12 @@ fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
         }
     }
     let p = st.project(&pid).unwrap(); // after a pool switch: same path/gh anyway
+    // #220: open question = runner paused in every mode (auto_answer holds them by design) ∵ next task went on unanswered
+    if !p.questions.is_empty() && p.cont != "auto_answer" {
+        claude::line(&app, &pid, "note", "Paused: a question needs you. Answering it carries on.");
+        emit(&app, "questions", json!({"pid": pid, "questions": p.questions}));
+        return;
+    }
     // #87: no open task + no user text → no fresh turn (was: old PLAN.md "continue" → AI found nothing, stopped)
     let Some(msg) = claude::cont_text(&p).or_else(|| (!p.answers.is_empty()).then(|| claude::CONTINUE_BARE.into())) else {
         claude::line(&app, &pid, "note", "No open tasks: nothing to continue. Send a new request to start again.");
@@ -364,7 +370,7 @@ fn answer_questions(app: AppHandle, st: St, pid: String, answers: Vec<Value>) {
         p.questions.retain(|q| !ids.contains(&q.id.as_str()));
         // #144: answers wake an idle session in any mode: mid-task (!ready) → sent as a turn; ready → Continue.
         // #9/#67 exception: auto run paused on open questions waits for the last one
-        (text, !p.ready, p.ready && !(p.cont == "auto" && !p.questions.is_empty()))
+        (text, !p.ready, p.ready && (p.questions.is_empty() || p.cont == "auto_answer")) // #220: last answer resumes
     }).unwrap_or_default();
     let live = session(&app, &st, &pid);
     if send_now && !live.busy.load(SeqCst) {
@@ -929,8 +935,13 @@ async fn disk_clean(st: St<'_>, pid: String, dirs: Vec<String>) -> R<u64> {
 }
 
 #[tauri::command]
-async fn task_do(st: St<'_>, pid: String, action: String, arg: String) -> R<String> {
+async fn task_do(st: St<'_>, pid: String, action: String, mut arg: String, images: Option<Vec<Value>>) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
+    // #220: "new" + ask images → saved locally, paths in the body ∴ the session that works the issue sees them
+    let saved = store::att_save(&p.path, images.as_deref().unwrap_or_default());
+    if !saved.is_empty() {
+        arg += &format!("\n\nScreenshots (local files, open them with the Read tool):\n{}", saved.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n"));
+    }
     tauri::async_runtime::spawn_blocking(move || store::task_do(&p.path, &p.gh, &action, &arg)).await.map_err(|e| e.to_string())?
 }
 

@@ -696,7 +696,7 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
     }
     // #9/#67: ANY open question pauses the run (auto only; auto_answer holds them by design) ∵ a clear while the card
     // is up = card gone + work goes on without the user → answering the last one resumes it
-    if p.cont == "auto" && !p.questions.is_empty() {
+    if p.cont != "auto_answer" && !p.questions.is_empty() { // #220: off+handover too
         line(app, pid, "note", "Paused: a question needs you. Answering it carries on.");
         emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
         return; // ready stays: answer_questions → continue_now
@@ -1127,7 +1127,7 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
                         text("Queued and the user was notified. Finish the current task where it doesn't depend on them; the run pauses after this turn (no clear) until they answer.")
                     }
                     "auto_answer" => text("Held until the user is back. Carry on with other tasks."),
-                    _ => text("Queued: the user sees them after the next Continue (never blocks it). Finish what doesn't depend on them first."),
+                    _ => text("Queued: the user sees them when this turn ends; the next task waits until they answer. Finish what doesn't depend on them first."),
                 }
             }
             _ => json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": "unknown tool"}}),

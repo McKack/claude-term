@@ -1828,8 +1828,9 @@ const filedNote = (n, now, urgent) => now
   : `\n\n(Filed as issue #${n} by Clauracle at the END of the task queue: open tasks come first (the user's rule), so don't start it now. Retitle it + write a task summary, the prompt quoted at the end inside \`<details><summary>Original ask</summary> … </details>\` (one \`gh issue edit ${n} -t … -F …\`), say so in one line, then carry on with the task you're on. It only adds to that task → fold it in and close #${n} as a duplicate. Not a task (a question, a status/unblock reply) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`;
 // → issue number, 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
-  const body = t + (a.length ? `\n\n(+${a.length} attachment${a.length > 1 ? 's' : ''}: ${a.map(x => x.name).join(', ')})` : '');
-  try { const url = await call('task_do', {pid, action: 'new', arg: body}); pollTeam(); return +(String(url).match(/\/issues\/(\d+)/)?.[1] || 0); }
+  // #220: images → Rust saves them + lists their paths in the body (was names only → the session on the issue never saw them)
+  const fs = a.filter(x => x.path), body = t + (fs.length ? `\n\nAttached files:\n${fs.map(x => '- ' + x.path).join('\n')}` : '');
+  try { const url = await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data}))}); pollTeam(); return +(String(url).match(/\/issues\/(\d+)/)?.[1] || 0); }
   catch (e) { toast(`Couldn't file it as an issue: ${e}`, 'warn'); return 0; }
 }
 // a queued message being edited holds the queue (nothing auto-sends) until it's sent or the edit is cancelled
@@ -1882,7 +1883,8 @@ function readyPeek() { // drawChrome: just shown
 const contQ = {}; // pid → Continue clicked mid-turn; runs on turn end (status busy:false)
 // #102: click → instant 'Continue: <task>' bubble, display only (never sent); idle-bar path skips it ∵ sendNow already shows its Carry-on bubble
 // #145: cont:true → `cleared` doesn't fold it into the old log; queued click → bubble when it actually runs (status handler), else cont_ folds it above Fresh session
-const contNote = (pid, t = nextUp(pid)[0]) => t && addEntry(pid, {kind: 'user', text: 'Continue: ' + t, cont: true});
+const qWait = pid => !!P(pid).questions?.length && P(pid).cont !== 'auto_answer'; // #220: questions open → runner paused
+const contNote = (pid, t = nextUp(pid)[0]) => t && !qWait(pid) && addEntry(pid, {kind: 'user', text: 'Continue: ' + t, cont: true});
 const contClick = pid => { if (busy[pid]) { contQ[pid] = true; return drawChrome(); } const r = P(pid).ready, t = nextUp(pid)[0]; contGo(pid); if (r) contNote(pid, t); };
 function toTasks(pid, texts) {
   triaging[pid] = true;
@@ -1891,7 +1893,9 @@ function toTasks(pid, texts) {
   if (pid === cur) drawChrome();
 }
 // ready → clear + continue; idle bar → next task in this session
-const contGo = pid => P(pid).ready ? (pid === cur ? cont_() : call('continue_now', {pid, extra: null}))
+// #220: open questions pause the runner (Rust continue_now refuses too); auto_answer holds them by design
+const contGo = pid => qWait(pid) ? (pid === cur && showQuestions(pid), toast('Answer the question first: the next task waits for it', 'info'))
+  : P(pid).ready ? (pid === cur ? cont_() : call('continue_now', {pid, extra: null}))
   : nextUp(pid).length && sendNow(pid, {work: issueQ(pid)?.[0]?.number, text: (issueQ(pid) ? 'Carry on with the next task (GitHub issue): ' : S.queues?.[pid]?.length ?'Carry on with the next task in PLAN.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(pid)[0], atts: []});
 // #101 ticks: e.st pend ⏱ → sent ✓ (in the session's inbox) → read blue ✓✓ (its turn started) | fail !
 const UNREAD = {}, USEREL = new WeakMap(); // pid → entries awaiting ✓✓; entry → its bubble (WeakMap ∵ logs stay plain data)
@@ -2021,13 +2025,14 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
 }[event] || (() => {}))());
 
 // ---- question card: numbered, choices (recommended pre-picked), Other with its own text, a note under each ----
+const notOther = o => !/^\s*other\b/i.test(o.label || ''); // #220: AI's own "Other — I'll say…" = our built-in Other → shown once
 function questionCard(pid) {
   const qs = P(pid).questions, d = document.createElement('div');
   d.className = 'card qs';
   d.innerHTML = `<h4>Your AI has ${qs.length} question${qs.length > 1 ? 's' : ''}</h4><p class="dim" style="margin:0 0 4px;font-size:13px">Answers go along with the next message.</p>` + qs.map((q, i) => {
     const type = q.multi ? 'checkbox' : 'radio', name = 'q' + i;
     return `<div class="q" data-id="${esc(q.id)}"><div><span class="num">${i + 1}</span><b>${esc(q.question.replace(/^\s*\d+[.)]\s*/, ''))}</b>${q.blocking ? ' <span class="pill">needs you</span>' : ''}</div>
-      ${q.options.map(o => `<label class="choice"><input type="${type}" name="${name}" value="${esc(o.label)}" ${o.recommended ? 'checked' : ''}>
+      ${q.options.filter(notOther).map(o => `<label class="choice"><input type="${type}" name="${name}" value="${esc(o.label)}" ${o.recommended ? 'checked' : ''}>
         <span>${esc(o.label)}${o.recommended ? ' <span class="pill">recommended</span>' : ''}${o.description ? `<small class="dim">${esc(o.description)}</small>` : ''}</span></label>`).join('')}
       <label class="choice"><input type="${type}" name="${name}" value="__other"><span>Other</span></label>
       <input class="note" placeholder="Note (optional)"></div>`;
@@ -2073,7 +2078,7 @@ function askCard(e) {
   if (e.tool === 'AskUserQuestion') {
     d.classList.add('qs');
     d.innerHTML = `<h4>Your AI asks</h4>` + (i.questions || []).map((q, n) => `<div class="q"><div><span class="num">${n + 1}</span><b>${esc(q.question)}</b></div>
-      ${(q.options || []).map(o => `<label class="choice"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="a${n}" value="${esc(o.label)}"><span>${esc(o.label)}<small class="dim">${esc(o.description || '')}</small></span></label>`).join('')}
+      ${(q.options || []).filter(notOther).map(o => `<label class="choice"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="a${n}" value="${esc(o.label)}"><span>${esc(o.label)}<small class="dim">${esc(o.description || '')}</small></span></label>`).join('')}
       <label class="choice"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="a${n}" value="__other"><span>Other</span></label>
       <input class="other" placeholder="Your own answer" oninput="this.previousElementSibling.querySelector('input').checked = !!this.value"></div>`).join('')
       + `<div class="btns"><button class="btn ghost" data-a="0">Dismiss</button><button class="btn primary" data-a="1">Answer</button></div>`;

@@ -1718,6 +1718,41 @@ fn trusted_works() {
     assert_eq!(n(trusted(serde_json::json!([{"number": 1, "author": {"login": "me"}}]), "me", || panic!("no fetch"))), [1]);
 }
 
+/// #220: ask images → files a fresh session can Read (gh can't upload to issues) → their paths, for the issue body.
+/// `<repo>/.git/clauracle-att/` ∵ inside the project = no permission prompt, never committed; no .git dir → ~/.clauracle/att.
+/// ponytail: kept forever (screenshots, small); prune when someone notices the folder.
+pub fn att_save(dir: &str, images: &[serde_json::Value]) -> Vec<String> {
+    if images.is_empty() { return vec![]; }
+    let git = std::path::Path::new(dir).join(".git");
+    let d = if git.is_dir() { git.join("clauracle-att") } else { home().join("att") };
+    let _ = std::fs::create_dir_all(&d);
+    images.iter().enumerate().filter_map(|(i, x)| {
+        let ext = x["media_type"].as_str().unwrap_or("image/png").rsplit('/').next().unwrap_or("png").replace("jpeg", "jpg");
+        let f = d.join(format!("{}-{i}.{ext}", new_id()));
+        std::fs::write(&f, b64(x["data"].as_str()?)?).ok()?;
+        Some(f.to_string_lossy().into_owned())
+    }).collect()
+}
+
+/// ponytail: minimal standard base64 decoder (no crate for one use); None on a bad char.
+fn b64(s: &str) -> Option<Vec<u8>> {
+    let (mut out, mut acc, mut bits) = (Vec::with_capacity(s.len() * 3 / 4), 0u32, 0);
+    for c in s.bytes().filter(|c| !c.is_ascii_whitespace() && *c != b'=') {
+        let v = match c { b'A'..=b'Z' => c - b'A', b'a'..=b'z' => c - b'a' + 26, b'0'..=b'9' => c - b'0' + 52, b'+' | b'-' => 62, b'/' | b'_' => 63, _ => return None };
+        acc = acc << 6 | v as u32;
+        bits += 6;
+        if bits >= 8 { bits -= 8; out.push((acc >> bits) as u8); }
+    }
+    Some(out)
+}
+
+#[test]
+fn b64_decodes() {
+    assert_eq!(b64("aGVsbG8=").unwrap(), b"hello");
+    assert_eq!(b64("aGk").unwrap(), b"hi");
+    assert!(b64("a$").is_none());
+}
+
 /// gh issue actions: new (title) | claim | release | done (number).
 pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<String, String> { // → gh stdout ("new": issue URL)
     let env = gh_env(user);
