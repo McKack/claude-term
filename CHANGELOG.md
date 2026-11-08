@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Task report: the detailed-report button uses the sparkle icon, and the timeline starts at the time work actually began.
 - The "Building…" line in the chat now looks like the Thinking pill, with a hammer icon.
 - The chat log keeps everything it showed, task reports included, across a fresh session and an app restart; only the history limit drops the oldest greyed-out messages.
 - Release checks now require an app icon source (SVG, or PNG of at least 1024 px) from Beta up; the Build row lists one file per line by platform and links the last release; a finished task shows its "Done! See report" note again. Image editor: round colour picker, box numbers never show "undefined"; image thumbnails show Refer bottom-right and the note as a small dot that grows on hover.

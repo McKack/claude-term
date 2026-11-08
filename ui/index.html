@@ -1569,7 +1569,8 @@ function repDone(pid) {
       ok: r?.kind !== 'err', err: r?.kind === 'err' ? r.text.slice(0, 800) : '', out: r && r.kind !== 'err' ? r.text.slice(0, 300) : '', f: f ? relOf(pid, f) : '',
       d: 'old_string' in d ? [[cut(d.old_string), cut(d.new_string)]] : Array.isArray(d.edits) ? d.edits.map(x => [cut(x.old_string), cut(x.new_string)]) : typeof d.content === 'string' ? [['', cut(d.content)]] : null}; });
   const now = new Date().toISOString(), segs = [];
-  for (const e of sl) { if (e.kind === 'user' || !segs.length) segs.push({ts: e.ts || now, title: e.kind === 'user' ? bare(e.text).split('\n')[0].slice(0, 120) : 'Started', l: []}); segs.at(-1).l.push(e); }
+  for (const e of sl) { if (e.kind === 'user' || !segs.length) segs.push({ts: e.ts, title: e.kind === 'user' ? bare(e.text).split('\n')[0].slice(0, 120) : 'Started', l: []}); segs.at(-1).l.push(e); }
+  for (const s of segs) s.ts ||= s.l.find(e => e.ts)?.ts || now; // #245 restored transcript tool rows carry no ts → first dated entry, not "now"
   const segOut = segs.map((s, k) => { const c = s.l.filter(e => e.kind === 'tool').map(e => e.detail?.command || '').join('\n'), fs = new Set(s.l.map(e => e.detail?.file_path).filter(Boolean));
     return {ts: s.ts, end: segs[k + 1]?.ts || now, title: s.title, ms: workMs(s.l), n: s.l.filter(e => e.kind === 'tool' && !isProcess(e)).length, files: fs.size,
       closed: [...c.matchAll(/gh issue close (\d+)/g)].map(m => +m[1]), filed: [...s.l.filter(e => e.result_of && e.kind !== 'err').map(e => e.text).join('\n').matchAll(/\/issues\/(\d+)\s*$/gm)].map(m => +m[1])}; });
@@ -1597,7 +1598,7 @@ async function repOpen(rid, tb = 'done') {
   dlg(`<div class="rhead"><h2 style="margin:0">Done! Worked for ${dur(r.ms)}</h2><small class="dim">${esc(r.project || '')} · ${tm(r.t0)} – ${tm(r.t1)}</small>
       <div class="seg" style="margin-top:10px">${tabs.map(([k, i, l, n]) => `<button class="${k === tb ? 'on' : ''}" data-rt="${k}">${icon(i)}${l}${n !== '' ? ` <span class="pill">${n}</span>` : ''}</button>`).join('')}</div></div>
     <div class="dscroll wrap rbody">${body}</div>
-    <div class="btns"><button class="btn rpdf" onclick="repPdf('${rid}')">${icon('claude')}Write a detailed report (.pdf)</button><button class="btn rpdf" onclick="repPdf()">${icon('cal')}Write a 7-day report (.pdf)</button><span class="grow"></span><button class="btn primary" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');
+    <div class="btns"><button class="btn rpdf" onclick="repPdf('${rid}')">${icon('sparkle')}Write a detailed report (.pdf)</button><button class="btn rpdf" onclick="repPdf()">${icon('cal')}Write a 7-day report (.pdf)</button><span class="grow"></span><button class="btn primary" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');
   const d = $('dlg'); repBtns();
   d.querySelectorAll('[data-rt]').forEach(b => b.onclick = () => repOpen(rid, b.dataset.rt));
   d.querySelectorAll('[data-rf]').forEach(b => b.onclick = () => { d.querySelectorAll('[data-rf]').forEach(x => x.classList.toggle('on', x === b)); $('rdiff').innerHTML = `<p class="mono faint" style="margin:10px 0 4px">${esc(b.dataset.rf)}</p>` + files[b.dataset.rf].d.map(([a, z]) => diff(a, z)).join(''); });
