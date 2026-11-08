@@ -1056,7 +1056,7 @@ function statsHtml(p) {
 const gbusy = () => S.projects.filter(p => busy[p.id]), gbuilds = () => S.projects.filter(p => builds[p.id]?.busy);
 const blast = (pid, n) => { const ls = (builds[pid]?.out || '').slice(builds[pid]?.from || 0).split('\n').filter(l => l.trim()); return n ? (ls.length ? ls.slice(-n) : ['Starting…']) : ls.at(-1) || 'Starting…'; };
 // #262 file names a build makes = last build's outputs (GHI builds, newest within 10 min of the top one); '' = none known yet
-const bnames = pid => { const b = GHI[pid]?.g?.builds || [], t = b[0]?.mtime; return [...new Set(b.filter(x => t - x.mtime < 600).map(x => x.name))].slice(0, 4).join(' · '); };
+const bnames = pid => { const b = GHI[pid]?.g?.builds || [], t = b[0]?.mtime; return [...new Set(b.filter(x => t - x.mtime < 600).map(x => x.name))].map(name => ({name})); };
 function drawGbar() {
   const el = $('gbar'); if (!el) return;
   const p = cur && P(), acct = p ? p.account : S.accounts[0]?.id, u = S.usage[acct] || {};
@@ -1102,7 +1102,7 @@ function gCard(btn, kind) {
     const ell = 'font-size:12px;margin:0 0 2px 20px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
     const bhtml = () => { const bd = gbuilds(), done = S.projects.map(p => ({p, b: builds[p.id]})).filter(x => x.b?.at && !x.b.busy).sort((a, b) => b.b.at - a.b.at).slice(0, 4);
       return `<div class="row"><h5 class="grow">Builds</h5>${cur && !builds[cur]?.busy ? act(icon('hammer') + 'Build local copy', `buildLocal(cur); ${close}`, 'ghost') : ''}</div>${bd.map(x => row(x.id, '<span class="spin"></span>', x.name)
-        + (bnames(x.id) ? `<div class="sel" style="${ell}" data-tip="${esc(bnames(x.id))}">${esc(bnames(x.id))}</div>` : '')
+        + `<div style="margin:0 0 4px 20px;font-size:12px">${bfiles(x, bnames(x.id), x.id)}</div>` /* #263 same ✓ list as the Build tab */
         + blast(x.id, 3).map(l => `<div class="dim sel mono" style="${ell};font-size:11px">${esc(l)}</div>`).join('')
         + `<div class="gact">${act('Output', `openProject('${x.id}').then(() => { rightTab('build'); jumpTo('#buildOut'); }); ${close}`)}${act(icon('stop') + 'Stop', `call('stop_build', {pid: '${x.id}'}); ${close}`, 'ghost')}</div>`).join('') || '<p class="dim">No builds running</p>'}
       ${done.length ? `<h5>Finished</h5>${done.map(({p, b}) => row(p.id, `<span class="${b.ok ? 'ok' : 'bad'}">${icon(b.ok ? 'check' : 'x')}</span>`, p.name, `<span class="dim">${gago(b.at)}</span>`)
@@ -2589,7 +2589,7 @@ const tgtSplit = (p, c, files) => { const t = p.targets || [], here = tgtLocal; 
 // release files for version v: newest build per file type named with v (versionless could be stale); builds via gh_info (GHI)
 /* #174 while building: expected artifacts (last build's names, else target name) shimmer → check once Tauri prints them under "Finished N bundle(s) at:" (b.from = out offset at build start) */
 const bdone = b => (b?.out || '').slice(b.from || 0).split(/Finished \d+ bundles? at:/).slice(1).join('\n').match(/[^\s\\/]+\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/gi) || [];
-const bfiles = (p, files) => { const done = bdone(builds[cur]), loc = (p.targets || []).filter(tgtLocal);
+const bfiles = (p, files, pid = cur) => { const done = bdone(builds[pid]), loc = (p.targets || []).filter(tgtLocal);
   const exp = loc.flatMap(x => { const f = files.filter(f => TGTEXT[x].test(f.name)).map(f => f.name); return f.length ? f.map(n => [n, done.includes(n)]) : [[tgtName(x), done.some(n => TGTEXT[x].test(n))]]; });
   return exp.map(([n, ok]) => `<span class="bfile${ok ? '' : ' shim'}">${esc(n)}${ok ? icon('check') : ''}</span>`).join(''); };
 const relFilesFor = (pid, v) => v ? relPick(GHI[pid]?.g?.builds || [], v).filter(b => fver(b.name) === v) : [];
