@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Tasks: an ask filed as an issue shows in the task list at once (was ~30s late), and the list no longer says "Working on" an old task at the start of a new turn.
 - Chat: pasted-image refs in the composer are real pills; the Working pill floats centred above the composer; the live reply avatar + timer stick to the top while you scroll.
 - Services › Google Play: **Make service account** creates it in your Cloud project, fills `PLAY_SERVICE_ACCOUNT_JSON` and copies its email for the Play Console invite.
 - Services › Stripe: **Make webhook** adds the endpoint on your website address and fills `STRIPE_WEBHOOK_SECRET`.

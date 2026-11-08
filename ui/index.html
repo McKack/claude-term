@@ -1833,7 +1833,9 @@ const filedNote = (n, now, urgent) => now
 async function fileAsk(pid, t, a) {
   // #220: images → Rust saves them + lists their paths in the body (was names only → the session on the issue never saw them)
   const fs = a.filter(x => x.path), body = t + (fs.length ? `\n\nAttached files:\n${fs.map(x => '- ' + x.path).join('\n')}` : '');
-  try { const url = await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data}))}); pollTeam(); return +(String(url).match(/\/issues\/(\d+)/)?.[1] || 0); }
+  try { const url = await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data}))}); const n = +(String(url).match(/\/issues\/(\d+)/)?.[1] || 0);
+    if (n) { (FRESH[pid] ||= []).push({number: n, title: t.split('\n')[0].slice(0, 90), url: String(url).trim(), labels: [{name: 'clauracle'}, {name: 'task', color: '888'}], assignees: [], t: Date.now()}); issueRedraw(pid); }
+    pollTeam(); return n; }
   catch (e) { toast(`Couldn't file it as an issue: ${e}`, 'warn'); return 0; }
 }
 // a queued message being edited holds the queue (nothing auto-sends) until it's sent or the edit is cancelled
@@ -1995,7 +1997,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
-  status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) { setDoing(d.pid, 'Thinking'); TURN0[d.pid] = Date.now(); } const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
+  status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) { setDoing(d.pid, 'Thinking'); TURN0[d.pid] = Date.now(); if (lastBusy[d.pid]) delete WORK[d.pid]; /* #226 new turn (seen idle this run): recompute, never carry an old turn's #N */ } const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
     if (d.busy === false) { repDone(d.pid); if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; delete PEND[d.pid]; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) { const r = cq && P(d.pid).ready, t = nextUp(d.pid)[0]; contGo(d.pid); if (r) contNote(d.pid, t); } else { if (cq) contQ[d.pid] = true; /* Continue clicked + msgs queued: msgs first, Continue after (was dropped) */ flushQueue(d.pid); } }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
@@ -2712,7 +2714,11 @@ function issueResult(d) {
   setTimeout(() => pid === cur && pollTeam(), 3000);
 }
 const issueRedraw = pid => { if (pid !== cur) return; drawAtp(); if ($('tasksBox')) $('tasksBox').innerHTML = tasksHtml(); };
-const teamTasks = pid => Array.isArray(team[pid]?.tasks) ? team[pid].tasks.filter(x => !WDONE.has(x.number)) : []; // #80 closed here → gone now, gh list lags
+// #226 just-filed issues: gh issue list lags ~30s after create → shown from FRESH until listed (≤3 min); was: ask "not in the list"
+const FRESH = {};
+const teamTasks = pid => { if (!Array.isArray(team[pid]?.tasks)) return []; const t = team[pid].tasks;
+  FRESH[pid] = (FRESH[pid] || []).filter(x => Date.now() - x.t < 180e3 && !t.some(y => y.number === x.number));
+  return [...t, ...FRESH[pid]].filter(x => !WDONE.has(x.number)); }; // #80 closed here → gone now, gh list lags
 const isDoing = x => x.labels.some(l => l.name === 'in progress') || x.assignees.length;
 // what's next: HANDOVER.md's queue, else free team tasks
 // "All tasks done" presets: [button, prompt sent]
