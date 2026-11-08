@@ -2990,7 +2990,7 @@ async function drawGraph(force) {
   const col = f => { if (!f[2]) return '#1c2230'; const t = Math.sqrt(f[2] / maxC); return `hsl(${210 - 195 * t},${45 + 25 * t}%,${24 + 18 * t}%)`; };
   const lines = n => n.toLocaleString() + ' line' + (n === 1 ? '' : 's');
   const iss = s => esc(s).replace(/#(\d+)/g, '<a onclick="editIssue($1)">#$1</a>');
-  const ago = t => { const h = (Date.now() / 1e3 - t) / 3600; return h < 1 ? 'now' : h < 48 ? Math.round(h) + 'h' : Math.round(h / 24) + 'd'; };
+  const ago = t => { const h = (Date.now() / 1e3 - t) / 3600; return h < 1 ? Math.round(h * 60) + 'm' : h < 48 ? Math.round(h) + 'h' : Math.round(h / 24) + 'd'; };
   let sel = null;
   const show = () => {
     tm.querySelectorAll('.on').forEach(e => e.classList.remove('on')); if (sel) tm.querySelector(`[data-i="${F.indexOf(sel)}"]`)?.classList.add('on');
