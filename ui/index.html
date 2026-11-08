@@ -127,8 +127,8 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 /* reply to a terminal card: a narrower card tucked under it (flat top, card's shadow overlaps), reply icon on the left */
 .tools.termcard { position:relative; z-index:1; }
 #log .crow.reply { margin:-21px 3% 0 calc(36px + 3%); } /* centred under the termcard (margin-left 36px) */ /* -12 gap -3 card margin -6 tuck */ #log .crow.reply > .av, #log .crow.reply .cm { display:none; }
-#log .crow.reply .cb { flex:1; max-width:none; } #log .crow.reply .msg.claude { position:relative; border-top:0; border-radius:0 0 14px 14px; padding:15px 14px 9px 38px; }
-.rto { position:absolute; left:13px; top:16px; color:var(--faint); cursor:pointer; line-height:0; } .rto .i { width:15px; height:15px; transform:rotate(180deg); } .rto:hover { color:var(--text); }
+#log .crow.reply .cb { flex:1; max-width:none; } #log .crow.reply .msg.claude { position:relative; border-top:0; border-radius:0 0 14px 14px; padding:12px 14px 6px 38px; line-height:20px; } /* #204 6px tucked under the card → 6px visible top = bottom */ #log .crow.reply .msg.claude > .rto + * { margin-top:0; } #log .crow.reply .msg.claude > :last-child { margin-bottom:0; } /* .rto is first child ∴ p keeps its margin */
+.rto { position:absolute; left:13px; top:14.5px; color:var(--faint); cursor:pointer; line-height:0; } .rto .i { width:15px; height:15px; transform:rotate(180deg); } .rto:hover { color:var(--text); }
 .termcard.flash { animation:tcflash 1.2s ease-out; } .jumphl { animation:jumphl 2.4s ease-out; border-radius:8px; } @keyframes jumphl { 0%, 55% { box-shadow:0 0 0 2px var(--accent); background:var(--soft); } } @keyframes tcflash { from { box-shadow:0 0 0 2px var(--accent); } }
 .crow .msg.user { max-width:100%; } .crow.cont > .av { visibility:hidden; height:0; } .crow.cont .cm { display:none; } .crow.cont { margin-top:-4px; }
 .msg.claude p { margin:.35em 0; } .msg.claude :first-child { margin-top:0; }
@@ -1329,10 +1329,9 @@ function put(box, e) {
     r.onclick = () => { tg.scrollIntoView({block: 'nearest', behavior: 'smooth'}); tg.classList.remove('flash'); void tg.offsetWidth; tg.classList.add('flash'); };
     el.classList.add('reply'); el.querySelector('.msg.claude')?.prepend(r);
   }
-  if (el.classList.contains('crow')) { // same speaker again (Claude across its tool lines too) → no second avatar/name
-    let prev = box.lastElementChild;
-    if (prev?.classList.contains('tools') && e.kind === 'claude') prev = prev.previousElementSibling;
-    if (prev?.classList.contains('crow') && prev.classList.contains(e.kind)) el.classList.add('cont');
+  if (el.classList.contains('crow')) { // same speaker right above → no second avatar/name; #204 after a card/reply note = new bubble → own head
+    const prev = box.lastElementChild;
+    if (prev?.classList.contains('crow') && prev.classList.contains(e.kind) && !prev.matches('.reply, .thead')) el.classList.add('cont');
   }
   if (e.old) el.classList.add('old');
   const qs = box.querySelector('.qs');
