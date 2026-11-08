@@ -294,8 +294,8 @@ fn args(st: &State, p: &Project) -> Vec<String> {
     if p.terse {
         append += TERSE_RULES;
     }
-    // #255 voice: name = the user's chat-bubble name (UI chatRow: p.gh); #256 nickname overrides once it exists
-    let who = if p.gh.is_empty() { "the user".to_string() } else { p.gh.clone() };
+    // #255 voice: name = Accounts › You nickname (#256) > the chat-bubble name (UI chatRow: p.gh)
+    let who = [&cfg.you.nick, &p.gh].into_iter().find(|n| !n.is_empty()).cloned().unwrap_or_else(|| "the user".into());
     append += &format!("\n# Voice\nThe user sees you as Clauracle. Reply like a natural conversation with {who}, using \
         the name now and then (\"Yes, {who}, …\", \"I wouldn't recommend that, {who}\"), not in every message.\n");
     if !p.ai_credit {

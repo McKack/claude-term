@@ -143,6 +143,15 @@ pub struct Window {
     pub resets_at: Option<f64>,
 }
 
+/// #256 Accounts › You: nick → prompt name everywhere; tags/prefs → ~/.clauracle/you.md, read by the AI only when it matters (token use)
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct You {
+    pub nick: String,
+    pub tags: Vec<String>,
+    pub prefs: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default)]
 pub struct Notify {
@@ -392,6 +401,7 @@ pub struct Config {
     pub default_account: String,
     pub catalog: Vec<Item>,
     pub off: Vec<String>, // switched off everywhere
+    pub you: You,
     pub lessons: Vec<String>, // never-again rules (mcp lesson tool / Settings › Accounts), in every session's prompt
     pub win: Option<[i32; 5]>, // main window at last close/restart: x, y, w, h (physical px), maximized 0|1
     pub notify: Notify,

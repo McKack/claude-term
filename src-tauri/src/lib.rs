@@ -98,7 +98,7 @@ fn state(st: St) -> Value {
         let busy: Vec<String> = st.live.lock().unwrap().iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k.clone()).collect();
         let paths: Vec<(String, String)> = cfg.projects.iter().map(|p| (p.id.clone(), p.path.clone())).collect();
         (json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "resets": resets, "active": cfg.active, "busy": busy,
-           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "ci_builds": cfg.ci_builds, "mac": cfg.mac, "web": !cfg.off.iter().any(|x| x == "web"), "lessons": cfg.lessons, "notify": cfg.notify,
+           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "ci_builds": cfg.ci_builds, "mac": cfg.mac, "web": !cfg.off.iter().any(|x| x == "web"), "lessons": cfg.lessons, "you": cfg.you, "notify": cfg.notify,
            "update_every": cfg.update_every.unwrap_or(24), "update_at": cfg.update_at,
            "projects_dir": store::projects_root(&cfg).to_string_lossy()}), paths)
     };
@@ -313,6 +313,20 @@ fn lan_ip() -> String {
 fn set_lessons(st: St, lessons: Vec<String>) {
     let mut cfg = st.cfg.lock().unwrap();
     cfg.lessons = lessons.into_iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+    store::save(&cfg);
+}
+
+#[tauri::command]
+fn set_you(st: St, you: store::You) {
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.you = store::You {nick: you.nick.trim().into(), prefs: you.prefs.trim().into(),
+        tags: you.tags.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()};
+    let md = format!("# About the user
+Interests: {}
+
+{}
+", cfg.you.tags.join(", "), cfg.you.prefs);
+    let _ = store::write_atomic(&store::home().join("you.md"), md.as_bytes());
     store::save(&cfg);
 }
 
@@ -2012,7 +2026,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
-            continue_now, set_lessons, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
+            continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])

@@ -1501,7 +1501,7 @@ function chatRow(kind, inner, ts) {
   const w = document.createElement('div'), me = P()?.gh;
   w.className = 'crow ' + kind;
   w.innerHTML = (kind === 'claude' ? '<svg class="av"><use href="#i-logo"/></svg>' : me ? avGh(me) : `<span class="av" style="background:var(--accent)">${icon('user')}</span>`)
-    + `<div class="cb"><div class="cm"><b>${kind === 'claude' ? 'Clauracle' : me ? esc(me) : 'You'}</b>${ts ? `<span>${esc(tm(ts))}</span>` : ''}</div></div>`;
+    + `<div class="cb"><div class="cm"><b>${kind === 'claude' ? 'Clauracle' : esc(S.you?.nick || me || 'You')}</b>${ts ? `<span>${esc(tm(ts))}</span>` : ''}</div></div>`;
   w.querySelector('.cb').append(inner);
   return w;
 }
@@ -4019,10 +4019,26 @@ function agentsPage() {
 }
 const agentSet = (i, k, v) => { AGENTS[i][k] = v; saveAgents(); };
 const saveAgents = () => call('set_agents', {agents: AGENTS}).then(() => openSettings());
+// #256 You: nickname (prompt + chat name) and interests/prefs (→ ~/.clauracle/you.md, read by the AI only when needed)
+const YOU_TAGS = ['Web apps', 'Websites', 'Mobile apps', 'Desktop apps', 'Games', 'Game engines', 'Backend & APIs', 'DevOps & cloud', 'CLI tools',
+  'Machine learning', 'Data & analytics', 'Embedded & hardware', 'Security', 'Open source', 'Art & design', '3D', 'Music & audio', 'Video', 'Writing', 'Automation'];
+const you = (ch) => call('set_you', {you: {...{nick: '', tags: [], prefs: ''}, ...S.you, ...ch}}).then(refresh).then(() => openSettings('ai'));
+const youTag = t => you({tags: S.you?.tags?.includes(t) ? S.you.tags.filter(x => x !== t) : [...(S.you?.tags || []), t]});
+const youFind = el => { const q = el.value.trim().toLowerCase();
+  el.closest('.you').querySelectorAll('.chips .pill:not(.on)').forEach(c => c.hidden = !!q && !c.textContent.toLowerCase().includes(q)); };
+function youHtml() {
+  const y = S.you || {}, tags = y.tags || [], all = [...new Set([...tags, ...YOU_TAGS])];
+  return `<div class="you"><div class="label">You</div><p class="dim" style="margin:4px 0 8px;font-size:13px">Optional. The nickname is what Clauracle calls you in every project. Interests and preferences sit in a small file Clauracle reads only when it's tailoring a choice to you, so they cost no tokens otherwise.</p>
+    <div class="grid2"><span>Nickname</span><input value="${esc(y.nick || '')}" placeholder="${esc(P()?.gh || 'e.g. Kim')} (default: your GitHub name)" onchange="you({nick: this.value})">
+      <span>Interests</span><div><input placeholder="Search or add your own (Enter)" style="width:100%;margin-bottom:6px" oninput="youFind(this)" onkeydown="if (event.key === 'Enter' && this.value.trim()) youTag(this.value.trim())">
+        <div class="chips">${all.map(t => `<span class="pill${tags.includes(t) ? ' on' : ''}" onclick="youTag(${esc(JSON.stringify(t))})">${esc(t)}</span>`).join('')}</div></div>
+      <span>Preferences</span><textarea style="width:100%;min-height:60px;font-size:13px" placeholder="e.g. TypeScript over JS, short answers, explain like I'm new to Rust, dark UIs" onchange="you({prefs: this.value})">${esc(y.prefs || '')}</textarea>
+    </div></div><div class="label" style="margin-top:18px">AI accounts</div>`;
+}
 function aiPage() {
   const pools = [...new Set(S.accounts.map(a => a.pool).filter(Boolean))];
   const meter = (v, l) => v == null ? '' : `<small class="dim">${l} <span class="bar"><i style="width:${v}%"></i></span> ${v}%</small>`;
-  return `<div class="row" style="align-items:flex-start;gap:12px"><p class="dim grow" style="margin-top:0">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>
+  return youHtml() + `<div class="row" style="align-items:flex-start;gap:12px"><p class="dim grow" style="margin-top:0">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>
     <button class="btn primary" onclick="addAcctDlg()">${icon('plus')}Add account</button></div>`
     + S.accounts.map(a => { const u = S.usage[a.id] || {}; return `<details class="acct"><summary>
       <span class="chev">${icon('chev')}</span>${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : a.base_url ? esc(a.base_url) : 'setup-token'}</small>
