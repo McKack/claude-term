@@ -114,6 +114,8 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .msg { max-width:100%; }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
 .msg.user .tk { margin-left:6px; font-size:11px; color:var(--faint); white-space:nowrap; } .msg.user .tk.read { color:#34b7f1; letter-spacing:-3px; padding-right:3px; } .msg.user .tk.fail { color:var(--err); font-weight:700; } .msg.user .tk .i { width:11px; height:11px; vertical-align:-1px; }
+.rpill { display:inline-flex; align-items:center; gap:4px; padding:0 8px 0 6px; border-radius:99px; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); } .rpill svg { width:1em; height:1em; flex:none; }
+#pback .fic { position:relative; } #pback .fic svg { position:absolute; left:.05em; top:50%; width:1em; height:1em; transform:translateY(-50%); color:var(--accent); } /* #227 icon over the em-space slot */
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
 /* thumbnails: fixed tiles, cropped (the viewer shows the whole image); wrap, never wider than the bubble */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
@@ -546,6 +548,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></symbol>
   <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></symbol>
   <symbol id="i-gh" viewBox="0 0 24 24"><path d="M9 19c-4 1.5-4-2-6-2.5m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></symbol>
   <symbol id="i-panelL" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
@@ -1398,13 +1401,13 @@ function entry(e) {
     const imgs = e.images.map((x, k) => typeof x === 'string' ? {url: x, name: `image ${k + 1}`} : x);
     d.innerHTML = `<div class="thumbs">${imgs.map(x => `<img src="${x.url}" title="${esc(x.name)}">`).join('')}</div>`;
     d.querySelectorAll('.thumbs img').forEach((im, k) => im.onclick = () => openViewer(imgs, k, null));
-    d.append(bare(e.text));
+    d.insertAdjacentHTML('beforeend', refPills(bare(e.text), [...imgs.map(x => x.name), ...fnames(e.text)]));
   }
   else if (view === 'term') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')'
     // tool output: drop reminder blocks + blank-line runs (else a one-liner renders as a tall empty box)
     : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
-  else if (e.kind === 'user' && view === 'chat') { d.textContent = bare(e.text); for (const [, n] of e.text.matchAll(new RegExp(FILED_RE, 'g'))) d.insertAdjacentHTML('beforeend', `<span class="filedtag" data-tip="Filed as task #${n}">#${n}</span>`); }
+  else if (e.kind === 'user' && view === 'chat') { d.innerHTML = refPills(bare(e.text), fnames(e.text)); for (const [, n] of e.text.matchAll(new RegExp(FILED_RE, 'g'))) d.insertAdjacentHTML('beforeend', `<span class="filedtag" data-tip="Filed as task #${n}">#${n}</span>`); }
   else d.textContent = e.text;
   // #169 ticks after the chain: as its own if, its `else` overwrote md() replies with plain text
   if (e.kind === 'user' && e.st && view === 'chat') { d.insertAdjacentHTML('beforeend', tickHtml(e)); USEREL.set(e, d); }
@@ -1593,22 +1596,29 @@ function addEntry(pid, e) {
 // ---- composer: text, pasted images (previews), attached files ----
 const hasInput = () => $('prompt').value.trim() || (atts[cur] || []).length;
 const stem = n => n.replace(/\.\w+$/, '');
+// #227 file-type icon for pills/thumbs: image | doc | code | file
+const fIcon = n => /\.(png|jpe?g|gif|webp|bmp|svg|ico)$/i.test(n) ? 'image' : /\.(md|txt|pdf|docx?|rtf|csv|log)$/i.test(n) ? 'doc' : /\.(js|ts|tsx|jsx|rs|py|go|java|c|cpp|h|cs|rb|php|html|css|json|toml|ya?ml|sh|ps1|kt|swift)$/i.test(n) ? 'code' : 'file';
+// #227 composer ref = "[ name ]": em space = icon slot, en space = right pad (a textarea can't pad a range); stripped on send
+const PADL = ' ', PADR = ' ', unpad = t => t.replace(/\[ ([^\]\n]+?) \]/g, '[$1]');
+// #227 chat bubble: [ref] naming one of the message's files → same pill
+const refPills = (t, names) => esc(unpad(t)).replace(/\[([^\]\n]+)\]/g, (m, n) => { const f = names.find(x => stem(x) === n.replace(/&amp;/g, '&') || x === n); return f ? `<span class="rpill">${icon(fIcon(f))}${n}</span>` : m; });
 function attRef(i) { // inserts [name w/o extension] at the caret; a space before/after only where the neighbour isn't one already
-  const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = `[${stem(atts[cur][i].name)}]`;
+  const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = `[${PADL}${stem(atts[cur][i].name)}${PADR}]`;
   const ins = (s && !/\s/.test(v[s - 1]) ? ' ' : '') + r + (e < v.length && /\s/.test(v[e]) ? '' : ' ');
   el.setRangeText(ins, s, e, 'end'); el.focus(); grow(); keepDraft();
 }
 function drawAtts() {
-  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon('file') + `<span>${esc(a.name)}</span>`}
+  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
     <span class="abtns"><button class="aref" title="Refer to it in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button><button title="Remove" onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button></span>
     ${a.notes?.length ? `<button class="anote" title="${esc(a.notes.join('\n').slice(0, 160))}&#10;(click to edit the notes)" onclick="viewAtt(${i}); editImage()">${icon('doc')}</button>` : ''}</div>`).join('');
   attArr(); pbDraw(); if (cur) { drawChrome(); keepDraft(); }
 }
 // #217 [ref] pills: #pback mirrors the textarea text; refs naming an attachment get a <mark> behind them (a textarea can't style
-// its own text). Click inside one → highlight + scroll its thumb, image → viewer. ponytail: no file-type icon inside the text (plain textarea)
-const attAt = name => (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name);
+// its own text). Click inside one → highlight + scroll its thumb, image → viewer. Icon drawn over the PADL char (same width ∴ mirror stays aligned)
+const attAt = name => { name = name.replace(/[  ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
 function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return;
-  b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => attAt(n.replace(/&amp;/g, '&')) >= 0 ? `<mark><i>[</i>${n}<i>]</i></mark>` : m) + '\n'; b.scrollTop = p.scrollTop; }
+  b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m; const l = n.startsWith(PADL), rr = n.endsWith(PADR), x = n.slice(l ? 1 : 0, rr ? -1 : undefined);
+    return `<mark><i>[</i>${l ? `<i class="fic">${PADL}${icon(fIcon(atts[cur][i].name))}</i>` : ''}${x}<i>${rr ? PADR : ''}]</i></mark>`; }) + '\n'; b.scrollTop = p.scrollTop; }
 $('prompt').addEventListener('scroll', () => $('pback').scrollTop = $('prompt').scrollTop);
 // #223 link cursor over a pill: hit-test the mirror's <mark> rects (#pback is pointer-events:none)
 $('prompt').addEventListener('mousemove', e => { const hit = [...$('pback').querySelectorAll('mark')].some(m => [...m.getClientRects()].some(r => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom));
@@ -1760,7 +1770,7 @@ T.event.listen('tauri://drag-drop', e => { $('composer').classList.remove('drop'
 
 // sent while a turn runs → queued here (editable, saved with the draft); the oldest goes out when the turn ends
 function send() {
-  const t = $('prompt').value, a = atts[cur] || [];
+  const t = unpad($('prompt').value), a = atts[cur] || []; // #227 pill pads are display-only
   if (!t.trim() && !a.length) return;
   if (!a.length && !editing[cur] && (/^\s*\/build\b/i.test(t) || BUILD_RE.test(t))) { $('prompt').value = ''; grow(); keepDraft(); return buildLocal(cur, /^\s*\/build\s+all\b/i.test(t)); }
   const ed = editing[cur]; delete editing[cur];
@@ -1904,6 +1914,7 @@ const contGo = pid => qWait(pid) ? (pid === cur && showQuestions(pid), toast('An
   : nextUp(pid).length && sendNow(pid, {work: issueQ(pid)?.[0]?.number, text: (issueQ(pid) ? 'Carry on with the next task (GitHub issue): ' : S.queues?.[pid]?.length ?'Carry on with the next task in PLAN.md\'s Queue: ' : 'Carry on with the next task: ') + nextUp(pid)[0], atts: []});
 // #101 ticks: e.st pend ⏱ → sent ✓ (in the session's inbox) → read blue ✓✓ (its turn started) | fail !
 const UNREAD = {}, USEREL = new WeakMap(); // pid → entries awaiting ✓✓; entry → its bubble (WeakMap ∵ logs stay plain data)
+const fnames = t => (t.match(/\n📎 (.+)$/)?.[1] || '').split(', ').filter(Boolean); // utext's file list
 const utext = (t, a) => { const f = a.filter(x => x.path); return t + (f.length ? `\n📎 ${f.map(x => x.name).join(', ')}` : ''); };
 const userEntry = (pid, t, a, e = {}) => { addEntry(pid, Object.assign(e, {kind: 'user', st: e.st || 'pend', text: utext(t, a), images: a.filter(x => x.data).map(x => ({url: x.url, name: x.name}))}));
   e.log = !!logs[pid]?.includes(e); return e; }; // log false = a handover turn hid it
@@ -2007,7 +2018,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note' && !x.cont)) logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   pushed: () => { ghiStale(d.pid); if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
-  project: () => { if (!d) return; S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { if (d.keep) $('suggest').hidden = true; drawChrome(); drawLog(); } },
+  project: () => { if (!d) return; const o = P(d.id); S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { if (d.keep) $('suggest').hidden = true; drawChrome(); drawLog(); if (o?.build?.after !== d.build?.after) drawRight(); /* #227 Then picker follows any change (answer applied by AI, Settings) at once */ } },
   queued: () => refresh(),
   mac_setup: () => macLine(d.line),
   janitor: () => toast(`Storage Janitor freed ${mb(d.freed)} (old caches, Claude Code versions)`, 'ok'),
