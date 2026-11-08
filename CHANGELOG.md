@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- The Working pill is now the last centred line of the chat and scrolls with it, instead of staying pinned to the bottom.
 - File pills in the message box and in chat show a file-type icon and more side padding; the "Then" build picker updates the moment the setting changes.
 - Tasks: an ask filed as an issue shows in the task list at once (was ~30s late), and the list no longer says "Working on" an old task at the start of a new turn.
 - Chat: pasted-image refs in the composer are real pills; the Working pill floats centred above the composer; the live reply avatar + timer stick to the top while you scroll.

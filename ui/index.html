@@ -276,8 +276,8 @@ pre.diff .ctx { color:var(--faint); }
 @keyframes hatch { from { clip-path:inset(0 50% calc(100% - 64px) 0 round 16px); opacity:.5; } to { clip-path:inset(0 0 0 0 round 0); opacity:1; } }
 .respawn { animation:respawn .5s ease-out; } @keyframes respawn { from { opacity:0; translate:0 -12px; } }
 #skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skelav, #log.term #skel .cm { display:none; }
-/* #195 head row shown → pills move to #dockpill: floats in the dock's empty top strip, takes no log space (chat never pushed up) */
-#skel.hd { display:none; } #dock .col { position:relative; } #dockpill { position:absolute; bottom:calc(100% + 5px); left:50%; transform:translateX(-50%); display:flex; max-width:100%; pointer-events:none; } /* #225 always here, centred: never pushes the chat */
+/* #195 head row shown → skeleton hides its own avatar row; pills stay as its centred line */
+#skel.hd > .crow { display:none; } #dockpill { display:flex; justify-content:center; margin-top:8px; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
 .crow.stick { position:sticky; top:52px; z-index:3; width:max-content; } .crow.stick .cm { background:var(--bg); border-radius:99px; padding-right:10px; } /* #225 live turn head (avatar ring + timer) sticks under the header */
 #dockpill > * { padding:5px 14px; }
 .crow.thead { margin-bottom:-8px; } /* #189 head row over a termcard: card tucks under the name */ #log.term .crow.thead { display:none; }
@@ -631,8 +631,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
-    <div class="col" id="skel" hidden><div class="crow claude"><span id="skelav"><svg class="av"><use href="#i-logo"/></svg></span><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div></div></div></div></div>
-  <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col"><div id="dockpill"><div id="handpill" hidden>Preparing handover…</div><div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div>
+    <div class="col" id="skel" hidden><div class="crow claude"><span id="skelav"><svg class="av"><use href="#i-logo"/></svg></span><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div></div></div><div id="dockpill"><div id="handpill" hidden>Preparing handover…</div><div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div>
+  <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onmouseenter="readyMore(this)" onclick="if (!event.target.closest('button') &amp;&amp; readyMore(this)) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
