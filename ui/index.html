@@ -1383,7 +1383,7 @@ function entry(e) {
   return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
 }
 // note buttons (#170 Built! / Build failed): label, handler (cur = the project shown)
-const NOTEACT = {run: [icon('play') + 'Run', "call('run_step', {pid: cur, step: 'run'})"], restart: ['Restart into it', "call('restart_into', {pid: cur})"], out: ['Show output', "rightTab('build')"]};
+const NOTEACT = {run: [icon('play') + 'Run', "call('run_step', {pid: cur, step: 'run'})"], restart: ['Restart into it', "call('restart_into', {pid: cur})"], out: ['See output', "rightTab('build'); setTimeout(() => $('buildOut')?.scrollIntoView({block: 'nearest'}))"]};
 // chat look: avatar (Clauracle's icon | your GitHub picture) + name · time over the bubble
 const tm = ts => { const d = ts ? new Date(ts) : null; if (!d || isNaN(d)) return '';
   const t = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
@@ -1886,7 +1886,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if (d.step === 'build' && !!b.busy !== (d.done == null)) { if (!b.busy) b.from = b.out.length - (d.line != null ? d.line.length + 1 : 0); b.busy = d.done == null; if (b.busy && !b.manual) addEntry(d.pid, {kind: 'note', text: 'Building…'}); /* after a task / resumed (#170/#175); Build button = manual */ if (d.pid === cur) tabDots(); if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
     if (d.step === 'build' && d.done) { BUILT[d.pid] = 1; if (d.pid === cur) tabDots(); } /* green dot till Build & Release is opened */
     if (d.step === 'build' && d.done != null) { b.ok = d.done; b.at = Date.now(); b.own = !!d.own; /* statusline right zone + card */
-      if (!b.manual) addEntry(d.pid, d.done ? {kind: 'note', text: 'Built!', act: d.own ? 'restart' : P(d.pid)?.build.run ? 'run' : ''} : {kind: 'note', text: 'Build failed: output in Build & Release', act: 'out'});
+      if (!b.manual) addEntry(d.pid, d.done ? {kind: 'note', text: 'Built!', act: d.own ? 'restart' : P(d.pid)?.build.run ? 'run' : ''} : {kind: 'note', text: 'Build failed', act: 'out'});
       b.manual = false; drawGbar(); }
     if (d.step === 'build' && d.done != null) { ghiStale(d.pid); delete RELC[d.pid]; const rb = RELB[d.pid]; delete RELB[d.pid]; (d.done && rb ? call('git_do', {pid: d.pid, action: 'commit', arg: 'Release build'}).catch(() => {}) : Promise.resolve()).then(() => d.pid === cur && tab === 'build' && drawRight()); } /* new build files → release check refetch; wizard build → commit (nothing to commit = Err, ignored) */
     if (d.pid === cur && tab === 'build') { const o = $('buildOut'); if (o) { o.textContent = b.out; o.scrollTop = o.scrollHeight; } } },
@@ -2308,7 +2308,7 @@ async function buildLocal(pid, all) {
   const b = builds[pid] ||= {out: ''}; b.from = b.out.length; b.busy = true; b.manual = true; if (pid === cur) drawRight(); tabDots();
   addEntry(pid, {kind: 'note', text: all ? 'Building every target…' : 'Building a local copy…', ts: new Date().toISOString()});
   const ok = await call('run_step', {pid, step: all ? 'build' : 'local'}).catch(() => false);
-  if (!ok) return addEntry(pid, {kind: 'note', text: 'Build failed: see Build & Release › Output', ts: new Date().toISOString()});
+  if (!ok) return addEntry(pid, {kind: 'note', text: 'Build failed', act: 'out', ts: new Date().toISOString()});
   if (all) return addEntry(pid, {kind: 'note', text: 'Built every target', ts: new Date().toISOString()});
   addEntry(pid, {kind: 'note', text: 'Built: starting it', ts: new Date().toISOString()});
   call('restart_into', {pid}).catch(() => call('run_step', {pid, step: 'run'})); // own repo → swap into it, else Run
