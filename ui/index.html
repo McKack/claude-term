@@ -72,9 +72,9 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .side-head { display:flex; align-items:center; gap:2px; padding:8px 8px 6px 10px; }
 #stabs { display:flex; gap:2px; min-width:0; } #brand .ib { margin-left:auto; }
 #files { flex:1; overflow:auto; padding:2px 8px; }
-#graph { flex:1; display:flex; flex-direction:column; margin:2px 8px 8px; border-radius:10px; overflow:hidden; background:#0a0c11; color:#cfd6e4; min-height:120px; font-size:12px; } /* #137 always dark; #221 hot files */
+#graph { flex:1; display:flex; flex-direction:column; margin:2px 8px 8px; border-radius:10px; overflow:hidden; background:#161514; color:#cfd6e4; min-height:120px; font-size:12px; } /* #137 always dark; #221 hot files; #223 bg = .termcard */
 #graph .ghd { display:flex; align-items:center; padding:2px 4px 2px 10px; } #graph .ginfo { opacity:.6; } #graph .gre { color:#cfd6e4; } #graph .faint { padding:10px; }
-#graph .tm { flex:1; position:relative; min-height:100px; } #graph .tm div { position:absolute; box-sizing:border-box; border:1px solid #0a0c11; overflow:hidden; padding:1px 3px; font-size:10.5px; line-height:1.25; white-space:nowrap; text-overflow:ellipsis; color:#e6ebf5; cursor:pointer; }
+#graph .tm { flex:1; position:relative; min-height:100px; } #graph .tm div { position:absolute; box-sizing:border-box; border:1px solid #161514; overflow:hidden; padding:1px 3px; font-size:10.5px; line-height:1.25; white-space:nowrap; text-overflow:ellipsis; color:#e6ebf5; cursor:pointer; }
 #graph .tm div.on { outline:2px solid #fff; outline-offset:-2px; z-index:1; } #graph .gdet { max-height:45%; overflow:auto; padding:6px 10px; border-top:1px solid #ffffff1a; line-height:1.5; }
 #graph .gdet .row { display:flex; gap:8px; } #graph .gdet .row > a { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #graph .gdet a { color:#8ab4ff; cursor:pointer; } #graph .dim { opacity:.6; }
 .tree div.on { background:var(--soft); color:var(--text); }
@@ -352,9 +352,9 @@ pre.diff .ctx { color:var(--faint); }
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
 #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 60%, var(--line2)); }
 #composer.drop { border-color:var(--accent); border-style:dashed; }
-#prompt { width:100%; border:0; padding:4px 0; resize:none; min-height:26px; max-height:260px; background:none; box-shadow:none; position:relative; display:block; }
-#pwrap { position:relative; } #pback { position:absolute; inset:0; padding:4px 0; white-space:pre-wrap; overflow-wrap:break-word; color:transparent; pointer-events:none; overflow:hidden; }
-#pback mark { color:transparent; background:var(--soft); border-radius:6px; box-shadow:0 0 0 2px var(--soft); }
+#prompt { width:100%; border:0; padding:4px 0; resize:none; min-height:26px; max-height:260px; background:none; box-shadow:none; position:relative; display:block; color:transparent; caret-color:var(--text); } /* #223 text drawn by #pback ∴ [ ] can hide */
+#pwrap { position:relative; } #pback { position:absolute; inset:0; padding:4px 0; white-space:pre-wrap; overflow-wrap:break-word; color:var(--text); pointer-events:none; overflow:hidden; } #pback mark i { font-style:normal; color:transparent; }
+#pback mark { color:inherit; background:var(--soft); border-radius:6px; box-shadow:0 0 0 2px var(--soft); }
 .att.hl { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
 #slash { display:flex; flex-direction:column; max-height:280px; overflow:auto; margin:0 0 6px -6px; padding-bottom:6px; border-bottom:1px solid var(--line); }
 #slash[hidden] { display:none; }
@@ -1611,8 +1611,11 @@ function drawAtts() {
 // its own text). Click inside one → highlight + scroll its thumb, image → viewer. ponytail: no file-type icon inside the text (plain textarea)
 const attAt = name => (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name);
 function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return;
-  b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => attAt(n.replace(/&amp;/g, '&')) >= 0 ? `<mark>${m}</mark>` : m) + '\n'; b.scrollTop = p.scrollTop; }
+  b.innerHTML = esc(p.value).replace(/\[([^\]\n]+)\]/g, (m, n) => attAt(n.replace(/&amp;/g, '&')) >= 0 ? `<mark><i>[</i>${n}<i>]</i></mark>` : m) + '\n'; b.scrollTop = p.scrollTop; }
 $('prompt').addEventListener('scroll', () => $('pback').scrollTop = $('prompt').scrollTop);
+// #223 link cursor over a pill: hit-test the mirror's <mark> rects (#pback is pointer-events:none)
+$('prompt').addEventListener('mousemove', e => { const hit = [...$('pback').querySelectorAll('mark')].some(m => [...m.getClientRects()].some(r => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom));
+  e.target.style.cursor = hit ? 'pointer' : ''; });
 $('prompt').addEventListener('click', () => { const p = $('prompt'), c = p.selectionStart, v = p.value, o = v.lastIndexOf('[', c), z = v.indexOf(']', o);
   if (o < 0 || z < c || v.slice(o, z).includes('\n')) return; const i = attAt(v.slice(o + 1, z)); if (i < 0) return;
   const t = $('atts').children[i]; document.querySelectorAll('.att.hl').forEach(x => x.classList.remove('hl')); t?.classList.add('hl'); t?.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'smooth'});
