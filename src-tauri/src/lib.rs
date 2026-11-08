@@ -195,7 +195,7 @@ fn remove_project(st: St, pid: String) {
 /// current reply, same session).
 #[tauri::command]
 fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Value> {
-    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage", "rel_auto", "order", "work", "targets", "site", "wired"]; // read live per call: no reconnect
+    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage", "rel_auto", "order", "work", "targets", "site", "wired", "license"]; // read live per call: no reconnect
     let p = st.with_project(&pid, |p| {
         let mut v = json!(p);
         for (k, val) in changes.as_object().cloned().unwrap_or_default() {
@@ -1331,6 +1331,17 @@ fn site_check(urls: Vec<String>) -> Vec<u16> {
 
 /// App version + the file it's in: package.json / tauri.conf.json "version", Cargo.toml / pyproject.toml `version = "…"`.
 // ponytail: first `version =` line in a toml (≈ [package]/[project]); workspace-inherited versions → not found
+/// #264 licence text → SPDX id ("" = unknown). Order matters: LGPL/AGPL before GPL.
+fn lic_guess(t: &str) -> &'static str {
+    let t = t.to_lowercase();
+    [("mit license", "MIT"), ("apache license", "Apache-2.0"), ("lesser general public", "LGPL-3.0"), ("affero general public", "AGPL-3.0"),
+     ("general public license", "GPL-3.0"), ("mozilla public license", "MPL-2.0"), ("bsd 3-clause", "BSD-3-Clause"), ("redistributions of source", "BSD-3-Clause"),
+     ("unlicense", "Unlicense"), ("isc license", "ISC"), ("permission is hereby granted, free of charge", "MIT")]
+        .iter().find(|(k, _)| t.contains(k)).map_or("", |x| x.1)
+}
+#[test]
+fn lic_guess_ids() { assert_eq!(lic_guess("MIT License\n\nCopyright"), "MIT"); assert_eq!(lic_guess("GNU LESSER GENERAL PUBLIC LICENSE"), "LGPL-3.0"); assert_eq!(lic_guess("hi"), ""); }
+
 fn version_of(root: &std::path::Path) -> Option<(String, &'static str)> {
     ["src-tauri/tauri.conf.json", "package.json", "Cargo.toml", "src-tauri/Cargo.toml", "pyproject.toml"].into_iter().find_map(|f| {
         let t = std::fs::read_to_string(root.join(f)).ok()?;
@@ -1357,6 +1368,8 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
         let root = std::path::PathBuf::from(&p.path);
         let files: Vec<(String, std::path::PathBuf)> = std::fs::read_dir(&root).into_iter().flatten().flatten().map(|e| (e.file_name().to_string_lossy().to_uppercase(), e.path())).collect();
         let has = |pre: &[&str]| files.iter().any(|(n, _)| pre.iter().any(|x| n.starts_with(x)));
+        // #264 licence id guessed from the file text → preselect on Confirm. ponytail: first-match keywords, not SPDX matching
+        let lic_id = files.iter().find(|(n, _)| ["LICENSE", "LICENCE", "COPYING"].iter().any(|x| n.starts_with(x))).and_then(|(_, f)| std::fs::read_to_string(f).ok()).map_or("", |t| lic_guess(&t));
         let readme = files.iter().find(|(n, _)| n.starts_with("README")).and_then(|(_, f)| std::fs::read_to_string(f).ok()).map_or(0, |t| t.lines().count());
         let ver = version_of(&root);
         let git = |a: &[&str]| store::run("git", a, Some(&p.path), &[]);
@@ -1392,7 +1405,7 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
                 r["why"] = json!(why);
             }
         }
-        json!({"readme": readme, "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
+        json!({"readme": readme, "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "lic_id": lic_id, "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
                "version": ver.as_ref().map(|v| &v.0), "vfile": ver.as_ref().map(|v| v.1), "tag": if tag.ok { tag.stdout.trim() } else { "" },
                "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon.map(|i| i.0), "icon_px": icon.and_then(|i| i.1), "remote": remote, "code_t": store::code_time(&p.path),
                "ci": ci, "sign": store::sign_env(&p.path).into_iter().map(|(k, _)| k).collect::<Vec<_>>()})

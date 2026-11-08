@@ -2420,6 +2420,10 @@ function projectsPage() {
       <span>After each task</span><span>${thenBtn(p, 'm')}</span>
       <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Clauracle to fix</small></label></div>`,
       ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3', '', !p.build.build)}
+    ${(g => fold('p-lic', 'Licence', `<p class="dim" style="margin:0 0 8px;font-size:13px">What others may do with this project's code. The release checklist writes the LICENSE file from this.</p><div class="row" style="gap:8px">
+      <select onchange="setM({license:this.value})">${options({...(p.license ? {} : {'': 'Not picked'}), ...LICS}, p.license)}</select>
+      ${!p.license && g ? `<button class="btn primary" onclick="setM({license:'${g}'})">${icon('check')}Confirm ${esc(LICS[g] || g)} (from its LICENSE file)</button>` : ''}</div>`,
+      p.license ? LICS[p.license] || p.license : '', '', !p.license))(RELC[mp]?.c?.lic_id)}
     ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Storage Janitor cleans them on its own: after 14 days without commits, over 10 GB, or when the drive runs low (also old Claude Code versions and, on a low drive, Claude transcripts older than 14 days).</p>
       <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
     ${cxGroup('p-cx', 'Connections &amp; Skills', 'project:' + p.id, p)}${cxFold('p-plugin', 'Plugins & mods', 'plugin', 'project:' + p.id, p)}
@@ -2514,6 +2518,8 @@ function rightTab(t) { tab = UI.tab = t; try { localStorage.ui = JSON.stringify(
 /* #114 tab right-click: Refresh = drop that tab's caches + redraw (opens the tab), Settings… = related page if any */
 const TABREF = {gh: () => { ghiStale(cur); delete COLLAB[cur]; delete IMETA[cur]; }, build: () => { delete RELC[cur]; delete SECRETS[cur]; ghiStale(cur); },
   svc: () => { delete SECRETS[cur]; delete BUNDLE[cur]; }, web: () => { BROWSERS = null; HOMEPG = undefined; }, code: () => {}, agents: () => { AGENTS = null; }};
+const LICS = {MIT: 'MIT', 'Apache-2.0': 'Apache 2.0', 'GPL-3.0': 'GPL 3.0', 'LGPL-3.0': 'LGPL 3.0', 'AGPL-3.0': 'AGPL 3.0', 'MPL-2.0': 'Mozilla 2.0', 'BSD-3-Clause': 'BSD 3-Clause', ISC: 'ISC', Unlicense: 'Unlicense (public domain)', Proprietary: 'All rights reserved'};
+const licPick = () => openManager(cur).then(() => jumpTo('[data-f=p-lic]')); // #264
 const buildSet = () => openManager(cur).then(() => jumpTo('[data-f=p-build]'));
 const TABSET = {gh: () => openSettings('gh'), agents: () => openSettings('agents'), build: buildSet}; // svc: no settings of its own
 $('rtabs').oncontextmenu = e => { const b = e.target.closest('button[data-t]'); if (!b || !cur) return; e.preventDefault(); const t = b.dataset.t;
@@ -2536,7 +2542,7 @@ const RELC = {}, RELTO = {}, RELBUSY = {}; // pid → {c, t} check cache · pid 
 const RELAI = { // fix prompts: Claude writes/judges, never template
   readme: 'Write README.md by hand-feel: plain voice of this project, what it does and for whom, how to install and run it. No template headings, badge walls or emoji; short beats complete. Read the code first.',
   version: 'Give the project a version (0.1.0) in its main config (package.json / Cargo.toml / tauri.conf.json), consistent across files.',
-  license: 'Add a LICENSE file. Ask me which licence first via the ask tool (recommend MIT unless the deps say otherwise).',
+  get license() { return `Write LICENSE with the full ${LICS[P().license] || P().license} text (this year, copyright holder from the git author / repo owner), replacing any other licence file, and set the licence field in the project's config files that carry one.`; },
   changelog: 'Write CHANGELOG.md from git history since the last tag: user-facing changes only, newest first, grouped by version.',
   bump: 'Bump the version for the next release (patch for fixes, minor for features, judge from git log since the last tag) in every config file that carries it.',
   ci: 'Add or fix a GitHub Actions workflow that builds and runs the tests on push, then push so it runs.',
@@ -2559,7 +2565,10 @@ function relItems(c, p) {
     // #121: semver ≤ last tag → auto-bumped in relWizard; row stays only when that can't happen (non-semver) → AI fix
     ...(tv && !(v && vcmp(v, tv) > 0) ? [{s: 0, id: 'bump', t: 'Version newer than the last release', ok: false, d: `last released ${c.tag}`}] : []),
     {s: 0, id: 'clean', t: 'All changes saved to Git', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
-    {s: 1, id: 'license', t: 'Licence', ok: c.license},
+    // #264 picked in Settings › Projects (p-lic); never picked → Choose / Confirm (a file exists) → licPick; picked but file missing/other → AI writes it
+    {s: 1, id: 'license', t: 'Licence', ok: !!p.license && c.license && (!c.lic_id || c.lic_id === p.license),
+      d: p.license ? LICS[p.license] + (!c.license ? ' · no LICENSE file yet' : c.lic_id && c.lic_id !== p.license ? ` · file says ${c.lic_id}` : '') : c.license ? `not picked · file looks like ${c.lic_id || 'an unknown licence'}` : 'not picked',
+      ...(p.license ? {} : {go: 'licPick()', gl: c.license ? 'Confirm' : 'Choose'})},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
     ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'Online build passed', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no online builds yet',
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.bill || ci?.url}] : []),

@@ -113,6 +113,7 @@ pub struct Project {
     pub work: u64,            // issue being worked on (0 = none): persisted ∴ a clear/crash/restart resumes it first, never re-picks the queue head
     pub targets: Vec<String>, // target platforms: windows|macos|linux|ios|android; [] = not picked → UI guesses (ships_mac)
     pub wired: Vec<String>,   // #259 in-app services already handed to Claude to integrate (checked or tasked) → not counted in "Integrate N"
+    pub license: String,      // #264 SPDX id picked in Settings › Projects ("" = never picked; release row says Choose/Confirm)
     pub site: serde_json::Value, // #40 website: {host, domain, pages: [landing|privacy|terms]}; UI-owned shape, secrets stay in .env
 }
 impl Default for Project {
@@ -122,7 +123,7 @@ impl Default for Project {
             off: vec![], on: None, mode: "default".into(), model: String::new(), effort: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, prev_session: None, ready: false, questions: vec![], answers: String::new(),
             build: Build::default(), hide_env: true, terse: true,
-            owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], allow: vec![], ai_credit: false, stage: String::new(), rel_auto: false, order: vec![], work: 0, targets: vec![], wired: vec![], site: serde_json::Value::Null,
+            owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], allow: vec![], ai_credit: false, stage: String::new(), rel_auto: false, order: vec![], work: 0, targets: vec![], wired: vec![], license: String::new(), site: serde_json::Value::Null,
         }
     }
 }
