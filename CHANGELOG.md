@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Clauracle now speaks as itself: buttons and tips say "Clauracle" instead of "AI", and replies address you by name.
 - Services: when everything is set up but no sign-in/payments/email-type service is chosen, the card offers to add one (that unlocks "Check the app uses …").
 - Right-click anywhere now opens Clauracle's own menu: Cut/Copy/Paste/Select all in text boxes, Open/Copy link, Copy image, Copy selection.
 - Composer: the caret no longer drifts away from the text in long prompts.

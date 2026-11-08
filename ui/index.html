@@ -907,7 +907,7 @@ async function refresh() {
   const first = !draftsLoaded;
   if (first) { // unsent input from before a close, crash or restart
     draftsLoaded = true;
-    for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; queue[pid] = [...(d.filing || []), ...(d.queue || [])] /* filing = sent mid-gh-call when the app died: no note ∴ the AI files it (rules) */; if (d.editing) editing[pid] = d.editing; }
+    for (const [pid, d] of Object.entries(S.drafts || {})) { texts[pid] = d.text || ''; atts[pid] = d.atts || []; queue[pid] = [...(d.filing || []), ...(d.queue || [])] /* filing = sent mid-gh-call when the app died: no note ∴ Clauracle files it (rules) */; if (d.editing) editing[pid] = d.editing; }
     for (const id of S.busy) busy[id] = true; // first load only: a later refresh resolving after status busy:false re-set it → stuck Working, queue never flushed
   }
   drawProjects();
@@ -1061,9 +1061,9 @@ function drawGbar() {
   const meter = (k, l, ic) => u[k] == null ? '' : `<span title="${l} usage: ${u[k]}%${resetIn(acct, k) ? ', ' + resetIn(acct, k) : ''}">${icon(ic)}<span class="bar"><i style="width:${u[k]}%"></i></span>${u[k]}%</span>`;
   const wk = gbusy(), bd = gbuilds(), what = () => 'Working…' /* #203 short state only; command → card tooltip */, wait = gwait(), last = glast();
   // #195 ONE AI button (left): activity + context + usage; its card = activity, account/model, context, usage, timers
-  const lead = wk.length ? `<i class="gdot"></i><span class="gt">${wk.length > 1 ? `AI working in ${wk.length} projects` : `<b>${esc(wk[0].name)}</b> · ${esc(what(wk[0]))}`}</span>${(n => n ? `<span>${icon('bot')}${n}</span>` : '')(wk.reduce((n, x) => n + agentsOf(x.id).filter(a => a.running).length, 0))}`
+  const lead = wk.length ? `<i class="gdot"></i><span class="gt">${wk.length > 1 ? `Clauracle working in ${wk.length} projects` : `<b>${esc(wk[0].name)}</b> · ${esc(what(wk[0]))}`}</span>${(n => n ? `<span>${icon('bot')}${n}</span>` : '')(wk.reduce((n, x) => n + agentsOf(x.id).filter(a => a.running).length, 0))}`
     : wait.length ? `${icon('sparkle')}<span class="gt">${wait.length > 1 ? `${wait.length} projects waiting on you` : `<b>${esc(wait[0].name)}</b> · ${esc(wait[0].why)}`}</span>`
-    : `${icon('sparkle')}<span class="gt">AI idle</span>`;
+    : `${icon('sparkle')}<span class="gt">Clauracle idle</span>`;
   const ai = `<button class="stats" onclick="gCard(this, 'ai')" title="AI: activity, account, context, usage and session time">${lead}${p ? `<span>${icon('doc')}${ctx[cur] ?? '?'}%</span>` : ''}${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}</button>`;
   const bl = bd.length ? `<button onclick="gCard(this, 'build')" title="Builds in progress"><span class="spin"></span><span class="gt">Building ${bd.length > 1 ? bd.length + ' projects' : `<b>${esc(bd[0].name)}</b>`}</span></button>`
     : last ? `<button onclick="gCard(this, 'build')" title="Last build"><span class="${last.b.ok ? 'ok' : 'bad'}">${icon(last.b.ok ? 'check' : 'x')}</span><span class="gt">${last.b.ok ? 'Built' : 'Build failed'} <b>${esc(last.p.name)}</b> · ${gago(last.b.at)}</span></button>`
@@ -1623,7 +1623,7 @@ async function repOpen(rid, tb = 'done') {
       ${Object.keys(counts).length ? `<p class="faint" style="margin:6px 0">${Object.entries(counts).map(([t, n]) => `${esc(t)} ×${n}`).join(' · ')}</p>` : ''}
       ${Object.keys(files).length ? `<h3>Files touched</h3><div class="rfiles">${Object.entries(files).map(([f, x]) => `<button class="btn sm" data-rf="${esc(f)}">${icon(x.w ? 'file' : 'new')}${esc(f.split('/').pop())}${x.n > 1 ? ` <span class="pill">×${x.n}</span>` : ''}</button>`).join('')}</div><div id="rdiff"></div>` : ''}`
     : tb === 'fail' ? bad.map((o, k) => { const m = missOf(o.err); return `<div class="rfail">${icon('warn')}<div class="grow" style="min-width:0"><code>${esc((o.cmd || o.text).split('\n')[0])}</code>
-        <pre class="diff errout">${esc(o.err.trim().split('\n').slice(-6).join('\n'))}</pre><div class="row" style="gap:6px">${m ? `<button class="btn sm primary" data-fix="${k}">${esc(m.label)}</button>` : ''}<button class="btn sm" data-ask="${k}">${icon('chat')}Ask AI to fix</button></div></div></div>`; }).join('') || `<p class="dim">${icon('check')} Nothing failed.</p>`
+        <pre class="diff errout">${esc(o.err.trim().split('\n').slice(-6).join('\n'))}</pre><div class="row" style="gap:6px">${m ? `<button class="btn sm primary" data-fix="${k}">${esc(m.label)}</button>` : ''}<button class="btn sm" data-ask="${k}">${icon('chat')}Ask Clauracle to fix</button></div></div></div>`; }).join('') || `<p class="dim">${icon('check')} Nothing failed.</p>`
     : `<div class="rtl">${r.segs.map(s => `<div class="rstep"><small class="mono faint">${tm(s.ts)}</small><i></i><div class="grow" style="min-width:0"><b>${esc(s.title)}</b>
         <div class="faint" style="font-size:12px">${s.n} steps · ${s.files} files${s.closed.map(n => ` · <span class="pill">closed #${n}</span>`).join('')}${s.filed.map(n => ` · <span class="pill">filed #${n}</span>`).join('')}</div></div><small>${dur(s.ms)}</small></div>`).join('')}
         <div class="rstep tot"><small class="mono faint">${tm(r.t1)}</small><i></i><b class="grow">Done</b><b>${dur(r.ms)}</b></div></div>`;
@@ -1972,7 +1972,7 @@ function send() {
   // saved to disk while gh files it (seconds): a crash/quit in that window used to lose it (composer already cleared)
   const fm = {text: t, atts: a}; (FILING[pid] ||= []).push(fm); keepDraft(pid, true);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
-    // CLI feel: idle + this ask is next anyway (urgent / nothing else open) → the AI starts NOW, gh files it in parallel
+    // CLI feel: idle + this ask is next anyway (urgent / nothing else open) → Clauracle starts NOW, gh files it in parallel
     // and the number follows mid-turn (send_mid); p.work pins it so a crash/handover still resumes it
     if (file && !busy[pid] && !RESTARTING && !contWaiting(pid) && !ed && !a.length && (URGENT_RE.test(t) || !issueQ(pid)?.some(x => x.number))) {
       sendNow(pid, {text: t + FASTNOTE, atts: a, work: 0}, opt?.log && opt);
@@ -1987,7 +1987,7 @@ function send() {
     if (opt && contWaiting(pid) && !a.length) unEntry(pid, opt); // a Continue came up while filing → triage shows its own
     if (contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
     const m = {text, atts: a, work: now ? n : 0};
-    if (busy[pid] && !RESTARTING && !a.length && !ed && await call('send_mid', {pid, text, work: m.work || null}).catch(() => false)) { // CLI feel: reaches the AI mid-turn
+    if (busy[pid] && !RESTARTING && !a.length && !ed && await call('send_mid', {pid, text, work: m.work || null}).catch(() => false)) { // CLI feel: reaches Clauracle mid-turn
       if (m.work) P(pid).work = m.work; if (opt?.log) { reBub(opt, text, a); tick(opt, 'read'); } }
     else if (busy[pid] || RESTARTING) { q.splice(ed ? ed.i : q.length, 0, m); /* an edited one goes back to its place */ if (opt?.log) { reBub(opt, text, a); tick(opt, 'queue'); QB.set(m, opt); } }
     else sendNow(pid, m, opt?.log && opt);
@@ -2004,7 +2004,7 @@ const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → it
 const ASK_RE = /\b(fix|make|add|change|remove|rename|move|replace|show|hide|style|should|supposed|instead|broken|bug|wrong|missing|still|not (showing|working)|(does|is|was|wo|ca|did)n'?t|please|let'?s|how about|is it possible|(can|could|would|will|shall) (you|we|it|i))\b/i;
 const FASTNOTE = '\n\n(Clauracle is filing this as an issue right now; its number follows in a moment: don\'t file it yourself. Work on it now.)';
 const SNOTE = '\n\n(A status update, not a task (Clauracle): context for the task you are on or the one labelled `needs-user`: retry what was blocked; if it unblocks a needs-user issue, `gh issue edit N --remove-label needs-user` and resume it. File nothing.)';
-// #98: Clauracle's appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
+// #98: the appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
 // #100: notes = one line each → strip per note (triage batch keeps later bullets); triage preamble hidden too
 const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A (question|status update), not a task \(Clauracle\)|Clauracle is filing this as an issue right now)[^\n]*/g, '');
 const QNOTE = '\n\n(A question, not a task (Clauracle): answer it briefly; change no files, start no work. If it actually asks for a change, it is a task: file it (`gh issue create --label clauracle --label task`) and say so. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
@@ -2048,7 +2048,7 @@ function flushQueue(pid) {
     if (pid === cur) drawQueue(); keepDraft(pid, true);
     if (tasks.length) return toTasks(pid, tasks.map(m => m.text));
   }
-  const m = queue[pid].shift(); qDrop(pid, m); sendNow(pid, m) /* fresh bubble at the end ∵ the AI sees it now */; if (pid === cur) drawQueue(); keepDraft(pid, true);
+  const m = queue[pid].shift(); qDrop(pid, m); sendNow(pid, m) /* fresh bubble at the end ∵ Clauracle sees it now */; if (pid === cur) drawQueue(); keepDraft(pid, true);
 }
 // Continue waiting = handover written (ready), or the idle bar offering the next task (current project only: it's drawn)
 const contWaiting = pid => !busy[pid] && !RESTARTING && P(pid)?.cont !== 'off' && (P(pid)?.ready || (pid === cur && !$('ready').hidden && !$('contBtn').hidden));
@@ -2106,7 +2106,7 @@ const qBub = (pid, m) => { const e = userEntry(pid, m.text, m.atts, {st: 'queue'
 const qDrop = (pid, m) => { const e = m && QB.get(m); if (e) { unEntry(pid, e); QB.delete(m); } };
 // filed note → #N chip: re-render the bubble with the final text
 function reBub(e, t, a) { e.text = utext(t, a); const old = USEREL.get(e)?.closest('.crow'), n = old && entry(e); if (n) { n.className = old.className; old.replaceWith(n); } }
-const TK = {queue: [icon('clock'), 'Queued: sends when this turn ends'], pend: [icon('clock'), 'Sending…'], sent: [icon('check'), 'Sent'], read: [icon('check2'), 'Received by the AI'], fail: [icon('warn'), 'Not sent']};
+const TK = {queue: [icon('clock'), 'Queued: sends when this turn ends'], pend: [icon('clock'), 'Sending…'], sent: [icon('check'), 'Sent'], read: [icon('check2'), 'Received by Clauracle'], fail: [icon('warn'), 'Not sent']};
 const tickHtml = e => `<span class="tk ${e.st}" data-tip="${TK[e.st][1]}">${TK[e.st][0]}</span>`;
 function tick(e, st) { e.st = st; const k = USEREL.get(e)?.closest('.crow')?.querySelector('.cm .tk'); if (k) k.outerHTML = tickHtml(e); }
 const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tick(e, 'read')); UNREAD[pid] = []; if (INBOX[pid]?.length) { INBOX[pid] = []; keepDraft(pid, true); } };
@@ -2230,7 +2230,7 @@ const notOther = o => !/^\s*other\b/i.test(o.label || ''); // #220: AI's own "Ot
 function questionCard(pid) {
   const qs = P(pid).questions, d = document.createElement('div');
   d.className = 'card qs';
-  d.innerHTML = `<h4>Your AI has ${qs.length} question${qs.length > 1 ? 's' : ''}</h4><p class="dim" style="margin:0 0 4px;font-size:13px">Answers go along with the next message.</p>` + qs.map((q, i) => {
+  d.innerHTML = `<h4>Clauracle has ${qs.length} question${qs.length > 1 ? 's' : ''}</h4><p class="dim" style="margin:0 0 4px;font-size:13px">Answers go along with the next message.</p>` + qs.map((q, i) => {
     const type = q.multi ? 'checkbox' : 'radio', name = 'q' + i;
     return `<div class="q" data-id="${esc(q.id)}"><div><span class="num">${i + 1}</span><b>${esc(q.question.replace(/^\s*\d+[.)]\s*/, ''))}</b>${q.blocking ? ' <span class="pill">needs you</span>' : ''}</div>
       ${q.options.filter(notOther).map(o => `<label class="choice"><input type="${type}" name="${name}" value="${esc(o.label)}" ${o.recommended ? 'checked' : ''}>
@@ -2243,7 +2243,7 @@ function questionCard(pid) {
     q.querySelector('[value=__other]').checked ? 'Your own answer' : 'Note (optional)'; };
   return d;
 }
-// #65: drawLog runs on every event while the AI works → reuse the card element (picks + typed notes survive);
+// #65: drawLog runs on every event while Clauracle works → reuse the card element (picks + typed notes survive);
 // new questions → fresh card, but already-shown .q blocks (same id) move over with their state
 const QC = {};
 function qsKeep(pid) {
@@ -2278,7 +2278,7 @@ function askCard(e) {
   if (e.done) { d.className = 'msg note'; d.innerHTML = `${icon('shield')} ${esc(e.tool)}: ${esc(e.done)}`; if (e.doneAt || e.ts) d.dataset.ts = tm(e.doneAt || e.ts); return d; }
   if (e.tool === 'AskUserQuestion') {
     d.classList.add('qs');
-    d.innerHTML = `<h4>Your AI asks</h4>` + (i.questions || []).map((q, n) => `<div class="q"><div><span class="num">${n + 1}</span><b>${esc(q.question)}</b></div>
+    d.innerHTML = `<h4>Clauracle asks</h4>` + (i.questions || []).map((q, n) => `<div class="q"><div><span class="num">${n + 1}</span><b>${esc(q.question)}</b></div>
       ${(q.options || []).filter(notOther).map(o => `<label class="choice"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="a${n}" value="${esc(o.label)}"><span>${esc(o.label)}<small class="dim">${esc(o.description || '')}</small></span></label>`).join('')}
       <label class="choice"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="a${n}" value="__other"><span>Other</span></label>
       <input class="other" placeholder="Your own answer" oninput="this.previousElementSibling.querySelector('input').checked = !!this.value"></div>`).join('')
@@ -2391,12 +2391,12 @@ function projectsPage() {
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
       ${(p.allow || []).length ? /* 3 rows: title / tags / description (#53) ∵ side-by-side squeezed the text */ `<div class="opt-row" style="display:block"><div>Always allowed</div><span class="row wrap" style="gap:4px;margin:6px 0">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ${icon('x')}</span>`).join('')}</span><small class="dim">Tools this project runs without asking</small></div>` : ''}
-      ${optRow('Credit the AI in commits', 'Off: no Co-Authored-By or "Generated with" lines; the AI never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
-      ${optRow('Keep .env away from the AI', 'The AI can\'t read or edit .env files; manage them in Services &amp; Secrets › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
+      ${optRow('Credit Claude in commits', 'Off: no Co-Authored-By or "Generated with" lines; Claude never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
+      ${optRow('Keep .env away from Clauracle', 'Clauracle can\'t read or edit .env files; manage them in Services &amp; Secrets › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on')}
     ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
       <span>After each task</span><span>${thenBtn(p, 'm')}</span>
-      <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to the AI to fix</small></label></div>`,
+      <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Clauracle to fix</small></label></div>`,
       ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3')}
     ${fold('p-disk', 'Disk', `<p class="dim" style="margin:0 0 8px;font-size:13px">Build and cache folders git ignores (a build makes them again). Storage Janitor cleans them on its own: after 14 days without commits, over 10 GB, or when the drive runs low (also old Claude Code versions and, on a low drive, Claude transcripts older than 14 days).</p>
       <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
@@ -2608,7 +2608,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
   const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;display:inline-flex;padding-top:2px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${icon(x.ai ? 'sparkle' : x.ok ? 'check' : 'x')}</span>
     <span class="grow">${esc(x.t)}${x.dh ? '' : x.h ? `<small class="dim" style="display:block">${x.h}</small>` : x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
-    ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with AI'}</button>` : ''}</div>${x.dh ? `<small class="dim" style="display:block;padding-left:24px">${x.dh}</small>` : ''}`; /* #182 dh below the row: full width, not squeezed by the Building… button */
+    ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with Clauracle'}</button>` : ''}</div>${x.dh ? `<small class="dim" style="display:block;padding-left:24px">${x.dh}</small>` : ''}`; /* #182 dh below the row: full width, not squeezed by the Building… button */
   const seg = `<span class="seg">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, '');
   const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : '';
@@ -2627,7 +2627,7 @@ const relRefresh = () => { TABREF.build(); drawRight(); };
 async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
   const text = id === 'summary' ? `Release prep: in a few lines, what this project is and does, then what's missing for ${relNext(P())} (that stage's checklist; open checks: ${open || 'none'}). Plan only, don't change files.` : RELAI[id];
-  if (!await sure(`Ask your AI?\n\n${text}\n${estTok()}`)) return;
+  if (!await sure(`Ask Clauracle?\n\n${text}\n${estTok()}`)) return;
   sendNow(cur, {text, atts: []});
 }
 async function relRelease(to, btn) {
@@ -2777,7 +2777,7 @@ function thenMenu(el, w) { // w: 'm' = Settings project (mp), else the open proj
   menuAt(el, [{label: 'Do nothing', hint: 'after each task', check: !b, run: () => put('', '')}, '-', {title: '1 · Build'}, ...[['build', 'Build', 'every task'], ['smart', 'Smart build', 'only on big changes / fixes']].map(([k, l, h]) => ({label: l, hint: h, check: b === k, run: () => put(b === k ? '' : k, t)})),
     {and: 'and'}, ...Object.entries(THEN).map(([k, l]) => ({label: l, check: t === k, run: () => put(b || 'build', t === k ? '' : k)}))]);
 }
-const thenRow = p => `<div class="label row" style="gap:8px;align-items:center" title="Runs in plain code when the AI finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}"><span class="grow">Then</span>${thenBtn(p)}</div>`; // #192 under the NEXT list, styled as its label
+const thenRow = p => `<div class="label row" style="gap:8px;align-items:center" title="Runs in plain code when Clauracle finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}"><span class="grow">Then</span>${thenBtn(p)}</div>`; // #192 under the NEXT list, styled as its label
 async function drawRight(force) {
   if ($('right').hidden || !cur) return;
   if (UI.rc) { drawRRail(); return tabDots(); }
@@ -2827,7 +2827,7 @@ const formEl = (box, k) => k.startsWith('v:') ? [...box.querySelectorAll('input[
 function drawGh(g, busy) {
   if (qDragging) return; // #193 a rebuild mid-drag orphans Sortable's row/clone
   const box = $('rbody'), p = P(), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
-    <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask your AI</button></div></div>`;
+    <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask Clauracle</button></div></div>`;
   const list = (xs, kind) => xs?.length ? `<div class="list">${xs.map(x => item(x, kind)).join('')}</div>` : empty('None open');
   box.innerHTML = sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill">@${esc(p.gh)}</span></div>`
       : g.remote ? (p.gh ? `<p class="dim">Can't read the GitHub repo as @${esc(p.gh)}.</p><div class="btnrow"><button class="btn" onclick="openManager(cur)">${icon('gh')}Pick another account</button><button class="btn" onclick="TABREF.gh(); drawRight(true)">${icon('loop')}Try again</button></div>` : `<p class="dim">This repo has no GitHub account picked yet.</p><button class="btn primary block" onclick="openManager(cur)">${icon('gh')}Pick a GitHub account</button>`)
@@ -2897,7 +2897,7 @@ async function pollTeam() {
   if ($('tasksBox')) $('tasksBox').innerHTML = tasksHtml();
 }
 setInterval(pollTeam, 60000);
-/* #33 optimistic issues: the AI's `gh issue create … clauracle …` adds a "#…" row at once (title/labels from the command),
+/* #33 optimistic issues: Clauracle's `gh issue create … clauracle …` adds a "#…" row at once (title/labels from the command),
    its output URL gives the number; `gh issue close N` drops the row at once. Result → pollTeam 3s later replaces all.
    ponytail: regex over the command text; titles in shell variables ($t) show as the variable until the sync */
 const ghArg = (s, re) => [...s.matchAll(re)].map(m => m[2] ?? m[3] ?? m[4]);
@@ -2949,11 +2949,11 @@ function nextStep(p) {
 // others' (same rule as store::task_queue), in P.order (local; unlisted → after, by number). null → PLAN.md mode / not loaded
 const issueOn = pid => !!(P(pid)?.owner && P(pid)?.gh);
 const isIdea = x => x.labels.some(l => l.name === 'suggestion');
-const WAIT_TIP = "Blocked on something only you can do (the issue says what). Do it, then click Done: back into the AI's queue."; // #209 (i) tip: hover title, tap → toast
-const isWait = x => x.labels.some(l => l.name === 'needs-user'); // blocked on the user: "Waiting on you", not the AI queue
+const WAIT_TIP = "Blocked on something only you can do (the issue says what). Do it, then click Done: back into Clauracle's queue."; // #209 (i) tip: hover title, tap → toast
+const isWait = x => x.labels.some(l => l.name === 'needs-user'); // blocked on the user: "Waiting on you", not Clauracle queue
 /* #41 issue a turn works on, per project; localStorage ∵ app swap mid-turn → resumed turn still finishes it. Set on
    first busy sight (= first open issue), dropped when idle + closed or on clear-continue → "Finishing up #N…" while busy+closed */
-const WDONE = new Set(); // #71 issues the AI closed this run: hidden even if a gh poll lags (else the new turn re-picked them → "Finishing up #N" forever)
+const WDONE = new Set(); // #71 issues Clauracle closed this run: hidden even if a gh poll lags (else the new turn re-picked them → "Finishing up #N" forever)
 const WORK = (() => { try { return JSON.parse(localStorage.workOn || '{}'); } catch { return {}; } })();
 function workOf(pid, drop) {
   const iq = issueQ(pid); if (!iq) return;
@@ -2991,7 +2991,7 @@ const issueParts = () => { const iq = issueQ(cur);
   return {sug: teamTasks(cur).filter(isIdea).map((x, i) => tli(issueHtml(x), {cls: 'sug',
       end: `<button class="ib" title="Accept: queue it" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: close the issue" onclick="planWait(${i}, false)">${icon('x')}</button>`})).join(''),
     others: teamTasks(cur).filter(x => !isIdea(x) && !isWait(x) && !iq.includes(x)).map(x => tli(issueHtml(x), {cls: 'in_progress', end: `<span class="pill">${esc(x.assignees.map(a => a.login).join(', '))}</span>`})).join(''),
-    wait: teamTasks(cur).filter(isWait).map(x => tli(issueHtml(x), {cls: 'sug', end: `<button class="btn sm" title="You did your part: back into the AI's queue" onclick="taskDo('unblock', ${x.number})">${icon('check')}Done</button>`})).join(''),
+    wait: teamTasks(cur).filter(isWait).map(x => tli(issueHtml(x), {cls: 'sug', end: `<button class="btn sm" title="You did your part: back into Clauracle's queue" onclick="taskDo('unblock', ${x.number})">${icon('check')}Done</button>`})).join(''),
     add: `<div class="row"><input id="newTask" class="grow" placeholder="New issue (task)" onkeydown="if(event.key==='Enter')taskDo('new', this.value)"><button class="ib" title="Add issue" onclick="taskDo('new', $('newTask').value)">${icon('plus')}</button></div>`}; };
 /* #216 GitHub tab = steps (like service setup): 1 Tasks (scroll box, drag order, edge autoscroll) 2 Run the task list (= Clear &
    Continue p.cont, same setting as the status-bar loop menu; stop reason from Rust's "Paused:"/"Queue is empty" notes) 3 Then. Rest folded. */
@@ -3001,7 +3001,7 @@ function ghSteps(iq, qRows, t, open, fin, dn) {
     + dn.map(y => tli(esc(y), {done: 1, cls: 'completed', tip: y})).join('');
   const nw = teamTasks(cur).filter(isWait).length, ns = teamTasks(cur).filter(isIdea).length;
   return `<ol class="stepper ghsteps">
-    <li><span class="sn">1</span><div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>${iq.length ? `<span class="pill">${iq.length}</span>` : ''}${iq.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}</div>
+    <li><span class="sn">1</span><div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>${iq.length ? `<span class="pill">${iq.length}</span>` : ''}${iq.length > 1 ? `<button class="ib" title="Clean up: Clauracle merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}</div>
       ${iq.length || busy[cur] ? `<div class="qbox">${qRows}</div>` : `<div class="nextstep" style="margin:4px 0 8px"><p>No tasks! Set up Services and Secrets?</p><button class="btn sm primary block" onclick="rightTab('svc')">Next step: Services &amp; Secrets ${icon('go')}</button></div>`}${x.add}</li>
     ${iq.length || busy[cur] ? `<li><span class="sn">2</span><div class="label">Run the task list</div>${runStep(p, n)}</li>
     <li><span class="sn">3</span>${thenRow(p)}</li>` : ''}</ol>`
@@ -3088,7 +3088,7 @@ async function taskDo(action, arg) {
 // claim it on GitHub (others see it's taken), then hand it to Claude
 /* pre-fill the composer: appended below what's typed (was replaced = typed text lost), saved at once */
 function putPrompt(t) { const p = $('prompt'); p.value = p.value.trim() ? p.value.replace(/\s*$/, '') + '\n\n' + t : t; grow(); if (cur) { keepDraft(cur, true); drawChrome(); } p.focus(); }
-// #191 ▶: this issue becomes the next one (front of the order, pinned as work); idle → the AI starts it now
+// #191 ▶: this issue becomes the next one (front of the order, pinned as work); idle → Clauracle starts it now
 function playTask(n) {
   const pid = cur, p = P(pid), order = [n, ...(p.order || []).filter(x => x !== n)];
   p.order = order; p.work = n; call('update_project', {pid, changes: {order, work: n}}).catch(() => {}); drawRight();
@@ -3295,7 +3295,7 @@ async function drawWeb() {
     // only reachable from the phone if the dev server listens on all interfaces → offer Claude the fix
     const pu = new URL(purl), off = local && !await call('reach', {host: pu.hostname, port: +pu.port || 80}).catch(() => true);
     const fix = off ? `<div class="row" style="margin-bottom:8px"><small class="dim grow">Not reachable from the phone: the dev server only listens on localhost.</small>
-      <button class="btn" onclick="putPrompt('Make the dev server listen on all interfaces (0.0.0.0, e.g. vite --host) so a phone on the same Wi-Fi can open ${esc(purl)}')">Fix with AI</button></div>` : '';
+      <button class="btn" onclick="putPrompt('Make the dev server listen on all interfaces (0.0.0.0, e.g. vite --host) so a phone on the same Wi-Fi can open ${esc(purl)}')">Fix with Clauracle</button></div>` : '';
     // QR: 2 screen px per module; click → fills the panel width for scanning, click again → back
     phone = `<div class="qrbox"><div class="qr" title="Click to enlarge for scanning" onclick="this.classList.toggle('big')">${QRS.get(purl)}</div><div class="grow" style="min-width:0"><small class="dim">Scan on your phone${local ? ' (same Wi-Fi)' : ''}</small>
       <a class="mono" data-url="${esc(purl)}" style="display:block;overflow-wrap:anywhere;color:var(--accent);cursor:pointer">${esc(purl)}</a></div></div>${fix}`;
@@ -3477,7 +3477,7 @@ function sitePrompt() {
     + `Deploy to ${h.name} via ${h.how}${h.keys.length ? `, with a deploy script that reads ${h.keys.join(', ')} from .env at run time (never print or commit them)` : ''}. `
     + `Tell me the deploy command so I can set it as the project's Deploy step.`;
 }
-async function siteMake() { const text = sitePrompt(); if (await sure(`Ask your AI?\n\n${text}\n${estTok()}`)) sendNow(cur, {text, atts: []}); }
+async function siteMake() { const text = sitePrompt(); if (await sure(`Ask Clauracle?\n\n${text}\n${estTok()}`)) sendNow(cur, {text, atts: []}); }
 const svcOf = p => [...new Set([...(p.gcp ? ['google'] : []), ...(p.services || [])])].filter(id => SERVICES[id]);
 async function svcAdd(id) { await setP({services: [...svcOf(P()), ...(id === 'firebase' ? ['google'] : []), id]}); /* firebase needs the Google card's account+project */ await refresh(); drawRight(); }
 async function svcRemove(id) { await setP({services: svcOf(P()).filter(x => x !== id)}); await refresh(); drawRight(); }
@@ -3659,7 +3659,7 @@ async function appleLoad(cer) {
 function fillKeys(id, only) {
   const x = SERVICES[id], miss = (only || x.keys).filter(k => !envKeys.have.has(k)), files = envKeys.files.map(f => f.file);
   if (!miss.length) return toast('Already set');
-  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(x.name)} keys</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Saved in the project's .env file, hidden from the AI. Leave a field empty to skip it.</p>
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(x.name)} keys</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Saved in the project's .env file, hidden from Clauracle. Leave a field empty to skip it.</p>
     <div class="sc" style="border:0;padding:0;background:none">${miss.map(k => field(`<span class="mono">${k}</span>`, /KEY$|JSON/.test(k) && /PRIVATE|JSON/.test(k)
       ? `<textarea data-k="${k}" rows="3" class="mono"></textarea>` : `<input data-k="${k}" class="mono">`)).join('')}
     ${field('File', `<select id="fkFile">${options(Object.fromEntries((files.length ? files : ['.env']).map(f => [f, f])), files[0] || '.env')}</select>`)}</div>
@@ -3723,7 +3723,7 @@ const drawEnv = () => drawServices();
 const secretsFold = files => fold('svc-secrets', 'Secrets', envHtml(files), 0,
   `<span class="pill" style="background:var(--hover);color:var(--dim)">${files.length} file${files.length === 1 ? '' : 's'}</span>`);
 function envHtml(files) {
-  return `<p class="dim" style="margin-top:0;font-size:13px">.env files. Values stay hidden until you show them${P().hide_env ? '. Your AI can\'t read these files' : ''}.</p>`
+  return `<p class="dim" style="margin-top:0;font-size:13px">.env files. Values stay hidden until you show them${P().hide_env ? '. Clauracle can\'t read these files' : ''}.</p>`
     + files.map(f => `<div class="envfile"><div class="row"><b class="grow mono">${esc(f.file)}</b>
       ${f.ignored === false ? `<span class="pill" style="color:var(--err)">not git-ignored</span><button class="btn ghost" style="padding:2px 8px;font-size:12px" onclick="call('env_ignore', {pid:cur, file:'${esc(f.file)}'}).then(drawEnv)">Ignore it</button>` : f.ignored ? '<small class="ok">git-ignored</small>' : ''}</div>
       ${f.keys.map(([k, v]) => { const id = f.file + ':' + k; return `<div class="kv"><span class="k sel">${esc(k)}</span>
@@ -3750,7 +3750,7 @@ async function preset(file, name) {
 }
 
 // ---- settings: Accounts (AI + GitHub) · Projects | Extensions (cx, agents, deps) · Appearance · Notifications ----
-// #38 order: who + what | what the AI gets + Clauracle itself (divider before cx)
+// #38 order: who + what | what Clauracle gets + Clauracle itself (divider before cx)
 // #59: GitHub folded into Accounts, Agents into Extensions; old page keys still open their new home
 const PAGES = {ai: ['user', 'Accounts'], projects: ['folder', 'Projects'], build: ['hammer', 'Build &amp; Release'], cx: ['plug', 'Extensions'], look: ['sliders', 'Appearance'], notify: ['bell', 'Notifications']};
 let AGENTS = null;
@@ -3824,7 +3824,7 @@ const cxBad = i => i.kind === 'mcp' && !/^connected$/i.test(i.note);
 const cxNote = i => esc(i.note) + (!cxBad(i) ? '' : /^claude\.ai /.test(i.label)
   ? ` · <a href="#" data-url="https://claude.ai/settings/connectors">Authenticate</a>, then Rescan` : ' · run /mcp in the Terminal tab, then Rescan');
 const cxList = (kind, scope, x) => (scope.startsWith('project:') && kind === 'mcp' && cxItems(kind, scope).some(i => cxBad(i) && onOf(x).includes(i.id))
-  ? `<p class="dim" style="margin:4px 0 8px">${icon('info')} Some picked connections aren't connected: your AI can't use them until they are.</p>` : '') + cxItems(kind, scope).map(i =>
+  ? `<p class="dim" style="margin:4px 0 8px">${icon('info')} Some picked connections aren't connected: Clauracle can't use them until they are.</p>` : '') + cxItems(kind, scope).map(i =>
   optRow(esc(i.label), cxNote(i), scope === 'global' ? sw(!SET.off.includes(i.id), `cxLive(this); setGlobalOff('${esc(i.id)}', !this.checked)`)
     : sw(onOf(x).includes(i.id), `cxLive(this); toggleOn('${esc(scope)}', '${esc(i.id)}', this.checked)`))).join('') || '<p class="dim">None.</p>';
 function setGlobalOff(id, off) {
@@ -3860,7 +3860,7 @@ async function pickItems(scope, title, pre) {
   await call('set_items', {scope, items});
   closeDlg(); await refresh();
 }
-const askProject = p => pickItems('project:' + p.id, `What can your AI use in ${p.name}?`, p.on || []);
+const askProject = p => pickItems('project:' + p.id, `What can Clauracle use in ${p.name}?`, p.on || []);
 // projects from before allow-lists: ask once, ticked as they are now
 const asked = {};
 async function askLegacy(pid) {
@@ -3868,7 +3868,7 @@ async function askLegacy(pid) {
   if (!p || p.on != null || asked[pid]) return;
   asked[pid] = true;
   SET ||= await call('settings');
-  pickItems('project:' + pid, `Choose what your AI can use in ${p.name}`, onOf(p));
+  pickItems('project:' + pid, `Choose what Clauracle can use in ${p.name}`, onOf(p));
 }
 /* #213 Extensions › Find & install: skills.sh (skills) | MCP registry (servers) → ext_add (user-wide) → rescan → picked for
    the open project at once (allow-lists: else installed-but-off). EXF = last search, kept while Settings reopens. */
@@ -3911,7 +3911,7 @@ function cxPage() {
       <input id="exq" class="grow" placeholder="Search, e.g. pdf, postgres, figma" value="${esc(EXF.q)}" onkeydown="if(event.key==='Enter')extFind()">
       <button class="btn" onclick="extFind()">${icon('search')}Search</button></p><div id="exr">${extRows()}</div>`, EXF.q ? 1 : 0)}
     ${cxGroup('g-cx', 'Connections &amp; Skills', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}
-    ${fold('g-agents', 'Helper agents', optRow('Give helper agents to your AI', '', sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')) + agentsPage(),
+    ${fold('g-agents', 'Helper agents', optRow('Give helper agents to Clauracle', '', sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')) + agentsPage(),
       S.agents_on ? `${AGENTS.filter(a => a.on).length}/${AGENTS.length}` : 'off')}
     <p class="dim" style="font-size:13px">Build toolchains (Node, Rust, WSL, Xcode…): <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>`;
 }
@@ -4009,11 +4009,11 @@ async function depsAi(k) {
   closeDlg(); DEPSC = null; sendNow(cur, {text, atts: []});
 }
 function agentsPage() {
-  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to your AI until you switch them on above.'}</p>`
+  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to Clauracle until you switch them on above.'}</p>`
     + `<div style="${S.agents_on ? '' : 'opacity:.5'}">` + AGENTS.map((a, i) => `<div class="agent"><div class="row">${sw(a.on, `agentSet(${i}, 'on', this.checked)`)}<input class="mono" value="${esc(a.name)}" style="width:160px" onchange="agentSet(${i}, 'name', this.value.trim())">
         <select onchange="agentSet(${i}, 'model', this.value)">${options({haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus', inherit: 'Same as session'}, a.model || 'inherit')}</select>
         <span class="grow"></span><button class="ib" title="Remove" onclick="AGENTS.splice(${i},1); saveAgents()">${icon('x')}</button></div>
-      <input value="${esc(a.description)}" placeholder="When your AI should use it" onchange="agentSet(${i}, 'description', this.value)">
+      <input value="${esc(a.description)}" placeholder="When Clauracle should use it" onchange="agentSet(${i}, 'description', this.value)">
       <textarea placeholder="Its instructions" onchange="agentSet(${i}, 'prompt', this.value)">${esc(a.prompt)}</textarea></div>`).join('')
     + `<p class="row"><button class="btn" onclick="AGENTS.push({name:'helper', model:'haiku', description:'', prompt:'', on:true}); saveAgents()">${icon('plus')}Add agent</button></p></div>`;
 }
@@ -4042,7 +4042,7 @@ function aiPage() {
     + `<div class="label" id="set-gh" style="margin-top:18px">GitHub accounts</div>${ghPage()}
     <p class="dim" style="font-size:13px">CI builds: <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>
     <div class="label" style="margin-top:18px">Lessons</div>
-    <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules your AI records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
+    <p class="dim" style="margin:4px 0 6px;font-size:13px">Never-again rules Clauracle records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
     <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
       onchange="call('set_lessons', {lessons: this.value.split('\\n')}).then(refresh)">${esc((S.lessons || []).join('\n'))}</textarea>`;
 }
@@ -4356,23 +4356,23 @@ function drawAtp() {
   const L = a => `<div class="tlist">${a.join('')}</div>`;
   const qRows = L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
           ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
-            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if the AI is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<span class="qgrip"><button class="qmv" title="Move to top"${i ? '' : ' disabled'} onclick="event.stopPropagation(); qMove(${i}, 0)">⤒</button><button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button><button class="qmv" title="Move to bottom"${i < q.length - 1 ? '' : ' disabled'} onclick="event.stopPropagation(); qMove(${i}, ${q.length - 1})">⤓</button></span></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
+            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if Clauracle is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<span class="qgrip"><button class="qmv" title="Move to top"${i ? '' : ' disabled'} onclick="event.stopPropagation(); qMove(${i}, 0)">⤒</button><button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'}">⋮</button><button class="qmv" title="Move to bottom"${i < q.length - 1 ? '' : ' disabled'} onclick="event.stopPropagation(); qMove(${i}, ${q.length - 1})">⤓</button></span></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
   const wt = iq ? teamTasks(cur).filter(isIdea).map(x => `#${x.number} ${x.title}`) : S.waits?.[cur] || [];
-  const tasks = ((wt.length && !iq ? `<div class="label" title="${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: your AI noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
+  const tasks = ((wt.length && !iq ? `<div class="label" title="${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: Clauracle noted these; they need your yes">Suggestions</div>` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
         end: `<button class="ib" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib" title="Dismiss: ${iq ? 'close the issue' : 'remove from PLAN.md'}" onclick="planWait(${i}, false)">${icon('x')}</button>`}))) : '')
     + (t.length ? `<div class="label">Now</div>` + L([...open.map(x => tli(esc(x.status === 'in_progress' && x.activeForm || x.content), {cls: x.status})),
         ...fin.slice(-3).map(x => tli(esc(x.content), {done: 1, cls: 'completed', tip: x.content}))]) : '')
     + (iq || pl.some(o => o.items.length) ? `<div class="label row" style="gap:4px;align-items:center">${iq ? 'Next' : 'Plan'}<span class="grow"></span>
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...(issueQ(cur) ? [{label: 'GitHub issues (clauracle)', hint: issueQ(cur).length + ' open', run: () => expandRight('gh')}] : []), ...S.plans[cur].filter(o => !issueQ(cur) || o.items.length).map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
         ${!iq && (pl.length > 1 || pl[0].file !== 'PLAN.md') ? `<button class="ib" title="Merge every plan file into PLAN.md\n${estTok()}" onclick="mergePlans()">${icon('brush')}</button>` : ''}
-        ${q.length > 1 ? `<button class="ib" title="Clean up: AI merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
+        ${q.length > 1 ? `<button class="ib" title="Clean up: Clauracle merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}
         ${iq && pl.length > 1 ? `<button class="btn sm" title="Turn ${pl.slice(1).map(o => o.file).join(', ')} into task issues (removed from the files after)\n${estTok()}" onclick="plansToIssues()">${icon('gh')}File as issues</button>`
           : !iq && P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
         + qRows
         + (iq ? issuesRest(tab === 'gh' ? thenRow(P()) : '') : '')
         + pl.slice(1).map(o => `<div class="label faint">${esc(o.file)}${iq ? ' · not issues yet' : ''}</div>` + L(o.items.map(x => tli(esc(x))))).join('') : '')
     + (dn.length ? `<div class="label">Done lately</div>` + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
-    || empty(`Your AI's task list and ${iq ? 'open task issues' : "PLAN.md's queue"} show here`, `<button class="btn sm" onclick="putPrompt('${iq ? 'Plan this as GitHub task issues: ' : 'Plan this in PLAN.md: '}')">${icon('list')}Plan with your AI</button>`);
+    || empty(`Clauracle's task list and ${iq ? 'open task issues' : "PLAN.md's queue"} show here`, `<button class="btn sm" onclick="putPrompt('${iq ? 'Plan this as GitHub task issues: ' : 'Plan this in PLAN.md: '}')">${icon('list')}Plan with Clauracle</button>`);
   const agents = ag.length ? [...run, ...ag.filter(a => !a.running).slice(-4).reverse()].map(a =>
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
@@ -4480,7 +4480,7 @@ function drawRRail() {
   const p = P(), t = todos(cur), u = S.usage[p.account] || {};
   const stat = (big, small, title, attrs = '') => `<div class="stat" title="${esc(title)}" ${attrs}><b>${big}</b><small>${small}</small></div>`;
   const list = t.map(x => (x.status === 'completed' ? '✓ ' : x.status === 'in_progress' ? '▸ ' : '○ ') + x.content).join('\n');
-  $('rrail').innerHTML = stat(t.length ? `${t.filter(x => x.status === 'in_progress').length}/${t.length}` : '–', 'tasks', list || "No task list yet (your AI's to-dos show here)")
+  $('rrail').innerHTML = stat(t.length ? `${t.filter(x => x.status === 'in_progress').length}/${t.length}` : '–', 'tasks', list || "No task list yet (Clauracle's to-dos show here)")
     + (t.length ? stat(t.filter(x => x.status === 'completed').length, 'done', list) : '')
     + (p.questions.length ? stat(p.questions.length, 'asks', 'Questions waiting', `onclick="showQuestions(cur)" style="cursor:pointer;color:var(--accent)"`) : '')
     + (team[cur]?.repo ? stat(`${teamTasks(cur).filter(isDoing).length}/${teamTasks(cur).length}`, 'team', teamTasks(cur).map(x => `#${x.number} ${x.title}${x.assignees.length ? ' (' + x.assignees.map(a => a.login).join(', ') + ')' : ''}`).join('\n') || 'No open team tasks', `onclick="expandRight('gh')" style="cursor:pointer"`) : '')

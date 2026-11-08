@@ -294,6 +294,10 @@ fn args(st: &State, p: &Project) -> Vec<String> {
     if p.terse {
         append += TERSE_RULES;
     }
+    // #255 voice: name = the user's chat-bubble name (UI chatRow: p.gh); #256 nickname overrides once it exists
+    let who = if p.gh.is_empty() { "the user".to_string() } else { p.gh.clone() };
+    append += &format!("\n# Voice\nThe user sees you as Clauracle. Reply like a natural conversation with {who}, using \
+        the name now and then (\"Yes, {who}, …\", \"I wouldn't recommend that, {who}\"), not in every message.\n");
     if !p.ai_credit {
         append += "\n# Attribution\nNo AI credit in this repo: no Co-Authored-By trailers, no \"Generated with\" lines, never add \
             yourself as contributor/collaborator/author in commits, PRs, or files.\n";
