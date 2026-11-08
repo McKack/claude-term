@@ -2310,7 +2310,8 @@ async function buildLocal(pid, all) {
   if (!ok) return addEntry(pid, {kind: 'note', text: 'Build failed', act: 'out', ts: new Date().toISOString()});
   if (all) return addEntry(pid, {kind: 'note', text: 'Built every target', ts: new Date().toISOString()});
   addEntry(pid, {kind: 'note', text: 'Built: starting it', ts: new Date().toISOString()});
-  call('restart_into', {pid}).catch(() => call('run_step', {pid, step: 'run'})); // own repo → swap into it, else Run
+  // own repo → swap into it, else Run; own-repo swap error shown ∵ the old Run fallback started `tauri dev`, which the single-instance guard swallowed → "nothing happened"
+  call('restart_into', {pid}).catch(e => /own repo/.test(e) ? call('run_step', {pid, step: 'run'}) : addEntry(pid, {kind: 'note', text: `Couldn't swap into the new build: ${e}`, ts: new Date().toISOString()}));
 }
 const relBuild = () => { RELB[cur] = 1; buildNow(); };
 const ciBusy = pid => { const r = RELC[pid]?.c?.ci; return !!r && r.status !== 'completed'; }; // #123 CI run in flight (release_check, polled)
