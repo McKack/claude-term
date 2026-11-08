@@ -152,7 +152,7 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .varrow { position:absolute; top:50%; translate:0 -50%; width:40px; height:40px; border-radius:50%; background:var(--card); box-shadow:var(--shadow); z-index:1; }
 .varrow.l { left:14px; } .varrow.l svg { rotate:180deg; } .varrow.r { right:14px; }
 .ednote { position:absolute; width:240px; display:flex; align-items:flex-end; gap:4px; padding:3px 4px 3px 8px; border:2px solid; border-radius:8px; background:var(--card); }
-.ednote textarea { flex:1; border:0; padding:2px 0; background:none; resize:none; font-size:12.5px; box-shadow:none; } .ednote .ib { width:22px; height:22px; }
+.ednote textarea { flex:1; border:0; padding:2px 0; background:none; resize:none; font-size:12.5px; box-shadow:none; overflow:hidden; } .ednote .ib { width:22px; height:22px; }
 .ednote.col { width:auto; padding:3px; cursor:pointer; border-radius:50%; } .ednote.col .i { width:14px; height:14px; display:block; }
 .thumbs img { cursor:zoom-in; }
 /* shell commands in chat: a little dark terminal window, same in both themes */
@@ -1704,7 +1704,7 @@ function edNotes(focus) {
     const d = Object.assign(document.createElement('div'), {className: 'ednote' + (o.col ? ' col' : '')});
     d.style.left = o.x * s + 'px'; d.style.top = (o.y + o.h) * s + 6 + 'px'; d.style.borderColor = o.color;
     if (o.col) { d.innerHTML = icon('doc'); d.title = o.n + '. ' + (o.note || 'Empty note'); d.onclick = () => { o.col = false; edNotes(o); }; return W.append(d); }
-    d.innerHTML = `<textarea rows="1" placeholder="${o.n}. Note for this area (Ctrl+Enter folds it)"></textarea><button class="ib" title="Done">${icon('check')}</button>`;
+    d.innerHTML = `<textarea rows="1" placeholder="${o.n}. Note (Ctrl+Enter folds)" title="Enter = new line · ✓ = done · Ctrl+Enter folds it to an icon"></textarea><button class="ib" title="Done">${icon('check')}</button>`;
     const t = d.querySelector('textarea'); t.value = o.note; t.rows = Math.max(1, o.note.split('\n').length);
     t.oninput = () => { o.note = t.value; t.rows = Math.max(1, t.value.split('\n').length); };
     t.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); o.col = true; edNotes(); } };
