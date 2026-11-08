@@ -59,7 +59,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .pill.lbl { font-size:10.5px; padding:0 6px; vertical-align:1px; color:color-mix(in srgb, var(--lc) 70%, var(--text)); background:color-mix(in srgb, var(--lc) 16%, transparent); border:1px solid color-mix(in srgb, var(--lc) 45%, transparent); }
 .mono { font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
 /* switch */
-.sw { position:relative; width:32px; height:18px; flex:none; } .sw input { opacity:0; position:absolute; inset:0; margin:0; cursor:pointer; }
+.sw { display:inline-block; vertical-align:middle; position:relative; width:32px; height:18px; flex:none; } .sw input { opacity:0; position:absolute; inset:0; margin:0; cursor:pointer; }
 .sw i { position:absolute; inset:0; border-radius:99px; background:var(--line2); transition:.15s; pointer-events:none; }
 .sw i::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:.15s; }
 .sw input:checked + i { background:var(--accent); } .sw input:checked + i::after { left:16px; }
@@ -462,7 +462,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 #rtabs button:hover, #stabs button:hover { background:var(--hover); } #rtabs button.on, #stabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 #atp { display:flex; flex-direction:column; gap:5px; } #atp:empty { display:none; } #atp .label { margin:6px 0 0; } #atp .sh .label { margin:0; } /* #269: fold titles in GitHub tab sank 6px */
-.atrow { display:flex; gap:8px; align-items:baseline; font-size:13px; } .atrow small { display:block; color:var(--faint); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.atrow { display:flex; gap:8px; align-items:baseline; font-size:13px; } .atrow small { display:block; color:var(--faint); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .atrow small.am { display:inline; } /* #274 model after the name, wraps under it when narrow */
 .atrow .dot { flex:none; translate:0 -1px; } .atrow .tk { width:14px; flex:none; color:var(--faint); } .atrow.in_progress { color:var(--accent); } .atrow.completed { color:var(--faint); text-decoration:line-through; opacity:.7; }
 .atrow.completed .grow { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } /* done = one line; full text in the tooltip */
 /* unified task list (tli): dashed dividers, 2-line clamp, click → .open = full text; checkbox read-only except Plan › Tasks */
@@ -4472,7 +4472,7 @@ function agentIdle() {
   const on = S.agents_on;
   return `<div class="row" style="margin-bottom:8px;gap:8px"><span data-tip="${on ? 'Switch helper agents off' : 'Switch helper agents on'}">${sw(on, "call('set_agents', {agents: AGENTS, on: this.checked}).then(refresh)")}</span>
       <small class="dim grow">${on ? 'No helper agents started in this session' : 'Helper agents are off'}</small><button class="ib" title="Agent settings" onclick="openSettings('agents')">${icon('gear')}</button></div>
-    <div style="${on ? '' : 'opacity:.45'}">${AGENTS.map(a => `<div class="atrow" style="${a.on ? '' : 'opacity:.5'}"><span class="dot ready"></span><span class="grow" style="min-width:0"><b>${esc(a.name)}</b> <small class="faint">${esc(a.model || 'inherit')}</small>
+    <div style="${on ? '' : 'opacity:.45'}">${AGENTS.map(a => `<div class="atrow" style="${a.on ? '' : 'opacity:.5'}"><span class="dot ready"></span><span class="grow" style="min-width:0"><b>${esc(a.name)}</b> <small class="am">${esc(a.model || 'inherit')}</small>
       <small>${esc(a.description || '')}</small></span></div>`).join('') || '<p class="dim">No agents set up yet.</p>'}</div>`;
 }
 function drawAtp() {
