@@ -263,7 +263,9 @@ pre.diff .ctx { color:var(--faint); }
 #dock { padding:20px 24px 14px; margin-top:-20px; position:relative; z-index:2; pointer-events:none;
   background:linear-gradient(to bottom, transparent, var(--bg) 20px); } /* #232 overlap 40→20: less dead space under the last line */
 #dock .col > * { pointer-events:auto; }
-#jump { position:absolute; top:0; left:50%; transform:translateX(-50%); pointer-events:auto; gap:4px; }
+/* #251 one floating bottom pill: ↓ + live status (Thinking · 0:01 / New!) in the Thinking-pill look, above the composer (not over it) */
+#jump { position:absolute; bottom:100%; margin-bottom:4px; left:50%; transform:translateX(-50%); pointer-events:auto; cursor:pointer; color:var(--text); white-space:nowrap; box-shadow:0 4px 14px #00000030; font-variant-numeric:tabular-nums; } #jump[hidden] { display:none; } #jump:hover { border-color:var(--accent); }
+#jump.on { color:var(--accent); background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%) 0 0/200% 100%; animation:shimmer 1.8s linear infinite; } #jump span:empty { display:none; }
 #workpill, #handpill, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:28px; }
 #log.term + #dock { background:linear-gradient(to bottom, transparent, var(--term) 20px); }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
@@ -664,7 +666,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   </div>
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
     <div class="col" id="skel" hidden><div class="crow claude"><span id="skelav"><svg class="av"><use href="#i-logo"/></svg></span><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div></div></div><div id="dockpill"><div id="handpill" hidden>Preparing handover…</div><div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div>
-  <div id="dock" hidden><button class="btn glass" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
+  <div id="dock" hidden><button class="npill" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onmouseenter="readyMore(this)" onclick="if (!event.target.closest('button') &amp;&amp; readyMore(this)) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
@@ -1227,10 +1229,10 @@ function workTick() {
     $('log').querySelectorAll('.tav.on').forEach(x => x !== av && x.classList.remove('on'));
     av?.classList.toggle('on', !!busy[cur]); if (av) av.dataset.t = mmss(now - (TURN0[cur] || d.t)); // #225 ring + turn timer whenever busy
     $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
-    $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - d.t)}`; };
+    $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - d.t)}`; jumpTxt(); };
   if (on && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!on && workT) { clearInterval(workT); workT = null; }
-  if (on) draw(); else { $('log').querySelectorAll('.tl > div.run, .tav.on').forEach(x => x.classList.remove('run', 'on')); $('skel').classList.remove('hd'); $('log').querySelectorAll('.crow.stick').forEach(x => x.classList.remove('stick')); $('stickav')?.remove(); }
+  if (on) draw(); else { $('log').querySelectorAll('.tl > div.run, .tav.on').forEach(x => x.classList.remove('run', 'on')); $('skel').classList.remove('hd'); $('log').querySelectorAll('.crow.stick').forEach(x => x.classList.remove('stick')); $('stickav')?.remove(); jumpTxt(); }
 }
 // #189 live turn's Clauracle head after the last user msg (chat view, busy) → skeleton drops its own avatar
 function turnHead() {
@@ -1371,9 +1373,11 @@ let unseen = 0;
 function toEnd(stick, n = 0) {
   const l = $('log'), j = $('jump');
   if (stick) { l.scrollTop = l.scrollHeight; unseen = 0; j.hidden = true; return; }
-  unseen += n; j.hidden = false; j.lastChild.textContent = unseen ? 'New!' : ''; /* no count: Working pill updates inflate it */
+  unseen += n; j.hidden = false; jumpTxt(); /* no count: Working pill updates inflate it */
 }
-$('log').addEventListener('scroll', () => { if (!$('jump').hidden && atEnd()) { unseen = 0; $('jump').hidden = true; } }, {passive: true});
+// #251 jump pill = the live middle status while busy (Working pill's text), else New!
+function jumpTxt() { const j = $('jump'), w = busy[cur] && !$('workpill').hidden; j.classList.toggle('on', w); j.lastChild.textContent = w ? $('worktext').textContent : unseen ? 'New!' : ''; }
+$('log').addEventListener('scroll', () => { const j = $('jump'), e = atEnd(); if (e && !j.hidden) { unseen = 0; j.hidden = true; } else if (!e && j.hidden && busy[cur] && view === 'chat') { j.hidden = false; jumpTxt(); } }, {passive: true}); // #251 scrolled up mid-turn → status pill floats at the bottom
 // consecutive tool lines share one compact group in chat view; the same call again bumps "×N" on its line; click → what it did
 function put(box, e) {
   const el = entry(e);
