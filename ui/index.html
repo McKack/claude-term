@@ -20,6 +20,8 @@
 :root.c-square *:not(.av):not(.swatch):not(img):not(input[type=range]) { border-radius:0 !important; }
 :root.c-round :is(.box, .menu, .termcard) { border-radius:20px !important; } :root.c-round #composer { border-radius:26px !important; }
 :root.c-round dialog { border-radius:30px !important; } :root.c-round :is(input:not([type=range]), select, .seg, .seg button) { border-radius:99px !important; }
+/* font (Appearance): sans = the stylesheet; code/mono spots keep their own stacks */
+:root.f-serif body { font-family:Georgia,"Iowan Old Style","Times New Roman",serif; } :root.f-mono body { font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
 /* Appearance: no frosted glass (cheaper to draw), no motion */
 .noglass .glass { background:var(--card); backdrop-filter:none; -webkit-backdrop-filter:none; } .noglass dialog::backdrop { backdrop-filter:none; }
 .nomotion *, .nomotion *::before, .nomotion *::after { animation:none !important; transition:none !important; }
@@ -4178,7 +4180,7 @@ const acct = (id, changes) => call('update_account', {id, changes}).then(() => o
 // Appearance: per computer (localStorage), applied before anything draws
 const ACCENTS = {Mono: ['#000000', '#ffffff'], Indigo:['#4f5bd5', '#8b93ff'], Blue: ['#2563eb', '#6ea8fe'], Teal: ['#0f8b80', '#3cc9b9'], Green: ['#2b8a3e', '#69db7c'],
   Orange: ['#c8613f', '#e8916f'], Pink: ['#c2255c', '#f783ac'], Graphite: ['#4a4a50', '#b8b8c0']};
-let LOOK = {theme: 'system', accent: 'Indigo', tint: '', tintPct: 30, corners: 'soft', scale: 110, glass: true, motion: true};
+let LOOK = {theme: 'system', accent: 'Indigo', tint: '', tintPct: 30, corners: 'soft', font: 'sans-serif', scale: 110, glass: true, motion: true};
 // the stylesheet's surface colours per theme (light, dark), the base the tint mixes into; keep in sync with :root
 const SURF = [{'--bg': '#ffffff', '--side': '#f7f7f8', '--card': '#ffffff', '--line': '#ececee', '--line2': '#dcdce0', '--hover': '#f0f0f2', '--code': '#f6f6f7', '--text': '#1d1d1f', '--dim': '#6e6e76', '--faint': '#a1a1a8'},
   {'--bg': '#161618', '--side': '#1c1c1f', '--card': '#232326', '--line': '#2c2c30', '--line2': '#3a3a3f', '--hover': '#2a2a2e', '--code': '#1c1c1f', '--text': '#ededef', '--dim': '#a0a0a8', '--faint': '#6c6c74'}];
@@ -4188,18 +4190,19 @@ const MONO = [{'--bg': '#fff', '--side': '#fff', '--card': '#fff', '--line': '#b
 const TINT_W = [{'--text': .25, '--dim': .4, '--faint': .5},
   {'--bg': .3, '--side': .35, '--code': .3, '--card': .5, '--hover': .6, '--line': 1.1, '--line2': 1.3, '--text': 1.2, '--dim': 1.4, '--faint': 1.3}];
 // presets (LOOKS) = theme + accent + tint only (scale/glass/motion stay per computer); user's own in localStorage.presets
-const PRESET_KEYS = ['theme', 'accent', 'tint', 'tintPct', 'corners'];
+const PRESET_KEYS = ['theme', 'accent', 'tint', 'tintPct', 'corners', 'font'];
+const PRE_DEF = {corners: 'soft', font: 'sans-serif'}; // key missing in a preset → this
 const LOOKS = {Default: {theme: 'system', accent: 'Indigo', tint: '', tintPct: 30, corners: 'soft'},
-  'Classic Claude': {theme: 'system', accent: 'Orange', tint: 'Orange', tintPct: 25, corners: 'soft'},
-  'The Matrix': {theme: 'dark', accent: 'Mono', tint: 'Green', tintPct: 100, corners: 'square'},
+  'Classic Claude': {theme: 'system', accent: 'Orange', tint: 'Orange', tintPct: 25, corners: 'soft', font: 'serif'},
+  'The Matrix': {theme: 'dark', accent: 'Mono', tint: 'Green', tintPct: 100, corners: 'square', font: 'monospace'},
   Paper: {theme: 'light', accent: 'Mono', tint: '', tintPct: 30, corners: 'square'}, Midnight: {theme: 'dark', accent: 'Indigo', tint: 'Indigo', tintPct: 60, corners: 'soft'},
   Synthwave: {theme: 'dark', accent: 'Pink', tint: 'Indigo', tintPct: 80, corners: 'round'}, Ember: {theme: 'dark', accent: 'Orange', tint: 'Orange', tintPct: 45, corners: 'soft'},
   Seaside: {theme: 'light', accent: 'Teal', tint: 'Blue', tintPct: 35, corners: 'round'}};
 let MYPRE = {}; try { MYPRE = JSON.parse(localStorage.presets || '{}'); } catch {}
 const savePre = () => { try { localStorage.presets = JSON.stringify(MYPRE); } catch {} };
-const preMatch = () => Object.entries({...LOOKS, ...MYPRE}).find(([, v]) => PRESET_KEYS.every(k => (k === 'tintPct' && !v.tint) || (v[k] ?? (k === 'corners' ? 'soft' : '')) === (LOOK[k] ?? '')))?.[0]; // no tint → amount irrelevant
+const preMatch = () => Object.entries({...LOOKS, ...MYPRE}).find(([, v]) => PRESET_KEYS.every(k => (k === 'tintPct' && !v.tint) || (v[k] ?? PRE_DEF[k] ?? '') === (LOOK[k] ?? '')))?.[0]; // no tint → amount irrelevant
 function presetItems() {
-  const m = preMatch(), item = ([n, v]) => ({check: m === n, label: n, run: () => setLook({...v, preset: n})});
+  const m = preMatch(), item = ([n, v]) => ({check: m === n, label: n, run: () => setLook({...PRE_DEF, ...v, preset: n})});
   const mine = Object.entries(MYPRE).map(([n, v]) => ({...item([n, v]), acts: [{icon: 'x', tip: 'Delete', items: [{label: `Delete ${n}`, run: () => { delete MYPRE[n]; savePre(); openSettings('look'); }}]}]}));
   return [{title: 'Presets'}, ...Object.entries(LOOKS).map(item), ...(mine.length ? ['-', {title: 'Yours'}, ...mine] : []),
     ...(!m && MYPRE[LOOK.preset] ? ['-', {icon: 'plus', label: 'Save as new preset…', run: presetSave}] : [])];
@@ -4225,6 +4228,7 @@ function applyLook() {
   if (LOOK.accent === 'Indigo') ['--accent', '--accent2', '--soft'].forEach(k => h.style.removeProperty(k));
   const mono = LOOK.accent === 'Mono'; h.classList.toggle('mono', mono);
   ['square', 'round'].forEach(c => h.classList.toggle('c-' + c, LOOK.corners === c));
+  h.classList.toggle('f-serif', LOOK.font === 'serif'); h.classList.toggle('f-mono', LOOK.font === 'monospace');
   // theme tint: surfaces mixed with a colour; slider 100% = TINT_MAX real mix, so text stays readable
   const t = ACCENTS[LOOK.tint]?.[dark ? 1 : 0], m = (LOOK.tintPct ?? 30) * TINT_MAX / 100;
   for (const [k, base] of Object.entries((mono ? MONO : SURF)[dark ? 1 : 0])) t && m ? h.style.setProperty(k, `color-mix(in srgb, ${t} ${Math.min(90, m * (TINT_W[dark ? 1 : 0][k] ?? 1))}%, ${base})`) : h.style.removeProperty(k);
@@ -4241,9 +4245,10 @@ const choice = (key, opts) => `<span class="seg">${opts.map(o => `<button class=
 function lookPage() {
   const dk = document.documentElement.dataset.theme === 'dark' ? 1 : 0, pm = preMatch(), mine = !pm && MYPRE[LOOK.preset];
   return `<div class="box">${optRow('Theme', '', choice('theme', ['system', 'light', 'dark']))}
-    ${optRow('Preset', 'Theme, accent and tint together', `<span class="row" style="gap:6px">${pm ? '' : `<button class="btn sm" onclick="presetSave(${mine ? 'LOOK.preset' : ''})">${mine ? `Update ${esc(LOOK.preset)}` : 'Save as preset'}</button>`}
+    ${optRow('Preset', 'Theme, accent, tint, corners and font together', `<span class="row" style="gap:6px">${pm ? '' : `<button class="btn sm" onclick="presetSave(${mine ? 'LOOK.preset' : ''})">${mine ? `Update ${esc(LOOK.preset)}` : 'Save as preset'}</button>`}
       <button class="btn sm" onclick="menuAt(this, presetItems())">${esc(pm || 'Custom')}${icon('down')}</button></span>`)}
     ${optRow('Corners', '', choice('corners', ['square', 'soft', 'round']))}
+    ${optRow('Font', '', choice('font', ['sans-serif', 'serif', 'monospace']))}
     ${optRow('Accent', 'Mono: pure black and white, high contrast', `<span class="row" style="gap:8px">${Object.entries(ACCENTS).map(([n, c]) => `<button class="swatch ${LOOK.accent === n ? 'on' : ''}" title="${n}" style="background:${c[dk]}" onclick="setLook({accent:'${n}'})"></button>`).join('')}</span>`)}
     ${optRow('Theme tint', 'Colours the whole app a little', `<span style="display:flex;flex-direction:column;gap:8px"><span class="row" style="gap:8px"><button class="swatch ${!LOOK.tint ? 'on' : ''}" title="None" style="background:var(--bg);display:grid;place-items:center;color:var(--faint)" onclick="setLook({tint:''})">${icon('x')}</button>${Object.entries(ACCENTS).filter(([n]) => n !== 'Mono').map(([n, c]) => `<button class="swatch ${LOOK.tint === n ? 'on' : ''}" title="${n}" style="background:${c[dk]}" onclick="setLook({tint:'${n}'})"></button>`).join('')}</span>
       ${LOOK.tint ? `<span class="row" style="gap:8px"><input type="range" min="5" max="100" step="5" value="${LOOK.tintPct}" style="flex:1;padding:0;border:0;background:none" title="Amount"
