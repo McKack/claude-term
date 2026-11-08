@@ -428,10 +428,10 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .sugs { margin:6px 0; } .sugs .ti { align-items:center; } .sugs .ti.completed { opacity:.55; } .sugs .ti > .btn { flex:none; }
 .sugnote { margin:0 0 4px 24px; width:calc(100% - 24px); font-size:12px; } .sugs .btns { margin-top:6px; }
 .label .btn { text-transform:none; letter-spacing:normal; } /* #192 Then row = label + button */
-.qdrag { flex:none; border:0; background:none; color:var(--dim); cursor:grab; padding:0 3px; font-size:16px; line-height:1; touch-action:none; }
+.qdrag { flex:none; align-self:stretch; width:22px; border:0; border-radius:6px; background:none; color:var(--dim); cursor:grab; padding:0; font-size:16px; line-height:1; touch-action:none; } .qdrag:hover { background:var(--hover); color:var(--text); } /* #199 full-height grab strip */
 /* #192 row actions = fade panel over the row end (like the chat's edge fade): Edit/Play stacked, ⋮ handle right, all v-centred */
-.ti { position:relative; } .qpill { position:absolute; right:0; top:0; bottom:0; display:flex; align-items:center; gap:2px; padding-left:28px; background:linear-gradient(to right, transparent, var(--side) 26px); opacity:0; pointer-events:none; transition:opacity .15s; }
-.qbtns { display:flex; flex-direction:column; } .qedit { width:20px; height:14px; color:var(--dim); } .qedit svg { width:12px; height:12px; }
+.ti { position:relative; } .qpill { position:absolute; right:0; top:0; bottom:0; display:flex; align-items:center; gap:6px; padding:0 2px 0 30px; background:linear-gradient(to right, transparent, var(--side) 26px); opacity:0; pointer-events:none; transition:opacity .15s; }
+.qbtns { display:flex; gap:6px; } .qedit { width:24px; height:24px; border-radius:50%; color:var(--dim); background:var(--hover); } .qedit:hover { background:var(--soft); color:var(--accent); } .qedit svg { width:12px; height:12px; } /* #199 round, side by side ∵ stacked overflowed 1-line rows */
 .ti:hover > .qpill { opacity:1; pointer-events:auto; } .ti.qghost > .qpill, .ti.sortable-fallback > .qpill { display:none; } /* #193 drag: no panel on placeholder/clone */
 .chips { display:flex; flex-wrap:wrap; gap:4px; } .chips .pill { cursor:pointer; opacity:.45; } .chips .pill.on { opacity:1; }
 /* SortableJS: qghost = drop placeholder (where it lands), sortable-fallback = row under the pointer */
