@@ -1244,7 +1244,7 @@ function workTick() {
     $('log').querySelectorAll('.tav.on').forEach(x => x !== av && x.classList.remove('on'));
     av?.classList.toggle('on', !!busy[cur]); if (av) av.dataset.t = mmss(now - (TURN0[cur] || d.t)); // #225 ring + turn timer whenever busy
     $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
-    $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - d.t)}`; jumpTxt(); };
+    $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - (TURN0[cur] || d.t))}`; jumpTxt(); }; // #260 pill = same turn total as the avatar badge, never resets per step
   if (on && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!on && workT) { clearInterval(workT); workT = null; }
   if (on) draw(); else { $('log').querySelectorAll('.tl > div.run, .tav.on').forEach(x => x.classList.remove('run', 'on')); $('skel').classList.remove('hd'); $('log').querySelectorAll('.crow.stick').forEach(x => x.classList.remove('stick')); $('stickav')?.remove(); jumpTxt(); }
