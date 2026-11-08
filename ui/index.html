@@ -3099,6 +3099,7 @@ async function siteAuto(h, b, svc = 'website') {
   b.disabled = true; b.innerHTML = '<span class="spin"></span>' + b.textContent;
   try { const v = await call('site_auto', {pid: cur, host: h});
     if (h === 'sshkey') { copy(v); toast('Deploy key in .env, public key copied: paste it where the next step says', 'ok'); }
+    else if (h === 'play') { copy(v); toast('Key in .env, ' + v + ' copied: invite it in Play Console', 'ok'); }
     else toast(h === 'ghpages' ? 'GitHub Pages on' : 'Filled: ' + v, 'ok');
     stepSet(svc, SERVICES[svc].steps.findIndex(y => y.h === h)); drawRight(); }
   catch (e) { toast(String(e), 'err'); drawServices(); }
@@ -3148,7 +3149,10 @@ const SERVICES = {
     links: [['Register App ID', 'https://developer.apple.com/account/resources/identifiers/add/bundleId'], ['Certificates', 'https://developer.apple.com/account/resources/certificates/add'], ['Profiles', 'https://developer.apple.com/account/resources/profiles/add'],
       ['Apps', 'https://appstoreconnect.apple.com/apps'], ['API keys', 'https://appstoreconnect.apple.com/access/integrations/api']]},
   play: {name: 'Google Play', note: 'Android releases', keys: ['PLAY_SERVICE_ACCOUNT_JSON'],
-    steps: ['Make the app', 'Make a service account in Google Cloud, invite it in Play Console under Users and permissions'], links: [['Play Console', 'https://play.google.com/console']]},
+    steps: ['Make the app', 'Pick the Google account and Cloud project under the **Google** service',
+      autoStep('play', 'Clauracle makes a service account in that project and fills its JSON key', 'Make service account', 'PLAY_SERVICE_ACCOUNT_JSON', 'play'),
+      'Play Console › **Users and permissions** › **Invite new users**: paste the service account email (copied), give it release rights'],
+    links: [['Play Console', 'https://play.google.com/console']]},
   // #40: keys/steps/links follow the picked host (HOSTS) → getters; host/domain/pages live in p.site (siteHtml)
   website: {name: 'Website', note: 'Landing page, privacy policy and terms on your domain',
     get keys() { return HOSTS[siteOf().host]?.keys || []; },

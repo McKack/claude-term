@@ -1275,6 +1275,22 @@ fn site_auto(st: St, pid: String, host: String) -> R<String> {
             store::env_put(&envp, &kv.iter().map(|(k, v)| (*k, Some(v.as_str()))).collect::<Vec<_>>())?;
             Ok("Firebase web config".into())
         }
+        "play" => { // #165 service account in the project's Cloud project → JSON key (compact, one .env line) → email (UI copies it for the Play Console invite; no API for that)
+            if p.gcp.is_empty() { return Err("pick the Google Cloud project under the Google service first".into()); }
+            let g = p.gcp.clone();
+            let _ = store::gcloud(&["services", "enable", "androidpublisher.googleapis.com"], &p.gaccount, &g);
+            if let Err(e) = store::gcloud(&["iam", "service-accounts", "create", "clauracle-play", "--display-name=Google Play releases"], &p.gaccount, &g) {
+                if !e.contains("already exists") { return Err(format!("gcloud: {e}")); }
+            }
+            let email = format!("clauracle-play@{g}.iam.gserviceaccount.com");
+            let tmp = std::env::temp_dir().join(format!("clauracle-play-{}.json", std::process::id()));
+            let r = store::gcloud(&["iam", "service-accounts", "keys", "create", &tmp.to_string_lossy(), &format!("--iam-account={email}")], &p.gaccount, &g)
+                .and_then(|_| std::fs::read_to_string(&tmp).map_err(|e| e.to_string()));
+            let _ = std::fs::remove_file(&tmp); // private key: never leave it in temp
+            let key: Value = serde_json::from_str(&r.map_err(|e| format!("gcloud: {e}"))?).map_err(|e| e.to_string())?;
+            fill("PLAY_SERVICE_ACCOUNT_JSON", &key.to_string())?;
+            Ok(email)
+        }
         _ => Err("nothing to automate for this host".into()),
     }
 }
