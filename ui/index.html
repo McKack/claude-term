@@ -159,6 +159,7 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .vtools { display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 8px; border-right:1px solid var(--line); overflow:auto; }
 .vtools .seg { flex-direction:column; } .vtools .seg button { padding:7px; }
 .vstage { position:relative; display:grid; place-items:center; padding:14px; min-height:0; overflow:hidden; }
+.vstage > .vdoc, .vstage > .vtext { place-self:stretch; width:100%; height:100%; } .vdoc { border:0; border-radius:6px; background:#fff; } .vtext { max-height:none; margin:0; padding:0; align-content:start; } /* #247 File viewer: pdf / text */
 .vstage > img, #edC { max-width:100%; object-fit:contain; border-radius:6px; display:block; }
 #edWrap { position:relative; } #edC { cursor:crosshair; touch-action:none; }
 .ednote { position:absolute; width:240px; display:flex; align-items:flex-end; gap:4px; padding:3px 4px 3px 8px; border:2px solid; border-radius:8px; background:var(--card); }
@@ -615,6 +616,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-go" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-brain"viewBox="0 0 24 24"><path d="M12 5a3 3 0 0 0-5.6-1.5A3 3 0 0 0 4 8a3 3 0 0 0 0 5 3.5 3.5 0 0 0 3 5.5A3 3 0 0 0 12 19zM12 5a3 3 0 0 1 5.6-1.5A3 3 0 0 1 20 8a3 3 0 0 1 0 5 3.5 3.5 0 0 1-3 5.5A3 3 0 0 1 12 19zM12 5v14"/></symbol>
   <symbol id="i-cal"viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
+  <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 17v-4h1.5a1.2 1.2 0 0 1 0 2.4H8M13 17v-4h1a2 2 0 0 1 0 4z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
   <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="18" cy="19" r="2"/><circle cx="5" cy="18" r="1.5"/><path d="M6.7 7.2l3.5 3M17.6 6.4l-4 4M13.8 13.8l2.8 3.6M10 13.6l-3.6 3.2"/></symbol>
@@ -1447,12 +1450,13 @@ function entry(e) {
     : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
   else if (e.kind === 'user' && view === 'chat') { d.innerHTML = refPills(bare(e.text), fnames(e.text)); for (const [, n] of e.text.matchAll(new RegExp(FILED_RE, 'g'))) d.insertAdjacentHTML('beforeend', `<span class="filedtag" data-tip="Filed as task #${n}">#${n}</span>`); }
-  else if (e.pill) d.innerHTML = `<span class="npill${builds[cur]?.busy && e === logs[cur]?.findLast(x => x.pill) ? ' on' : ''}">${icon(e.pill)}${esc(e.text)}</span>`; // #244 Thinking-pill look; shimmer while its build runs
+  else if (e.pill) d.innerHTML = `<span class="npill${e.rb ? ' on' : builds[cur]?.busy && e === logs[cur]?.findLast(x => x.pill && !x.rb) ? ' on' : ''}">${icon(e.pill)}${esc(e.text)}</span>`; // #244 Thinking-pill look; shimmer while its build runs (#247 rb = report being written)
   else d.textContent = e.text;
   // #169 ticks after the chain: as its own if, its `else` overwrote md() replies with plain text
   if (e.kind === 'user' && e.st && view === 'chat') { d.insertAdjacentHTML('beforeend', tickHtml(e)); USEREL.set(e, d); }
   if (view === 'chat' && e.kind === 'note' && e.ts) d.dataset.ts = tm(e.ts); // shown above via CSS ::before
   if (e.rid) d.dataset.rid = e.rid;
+  if (view === 'chat' && e.act === 'pdf') { d.insertAdjacentHTML('beforeend', ` <button class="btn sm">${icon('pdf')}${esc(e.file.split(/[\\/]/).pop())}</button>`); d.lastElementChild.onclick = () => openPdf(e.file); }
   if (view === 'chat' && e.kind === 'note' && NOTEACT[e.act]) d.insertAdjacentHTML('beforeend', ` <button class="btn sm" onclick="${NOTEACT[e.act][1]}">${NOTEACT[e.act][0]}</button>`);
   return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
 }
@@ -1547,12 +1551,10 @@ function toolDlg(es, title = es[0].text) {
     const out = e.id && (logs[cur] || []).find(x => x.result_of === e.id);
     if (typeof d.command === 'string') return `<pre class="diff termout">${shHi(d.command)}</pre>` + (out ? `<pre class="diff ${out.kind === 'err' ? 'errout' : ''}">${esc(out.text)}</pre>` : '');
     return `<pre class="diff">${esc(JSON.stringify(d, null, 2))}</pre>`; })(e.detail || {})).join('');
-  const wrap = localStorage.diffWrap !== '0'; // wrap ON by default, choice remembered
-  dlg(`<div class="row" style="gap:8px;align-items:flex-start;margin-bottom:10px"><h2 class="mono sel" style="margin:0;font-size:14px;overflow-wrap:anywhere;flex:1;min-width:0">${esc(title)}${es.length > 1 ? ` <span class="pill">×${es.length}</span>` : ''}</h2>
-    <button class="ib${wrap ? ' on' : ''}" title="Wrap long lines"
-      onclick="const s=this.closest('div').nextElementSibling;try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('on',s.classList.contains('wrap'))">${icon('wrap')}</button></div>
-    <div class="dscroll${wrap ? ' wrap' : ''}">${body}</div>
-    <div class="btns"><button class="btn primary" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');
+  // #247 in the File viewer; plain text = what Save as…/Copy write (call, then command + output | new text | args)
+  const text = es.map(e => { const d = e.detail || {}, out = e.id && (logs[cur] || []).find(x => x.result_of === e.id);
+    return e.text + '\n' + (typeof d.command === 'string' ? d.command + (out ? '\n\n' + out.text : '') : 'new_string' in d ? d.new_string : Array.isArray(d.edits) ? d.edits.map(x => x.new_string).join('\n…\n') : typeof d.content === 'string' ? d.content : JSON.stringify(d, null, 2)); }).join('\n\n');
+  fileView({name: (title.split(/[\\/]/).pop().replace(/[^\w.-]+/g, '_').slice(0, 60) || 'output') + '.txt', text, html: body});
 }
 /* #214 task report: code-built from the log when a turn that called mcp__clauracle__ready ends (no AI tokens).
    Slice = entries since the last report note (old ones too ∵ a task can span handovers). Worked = Σ gaps ≤ 10m.
@@ -1608,10 +1610,13 @@ async function repOpen(rid, tb = 'done') {
 }
 const repBtns = () => document.querySelectorAll('.rpdf').forEach(b => { b.disabled = !!REPBUSY[cur]; b.classList.toggle('busy', !!REPBUSY[cur]); });
 async function repPdf(rid, pid = cur) { // rid = that task, none = 7-day; Sonnet in the background, buttons off meanwhile (any window)
-  if (REPBUSY[pid]) return; REPBUSY[pid] = true; repBtns(); toast('Writing the report in the background (Sonnet)…');
-  try { const f = await call('report_pdf', {pid, rep: rid ? REPS[rid] : null}); toast('Report ready: ' + f.split(/[\\/]/).pop(), 'ok'); }
-  catch (e) { toast(String(e), 'err'); }
-  delete REPBUSY[pid]; repBtns();
+  if (REPBUSY[pid]) return; REPBUSY[pid] = true; repBtns();
+  // #247 chat pill (shimmers while REPBUSY) → turns into "Report ready!" + (pdf icon) filename → File viewer
+  const e = {kind: 'note', text: rid ? 'Writing the detailed report…' : 'Writing the 7-day report…', pill: 'pdf', rb: 1}; addEntry(pid, e);
+  try { const f = await call('report_pdf', {pid, rep: rid ? REPS[rid] : null}); Object.assign(e, {text: 'Report ready!', pill: null, act: 'pdf', file: f});
+    if (pid === cur && !$('dlg').open) openPdf(f); else toast('Report ready: ' + f.split(/[\\/]/).pop(), 'ok', ['Open', () => openPdf(f)]); }
+  catch (x) { Object.assign(e, {text: 'Report failed: ' + String(x).slice(0, 200), pill: 'warn'}); toast(String(x), 'err'); }
+  delete e.rb; delete REPBUSY[pid]; repBtns(); saveLog(pid); if (pid === cur) drawLog();
 }
 // streaming text: #live is the bubble (deltas rewrite it); its row goes when the full entry lands
 function liveEl(pid) { const d = document.createElement('div'); d.className = 'msg claude'; d.id = 'live'; d.innerHTML = md(live[pid]);
@@ -1703,20 +1708,14 @@ const ETOOLS = [['sel', 'cursor', 'Select: drag empty space = marquee, Shift/Ctr
 function editImage() {
   const m = VW.imgs[VW.i], n = VW.imgs.length;
   const arrow = d => `<button class="ib${d < 0 ? ' vprev' : ''}" title="${d < 0 ? 'Previous' : 'Next'} (${d < 0 ? '←' : '→'})" onclick="stepViewer(${d})">${icon('chev')}</button>`;
-  dlg(`<div class="vbar" onpointerdown="vDrag(event)"><img class="vthumb" src="${m.url}" alt=""><span class="vname">${esc(m.name)}</span>
-    ${n > 1 ? `${arrow(-1)}<span class="faint">${VW.i + 1} / ${n}</span>${arrow(1)}` : ''}<span class="grow"></span>
-    <button class="btn primary sm" id="edSave" onclick="edDone()"${VW.map ? ' disabled title="Nothing changed yet"' : ''}>${VW.map ? 'Save' : 'Add to message'}</button>
-    <button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
-    <div class="vtools"><span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
+  // canvas fits the stage (any window size); notes re-placed ∵ scale changed
+  vWin(`<img class="vthumb" src="${m.url}" alt=""><span class="vname">${esc(m.name)}</span>
+    ${n > 1 ? `${arrow(-1)}<span class="faint">${VW.i + 1} / ${n}</span>${arrow(1)}` : ''}`,
+    `<button class="btn primary sm" id="edSave" onclick="edDone()"${VW.map ? ' disabled title="Nothing changed yet"' : ''}>${VW.map ? 'Save' : 'Add to message'}</button>`,
+    `<span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
     <input type="color" id="edColor" value="${edColor}" title="Colour (applies at once, also to the selected shape)">
-    <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button></div>
-    <div class="vstage"><div id="edWrap"><canvas id="edC"></canvas></div></div>`, 'viewer');
-  const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
-  if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; }
-  // canvas fits the stage (any window size); notes re-placed ∵ scale changed. VBOX = size kept across steps/opens (session)
-  new ResizeObserver(() => { if (!V.isConnected) return; const c = $('edC'); if (V.style.width) VBOX = [V.offsetWidth, V.offsetHeight];
-    c.style.maxHeight = S.clientHeight - 28 + 'px'; if (ED) edNotes(); vClamp(); }).observe(V);
-  const d = $('dlg'); if (!d.style.left) { const r = d.getBoundingClientRect(); Object.assign(d.style, {margin: '0', right: 'auto', bottom: 'auto', left: r.left + 'px', top: r.top + 'px'}); } // pinned where it opened ∴ resize corner tracks the mouse (centred = grows both ways)
+    <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>`,
+    '<div id="edWrap"><canvas id="edC"></canvas></div>', S => { $('edC').style.maxHeight = S.clientHeight - 28 + 'px'; if (ED) edNotes(); });
   $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; ED.sel = []; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); edDraw(); });
   $('edColor').oninput = e => { edColor = e.target.value; try { localStorage.penColor = edColor; } catch {} if (ED?.sel.length) { edSnap(); ED.sel.forEach(o => o.color = edColor); edDraw(); edNotes(); } };
   const img = new Image();
@@ -1757,7 +1756,34 @@ function editImage() {
   };
   img.src = m.ed?.orig || m.url;
 }
-let VBOX = null;
+let VBOX = null, VF = null; // VBOX = window size kept across steps/opens (session); VF = file in the File viewer {name, path?, text?}
+/* #247 one File viewer window (image editor template): head = left of the bar, act = right buttons (before ✕),
+   tools = left toolbar (contextual per file type), stage = content; fit(stage) on every resize */
+function vWin(head, act, tools, stage, fit) {
+  dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${act}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
+    <div class="vtools">${tools}</div><div class="vstage">${stage}</div>`, 'viewer');
+  const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
+  if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; }
+  new ResizeObserver(() => { if (!V.isConnected) return; if (V.style.width) VBOX = [V.offsetWidth, V.offsetHeight]; fit?.(S); vClamp(); }).observe(V);
+  const d = $('dlg'); if (!d.style.left) { const r = d.getBoundingClientRect(); Object.assign(d.style, {margin: '0', right: 'auto', bottom: 'auto', left: r.left + 'px', top: r.top + 'px'}); } // pinned where it opened ∴ resize corner tracks the mouse (centred = grows both ways)
+}
+// read-only files → "Save as…" (editable ones = images → Save in editImage). f = {name, path?(copied as is), text?(saved), url?(pdf blob), html?(text view)}
+function fileView(f) {
+  VF = f; const pdf = /\.pdf$/i.test(f.path || ''), wrap = localStorage.diffWrap !== '0';
+  vWin(`${icon(pdf ? 'pdf' : 'term')}<span class="vname">${esc(f.name)}</span>`, `<button class="btn primary sm" onclick="vSaveAs()">Save as…</button>`,
+    (pdf ? '' : `<button class="ib${wrap ? ' on' : ''}" title="Wrap long lines" onclick="const s=$('dlg').querySelector('.vtext');try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('on',s.classList.contains('wrap'))">${icon('wrap')}</button>
+      <button class="ib" title="Copy all" onclick="navigator.clipboard.writeText(VF.text);toast('Copied','ok')">${icon('copy')}</button>`)
+    + (f.path ? `<button class="ib" title="Show in folder" onclick="T.opener.revealItemInDir(VF.path).catch(e=>toast(String(e),'err'))">${icon('folder')}</button>` : ''),
+    pdf ? `<iframe class="vdoc" src="${f.url}"></iframe>` : `<div class="dscroll vtext sel${wrap ? ' wrap' : ''}">${f.html}</div>`);
+}
+async function vSaveAs() {
+  const to = await T.dialog.save({defaultPath: VF.name}); if (!to) return;
+  try { await call('save_as', {to, from: VF.path || null, text: VF.path ? null : VF.text}); toast('Saved ' + to.split(/[\\/]/).pop(), 'ok'); } catch (e) { toast(String(e), 'err'); }
+}
+async function openPdf(path) {
+  try { const b = await call('read_image', {path}); fileView({name: path.split(/[\\/]/).pop(), path, url: URL.createObjectURL(new Blob([b], {type: 'application/pdf'}))}); }
+  catch (e) { toast(String(e), 'err'); }
+}
 // #239 window may hang ≤50% past the left/right/bottom app edges; top ≥ 0 ∴ the header (drag handle) stays reachable
 function vClamp(dx = 0, dy = 0) { const d = $('dlg'); if (!d.style.left) return; const r = d.getBoundingClientRect();
   d.style.left = Math.max(-r.width / 2, Math.min(innerWidth - r.width / 2, r.left + dx)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - r.height / 2, r.top + dy)) + 'px'; }
@@ -3065,6 +3091,7 @@ function badgeFiles() {
 let envAt = null;
 function previewFile(rel) {
   if (/^\.env(\.|$)/.test(rel.split('/').pop())) { envAt = rel; expandRight('svc'); return; }
+  if (/\.pdf$/i.test(rel)) return openPdf(P().path.replace(/[\\/]+$/, '') + '/' + rel); // #247 File viewer
   codeAt[cur] = {file: rel}; expandRight('code'); drawFiles();
 }
 async function drawCode() {
@@ -3350,6 +3377,13 @@ const SVCTYPE = {'Sign-in': {Google: ['google', 'firebase'], Apple: ['apple'], G
   Database: {Supabase: ['supabase'], Google: ['firebase']}, Payments: {Stripe: ['stripe']}, Email: {Resend: ['resend']},
   Hosting: {'': ['website'], Vercel: ['vercel'], Google: ['firebase']}, Monitoring: {Sentry: ['sentry']},
   'App stores': {Apple: ['appstore', 'macsign'], Google: ['play'], Valve: ['steam']}, Cloud: {Google: ['google']}};
+// #247 services that are features inside the app (≠ hosting/stores/cloud) → svcWire: AI checks the code, files `needs-user` tasks for unused ones
+const svcFeats = ids => ids.filter(id => ['Sign-in', 'Database', 'Payments', 'Email', 'Monitoring'].some(t => Object.values(SVCTYPE[t]).flat().includes(id)));
+async function svcWire() {
+  const n = svcFeats(svcOf(P())).map(id => SERVICES[id].name); if (!n.length) return;
+  if (!await sure(`Check the app actually uses ${n.join(', ')}?\n\nClaude looks for each one in the code (a sign-in screen or button, a checkout, sent emails…). Each one the app doesn't use yet becomes a task waiting on you: you decide how it should look and work.\n${estTok()}`)) return;
+  sendNow(cur, {text: `This project has these services set up: ${n.join(', ')}. For each, check whether the app's code actually uses it where users see it (e.g. Sign in with Apple → a login screen/button that calls it; Stripe → a checkout; Resend → emails sent; Sentry → SDK init). Don't change any code. For each one that isn't wired in yet and no open issue covers: \`gh issue create --label clauracle --label feature --label needs-user\`, title "Add <feature> to the app", body = what's missing + 2-4 concrete questions on how it should look and work (where it shows, the flow, style), each with your recommendation. Then reply with one line per service: used (where) or filed #N.`, atts: []});
+}
 function svcMenu(el) {
   const left = id => SERVICES[id] && !svcOf(P()).includes(id), it = id => ({label: SERVICES[id].name, hint: SERVICES[id].note, run: () => svcAdd(id)});
   const seen = new Set(Object.values(SVCTYPE).flatMap(t => Object.values(t).flat()));
@@ -3391,7 +3425,8 @@ async function drawServices() {
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('x')}</button>`); }).join('')
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>` + secretsFold(files)
     // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
-    + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services and secrets set up.</p><button class="btn sm primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button></div>
+    + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services and secrets set up.</p><button class="btn sm primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button>
+      ${svcFeats(ids).length ? `<button class="btn sm block" onclick="svcWire()" title="Claude checks the code for each one; missing ones become tasks waiting on you (how it should look and work)">${icon('sparkle')}Check the app uses ${svcFeats(ids).map(id => esc(SERVICES[id].name)).join(', ')}</button>` : ''}</div>
       <button class="newpill" id="newPill" onclick="$('nextStep').scrollIntoView({behavior: 'smooth', block: 'end'})">${icon('down')}New!</button>` : '');
   if ($('nextStep')) new IntersectionObserver(([e]) => { if (e.isIntersecting && $('newPill')) $('newPill').hidden = true; }).observe($('nextStep'));
   if (ids.includes('google')) drawCloud();

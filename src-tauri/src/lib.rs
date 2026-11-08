@@ -1581,9 +1581,16 @@ fn read_file(st: St, pid: String, rel: String) -> R<String> {
 #[tauri::command]
 fn read_image(path: String) -> R<tauri::ipc::Response> {
     let ext = std::path::Path::new(&path).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    if !["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(&ext.as_str()) { return Err("not an image".into()); }
-    if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > 20_000_000 { return Err("too large".into()); }
+    // #247 + pdf: File viewer (blob → iframe); name kept ∵ callers
+    if !["png", "jpg", "jpeg", "gif", "webp", "bmp", "pdf"].contains(&ext.as_str()) { return Err("not an image or PDF".into()); }
+    if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > 50_000_000 { return Err("too large".into()); }
     Ok(tauri::ipc::Response::new(std::fs::read(&path).map_err(|e| e.to_string())?))
+}
+/// #247 File viewer "Save as…": copy `from` or write `text` to `to` (picked in the save dialog).
+#[tauri::command(async)]
+fn save_as(to: String, from: Option<String>, text: Option<String>) -> R<()> {
+    match (from, text) { (Some(f), _) => std::fs::copy(f, &to).map(|_| ()), (_, Some(t)) => std::fs::write(&to, t), _ => return Err("nothing to save".into()) }
+        .map_err(|e| e.to_string())
 }
 
 // ---- browsers: open pages in a system browser profile (you stay logged in there) ----
@@ -1704,7 +1711,6 @@ code{{background:#f4f1ef;padding:0 4px;border-radius:3px}}</style>
     let r = std::process::Command::new(&exe).args(["--headless=new", "--disable-gpu", "--no-pdf-header-footer"])
         .arg(format!("--print-to-pdf={}", pf.display())).arg(format!("file:///{}", hf.display().to_string().replace('\\', "/"))).output();
     if !pf.exists() { return Err(format!("PDF print failed{}", r.err().map(|e| format!(": {e}")).unwrap_or_default())); }
-    let _ = tauri_plugin_opener::open_path(&pf, None::<&str>);
     Ok(pf.to_string_lossy().into())
 }
 fn html_esc(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;") }
@@ -2006,7 +2012,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
-            continue_now, set_lessons, report_save, report_get, log_save, report_pdf, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
+            continue_now, set_lessons, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])

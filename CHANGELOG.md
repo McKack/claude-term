@@ -3,6 +3,9 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- One built-in File viewer: PDFs (reports, PDFs in Code) and full terminal output open in the same window as the image editor, with Save as… and contextual tools on the left.
+- Writing a report shows a pill in the chat, which turns into "Report ready!" with a button that opens the PDF.
+- Services & Secrets: "Check the app uses …" asks Claude to find chosen features (sign-in, payments…) the app does not use yet and files a task for each, waiting on your input.
 - Task report: the detailed-report button uses the sparkle icon, and the timeline starts at the time work actually began.
 - The "Building…" line in the chat now looks like the Thinking pill, with a hammer icon.
 - The chat log keeps everything it showed, task reports included, across a fresh session and an app restart; only the history limit drops the oldest greyed-out messages.
