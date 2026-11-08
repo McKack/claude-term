@@ -3,6 +3,11 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Image editor: the cursor shows the selected tool; a click with the pen draws a dot; a click with Box + note places just the numbered point; a new width menu sets line thickness and arrowheads on lines.
+- File viewer: zoom with the wheel, Ctrl + / − / 0 or the header slider; pan images with the middle mouse button.
+- Code tab: syntax colouring, recently worked-on files when nothing is open, and the file path opens the file in the File viewer.
+- Agents tab lists your agents (faded when off) with the on/off switch and settings at the top.
+- Chat: sent/seen ticks sit next to the message time; icons replace text symbols (also in the Build menu). No more black focus rings or doubled system tooltips.
 - One built-in File viewer: PDFs (reports, PDFs in Code) and full terminal output open in the same window as the image editor, with Save as… and contextual tools on the left.
 - Writing a report shows a pill in the chat, which turns into "Report ready!" with a button that opens the PDF.
 - Services & Secrets: "Check the app uses …" asks Claude to find chosen features (sign-in, payments…) the app does not use yet and files a task for each, waiting on your input.

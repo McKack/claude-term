@@ -114,7 +114,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
 .msg { max-width:100%; }
 .msg.user { align-self:flex-end; max-width:82%; background:var(--side); border:1px solid var(--line); padding:9px 14px; border-radius:16px 16px 4px 16px; white-space:pre-wrap; }
-.msg.user .tk { margin-left:6px; font-size:11px; color:var(--faint); white-space:nowrap; } .msg.user .tk.read { color:#34b7f1; letter-spacing:-3px; padding-right:3px; } .msg.user .tk.fail { color:var(--err); font-weight:700; } .msg.user .tk .i { width:11px; height:11px; vertical-align:-1px; }
+.cm .tk { margin-left:6px; color:var(--faint); display:inline-flex; } .cm .tk.read { color:#34b7f1; } .cm .tk.fail { color:var(--err); } .cm .tk .i { width:13px; height:13px; vertical-align:-2px; }
 .rpill { display:inline-flex; align-items:center; gap:4px; padding:0 8px 0 6px; border-radius:99px; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); } .rpill svg { width:1em; height:1em; flex:none; }
 #pback .fic { position:relative; } #pback .fic svg { position:absolute; left:0; top:50%; width:.8em; height:.8em; transform:translateY(-50%); color:var(--accent); } /* #227 icon over the em-space slot */
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
@@ -159,6 +159,7 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .vtools { display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 8px; border-right:1px solid var(--line); overflow:auto; }
 .vtools .seg { flex-direction:column; } .vtools .seg button { padding:7px; }
 .vstage { position:relative; display:grid; place-items:center; padding:14px; min-height:0; overflow:hidden; }
+.vzoom { display:flex; align-items:center; gap:2px; } .vzoom input { width:120px; padding:0; border:0; accent-color:var(--accent); } .vzoom .ib { width:24px; height:24px; } .vzoom small { width:40px; text-align:right; font-variant-numeric:tabular-nums; }
 .vstage > .vdoc, .vstage > .vtext { place-self:stretch; width:100%; height:100%; } .vdoc { border:0; border-radius:6px; background:#fff; } .vtext { max-height:none; margin:0; padding:0; align-content:start; } /* #247 File viewer: pdf / text */
 .vstage > img, #edC { max-width:100%; object-fit:contain; border-radius:6px; display:block; }
 #edWrap { position:relative; } #edC { cursor:crosshair; touch-action:none; }
@@ -506,6 +507,9 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .tree .eb:not(:empty) { min-width:18px; height:16px; padding:0 5px; color:var(--ink); font-size:10.5px; font-weight:700; line-height:16px; text-align:center; }
 .code { font:12.5px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); counter-reset:l; }
 .code pre { margin:0; padding:8px 12px 8px 0; white-space:pre; min-width:max-content; } .code.wrap pre { white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; }
+.code i { font-style:normal; } .code .hk { color:#c678dd; } .code .hs { color:#98c379; } .code .hc { color:var(--faint); font-style:italic; } .code .hn { color:#d19a66; } .code .ht { color:#61afef; }
+:root:not([data-theme=dark]) .code .hk { color:#a626a4; } :root:not([data-theme=dark]) .code .hs { color:#50a14f; } :root:not([data-theme=dark]) .code .hn { color:#986801; } :root:not([data-theme=dark]) .code .ht { color:#4078f2; }
+.flist > div { display:flex; gap:8px; align-items:center; padding:6px 8px; border-radius:8px; cursor:pointer; min-width:0; } .flist > div:hover { background:var(--hover); } .flist small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .code pre > div { display:grid; grid-template-columns:var(--lw) 1fr; } /* #231 one row per line: line no. = ::before (not copied), wrapped lines indent under the text */
 .code pre > div::before { counter-increment:l; content:counter(l); color:var(--faint); text-align:right; padding-right:8px; margin-right:12px; border-right:1px solid var(--line); -webkit-user-select:none; user-select:none; }
 #web { width:100%; height:calc(100vh - 175px); border:1px solid var(--line); border-radius:10px; background:#fff; }
@@ -525,6 +529,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 
 /* dialogs */
 dialog { border-radius:20px; color:var(--text); padding:0; } dialog:focus, dialog:focus-visible { outline:none; }
+:focus:not(:focus-visible) { outline:none; } :is(button, a, [tabindex]):focus-visible { outline:2px solid var(--accent); outline-offset:1px; } /* #248 no black UA ring */
 /* thin rounded scrollbars instead of the classic Windows ones with arrows */
 ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-button { display:none; } ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--text) 18%, transparent); border-radius:99px; border:3px solid transparent; background-clip:content-box; }
@@ -578,6 +583,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-check2" viewBox="0 0 24 24"><path d="M17 6 7 17l-5-5M22 7l-9.5 10-1.5-1.5"/></symbol>
   <symbol id="i-term" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
   <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
   <symbol id="i-loop" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
@@ -618,6 +624,9 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-cal"viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
   <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 17v-4h1.5a1.2 1.2 0 0 1 0 2.4H8M13 17v-4h1a2 2 0 0 1 0 4z"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+  <symbol id="i-stroke" viewBox="0 0 24 24"><path d="M4 4v16" stroke-width="1"/><path d="M11 5v14M8.5 7.5 11 5l2.5 2.5M8.5 16.5 11 19l2.5-2.5"/><path d="M19 4v16" stroke-width="3.6"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
   <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="18" cy="19" r="2"/><circle cx="5" cy="18" r="1.5"/><path d="M6.7 7.2l3.5 3M17.6 6.4l-4 4M13.8 13.8l2.8 3.6M10 13.6l-3.6 3.2"/></symbol>
@@ -810,7 +819,7 @@ function buildMenu(items, r, side, level = 0) {
   document.querySelectorAll('.menu').forEach(x => +x.dataset.level >= level && x.remove());
   const m = document.createElement('div');
   m.className = 'menu glass'; m.dataset.level = level; m.popover = 'manual'; // top layer, opened last → over Settings/dialogs
-  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.and ? `<div class="mand">${esc(it.and)}</div>` : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? '✓' : ''}</span>` : it.icon ? icon(it.icon) : ''}
+  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.and ? `<div class="mand">${esc(it.and)}</div>` : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? icon('check') : ''}</span>` : it.icon ? icon(it.icon) : ''}
     <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact${a.label ? ' lab' : ''}" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}${a.label ? `${esc(a.label)}${icon('down')}` : ''}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
   (document.querySelector('dialog:modal') || document.body).appendChild(m); m.showPopover(); // inside a modal: else inert
   m.style.maxHeight = innerHeight - 16 + 'px'; m.style.overflowY = 'auto';
@@ -1040,7 +1049,7 @@ function drawGbar() {
     : `${icon('sparkle')}<span class="gt">AI idle</span>`;
   const ai = `<button class="stats" onclick="gCard(this, 'ai')" title="AI: activity, account, context, usage and session time">${lead}${p ? `<span>${icon('doc')}${ctx[cur] ?? '?'}%</span>` : ''}${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}</button>`;
   const bl = bd.length ? `<button onclick="gCard(this, 'build')" title="Builds in progress"><span class="spin"></span><span class="gt">Building ${bd.length > 1 ? bd.length + ' projects' : `<b>${esc(bd[0].name)}</b>`}</span></button>`
-    : last ? `<button onclick="gCard(this, 'build')" title="Last build"><span class="${last.b.ok ? 'ok' : 'bad'}">${last.b.ok ? '✓' : '✗'}</span><span class="gt">${last.b.ok ? 'Built' : 'Build failed'} <b>${esc(last.p.name)}</b> · ${gago(last.b.at)}</span></button>`
+    : last ? `<button onclick="gCard(this, 'build')" title="Last build"><span class="${last.b.ok ? 'ok' : 'bad'}">${icon(last.b.ok ? 'check' : 'x')}</span><span class="gt">${last.b.ok ? 'Built' : 'Build failed'} <b>${esc(last.p.name)}</b> · ${gago(last.b.at)}</span></button>`
     : `<button onclick="gCard(this, 'build')" title="Builds">${icon('hammer')}<span class="gt">No builds</span></button>`;
   const h = `<div class="gz">${ai}</div><div class="gz r">${bl}</div>`;
   if (el._h !== h) { el._h = h; el.innerHTML = h; }
@@ -1074,7 +1083,7 @@ function gCard(btn, kind) {
     card.innerHTML = `<h5>Builds</h5>${bd.map(x => row(x.id, '<span class="spin"></span>', x.name)
         + `<div class="dim sel" style="font-size:12px;margin:0 0 2px 20px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(blast(x.id))}</div>`
         + `<div class="gact">${act('Output', go(x.id, 'build'))}${act(icon('stop') + 'Stop', `call('stop_build', {pid: '${x.id}'}); ${close}`, 'ghost')}</div>`).join('') || '<p class="dim">No builds running</p>'}
-      ${done.length ? `<h5>Finished</h5>${done.map(({p, b}) => row(p.id, `<span class="${b.ok ? 'ok' : 'bad'}">${b.ok ? '✓' : '✗'}</span>`, p.name, `<span class="dim">${gago(b.at)}</span>`)
+      ${done.length ? `<h5>Finished</h5>${done.map(({p, b}) => row(p.id, `<span class="${b.ok ? 'ok' : 'bad'}">${icon(b.ok ? 'check' : 'x')}</span>`, p.name, `<span class="dim">${gago(b.at)}</span>`)
           + `<div class="gact">${act('Output', go(p.id, 'build'))}${b.ok ? (b.own ? act('Restart into it', `call('restart_into', {pid: '${p.id}'})`, 'primary') : p.build.run ? act(icon('play') + 'Run', `call('run_step', {pid: '${p.id}', step: 'run'}); ${close}`, 'primary') : '')
             : act(icon('hammer') + 'Build again', `call('run_step', {pid: '${p.id}', step: 'build'}); ${close}`, 'primary')}</div>`).join('')}` : ''}`;
   }
@@ -1235,11 +1244,12 @@ const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'm
 let tipEl = null, tipT;
 const hideTip = () => { clearTimeout(tipT); tipEl = null; if (tip.matches(':popover-open')) tip.hidePopover(); };
 document.addEventListener('mouseover', e => {
-  const el = e.target.closest?.('[title], [data-tip]');
+  // #248 every ancestor's title → data-tip ∵ an outer [title] left behind showed the OS tooltip too (after a long hover)
+  for (let a = e.target; a?.removeAttribute; a = a.parentElement) if (a.hasAttribute('title')) { a.dataset.tip ||= a.title; a.removeAttribute('title'); }
+  const el = e.target.closest?.('[data-tip]');
   if (el === tipEl) return;
   hideTip();
   if (!el) return;
-  if (el.hasAttribute('title')) { el.dataset.tip = el.title; el.removeAttribute('title'); }
   if (!el.dataset.tip) return;
   tipEl = el; const mx = e.clientX;
   tipT = setTimeout(() => {
@@ -1453,12 +1463,14 @@ function entry(e) {
   else if (e.pill) d.innerHTML = `<span class="npill${e.rb ? ' on' : builds[cur]?.busy && e === logs[cur]?.findLast(x => x.pill && !x.rb) ? ' on' : ''}">${icon(e.pill)}${esc(e.text)}</span>`; // #244 Thinking-pill look; shimmer while its build runs (#247 rb = report being written)
   else d.textContent = e.text;
   // #169 ticks after the chain: as its own if, its `else` overwrote md() replies with plain text
-  if (e.kind === 'user' && e.st && view === 'chat') { d.insertAdjacentHTML('beforeend', tickHtml(e)); USEREL.set(e, d); }
+  if (e.kind === 'user' && e.st && view === 'chat') USEREL.set(e, d); // #248 tick sits after the timestamp (row head), not in the bubble
   if (view === 'chat' && e.kind === 'note' && e.ts) d.dataset.ts = tm(e.ts); // shown above via CSS ::before
   if (e.rid) d.dataset.rid = e.rid;
   if (view === 'chat' && e.act === 'pdf') { d.insertAdjacentHTML('beforeend', ` <button class="btn sm">${icon('pdf')}${esc(e.file.split(/[\\/]/).pop())}</button>`); d.lastElementChild.onclick = () => openPdf(e.file); }
   if (view === 'chat' && e.kind === 'note' && NOTEACT[e.act]) d.insertAdjacentHTML('beforeend', ` <button class="btn sm" onclick="${NOTEACT[e.act][1]}">${NOTEACT[e.act][0]}</button>`);
-  return view === 'chat' && (e.kind === 'user' || e.kind === 'claude') ? chatRow(e.kind, d, e.ts) : d;
+  if (view !== 'chat' || (e.kind !== 'user' && e.kind !== 'claude')) return d;
+  const row = chatRow(e.kind, d, e.ts); if (e.kind === 'user' && e.st) row.querySelector('.cm').insertAdjacentHTML('beforeend', tickHtml(e));
+  return row;
 }
 // note buttons (#170 Built! / Build failed): label, handler (cur = the project shown)
 const NOTEACT = {run: [icon('play') + 'Run', "call('run_step', {pid: cur, step: 'run'})"], restart: ['Restart into it', "call('restart_into', {pid: cur})"], rep: [icon('list') + 'See report', 'repOpen(this.parentElement.dataset.rid)'], out: ['See output', "rightTab('build'); setTimeout(() => $('buildOut')?.scrollIntoView({block: 'nearest'}))"]};
@@ -1713,18 +1725,19 @@ function editImage() {
     ${n > 1 ? `${arrow(-1)}<span class="faint">${VW.i + 1} / ${n}</span>${arrow(1)}` : ''}`,
     `<button class="btn primary sm" id="edSave" onclick="edDone()"${VW.map ? ' disabled title="Nothing changed yet"' : ''}>${VW.map ? 'Save' : 'Add to message'}</button>`,
     `<span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
+    <button class="ib" id="edStroke" data-tip="Line width and arrows (also for the selected shapes)" onclick="edStrokeMenu(this)">${icon('stroke')}</button>
     <input type="color" id="edColor" value="${edColor}" title="Colour (applies at once, also to the selected shape)">
     <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>`,
-    '<div id="edWrap"><canvas id="edC"></canvas></div>', S => { $('edC').style.maxHeight = S.clientHeight - 28 + 'px'; if (ED) edNotes(); });
-  $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; ED.sel = []; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); edDraw(); });
+    '<div id="edWrap"><canvas id="edC"></canvas></div>', S => { $('edC').style.maxHeight = S.clientHeight - 28 + 'px'; if (ED) edNotes(); }, 'img');
+  $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; ED.sel = []; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); edCursor(); edDraw(); });
   $('edColor').oninput = e => { edColor = e.target.value; try { localStorage.penColor = edColor; } catch {} if (ED?.sel.length) { edSnap(); ED.sel.forEach(o => o.color = edColor); edDraw(); edNotes(); } };
   const img = new Image();
   img.onload = () => {
     const c = $('edC'); c.width = img.naturalWidth; c.height = img.naturalHeight;
     ED = {img, ops: structuredClone(m.ed?.ops || []), nmax: m.ed?.nmax || 0, tool: 'pen', cur: null, sel: [], drag: null, undo: [], w: Math.max(3, img.naturalWidth / 300)};
-    edDraw(); edNotes();
+    edCursor(); edDraw(); edNotes();
     const pt = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
-    c.onpointerdown = e => { c.setPointerCapture(e.pointerId); const [x, y] = pt(e), t = ED.tool;
+    c.onpointerdown = e => { if (e.button === 1) return; c.setPointerCapture(e.pointerId); const [x, y] = pt(e), t = ED.tool;
       if (t === 'erase') { const o = edHit(x, y); if (o) { edSnap(); ED.ops.splice(ED.ops.indexOf(o), 1); edDraw(); edNotes(); } return; }
       if (t === 'sel') { // #240 handle → scale | shape/inside box → move all | empty → marquee (Shift/Ctrl = add/toggle)
         const add = e.shiftKey || e.ctrlKey || e.metaKey, h = add ? -1 : edHandle(x, y), o = h < 0 && edHit(x, y);
@@ -1732,7 +1745,7 @@ function editImage() {
         if (h >= 0 || o || (ED.sel.length && edIn(x, y))) { if (o && !ED.sel.includes(o)) ED.sel = [o]; edSnap();
           ED.drag = {x, y, h, o, bb: edSelBB(), src: structuredClone(ED.sel), moved: false}; return edDraw(); }
         ED.drag = {mq: [x, y, x, y], base: add ? [...ED.sel] : []}; ED.sel = [...ED.drag.base]; return edDraw(); }
-      edSnap(); ED.cur = t === 'pen' ? {t, color: edColor, pts: [[x, y]]} : t === 'line' ? {t, color: edColor, x1: x, y1: y, x2: x, y2: y} : {t: 'box', color: edColor, x, y, w: 0, h: 0, note: '', n: ++ED.nmax}; ED.ops.push(ED.cur); };
+      edSnap(); ED.cur = t === 'pen' ? {t, color: edColor, lw: edLW, pts: [[x, y]]} : t === 'line' ? {t, color: edColor, lw: edLW, a0: edArr[0], a1: edArr[1], x1: x, y1: y, x2: x, y2: y} : {t: 'box', color: edColor, lw: edLW, x, y, w: 0, h: 0, note: '', n: ++ED.nmax}; ED.ops.push(ED.cur); };
     c.onpointermove = e => { const [x, y] = pt(e);
       const D = ED.drag;
       if (D?.mq) { D.mq[2] = x; D.mq[3] = y; const [a, b, c2, d] = D.mq, l = Math.min(a, c2), r = Math.max(a, c2), tp = Math.min(b, d), bt = Math.max(b, d); // touches = bbox overlap
@@ -1743,14 +1756,15 @@ function editImage() {
           ED.sel.forEach((o, k) => edScale(o, D.src[k], ax, ay, sx, sy)); }
         else { ED.sel.forEach(o => edMove(o, x - D.x, y - D.y)); D.x = x; D.y = y; }
         edDraw(); edNotes(); return; }
-      if (ED.tool === 'sel') { const h = edHandle(x, y); c.style.cursor = h >= 0 ? EDC[h] + '-resize' : edHit(x, y) || (ED.sel.length && edIn(x, y)) ? 'move' : 'default'; }
+      if (ED.tool === 'sel') { const h = edHandle(x, y); c.style.cursor = h >= 0 ? EDC[h] + '-resize' : edHit(x, y) || (ED.sel.length && edIn(x, y)) ? 'move' : EDCUR.sel; }
       const o = ED.cur; if (!o) return;
       if (o.t === 'pen') { const [px, py] = o.pts.at(-1); if (Math.hypot(x - px, y - py) > ED.w / 2) o.pts.push([x, y]); } else if (o.t === 'line') { o.x2 = x; o.y2 = y; } else { o.w = x - o.x; o.h = y - o.y; } edDraw(); };
     c.onpointerup = () => { const D = ED.drag; ED.drag = null;
       if (D) { if (!D.mq && !D.moved) { ED.undo.pop(); if (D.o) ED.sel = [D.o]; } return edDraw(); } // plain click: no undo entry, picks just that shape
       const o = ED.cur; ED.cur = null; if (!o) return;
-      if (o.t === 'box') { if (Math.abs(o.w) < 8 || Math.abs(o.h) < 8) { ED.ops.pop(); ED.undo.pop(); ED.nmax--; }
-        else { if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } edDraw(); return edNotes(o); } }
+      if (o.t === 'box') { if (Math.abs(o.w) < 8 && Math.abs(o.h) < 8) o.w = o.h = 0; // #248 click = numbered point (note, no box)
+        if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } edDraw(); return edNotes(o); }
+      if (o.t === 'line' && Math.hypot(o.x2 - o.x1, o.y2 - o.y1) < 2) { ED.ops.pop(); ED.undo.pop(); }
       edDraw(); };
     c.onpointercancel = c.onpointerup; // #237 box numbered at pointerdown (was pointerup → 'undefined' tag when the up got lost)
   };
@@ -1759,13 +1773,31 @@ function editImage() {
 let VBOX = null, VF = null; // VBOX = window size kept across steps/opens (session); VF = file in the File viewer {name, path?, text?}
 /* #247 one File viewer window (image editor template): head = left of the bar, act = right buttons (before ✕),
    tools = left toolbar (contextual per file type), stage = content; fit(stage) on every resize */
-function vWin(head, act, tools, stage, fit) {
-  dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${act}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
+function vWin(head, act, tools, stage, fit, zoom) {
+  VZ = zoom ? {k: zoom, s: 1, x: 0, y: 0} : null; // #248 zoom: 'img' = transform (pan too) | 'text' = CSS zoom; pdf = its own viewer's zoom
+  dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${zoom ? `<span class="vzoom"><button class="ib" title="Zoom out (Ctrl −)" onclick="vZoom(1/1.25)">${icon('minus')}</button><input type="range" min="10" max="800" value="100" oninput="vZoom(this.value / 100 / VZ.s)" data-tip="Zoom: wheel, Ctrl + / −, Ctrl 0 = fit. Middle-drag pans"><button class="ib" title="Zoom in (Ctrl +)" onclick="vZoom(1.25)">${icon('plus')}</button><small class="faint" id="vzp">100%</small></span><span class="grow"></span>` : ''}${act}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="vtools">${tools}</div><div class="vstage">${stage}</div>`, 'viewer');
   const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
   if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; }
   new ResizeObserver(() => { if (!V.isConnected) return; if (V.style.width) VBOX = [V.offsetWidth, V.offsetHeight]; fit?.(S); vClamp(); }).observe(V);
   const d = $('dlg'); if (!d.style.left) { const r = d.getBoundingClientRect(); Object.assign(d.style, {margin: '0', right: 'auto', bottom: 'auto', left: r.left + 'px', top: r.top + 'px'}); } // pinned where it opened ∴ resize corner tracks the mouse (centred = grows both ways)
+  if (!zoom) return;
+  S.onwheel = e => { if (zoom === 'text' && !e.ctrlKey) return; e.preventDefault(); vZoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, e); }; // text: plain wheel scrolls
+  S.onmousedown = e => { if (e.button !== 1 || zoom !== 'img') return; e.preventDefault(); let px = e.clientX, py = e.clientY; // middle-drag pan (preventDefault = no autoscroll)
+    const mv = ev => { VZ.x += ev.clientX - px; VZ.y += ev.clientY - py; px = ev.clientX; py = ev.clientY; vZoom(1); }, up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); };
+    addEventListener('mousemove', mv); addEventListener('mouseup', up); };
+}
+let VZ = null;
+// f = factor; e = pointer → that point stays put (transform-origin 0 0: screen = layout + t + s·u ∴ t' = P − O − s'/s·(P − O − t))
+function vZoom(f, e) {
+  if (!VZ) return; const S = $('dlg').querySelector('.vstage'), el = S?.firstElementChild; if (!el) return;
+  const s2 = f === 0 ? 1 : Math.min(8, Math.max(.1, VZ.s * f));
+  if (f === 0) VZ.x = VZ.y = 0;
+  else if (VZ.k === 'img') { const r = el.getBoundingClientRect(), ox = r.left - VZ.x, oy = r.top - VZ.y, px = e ? e.clientX : r.left + r.width / 2, py = e ? e.clientY : r.top + r.height / 2;
+    VZ.x = px - ox - s2 / VZ.s * (px - ox - VZ.x); VZ.y = py - oy - s2 / VZ.s * (py - oy - VZ.y); }
+  VZ.s = s2;
+  if (VZ.k === 'img') { el.style.transformOrigin = '0 0'; el.style.transform = `translate(${VZ.x}px, ${VZ.y}px) scale(${VZ.s})`; } else el.style.zoom = VZ.s;
+  const r = $('dlg').querySelector('.vzoom input'); if (r) r.value = Math.round(VZ.s * 100); if ($('vzp')) $('vzp').textContent = Math.round(VZ.s * 100) + '%';
 }
 // read-only files → "Save as…" (editable ones = images → Save in editImage). f = {name, path?(copied as is), text?(saved), url?(pdf blob), html?(text view)}
 function fileView(f) {
@@ -1774,7 +1806,7 @@ function fileView(f) {
     (pdf ? '' : `<button class="ib${wrap ? ' on' : ''}" title="Wrap long lines" onclick="const s=$('dlg').querySelector('.vtext');try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('on',s.classList.contains('wrap'))">${icon('wrap')}</button>
       <button class="ib" title="Copy all" onclick="navigator.clipboard.writeText(VF.text);toast('Copied','ok')">${icon('copy')}</button>`)
     + (f.path ? `<button class="ib" title="Show in folder" onclick="T.opener.revealItemInDir(VF.path).catch(e=>toast(String(e),'err'))">${icon('folder')}</button>` : ''),
-    pdf ? `<iframe class="vdoc" src="${f.url}"></iframe>` : `<div class="dscroll vtext sel${wrap ? ' wrap' : ''}">${f.html}</div>`);
+    pdf ? `<iframe class="vdoc" src="${f.url}"></iframe>` : `<div class="dscroll vtext sel${wrap ? ' wrap' : ''}">${f.html}</div>`, null, pdf ? null : 'text');
 }
 async function vSaveAs() {
   const to = await T.dialog.save({defaultPath: VF.name}); if (!to) return;
@@ -1811,10 +1843,14 @@ function edDraw(flat) {
   const c = $('edC'), g = c.getContext('2d');
   g.drawImage(ED.img, 0, 0); g.lineCap = g.lineJoin = 'round';
   for (const o of ED.ops) {
-    g.strokeStyle = g.fillStyle = o.color; g.lineWidth = ED.w; g.setLineDash(!flat && ED.sel.includes(o) ? [ED.w * 3, ED.w * 2] : []); g.beginPath();
+    const lw = ED.w * (o.lw || 1); g.strokeStyle = g.fillStyle = o.color; g.lineWidth = lw; g.setLineDash(!flat && ED.sel.includes(o) ? [ED.w * 3, ED.w * 2] : []); g.beginPath();
+    if (o.t === 'pen' && o.pts.length === 1) { g.arc(...o.pts[0], lw / 2, 0, 7); g.fill(); continue; } // #248 click = dot (zero-length strokes don't paint)
+    if (o.t === 'line') { const a = Math.atan2(o.y2 - o.y1, o.x2 - o.x1), L = lw * 2.5 + ED.w * 2; // #248 arrowheads: filled, line stops at the head's base
+      const head = (x, y, d) => { g.save(); g.setLineDash([]); g.beginPath(); g.moveTo(x, y); g.lineTo(x - d * L * Math.cos(a - .45), y - d * L * Math.sin(a - .45)); g.lineTo(x - d * L * Math.cos(a + .45), y - d * L * Math.sin(a + .45)); g.fill(); g.restore(); };
+      const k = L * .8, sx = o.a0 ? o.x1 + k * Math.cos(a) : o.x1, sy = o.a0 ? o.y1 + k * Math.sin(a) : o.y1, ex = o.a1 ? o.x2 - k * Math.cos(a) : o.x2, ey = o.a1 ? o.y2 - k * Math.sin(a) : o.y2;
+      g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke(); if (o.a0) head(o.x1, o.y1, -1); if (o.a1) head(o.x2, o.y2, 1); continue; }
     if (o.t === 'pen') { const p = o.pts; g.moveTo(...p[0]); for (let k = 1; k < p.length - 1; k++) g.quadraticCurveTo(...p[k], (p[k][0] + p[k + 1][0]) / 2, (p[k][1] + p[k + 1][1]) / 2); g.lineTo(...p.at(-1)); g.stroke(); continue; } // smoothed: curves through midpoints
-    if (o.t === 'line') { g.moveTo(o.x1, o.y1); g.lineTo(o.x2, o.y2); g.stroke(); continue; }
-    g.strokeRect(o.x, o.y, o.w, o.h); g.setLineDash([]);
+    if (o.w || o.h) g.strokeRect(o.x, o.y, o.w, o.h); g.setLineDash([]);
     const r = ED.w * 4; // numbered tag on the corner = the note's number in the message
     g.beginPath(); g.arc(o.x, o.y, r, 0, 7); g.fill();
     g.fillStyle = '#fff'; g.font = `bold ${r * 1.2}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(o.n, o.x, o.y);
@@ -1840,6 +1876,22 @@ function edNotes(focus) {
     W.append(d); fit(); if (o === focus) setTimeout(() => t.focus());
   });
 }
+/* #248 global width (× base ED.w) + line arrows, remembered; menu also restyles the selection */
+let edLW = +(localStorage.penW || 1) || 1, edArr = (() => { try { return JSON.parse(localStorage.penArr || '[0,0]'); } catch { return [0, 0]; } })();
+const EDW = [[.5, 'Thin'], [1, 'Medium'], [2, 'Thick'], [3.5, 'Heavy']];
+function edStrokeMenu(b) {
+  const set = (k, v) => { if (k === 'lw') edLW = v; else edArr[k] = v; try { localStorage.penW = edLW; localStorage.penArr = JSON.stringify(edArr); } catch {}
+    if (ED?.sel.length) { edSnap(); ED.sel.forEach(o => { if (k === 'lw') o.lw = v; else if (o.t === 'line') o[k ? 'a1' : 'a0'] = v; }); edDraw(); } };
+  menuAt(b, [{title: 'Width'}, ...EDW.map(([v, l]) => ({label: l, check: edLW === v, run: () => set('lw', v)})), '-', {title: 'Line arrows'},
+    {label: 'Arrow at start', check: !!edArr[0], run: () => set(0, edArr[0] ? 0 : 1)}, {label: 'Arrow at end', check: !!edArr[1], run: () => set(1, edArr[1] ? 0 : 1)}]);
+}
+// #248 cursor = the tool's icon (white halo for any background); hotspot = where the tool touches (user-marked)
+const EDHOT = {sel: [5, 3], pen: [4, 20], line: [5, 19], box: [3, 5], erase: [4, 20]}, EDCUR = {};
+function edCursor() { const c = $('edC'); if (!c || !ED) return; const t = ED.tool;
+  EDCUR[t] ||= (() => { const k = ETOOLS.find(x => x[0] === t)[1], p = document.getElementById('i-' + k).innerHTML;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><g stroke="#fff" stroke-width="4">${p}</g><g stroke="#111" stroke-width="1.8">${p}</g></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${EDHOT[t].join(' ')}, crosshair`; })();
+  c.style.cursor = EDCUR[t]; }
 function edUndo() { const u = ED?.undo.pop(); if (u) { [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = []; edDraw(); edNotes(); } }
 function edDone() {
   const m = VW.imgs[VW.i]; ED.sel = []; edDraw(true);
@@ -1850,13 +1902,14 @@ function edDone() {
   ED = null; closeDlg(); drawAtts(); grow(); $('prompt').focus();
 }
 document.addEventListener('keydown', e => {
+  if ($('dlg').open && VZ && (e.ctrlKey || e.metaKey) && ['+', '=', '-', '0'].includes(e.key)) { e.preventDefault(); return vZoom(e.key === '0' ? 0 : e.key === '-' ? 1 / 1.25 : 1.25); }
   if (!$('dlg').open || !VW) return;
   const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
   if (ED && (e.ctrlKey || e.metaKey) && e.key === 'z' && !typing) { e.preventDefault(); edUndo(); }
   if (ED?.sel.length && !typing && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); edSnap(); ED.ops = ED.ops.filter(o => !ED.sel.includes(o)); ED.sel = []; edDraw(); edNotes(); }
   if (!typing && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
 });
-$('dlg').addEventListener('close', () => { VW = ED = null; $('dlg').style.cssText = ''; }); // #239 drop the viewer's pinned spot (dlg is shared)
+$('dlg').addEventListener('close', () => { VW = ED = VF = VZ = null; $('dlg').style.cssText = ''; }); // #239 drop the viewer's pinned spot (dlg is shared)
 function addImage(file) {
   const r = new FileReader();
   const rid = () => Array.from({length: 3}, () => Math.random().toString(36).slice(2, 5).padEnd(3, '0')).join('-');
@@ -2032,9 +2085,9 @@ const qBub = (pid, m) => { const e = userEntry(pid, m.text, m.atts, {st: 'queue'
 const qDrop = (pid, m) => { const e = m && QB.get(m); if (e) { unEntry(pid, e); QB.delete(m); } };
 // filed note → #N chip: re-render the bubble with the final text
 function reBub(e, t, a) { e.text = utext(t, a); const old = USEREL.get(e)?.closest('.crow'), n = old && entry(e); if (n) { n.className = old.className; old.replaceWith(n); } }
-const TK = {queue: [icon('clock'), 'Queued: sends when this turn ends'], pend: [icon('clock'), 'Sending…'], sent: ['✓', 'Sent'], read: ['✓✓', 'Received by the AI'], fail: ['!', 'Not sent']};
+const TK = {queue: [icon('clock'), 'Queued: sends when this turn ends'], pend: [icon('clock'), 'Sending…'], sent: [icon('check'), 'Sent'], read: [icon('check2'), 'Received by the AI'], fail: [icon('warn'), 'Not sent']};
 const tickHtml = e => `<span class="tk ${e.st}" data-tip="${TK[e.st][1]}">${TK[e.st][0]}</span>`;
-function tick(e, st) { e.st = st; const k = USEREL.get(e)?.querySelector('.tk'); if (k) k.outerHTML = tickHtml(e); }
+function tick(e, st) { e.st = st; const k = USEREL.get(e)?.closest('.crow')?.querySelector('.cm .tk'); if (k) k.outerHTML = tickHtml(e); }
 const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tick(e, 'read')); UNREAD[pid] = []; if (INBOX[pid]?.length) { INBOX[pid] = []; keepDraft(pid, true); } };
 /* sent but not yet read (busy:true) = only in Rust's in-memory inbox (session connecting/retrying) → kept in the saved draft till then ∴ a crash/quit re-queues it */
 const INBOX = {};
@@ -2257,7 +2310,8 @@ async function addProject() {
 }
 
 // ---- dialogs ----
-function dlg(html, cls = 'small-dlg') { const d = $('dlg'); d.className = 'glass'; if (cls !== 'viewer') d.style.cssText = ''; /* #239 viewer's pinned spot */ d.innerHTML = `<div class="${cls}">${html}</div>`; if (!d.open) d.showModal(); }
+function dlg(html, cls = 'small-dlg') { const d = $('dlg'); d.className = 'glass'; if (cls !== 'viewer') d.style.cssText = ''; /* #239 viewer's pinned spot */ d.innerHTML = `<div class="${cls}">${html}</div>`; if (!d.open) d.showModal();
+  if (!document.activeElement?.matches('input, textarea, select, [autofocus]')) document.activeElement?.blur(); } // #248 showModal focused the first button → ring on a random one
 const closeDlg = () => $('dlg').close();
 const sw = (on, change) => `<label class="sw"><input type="checkbox" ${on ? 'checked' : ''} onchange="${change}"><i></i></label>`;
 const optRow = (title, hint, control) => `<div class="opt-row"><div class="grow"><div>${title}</div>${hint ? `<small class="dim">${hint}</small>` : ''}</div>${control}</div>`;
@@ -2274,7 +2328,6 @@ const field = (label, control) => `<label class="fl"><span>${label}</span>${cont
 // empty state + its next step (CLAUDE.md: never dead-end); act = button html
 const empty = (t, act = '') => `<p class="empty">${t}</p>${act ? `<div class="btnrow" style="justify-content:center">${act}</div>` : ''}`;
 const startProj = `<button class="btn sm" onclick="addProject()">${icon('folder')}Open folder</button><button class="btn sm" onclick="openClone()">${icon('gh')}Clone</button>`;
-const agentsOn = async () => { AGENTS ||= await call('agents'); await call('set_agents', {agents: AGENTS, on: true}); refresh(); };
 const options = (map, val) => Object.entries(map).map(([k, l]) => `<option value="${esc(k)}" ${k === val ? 'selected' : ''}>${esc(l)}</option>`).join('');
 
 // Project manager: every project's own GitHub, connections, skills, build and token savers
@@ -2314,7 +2367,7 @@ function projectsPage() {
     ${fold('p-save', 'Options', `<div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
-      ${(p.allow || []).length ? /* 3 rows: title / tags / description (#53) ∵ side-by-side squeezed the text */ `<div class="opt-row" style="display:block"><div>Always allowed</div><span class="row wrap" style="gap:4px;margin:6px 0">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ✕</span>`).join('')}</span><small class="dim">Tools this project runs without asking</small></div>` : ''}
+      ${(p.allow || []).length ? /* 3 rows: title / tags / description (#53) ∵ side-by-side squeezed the text */ `<div class="opt-row" style="display:block"><div>Always allowed</div><span class="row wrap" style="gap:4px;margin:6px 0">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ${icon('x')}</span>`).join('')}</span><small class="dim">Tools this project runs without asking</small></div>` : ''}
       ${optRow('Credit the AI in commits', 'Off: no Co-Authored-By or "Generated with" lines; the AI never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
       ${optRow('Keep .env away from the AI', 'The AI can\'t read or edit .env files; manage them in Services &amp; Secrets › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on')}
@@ -3094,16 +3147,49 @@ function previewFile(rel) {
   if (/\.pdf$/i.test(rel)) return openPdf(P().path.replace(/[\\/]+$/, '') + '/' + rel); // #247 File viewer
   codeAt[cur] = {file: rel}; expandRight('code'); drawFiles();
 }
+/* #248 syntax colour, regex per line (no parser, no dep): block comments carry across lines; # comments only in hash langs.
+   ponytail: one keyword set for all langs; > 2 MB → plain. 5k lines ≈ a few ms */
+const HKW = new Set('if else for while do return function const let var class new this import export from as async await try catch finally throw switch case break continue default typeof instanceof in of fn pub mut impl struct enum use mod match self Self where trait loop def elif lambda None True False null undefined true false and or not with yield static void type interface extends implements package func defer crate super move ref dyn unsafe extern'.split(' '));
+function hiCode(text, ext) {
+  const lines = text.split('\n');
+  if (text.length > 2e6 || /^(md|txt|log|csv)$/.test(ext)) return lines.map(esc);
+  const hash = /^(py|sh|bash|zsh|ps1|toml|ya?ml|rb|r|conf|ini|env|gitignore|dockerfile|mk)$/.test(ext), ml = /^(html?|xml|svg|vue)$/.test(ext);
+  const re = new RegExp(String.raw`(/\*[\s\S]*?(?:\*/|$)${ml ? '|<!--[^]*?(?:-->|$)' : ''})|(${hash ? '#' : '//'}.*)|("(?:\\.|[^"\\])*"?|'(?:\\.|[^'\\])*'?|\`(?:\\.|[^\`\\])*\`?)|(\b\d[\w.]*)|(</?[A-Za-z][\w-]*|/?>)|([A-Za-z_$][\w$]*)`, 'g');
+  let blk = null; // open block comment end token
+  return lines.map(l => { let o = '', i = 0;
+    if (blk) { const k = l.indexOf(blk); if (k < 0) return `<i class="hc">${esc(l)}</i>`; o = `<i class="hc">${esc(l.slice(0, k + blk.length))}</i>`; i = k + blk.length; blk = null; }
+    re.lastIndex = i; let m;
+    while ((m = re.exec(l))) { o += esc(l.slice(i, m.index)); const t = m[0], c = m[1] || m[2] ? 'hc' : m[3] ? 'hs' : m[4] ? 'hn' : m[5] ? (ml ? 'ht' : '') : HKW.has(t) ? 'hk' : '';
+      if (m[1] && !/(\*\/|-->)$/.test(t)) blk = t.startsWith('<!--') ? '-->' : '*/';
+      o += c ? `<i class="${c}">${esc(t)}</i>` : esc(t); i = re.lastIndex; if (!t) re.lastIndex++; }
+    return o + esc(l.slice(i)); });
+}
+const codeHtml = (text, ext, wrap) => { const h = hiCode(text, ext); return `<div class="code${wrap ? ' wrap' : ''}"><pre class="sel" style="--lw:calc(${String(h.length).length}ch + 20px)">${h.map(l => `<div>${l}</div>`).join('')}</pre></div>`; };
+// #248 recent files: newest first from this project's chat log (tool file_path) then git heat; ≤ 8, inside the project only
+function recentFiles() {
+  const out = [], add = f => { if (!f) return; const r = relOf(cur, f); if (r && !/^[a-z]:|^\//i.test(r) && !out.includes(r)) out.push(r); };
+  for (let k = (logs[cur] || []).length - 1; k >= 0 && out.length < 8; k--) add(logs[cur][k].detail?.file_path);
+  (HEAT[cur]?.d.files || []).forEach(f => out.length < 8 && add(f[0]));
+  return out;
+}
 async function drawCode() {
   const file = codeAt[cur]?.file, box = $('rbody');
-  if (!file) { box.innerHTML = '<p class="dim">Pick a file on the left.</p>'; if (UI.lc || UI.st !== 'files') { UI.lc = false; setSide('files'); } return; }
+  if (!file) { const r = recentFiles();
+    box.innerHTML = r.length ? `<h3 style="margin:0 0 8px">Recently worked on</h3><div class="flist">${r.map(f => `<div data-p="${esc(f)}" onclick="previewFile(this.dataset.p)">${icon(fIcon(f))}<span class="mono">${esc(f.split('/').pop())}</span><small class="faint">${esc(f.split('/').slice(0, -1).join('/'))}</small></div>`).join('')}</div>`
+      : '<p class="dim">Pick a file on the left.</p>';
+    if (UI.lc || UI.st !== 'files') { UI.lc = false; setSide('files'); } return; }
   const wrap = localStorage.codeWrap !== '0'; // #231 wrap ON by default, choice remembered (like the diff dialog)
-  const head = `<div class="row" style="align-items:flex-start"><div class="crumbs mono grow" style="overflow-wrap:anywhere">${esc(file)}</div><button class="ib${wrap ? ' on' : ''}" title="Wrap long lines"
+  const head = `<div class="row" style="align-items:center;margin-bottom:10px;gap:4px"><a class="crumbs mono" style="overflow-wrap:anywhere;margin:0;cursor:pointer" title="Open in the File viewer" onclick="codeView()">${esc(file)}</a>
+    <button class="ib" style="width:26px;height:26px" title="Open in the File viewer" onclick="codeView()">${icon('expand')}</button><span class="grow"></span><button class="ib${wrap ? ' on' : ''}" style="width:26px;height:26px" title="Wrap long lines"
     onclick="const c=$('rbody').querySelector('.code'),w=c.classList.toggle('wrap');try{localStorage.codeWrap=w?'1':'0'}catch{}this.classList.toggle('on',w)">${icon('wrap')}</button></div>`;
   let text;
   try { text = await call('read_file', {pid: cur, rel: file}); } catch (e) { box.innerHTML = head + `<p class="dim">${esc(e)}</p>`; return; }
-  box.innerHTML = head + `<div class="code${wrap ? ' wrap' : ''}"><pre class="sel" style="--lw:calc(${String(text.split('\n').length).length}ch + 20px)">${text.split('\n').map(l => `<div>${esc(l)}</div>`).join('')}</pre></div>`;
+  codeAt[cur].text = text;
+  box.innerHTML = head + codeHtml(text, file.split('.').pop().toLowerCase(), wrap);
 }
+// #248 Code tab file → File viewer (same colouring; Save as… copies the file)
+function codeView() { const c = codeAt[cur]; if (!c?.text) return;
+  fileView({name: c.file.split('/').pop(), path: P().path.replace(/[\/]+$/, '') + '/' + c.file, text: c.text, html: codeHtml(c.text, c.file.split('.').pop().toLowerCase(), localStorage.codeWrap !== '0')}); }
 function setSide(t) { UI.st = t; layout(); drawSide(); }
 function toggleLeft() { UI.lc = !UI.lc; layout(); }
 function drawSide() {
@@ -4012,7 +4098,7 @@ function lookPage() {
       <button class="btn sm" onclick="menuAt(this, presetItems())">${esc(pm || 'Custom')}${icon('down')}</button></span>`)}
     ${optRow('Corners', '', choice('corners', ['square', 'soft', 'round']))}
     ${optRow('Accent', 'Mono: pure black and white, high contrast', `<span class="row" style="gap:8px">${Object.entries(ACCENTS).map(([n, c]) => `<button class="swatch ${LOOK.accent === n ? 'on' : ''}" title="${n}" style="background:${c[dk]}" onclick="setLook({accent:'${n}'})"></button>`).join('')}</span>`)}
-    ${optRow('Theme tint', 'Colours the whole app a little', `<span style="display:flex;flex-direction:column;gap:8px"><span class="row" style="gap:8px"><button class="swatch ${!LOOK.tint ? 'on' : ''}" title="None" style="background:var(--bg);display:grid;place-items:center;color:var(--faint)" onclick="setLook({tint:''})">✕</button>${Object.entries(ACCENTS).filter(([n]) => n !== 'Mono').map(([n, c]) => `<button class="swatch ${LOOK.tint === n ? 'on' : ''}" title="${n}" style="background:${c[dk]}" onclick="setLook({tint:'${n}'})"></button>`).join('')}</span>
+    ${optRow('Theme tint', 'Colours the whole app a little', `<span style="display:flex;flex-direction:column;gap:8px"><span class="row" style="gap:8px"><button class="swatch ${!LOOK.tint ? 'on' : ''}" title="None" style="background:var(--bg);display:grid;place-items:center;color:var(--faint)" onclick="setLook({tint:''})">${icon('x')}</button>${Object.entries(ACCENTS).filter(([n]) => n !== 'Mono').map(([n, c]) => `<button class="swatch ${LOOK.tint === n ? 'on' : ''}" title="${n}" style="background:${c[dk]}" onclick="setLook({tint:'${n}'})"></button>`).join('')}</span>
       ${LOOK.tint ? `<span class="row" style="gap:8px"><input type="range" min="5" max="100" step="5" value="${LOOK.tintPct}" style="flex:1;padding:0;border:0;background:none" title="Amount"
         oninput="LOOK.tintPct=+this.value; this.nextElementSibling.textContent=this.value+'%'; applyLook()" onchange="setLook({tintPct:+this.value})"><b style="width:40px;text-align:right">${LOOK.tintPct}%</b></span>` : ''}</span>`)}
     ${optRow('UI scale', 'Text and everything else, together. Same proportions on any screen: it adds to Windows display scaling',
@@ -4055,7 +4141,7 @@ async function csLoad(scope = CS.scope) {
   const sc = {['account:' + acct]: `${a?.nick || acct} only (Clauracle sessions on this account)`, user: 'Every account (+ plain claude in a terminal)',
     ...(cur ? {project: `${P().name}: shared (committed)`, local: `${P().name}: only you (not committed)`} : {})};
   const list = k => `<div class="label">${{allow: 'Allow without asking', ask: 'Always ask', deny: 'Never allow'}[k]}</div>
-    <div class="row" style="flex-wrap:wrap;gap:6px">${(perm[k] || []).map((r, i) => `<span class="pill mono">${esc(r)} <a style="cursor:pointer" title="Remove" onclick="csEdit(j => j.permissions.${k}.splice(${i}, 1))">✕</a></span>`).join('') || '<span class="faint">None</span>'}</div>
+    <div class="row" style="flex-wrap:wrap;gap:6px">${(perm[k] || []).map((r, i) => `<span class="pill mono">${esc(r)} <a style="cursor:pointer" title="Remove" onclick="csEdit(j => j.permissions.${k}.splice(${i}, 1))">${icon('x')}</a></span>`).join('') || '<span class="faint">None</span>'}</div>
     <div class="row" style="margin-top:6px"><input class="grow mono" placeholder="e.g. Bash(npm test:*), Read(./src/**), WebFetch(domain:github.com)"
       onkeydown="if (event.key === 'Enter' && this.value.trim()) csAdd('${k}', this.value.trim())"><button class="btn sm" onclick="const v = this.previousElementSibling.value.trim(); if (v) csAdd('${k}', v)">Add</button></div>`;
   const env = Object.entries(j?.env || {});
@@ -4227,6 +4313,15 @@ const agentsOf = pid => { const l = logs[pid] || [], turn = l.findLastIndex(e =>
       steps: sub.length, last: sub.at(-1)?.text.replace(/^↳ /, '')}; }); };
 // #atp = Plan block at the top of the GitHub tab, or the whole Agents tab (drawRight/drawGh create it; absent → no-op).
 // Plan: Suggestions → Claude's live list (open + last 3 done) → Queue (issues / PLAN.md, drag order) → Done lately
+// #248 no helpers started → the set-up agents, faded when off; top bar = switch (left) + settings (right)
+function agentIdle() {
+  if (!AGENTS) { agentIdle.p ||= call('agents').then(a => { AGENTS = a; drawAtp(); }); return skel(40); }
+  const on = S.agents_on;
+  return `<div class="row" style="margin-bottom:8px;gap:8px"><span data-tip="${on ? 'Switch helper agents off' : 'Switch helper agents on'}">${sw(on, "call('set_agents', {agents: AGENTS, on: this.checked}).then(refresh)")}</span>
+      <small class="dim grow">${on ? 'No helper agents started in this session' : 'Helper agents are off'}</small><button class="ib" title="Agent settings" onclick="openSettings('agents')">${icon('gear')}</button></div>
+    <div style="${on ? '' : 'opacity:.45'}">${AGENTS.map(a => `<div class="atrow" style="${a.on ? '' : 'opacity:.5'}"><span class="dot ready"></span><span class="grow" style="min-width:0"><b>${esc(a.name)}</b> <small class="faint">${esc(a.model || 'inherit')}</small>
+      <small>${esc(a.description || '')}</small></span></div>`).join('') || '<p class="dim">No agents set up yet.</p>'}</div>`;
+}
 function drawAtp() {
   const el = $('atp'); if (!el || !cur) return;
   const iq = issueQ(cur); // issue mode: Queue/suggestions = GitHub issues; PLAN.md items left = "not filed yet"
@@ -4258,8 +4353,7 @@ function drawAtp() {
   const agents = ag.length ? [...run, ...ag.filter(a => !a.running).slice(-4).reverse()].map(a =>
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
-    : S.agents_on ? empty('No helper agents started in this session', `<button class="btn ghost sm" onclick="openSettings('agents')">${icon('gear')}Agent settings</button>`)
-    : empty('Helper agents are off', `<button class="btn sm" onclick="agentsOn()">${icon('bot')}Switch on</button><button class="btn ghost sm" onclick="openSettings('agents')">${icon('gear')}Agent settings</button>`);
+    : agentIdle();
   const h = tab === 'agents' ? agents : iq && tab === 'gh' ? ghSteps(iq, qRows, t, open, fin, dn) : tasks;
   if (qDragging) return; // mid-drag: a rebuild would drop the row
   if (el._h === h) return; // drawChrome → drawRails → here on every keystroke: same HTML → keep DOM (open rows, animations)
