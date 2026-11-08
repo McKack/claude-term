@@ -1722,17 +1722,19 @@ fn trusted_works() {
 
 /// #220: ask images → files a fresh session can Read (gh can't upload to issues) → their paths, for the issue body.
 /// `<repo>/.git/clauracle-att/` ∵ inside the project = no permission prompt, never committed; no .git dir → ~/.clauracle/att.
+/// #234: returns paths relative to the project (`.git/clauracle-att/…`) or `~/.clauracle/att/…` ∵ they go into public
+/// issue bodies → no user/folder names; the session's cwd = project root ∴ still readable.
 /// ponytail: kept forever (screenshots, small); prune when someone notices the folder.
 pub fn att_save(dir: &str, images: &[serde_json::Value]) -> Vec<String> {
     if images.is_empty() { return vec![]; }
     let git = std::path::Path::new(dir).join(".git");
-    let d = if git.is_dir() { git.join("clauracle-att") } else { home().join("att") };
+    let (d, shown) = if git.is_dir() { (git.join("clauracle-att"), ".git/clauracle-att") } else { (home().join("att"), "~/.clauracle/att") };
     let _ = std::fs::create_dir_all(&d);
     images.iter().enumerate().filter_map(|(i, x)| {
         let ext = x["media_type"].as_str().unwrap_or("image/png").rsplit('/').next().unwrap_or("png").replace("jpeg", "jpg");
-        let f = d.join(format!("{}-{i}.{ext}", new_id()));
-        std::fs::write(&f, b64(x["data"].as_str()?)?).ok()?;
-        Some(f.to_string_lossy().into_owned())
+        let name = format!("{}-{i}.{ext}", new_id());
+        std::fs::write(d.join(&name), b64(x["data"].as_str()?)?).ok()?;
+        Some(format!("{shown}/{name}"))
     }).collect()
 }
 

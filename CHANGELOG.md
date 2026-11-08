@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Multi-line text boxes grow with their text instead of showing a resize corner; issues filed with screenshots no longer put your local folder path on GitHub.
 - The Working pill is now the last centred line of the chat and scrolls with it, instead of staying pinned to the bottom.
 - File pills in the message box and in chat show a file-type icon and more side padding; the "Then" build picker updates the moment the setting changes.
 - Tasks: an ask filed as an issue shows in the task list at once (was ~30s late), and the list no longer says "Working on" an old task at the start of a new turn.

@@ -940,7 +940,7 @@ async fn task_do(st: St<'_>, pid: String, action: String, mut arg: String, image
     // #220: "new" + ask images → saved locally, paths in the body ∴ the session that works the issue sees them
     let saved = store::att_save(&p.path, images.as_deref().unwrap_or_default());
     if !saved.is_empty() {
-        arg += &format!("\n\nScreenshots (local files, open them with the Read tool):\n{}", saved.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n"));
+        arg += &format!("\n\nScreenshots (local to the project folder, not on GitHub; open them with the Read tool from the repo root):\n{}", saved.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n"));
     }
     tauri::async_runtime::spawn_blocking(move || store::task_do(&p.path, &p.gh, &action, &arg)).await.map_err(|e| e.to_string())?
 }
