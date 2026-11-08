@@ -749,8 +749,9 @@ pub fn file_heat(dir: &str) -> serde_json::Value {
         heat[i].0 += a.parse::<u64>().unwrap_or(0) + d.parse::<u64>().unwrap_or(0);
         if heat[i].1.len() < 8 { heat[i].1.push(c); }
     }
-    let out: Vec<_> = files.iter().zip(heat).map(|(f, (ch, cs))|
-        serde_json::json!([f, std::fs::metadata(root.join(f)).map_or(0, |m| m.len()), ch, cs])).collect();
+    // #283 [4] = mtime unix secs (Start menu search rows)
+    let out: Vec<_> = files.iter().zip(heat).map(|(f, (ch, cs))| { let m = std::fs::metadata(root.join(f)).ok();
+        serde_json::json!([f, m.as_ref().map_or(0, |m| m.len()), ch, cs, m.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs())]) }).collect();
     serde_json::json!({"files": out, "commits": commits})
 }
 

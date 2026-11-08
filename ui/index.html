@@ -92,6 +92,22 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .side-foot { display:flex; gap:4px; padding:10px; border-top:1px solid var(--line); align-items:center; }
 #acctBtn { justify-content:flex-start; gap:8px; min-width:0; padding-left:6px; } #acctBtn .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; text-align:left; line-height:1.2; }
 #acctBtn .nm small { display:block; color:var(--faint); font-size:11px; }
+#acctBtn .sic { opacity:0; transition:opacity .15s; margin-right:4px; } #acctBtn:hover .sic { opacity:.45; }
+/* #283 Start menu */
+.smenu { position:fixed; inset:auto; margin:0; width:372px; max-height:min(560px, calc(100vh - 20px)); border-radius:16px; padding:10px; display:flex; flex-direction:column; gap:8px; color:var(--text); }
+.ssearch { display:flex; align-items:center; gap:8px; padding:0 10px; height:36px; border-radius:10px; background:var(--hover); color:var(--dim); }
+.ssearch input { flex:1; border:0; background:none; outline:0; color:var(--text); font:inherit; min-width:0; }
+.sbody { overflow-y:auto; min-height:0; flex:1; }
+.sgrid { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; }
+.sgrid button { height:84px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:6px; padding:12px 4px 0; border:0; border-radius:10px; background:none; color:var(--text); cursor:pointer; font:inherit; font-size:12px; }
+.sgrid button .i { width:24px; height:24px; color:var(--accent); flex:none; }
+.sgrid button span { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.25; text-align:center; overflow-wrap:anywhere; }
+.sgrid button:hover, .sgrid button:focus-visible, .srow:hover, .srow:focus { background:var(--hover); outline:0; }
+.srow { height:42px; display:flex; align-items:center; gap:10px; padding:0 10px; border-radius:10px; cursor:pointer; font-size:12.5px; }
+.srow > .i { color:var(--accent); flex:none; } .srow .grow { min-width:0; } .srow b, .srow .grow small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+.srow small { color:var(--faint); font-size:11px; white-space:nowrap; }
+.sacct { display:flex; align-items:center; gap:8px; padding:6px 0 0 6px; border-top:1px solid var(--line); cursor:pointer; min-height:44px; }
+.sacct .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; line-height:1.2; } .sacct .nm small { display:block; color:var(--faint); font-size:11px; }
 .av { width:26px; height:26px; border-radius:50%; flex:none; display:inline-grid; place-items:center; font:600 11px system-ui; color:#fff; object-fit:cover; border:2px solid var(--side); }
 .av.lg { width:44px; height:44px; font-size:16px; }
 .av.ai { background:#fff; } .av.ai svg { width:68%; height:68%; } :root[data-theme=dark] .av.ai { background:#262624; }
@@ -614,6 +630,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-logo" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" style="fill:var(--accent);stroke:none"/><g style="fill:#fcf2ee;stroke:none"><path d="M209.275,71.929c1.193,-5.705 5.685,-9.824 11.023,-10.107c5.339,-0.283 10.24,3.338 12.029,8.886l34.9,108.231c2.206,6.843 5.947,12.982 10.874,17.847c4.928,4.864 10.883,8.297 17.313,9.981l101.7,26.622c5.213,1.365 9.011,6.334 9.322,12.193c0.31,5.86 -2.942,11.202 -7.981,13.11l-98.317,37.221c-6.216,2.354 -11.775,6.397 -16.161,11.755c-4.386,5.358 -7.457,11.858 -8.928,18.896l-23.266,111.314c-1.192,5.705 -5.684,9.824 -11.023,10.107c-5.338,0.282 -10.240,-3.338 -12.029,-8.886l-34.899,-108.231c-2.207,-6.844 -5.947,-12.982 -10.875,-17.847c-4.927,-4.865 -10.882,-8.298 -17.313,-9.981l-101.699,-26.623c-5.213,-1.364 -9.012,-6.333 -9.322,-12.193c-0.311,-5.859 2.942,-11.202 7.981,-13.109l98.316,-37.222c6.217,-2.353 11.776,-6.396 16.162,-11.755c4.386,-5.358 7.456,-11.857 8.928,-18.896l23.265,-111.313Z"/><path d="M367.516,67.99c0.409,-1.57 1.765,-2.616 3.231,-2.491c1.465,0.124 2.625,1.384 2.763,3.001l2.37,35.836c0.273,3.191 1.792,6.069 4.161,7.883c2.369,1.814 5.353,2.384 8.174,1.561l24.513,-7.15c1.429,-0.417 2.907,0.343 3.52,1.809c0.613,1.467 0.189,3.227 -1.011,4.191l-20.584,16.546c-2.369,1.904 -3.888,4.84 -4.16,8.042c-0.272,3.202 0.729,6.352 2.743,8.628l27.627,29.915c1.02,1.153 1.141,2.959 0.289,4.301c-0.852,1.342 -2.437,1.842 -3.775,1.19l-33.085,-21.317c-2.641,-1.287 -5.679,-1.229 -8.32,0.159c-2.642,1.388 -4.625,3.968 -5.432,7.067l-7.017,26.934c-0.409,1.57 -1.765,2.616 -3.23,2.491c-1.466,-0.124 -2.626,-1.384 -2.764,-3.001l-2.37,-27.731c-0.273,-3.191 -1.792,-6.069 -4.161,-7.883c-2.369,-1.814 -5.353,-2.384 -8.174,-1.561l-32.753,9.554c-1.429,0.417 -2.906,-0.343 -3.52,-1.81c-0.613,-1.466 -0.188,-3.226 1.011,-4.19l28.825,-18.95c2.368,-1.904 3.887,-4.84 4.159,-8.042c0.272,-3.202 -0.729,-6.352 -2.742,-8.628l-15.47,-17.757c-1.02,-1.153 -1.142,-2.959 -0.29,-4.301c0.852,-1.343 2.437,-1.842 3.775,-1.19l20.928,9.159c2.642,1.287 5.679,1.229 8.321,-0.159c2.641,-1.387 4.624,-3.968 5.431,-7.067l7.017,-35.039Z"/><path d="M391.189,302.15c0.28,-1.963 1.783,-3.42 3.579,-3.471c1.796,-0.051 3.379,1.319 3.77,3.262l6.702,26.454c0.771,3.837 3.012,7.122 6.139,8.997c3.127,1.876 6.829,2.156 10.14,0.768l39.92,-17.939c1.677,-0.703 3.576,0.016 4.523,1.712c0.947,1.696 0.674,3.891 -0.649,5.228l-33.855,28.804c-2.613,2.639 -4.052,6.413 -3.941,10.338c0.112,3.924 1.762,7.611 4.52,10.097l23.972,21.606c1.397,1.26 1.794,3.436 0.944,5.183c-0.849,1.747 -2.704,2.572 -4.419,1.965l-29.412,-10.414c-3.385,-1.199 -7.065,-0.71 -10.08,1.34c-3.016,2.049 -5.068,5.456 -5.621,9.33l-4.601,42.59c-0.28,1.963 -1.782,3.42 -3.579,3.471c-1.796,0.051 -3.379,-1.319 -3.769,-3.263l-6.905,-42.264c-0.771,-3.837 -3.013,-7.121 -6.139,-8.997c-3.127,-1.875 -6.829,-2.156 -10.141,-0.767l-40.932,20.37c-1.678,0.703 -3.577,-0.016 -4.524,-1.712c-0.947,-1.696 -0.674,-3.891 0.65,-5.227l34.867,-31.236c2.614,-2.639 4.052,-6.413 3.941,-10.338c-0.111,-3.925 -1.761,-7.611 -4.52,-10.098l-23.971,-21.606c-1.398,-1.259 -1.794,-3.435 -0.945,-5.182c0.85,-1.748 2.705,-2.573 4.419,-1.966l29.413,10.415c3.384,1.198 7.065,0.709 10.08,-1.34c3.016,-2.05 5.067,-5.456 5.62,-9.331l4.804,-26.779Z"/></g></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/></symbol>
   <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4M19 6l1.5-1.5"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></symbol>
   <symbol id="i-search"viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
   <symbol id="i-clock"viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
@@ -656,7 +673,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="files" hidden></div>
   <div id="graph" hidden></div>
   <div id="lrail" class="railbox"></div><div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
-  <div class="side-foot"><button class="btn ghost grow" id="acctBtn" onclick="acctCard(this)" title="Accounts, settings, restart"></button></div>
+  <div class="side-foot"><button class="btn ghost grow" id="acctBtn" onclick="startMenu(this)" title="Clauracle menu: search, tabs, settings, restart"></button></div>
 </aside>
 
 <main id="main">
@@ -982,7 +999,7 @@ function drawAcct() {
   const gh = p?.gh;
   // stack: only what this project uses (AI mark + its GitHub picture); other accounts live in the card, so none look active here
   $('acctBtn').innerHTML = `<span class="stack">${avAI(a)}${gh ? avGh(gh) : ''}</span>
-    <span class="nm grow">${esc(a.nick)}<small>${gh ? '@' + esc(gh) : 'no GitHub account'}</small></span>`;
+    <span class="nm grow">${esc(a.nick)}<small>${gh ? '@' + esc(gh) : 'no GitHub account'}</small></span>${icon('search').replace('class="i"', 'class="i sic"')}`;
 }
 // usage line: icon · title · bar · % on one row; the reset time on its own line underneath, aligned past the icon
 const useRow = (v, l, ic, sub) => `<div style="font-size:12px"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span><span class="bar" style="width:90px"><i style="width:${v || 0}%"></i></span><span style="width:34px;text-align:right">${v == null ? '?%' : v + '%'}</span></div>${sub ? `<small class="faint" style="display:block;padding-left:22px">${sub}</small>` : ''}</div>`;
@@ -1031,21 +1048,58 @@ function missCheck(pid, t) {
 }
 // #218 opener toggles its card: light-dismiss fires on pointerdown, so the same click must not reopen it
 const SHUT = {}, reopen = k => Date.now() - (SHUT[k] || 0) < 400, shutOn = (card, k) => card.addEventListener('toggle', e => e.newState === 'closed' && (SHUT[k] = Date.now()));
-function acctCard(btn) {
+/* #283 Start menu: account row → morphs (clip-path) into the Clauracle menu; row stays put at its bottom.
+   Grid = every side tab (left + right); search → rows: tabs/settings, projects, files (HEAT, file_heat), secret NAMES (env_list, never values), tasks.
+   ponytail: plain substring match, ≤ 60 rows; fuzzy ranking when lists get long */
+const SMTABS = () => [['projects', 'folder', 'Projects', 'l'], ['files', 'doc', 'Files', 'l'], ['graph', 'graph', 'Hot files', 'l'],
+  ...(cur ? [...document.querySelectorAll('#rtabs button[data-t]')].map(b => [b.dataset.t, b.querySelector('use').getAttribute('href').slice(3), b.textContent.trim(), 'r']) : [])];
+const SMENV = {}; // pid → {t, keys: [[name, file]]}; 60 s
+function smTab(k, side) {
+  document.querySelector('.smenu')?.hidePopover();
+  if (side === 'l') { UI.lc = false; setSide(k); return jumpTo(`#stabs [data-s="${k}"]`); }
+  expandRight(k); jumpTo(`#rtabs [data-t="${k}"]`);
+}
+function smFind(q) {
+  q = q.toLowerCase(); const out = [], pid = cur, has = s => String(s).toLowerCase().includes(q);
+  const row = (ic, name, sub, size, date, js) => out.push(`<div class="srow" tabindex="0" onclick="${esc(js)}">${icon(ic)}<span class="grow"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${size ? `<small>${size}</small>` : ''}${date ? `<small class="sd">${date}</small>` : ''}</div>`);
+  const day = t => new Date(t * 1e3).toLocaleDateString(undefined, {day: 'numeric', month: 'short'});
+  SMTABS().filter(t => has(t[2])).forEach(t => row(t[1], t[2], 'Tab', '', '', `smTab('${t[0]}', '${t[3]}')`));
+  Object.entries(PAGES).filter(([, v]) => has(v[1].replace('&amp;', '&'))).forEach(([k, v]) => row(v[0], v[1].replace('&amp;', '&'), 'Settings', '', '', `document.querySelector('.smenu')?.hidePopover(); openSettings('${k}')`));
+  S.projects.filter(p => has(p.name)).forEach(p => row('folder', p.name, 'Project', '', '', `document.querySelector('.smenu')?.hidePopover(); openProject('${p.id}')`));
+  if (pid) {
+    teamTasks(pid).filter(x => x.number && (has(x.title) || has('#' + x.number))).slice(0, 15).forEach(x => row('check2', '#' + x.number + ' ' + x.title, 'Task', '', '', `document.querySelector('.smenu')?.hidePopover(); editIssue(${x.number})`));
+    (SMENV[pid]?.keys || []).filter(([n]) => has(n)).forEach(([n, f]) => row('key', n, 'Secret · ' + f, '', '', `document.querySelector('.smenu')?.hidePopover(); envAt = ${JSON.stringify(f)}; expandRight('svc')`));
+    (HEAT[pid]?.d.files || []).filter(f => has(f[0])).slice(0, 40).forEach(f => row('file', f[0].split('/').pop(), f[0].split('/').slice(0, -1).join('/'), mb(f[1]), f[4] ? day(f[4]) : '', `document.querySelector('.smenu')?.hidePopover(); previewFile(${JSON.stringify(f[0])})`));
+  }
+  return out.slice(0, 60).join('') || '<p class="dim" style="padding:8px">Nothing found.</p>';
+}
+function startMenu(btn) {
   if (reopen('acct')) return;
-  const p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0];
-  const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
-  // #197: header (+ restart top-right) + Settings bottom-right only; account/model picker lives in #status (per project = chat)
-  card.innerHTML = !a ? `<button class="btn primary block" onclick="openSettings('ai')">Add an AI account</button>` : `
-    <div class="who">${p?.gh ? avGh(p.gh, 'lg') : avAI(a, 'lg')}<span class="grow" style="min-width:0"><b>${esc(a.nick)}</b><small class="dim">${p?.gh ? '@' + esc(p.gh) + ' on GitHub' : 'No GitHub account'}${p ? ' · ' + esc(p.name) : ''}</small></span>
-    <button class="ib" id="acRestart" style="align-self:flex-start" title="Restart Clauracle: sessions, running turns and unsent input all come back">${icon('loop')}</button></div>`;
-  card.innerHTML += `<div class="row" style="justify-content:flex-end"><button class="btn" data-go="">${icon('gear')}Settings</button></div>`;
-  document.body.append(card); card.showPopover(); shutOn(card, 'acct');
-  card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
-  card.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { card.hidePopover(); openSettings(b.dataset.go || undefined); });
-  card.querySelector('#acRestart')?.addEventListener('click', () => call('restart'));
-  const r = btn.getBoundingClientRect();
-  card.style.left = r.left + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
+  const pid = cur, p = P(), a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0];
+  if (!a) return openSettings('ai');
+  // data for search, fetched once per open (HEAT/SMENV cached 60 s)
+  if (pid && (!HEAT[pid] || Date.now() - HEAT[pid].t > 60e3)) call('file_heat', {pid}).then(d => { HEAT[pid] = {t: Date.now(), d}; m.querySelector('input').oninput(); }, () => {});
+  if (pid && !(Date.now() - (SMENV[pid]?.t || 0) < 60e3)) call('env_list', {pid}).then(fs => { SMENV[pid] = {t: Date.now(), keys: fs.flatMap(f => f.keys.map(k => [k[0], f.file]))}; m.querySelector('input').oninput(); }, () => {});
+  const m = Object.assign(document.createElement('div'), {className: 'smenu glass', popover: 'auto'});
+  m.innerHTML = `<label class="ssearch">${icon('search')}<input placeholder="Search files, secrets, tasks, settings…" spellcheck="false"></label>
+    <div class="sbody"><div class="sgrid">${SMTABS().map(t => `<button onclick="smTab('${t[0]}', '${t[3]}')" title="${esc(t[2])}">${icon(t[1])}<span>${esc(t[2])}</span></button>`).join('')}</div></div>
+    <div class="sacct">${btn.innerHTML.replace(/<svg class="i sic">.*?<\/svg>/, '')}
+      <button class="ib" title="Settings" data-a="set">${icon('gear')}</button><button class="ib" title="Restart Clauracle: sessions, running turns and unsent input all come back" data-a="re">${icon('loop')}</button><button class="ib" title="Shut down Clauracle" data-a="off">${icon('power')}</button></div>`;
+  document.body.append(m);
+  let r = btn.getBoundingClientRect(); if (!r.width) r = {left: 20, bottom: innerHeight - 10, width: 0, height: 40}; // sidebar collapsed (rail gear) → bottom-left corner
+  m.style.left = r.left - 10 + 'px'; m.style.bottom = innerHeight - r.bottom - 10 + 'px';
+  m.showPopover(); shutOn(m, 'acct');
+  m.addEventListener('toggle', e => e.newState === 'closed' && m.remove());
+  const h = m.offsetHeight, w = m.offsetWidth; // morph: clip from the account row's box out to the full panel
+  m.animate([{clipPath: `inset(${h - r.height - 20}px ${Math.max(0, w - r.width - 20)}px 0 0 round 10px)`, opacity: .6}, {clipPath: 'inset(0 0 0 0 round 16px)', opacity: 1}], {duration: 180, easing: 'cubic-bezier(.2,.8,.2,1)'});
+  const inp = m.querySelector('input'), body = m.querySelector('.sbody'), grid = body.innerHTML;
+  inp.oninput = () => { const q = inp.value.trim(); body.innerHTML = q ? `<div class="slist">${smFind(q)}</div>` : grid; };
+  inp.onkeydown = e => { if (e.key === 'Enter') body.querySelector('.srow, .sgrid button')?.click(); if (e.key === 'ArrowDown') { e.preventDefault(); body.querySelector('.srow, .sgrid button')?.focus(); } };
+  body.onkeydown = e => { if (e.key === 'Enter' && e.target.matches('.srow')) e.target.click();
+    if (/^Arrow(Up|Down)$/.test(e.key)) { e.preventDefault(); const els = [...body.querySelectorAll('.srow, .sgrid button')], i = els.indexOf(e.target) + (e.key === 'ArrowDown' ? 1 : -1); (i < 0 ? inp : els[i])?.focus(); } };
+  m.querySelector('.sacct').onclick = e => { const k = e.target.closest('[data-a]')?.dataset.a; m.hidePopover();
+    k === 're' ? call('restart') : k === 'off' ? call('quit') : openSettings(k ? undefined : 'ai'); };
+  setTimeout(() => inp.focus(), 0);
 }
 const limTip = v => +v ? `Hand over at ${v}%: when context reaches this, Clauracle writes the handover, clears and continues in a fresh session` : 'Hand over: off (0 = never clear & continue)';
 // #195 merged AI card, lower half: account/model/effort (→ acctItems menu), context (+ hand-over), usage, session timers (#stime, live via drawTimes)
@@ -2851,7 +2905,7 @@ async function buildHtml(p, has, live, force) {
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) { ghiSet(pid0, g); c = GHI[pid0]; } }
   // #232 stepper ① targets ② manual build ③ release (+ next-step box w/ Release); #34: no Deploy button ∵ Release runs the deploy command after publishing
   return `<ol class="stepper ghsteps"><li><span class="sn">1</span>${tgtHtml(p)}</li>
-    <li><span class="sn">2</span>${stHead('Manual build', `<button class="ib" title="Edit commands (tasks build by themselves: see Then on the GitHub tab)" onclick="buildSet()">${icon('gear')}</button>`)}${has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+    <li><span class="sn">2</span>${stHead('Manual build', `<button class="ib" title="Edit commands (tasks build by themselves: see Then on the GitHub tab)" onclick="buildSet()">${icon('more')}</button>`)}${has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
@@ -4470,7 +4524,7 @@ function agentIdle() {
   if (!AGENTS) { agentIdle.p ||= call('agents').then(a => { AGENTS = a; drawAtp(); }); return skel(40); }
   const on = S.agents_on;
   return `<div class="row" style="margin-bottom:8px;gap:8px"><span data-tip="${on ? 'Switch helper agents off' : 'Switch helper agents on'}">${sw(on, "call('set_agents', {agents: AGENTS, on: this.checked}).then(refresh)")}</span>
-      <small class="dim grow">${on ? 'No helper agents started in this session' : 'Helper agents are off'}</small><button class="ib" title="Agent settings" onclick="openSettings('agents')">${icon('gear')}</button></div>
+      <small class="dim grow">${on ? 'No helper agents started in this session' : 'Helper agents are off'}</small><button class="ib" title="Agent settings" onclick="openSettings('agents')">${icon('more')}</button></div>
     <div style="${on ? '' : 'opacity:.45'}">${AGENTS.map(a => `<div class="atrow" style="${a.on ? '' : 'opacity:.5'}"><span class="dot ready"></span><span class="grow" style="min-width:0"><b>${esc(a.name)}</b> <small class="am">${esc(a.model || 'inherit')}</small>
       <small>${esc(a.description || '')}</small></span></div>`).join('') || '<p class="dim">No agents set up yet.</p>'}</div>`;
 }
@@ -4604,7 +4658,7 @@ function drawRails() {
       + recent().filter(x => x.id !== cur).map(x => `<div class="tile" title="${esc(x.name)}" onclick="openProject('${x.id}')">${initials(x.name)}<span class="dot ${dotOf(x)}"></span>
           ${x.questions.length ? '<span class="pill" style="position:absolute;top:-6px;right:-8px;padding:0 4px;font-size:10px">' + x.questions.length + '</span>' : ''}</div>`).join('')
       + `<span class="grow"></span><button class="ib" title="Add a project" onclick="menuAt(this, addItems())">${icon('plus')}</button>
-        <button class="ib" title="Settings" onclick="openSettings()">${icon('gear')}</button>`;
+        <button class="ib" title="Clauracle menu: search, tabs, settings" onclick="startMenu($('acctBtn'))">${icon('gear')}</button>`;
   }
   if (UI.rc && cur && !$('right').hidden) drawRRail();
 }

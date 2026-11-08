@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Start menu: click your account (bottom left) for one menu with search (files, secret names, tasks, settings), every tab as a tile, and Settings / Restart / Shut down.
 - Appearance: new Font setting (Sans-serif, Serif, Monospace), saved with presets. Classic Claude uses Serif, The Matrix uses Monospace.
 - Type `/model` to pick from every model your Claude Code offers (including specific versions), then its effort level, with mouse or keyboard. The account menu uses the same live list.
 - Composer: attachment references are plain @[name] tags; removing an attachment also removes its tags; typing @ lists project files to attach and reference.
