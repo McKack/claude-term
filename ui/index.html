@@ -278,7 +278,8 @@ pre.diff .ctx { color:var(--faint); }
 #skel { margin-top:12px; } #skel[hidden] { display:none; } #log.term #skelav, #log.term #skel .cm { display:none; }
 /* #195 head row shown → skeleton hides its own avatar row; pills stay as its centred line */
 #skel.hd > .crow { display:none; } #dockpill { display:flex; justify-content:center; margin-top:8px; } #dockpill:not(:has(> :not([hidden]))) { display:none; } /* #228 pills = last centred line of the log (like .msg.note): scroll with the chat, not pinned */
-.crow.stick { position:sticky; top:52px; z-index:3; width:max-content; } .crow.stick .cm { background:var(--bg); border-radius:99px; padding-right:10px; } /* #225 live turn head (avatar ring + timer) sticks under the header */
+.crow.stick { position:sticky; top:52px; z-index:3; width:max-content; container-type:scroll-state; } /* #225 live turn head (avatar ring + timer) sticks under the header */
+@container scroll-state(stuck: top) { .crow.stick .cb { visibility:hidden; } } /* #230 stuck → only avatar + timer follow; name/time stay put. ponytail: WebKit (mac/linux) lacks scroll-state → name follows there */
 #dockpill > * { padding:5px 14px; }
 .crow.thead { margin-bottom:-8px; } /* #189 head row over a termcard: card tucks under the name */ #log.term .crow.thead { display:none; }
 /* #181 terminal turn thinking: no Thinking pill → avatar ring runs the Working shimmer + timer badge (data-t); #189 on the head's .tav */
