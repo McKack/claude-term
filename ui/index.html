@@ -193,8 +193,8 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .sh-p { color:#8c877e; } .sh-c { color:#f0c674; font-weight:600; } .sh-s { color:#a8d982; } .sh-v { color:#8fb8ff; } .sh-f { color:#c49cf0; } .sh-o { color:#f28b82; } .sh-m { color:#7a756c; font-style:italic; }
 pre.termout { background:#161514; color:#d8d4cb; padding:8px 12px; white-space:pre-wrap; overflow-wrap:anywhere; } pre.errout { color:var(--err); }
 .small-dlg.wide { width:min(820px,94vw); }
-.rtiles { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; } .rtile { background:var(--side); border:1px solid var(--line); border-radius:12px; padding:10px; display:grid; justify-items:start; gap:2px; }
-.rtile b { font-size:20px; } .rtile small { color:var(--dim); } .rtile .i { color:var(--accent); }
+.rtiles { display:flex; flex-wrap:wrap; gap:6px; } .rtile { background:var(--side); border:1px solid var(--line); border-radius:999px; padding:3px 10px; display:inline-flex; align-items:center; gap:6px; cursor:default; }
+.rtile b { font-size:13px; } .rtile .i { color:var(--accent); }
 .rrow, .rfail { display:flex; gap:8px; align-items:flex-start; } .rrow .i { color:#3fbf6f; flex:none; margin-top:2px; } .rfail .i { color:var(--err); flex:none; margin-top:2px; } .rfail { padding:8px 0; border-bottom:1px solid var(--line); }
 .rrow code, .rfail code { overflow-wrap:anywhere; font-size:12px; } .rfail pre { margin:6px 0; }
 .rfiles { display:flex; flex-wrap:wrap; gap:6px; } .rfiles .btn.on { border-color:var(--accent); color:var(--accent); }
@@ -202,7 +202,6 @@ pre.termout { background:#161514; color:#d8d4cb; padding:8px 12px; white-space:p
 .rtl .rstep > i { width:10px; height:10px; border-radius:50%; background:var(--accent); flex:none; margin-top:4px; } .rtl .rstep:not(:last-child) > i::after { content:''; position:absolute; left:58px; top:16px; bottom:0; width:2px; background:var(--line); }
 .rtl .rstep.tot > i { background:#3fbf6f; } .rhead h2 { font-size:18px; }
 .rpdf.busy .i { animation:spin .8s linear infinite; }
-@media (max-width:600px) { .rtiles { grid-template-columns:repeat(2,1fr); } }
 pre.diff { margin:0; padding:8px 0; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; white-space:pre; }
 pre.diff > .ctx, pre.diff > .del, pre.diff > .add { display:block; padding:0 10px; } /* diff rows only, not colour spans */
 pre.diff:not(:has(> .ctx, > .del, > .add)) { padding:8px 12px; white-space:pre-wrap; overflow-wrap:anywhere; } /* commands, output, JSON */
@@ -1635,7 +1634,7 @@ async function repOpen(rid, tb = 'done') {
   const ok = r.ops.filter(o => o.ok), bad = r.ops.filter(o => !o.ok), files = {};
   for (const o of r.ops) if (o.f && o.d) (files[o.f] ||= {n: 0, d: [], w: o.t === 'Write'}).d.push(...o.d), files[o.f].n++;
   const closed = r.segs.flatMap(s => s.closed), counts = {}; ok.filter(o => !o.cmd).forEach(o => counts[o.t] = (counts[o.t] || 0) + 1);
-  const tile = (n, l, i) => `<div class="rtile">${icon(i)}<b>${n}</b><small>${l}</small></div>`;
+  const tile = (n, l, i) => `<div class="rtile" title="${n} ${l}">${icon(i)}<b>${n}</b></div>`;
   const body = tb === 'done' ? `<div class="rtiles">${tile(dur(r.ms), 'worked', 'timer')}${tile(ok.filter(o => o.cmd).length, 'commands', 'term')}${tile(Object.keys(files).length, 'files', 'file')}${tile(closed.length, 'issues closed', 'check')}</div>
       ${ok.filter(o => o.cmd).map(o => `<div class="rrow">${icon('check')}<code class="grow">${esc(o.cmd.split('\n')[0])}</code><small class="faint">${tm(o.ts)}</small></div>`).join('') || '<p class="dim">No commands run.</p>'}
       ${Object.keys(counts).length ? `<p class="faint" style="margin:6px 0">${Object.entries(counts).map(([t, n]) => `${esc(t)} ×${n}`).join(' · ')}</p>` : ''}
