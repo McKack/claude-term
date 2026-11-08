@@ -3502,10 +3502,13 @@ const SVCTYPE = {'Sign-in': {Google: ['google', 'firebase'], Apple: ['apple'], G
   'App stores': {Apple: ['appstore', 'macsign'], Google: ['play'], Valve: ['steam']}, Cloud: {Google: ['google']}};
 // #247 services that are features inside the app (≠ hosting/stores/cloud) → svcWire: AI checks the code, files `needs-user` tasks for unused ones
 const svcFeats = ids => ids.filter(id => ['Sign-in', 'Database', 'Payments', 'Email', 'Monitoring'].some(t => Object.values(SVCTYPE[t]).flat().includes(id)));
+// #259 not integrated yet = in-app services not yet handed off (p.wired); ponytail: handed off ≠ verified in code, Claude's check decides per service
+const svcUnwired = p => svcFeats(svcOf(p)).filter(id => !(p.wired || []).includes(id));
 async function svcWire() {
-  const n = svcFeats(svcOf(P())).map(id => SERVICES[id].name); if (!n.length) return;
-  if (!await sure(`Check the app actually uses ${n.join(', ')}?\n\nClaude looks for each one in the code (a sign-in screen or button, a checkout, sent emails…). Each one the app doesn't use yet becomes a task waiting on you: you decide how it should look and work.\n${estTok()}`)) return;
-  sendNow(cur, {text: `This project has these services set up: ${n.join(', ')}. For each, check whether the app's code actually uses it where users see it (e.g. Sign in with Apple → a login screen/button that calls it; Stripe → a checkout; Resend → emails sent; Sentry → SDK init). Don't change any code. For each one that isn't wired in yet and no open issue covers: \`gh issue create --label clauracle --label feature --label needs-user\`, title "Add <feature> to the app", body = what's missing + 2-4 concrete questions on how it should look and work (where it shows, the flow, style), each with your recommendation. Then reply with one line per service: used (where) or filed #N.`, atts: []});
+  const p = P(), ids = svcUnwired(p), n = ids.map(id => SERVICES[id].name); if (!n.length) return;
+  if (!await sure(`Integrate ${n.join(', ')} into the app?\n\nClaude checks the code for each one (a sign-in screen or button, a checkout, sent emails…) and adds a task to wire in each one the app doesn't use yet. They show on the GitHub tab.\n${estTok()}`)) return;
+  await setP({wired: [...new Set([...(p.wired || []), ...ids])]}); rightTab('gh');
+  sendNow(cur, {text: `These services were added to the project but may not be integrated into the app yet: ${n.join(', ')}. For each, check whether the app's code already uses it where users see it (e.g. Sign in with Apple → a login screen/button that calls it; Stripe → a checkout; Resend → emails sent; Sentry → SDK init). Don't change code now. For each one not wired in and no open issue covers: \`gh issue create --label clauracle --label feature\`, title "Integrate <service> into the app", body = what's missing + the plan (where it shows, the flow; keys are already in .env). Then reply with one line per service: used (where) or filed #N.`, atts: []});
 }
 function svcMenu(el) {
   const left = id => SERVICES[id] && !svcOf(P()).includes(id), it = id => ({label: SERVICES[id].name, hint: SERVICES[id].note, run: () => svcAdd(id)});
@@ -3549,7 +3552,7 @@ async function drawServices() {
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>` + secretsFold(files)
     // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
     + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services and secrets set up.</p><button class="btn sm primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button>
-      ${svcFeats(ids).length ? `<button class="btn sm block" onclick="svcWire()" title="Claude checks the code for each one; missing ones become tasks waiting on you (how it should look and work)">${icon('sparkle')}Check the app uses ${svcFeats(ids).map(id => esc(SERVICES[id].name)).join(', ')}</button>` : `<button class="btn sm ghost block" onclick="svcMenu(this)" title="Sign-in, database, payments, email or monitoring: once added, Claude can check the app really uses them and file what's missing">${icon('plus')}Add an in-app feature (sign-in, payments…)</button>`}</div>
+      ${(u => u.length ? `<button class="btn sm block" onclick="svcWire()" title="${esc(u.map(id => SERVICES[id].name).join(', '))}: Claude checks the code and adds a task on the GitHub tab to wire in each one the app doesn't use yet">${icon('back')}Go back: Integrate ${u.length} service${u.length > 1 ? 's' : ''}</button>` : '')(svcUnwired(p))}</div>
       <button class="newpill" id="newPill" onclick="$('nextStep').scrollIntoView({behavior: 'smooth', block: 'end'})">${icon('down')}New!</button>` : '');
   if ($('nextStep')) new IntersectionObserver(([e]) => { if (e.isIntersecting && $('newPill')) $('newPill').hidden = true; }).observe($('nextStep'));
   if (ids.includes('google')) drawCloud();
