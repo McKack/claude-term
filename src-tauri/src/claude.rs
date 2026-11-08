@@ -51,7 +51,7 @@ const ISSUE_RULES: &str = "
 - Clauracle files the user's asks as issues itself (\"Filed as issue #N\" note): don't file them again. Never lose one:
   an ask that reached you without that note and is new work → `gh issue create --label clauracle --label <task|feature|fix>`.
 - Do NOT create issues for your own follow-ups, ideas, live checks, rebuilds or splits: that piles up work nobody asked
-  for. Verify inside the task (tests, build, the `ui` tool) before closing it. A worthwhile idea → at most one issue with
+  for (only exception: one user ask holding several separate asks, split as its note says). Verify inside the task (tests, build, the `ui` tool) before closing it. A worthwhile idea → at most one issue with
   `--label suggestion` (the user accepts or dismisses it; rare). A task too big for one session stays ONE issue: comment
   the progress on it and hand over; the next session resumes it first.
 - \"Build and run\" / \"restart into a new copy\" = an action, not a task: do it now (this machine's build only, never every
