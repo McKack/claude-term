@@ -59,7 +59,7 @@ pub struct Question {
 
 /// Build steps Clauracle runs itself (plain code, no tokens). after (#182): "" | <build|smart>[_run][_deploy];
 /// "smart_build" = smart, nothing after; legacy "smart" = smart_run
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Build {
     pub build: String,
@@ -67,6 +67,9 @@ pub struct Build {
     pub deploy: String,
     pub after: String, // after each finished task
     pub fix: bool,     // a failed step goes back to Claude to fix
+}
+impl Default for Build { // #229 every new project (add/clone/new_local, partial JSON) = Smart build + Run; saved ones keep theirs
+    fn default() -> Self { Build { build: String::new(), run: String::new(), deploy: String::new(), after: "smart_run".into(), fix: true } }
 }
 
 /// The project is the source of truth: its own GitHub account, connections and skills, whatever AI account runs it.
@@ -117,7 +120,7 @@ impl Default for Project {
             id: String::new(), name: String::new(), path: String::new(), account: MAIN.into(), gh: String::new(),
             off: vec![], on: None, mode: "default".into(), model: String::new(), effort: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, prev_session: None, ready: false, questions: vec![], answers: String::new(),
-            build: Build { after: "smart_run".into(), fix: true, ..Default::default() }, hide_env: true, terse: true,
+            build: Build::default(), hide_env: true, terse: true,
             owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], allow: vec![], ai_credit: false, stage: String::new(), rel_auto: false, order: vec![], work: 0, targets: vec![], site: serde_json::Value::Null,
         }
     }
@@ -2185,6 +2188,8 @@ mod tests {
         assert_eq!((p.name.as_str(), p.gh.as_str(), p.on.clone()), ("My App", "octo", Some(vec!["mcp:x".to_string()])));
         cfg.accounts[0].on = None; // an account that never picked: its new projects start with nothing
         assert_eq!(new_project(&mut cfg, "/y", None, None).on, Some(vec![]));
+        assert_eq!(new_project(&mut cfg, "/z", None, None).build.after, "smart_run"); // #229
+        assert_eq!(serde_json::from_str::<Project>(r#"{"build":{"after":""}}"#).unwrap().build.after, ""); // saved choice kept
         cfg.accounts[0].gh = "other".into();
         assert_eq!(cfg.projects[0].gh, "octo");
         assert_eq!(new_project(&mut cfg, "y", None, Some("cloner")).gh, "cloner");
