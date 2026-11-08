@@ -3508,7 +3508,9 @@ async function openSettings(p) {
 // #215 footer: Jump to = the page's section titles (folds + secs), live from the DOM; FOOT[page] = contextual actions
 const sjumpEls = () => [...$('dlg').querySelectorAll('.prefs .body :is(details.fold, section.sec)')].filter(e => !e.parentElement.closest('details.fold, section.sec'));
 function sjumpFill() { const s = $('sjump'); if (!s) return;
-  s.innerHTML = '<option value="">Jump to…</option>' + sjumpEls().map((e, i) => `<option value="${i}">${esc(e.querySelector('.label')?.textContent.trim() || '')}</option>`).join('');
+  // #219: sections inside an account card → <optgroup> under its name (els stay contiguous per card ∴ index order holds)
+  let g = null; s.innerHTML = '<option value="">Jump to…</option>' + sjumpEls().map((e, i) => { const a = e.parentElement.closest('details.acct'), o = `<option value="${i}">${esc(e.querySelector('.label')?.textContent.trim() || '')}</option>`;
+    const pre = a === g ? '' : (g ? '</optgroup>' : '') + (a ? `<optgroup label="${esc(a.querySelector('summary b')?.textContent.trim() || '')}">` : ''); g = a; return pre + o; }).join('') + (g ? '</optgroup>' : '');
   s.hidden = s.options.length < 3; }
 function sjumpGo(s) { const el = sjumpEls()[s.value]; s.value = ''; if (el) jumpTo(() => el); }
 const FOOT = {projects: () => mp ? `<button class="btn rpdf" onclick="repPdf(null, mp)">${icon('cal')}7-day report (.pdf)</button><button class="btn" onclick="removeProject()">Remove project</button>` : ''};
