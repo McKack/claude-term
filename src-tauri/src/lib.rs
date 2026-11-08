@@ -1323,6 +1323,12 @@ fn version_of(root: &std::path::Path) -> Option<(String, &'static str)> {
         v.starts_with(|c: char| c.is_ascii_digit()).then_some((v, f))
     })
 }
+/// PNG size from the IHDR header (bytes 16..24: width, height BE) → shorter side; 0 = unreadable
+fn png_px(f: &std::path::Path) -> u32 {
+    use std::io::Read;
+    let mut b = [0u8; 24];
+    std::fs::File::open(f).and_then(|mut h| h.read_exact(&mut b)).map_or(0, |_| if &b[1..4] == b"PNG" { u32::from_be_bytes(b[16..20].try_into().unwrap()).min(u32::from_be_bytes(b[20..24].try_into().unwrap())) } else { 0 })
+}
 fn toml_version(t: &str) -> Option<String> {
     t.lines().find_map(|l| l.trim().strip_prefix("version")?.trim_start().strip_prefix('=')?.trim().strip_prefix('"')?.split('"').next().map(String::from))
 }
@@ -1342,7 +1348,10 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
         let _ = store::run("git", &["fetch", "-q", "--tags"], Some(&p.path), &store::gh_env(&p.gh));
         let tag = git(&["tag", "--list", "v[0-9]*", "--sort=-v:refname"]);
         let tag = store::Out { stdout: tag.stdout.lines().next().unwrap_or("").to_string(), ok: tag.ok && !tag.stdout.trim().is_empty(), ..tag };
-        let icon = ["src-tauri/icons/icon.png", "public/favicon.ico", "public/favicon.svg", "assets/icon.png", "assets/icon.svg", "icon.png", "app/src/main/res"].iter().any(|f| root.join(f).exists());
+        // #237 release icon source: SVG wins, else biggest PNG (px = shorter side); px None = vector / can't tell (ico, Android res dir)
+        let icon = ["assets/icon.svg", "src-tauri/icons/icon.svg", "icon.svg", "public/favicon.svg", "src-tauri/icons/icon.png", "assets/icon.png", "icon.png", "public/favicon.ico", "app/src/main/res"]
+            .iter().filter(|f| root.join(f).exists()).map(|f| (*f, if f.ends_with(".png") { Some(png_px(&root.join(f))) } else if f.ends_with(".svg") { None } else { Some(0) }))
+            .max_by_key(|(_, px)| px.unwrap_or(u32::MAX));
         let remote = store::repo_of(&p.path).is_some();
         // target platforms the CI workflows build (#27): plain text match on runner/target names. ponytail: no YAML parse
         let wf: String = std::fs::read_dir(root.join(".github/workflows")).into_iter().flatten().flatten()
@@ -1369,7 +1378,7 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
         }
         json!({"readme": readme, "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
                "version": ver.as_ref().map(|v| &v.0), "vfile": ver.as_ref().map(|v| v.1), "tag": if tag.ok { tag.stdout.trim() } else { "" },
-               "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon, "remote": remote, "code_t": store::code_time(&p.path),
+               "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon.map(|i| i.0), "icon_px": icon.and_then(|i| i.1), "remote": remote, "code_t": store::code_time(&p.path),
                "ci": ci, "sign": store::sign_env(&p.path).into_iter().map(|(k, _)| k).collect::<Vec<_>>()})
     }).await.map_err(|e| e.to_string())
 }
@@ -1461,6 +1470,13 @@ fn swap_version_works() {
     assert_eq!(swap_version("[package]\nname = \"x\"\nversion = \"0.1.0\"\n[dependencies]\nfoo = { version = \"1\" }", "0.2.0").unwrap(),
                "[package]\nname = \"x\"\nversion = \"0.2.0\"\n[dependencies]\nfoo = { version = \"1\" }");
     assert!(swap_version("[workspace]\nmembers = []", "1.0.0").is_none());
+}
+#[cfg(test)]
+#[test]
+fn png_px_reads_header() {
+    let d = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert_eq!(png_px(&d.join("icons/32x32.png")), 32);
+    assert_eq!(png_px(&d.join("Cargo.toml")), 0);
 }
 
 /// Writes a new bundle ID into the config file it was found in (string swap keeps formatting).

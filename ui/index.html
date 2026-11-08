@@ -325,6 +325,7 @@ pre.diff .ctx { color:var(--faint); }
 .stdone > svg:first-child { width:28px; height:28px; padding:6px; box-sizing:border-box; border-radius:50%; background:var(--ok); color:#fff; flex:none; }
 .stdone span { flex:1; } .stdone > svg:last-child { color:var(--dim); transition:transform .15s; } .stdone.open > svg:last-child { transform:rotate(180deg); }
 /* Services all set → Next step (to Build & Release) + sticky "New!" pill till it's scrolled into view */
+.bsep { border:0; border-top:1px solid var(--line); margin:4px 0; } /* #237 desktop ─ mobile builds */
 .nextstep { margin-top:14px; padding:14px; border-radius:14px; background:var(--soft); text-align:center; } .nextstep p { margin:0 0 10px; font-size:13px; color:var(--dim); } /* #232 same as the GitHub tab one (inside .stepper) */
 .newpill { position:sticky; bottom:8px; display:flex; align-items:center; gap:4px; margin:10px auto 0; border:0; border-radius:99px; padding:6px 12px 6px 8px; background:var(--accent); color:#fff; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:var(--shadow); } .newpill[hidden] { display:none; }
 .ghsteps { margin-top:10px; } .ghsteps .sn { cursor:default; } .ghsteps .sn:hover { outline:0; } .qbox { max-height:320px; overflow-y:auto; margin:4px 0 8px; } .runm { grid-template-columns:repeat(2, 1fr); }
@@ -378,7 +379,12 @@ pre.diff .ctx { color:var(--faint); }
 .att:hover .abtns, .att.hl .abtns, .att:not(.img) .abtns { opacity:1; }
 .att .abtns button { width:20px; height:20px; border-radius:50%; border:0; background:var(--hover); color:var(--dim); cursor:pointer; display:grid; place-items:center; padding:0; }
 .att .abtns button:hover { background:var(--soft); color:var(--accent); } .att .abtns button svg { width:11px; height:11px; }
-.att .anote { position:absolute; left:3px; bottom:3px; width:20px; height:20px; border-radius:50%; border:0; background:var(--accent); color:#fff; display:grid; place-items:center; padding:0; cursor:pointer; } .att .anote svg { width:11px; height:11px; }
+.att .abtns.bot { top:auto; bottom:0; padding:6px 3px 3px 14px; border-radius:12px 0 10px 0; } /* #237 Refer bottom-right, × top-right */
+.att .anote { position:absolute; left:6px; bottom:6px; width:8px; height:8px; border-radius:50%; border:0; background:var(--accent); color:#fff; display:grid; place-items:center; padding:0; cursor:pointer; box-shadow:0 0 6px 4px var(--side); transition:all .12s; overflow:hidden; }
+.att .anote svg { width:11px; height:11px; opacity:0; transition:opacity .12s; } /* #237 dot → full button on hover, same .12s as .abtns */
+.att:hover .anote, .att.hl .anote { left:3px; bottom:3px; width:20px; height:20px; } .att:hover .anote svg, .att.hl .anote svg { opacity:1; }
+#edColor { width:30px; height:30px; flex:none; padding:0; border:2px solid var(--line); border-radius:50%; background:none; cursor:pointer; overflow:hidden; } /* #237 1:1 circle, colour fills it */
+#edColor::-webkit-color-swatch-wrapper { padding:0; } #edColor::-webkit-color-swatch { border:0; border-radius:50%; }
 .tb { display:flex; align-items:center; gap:2px; margin-top:4px; }
 #send { width:32px; height:32px; border-radius:50%; border:0; background:var(--primary); color:var(--ink); display:grid; place-items:center; cursor:pointer; }
 #send:hover { background:var(--primary2); } #send:disabled { opacity:.4; cursor:default; }
@@ -1532,7 +1538,8 @@ const REPS = {}, REPBUSY = {}, REPGAP = 600e3;
 const workMs = l => { let s = 0, p = 0; for (const e of l) { const t = Date.parse(e.ts); if (!t) continue; if (p && t > p) s += Math.min(t - p, REPGAP); p = t; } return s; };
 function repDone(pid) {
   const l = logs[pid] || [], i = l.findLastIndex(e => e.act === 'rep'), sl = l.slice(i + 1);
-  if (!sl.some(e => e.kind === 'tool' && /^mcp__clauracle__ready/.test(e.text))) return;
+  // #237 ready's tool row isn't logged (only its "Armed." result) → match either, else no report ever showed
+  if (!sl.some(e => e.kind === 'tool' ? /^mcp__clauracle__ready/.test(e.text) : /^Armed\. When this turn ends/.test(e.text || ''))) return;
   const res = new Map(sl.filter(e => e.result_of).map(e => [e.result_of, e])), cut = s => (s || '').slice(0, 4000);
   const ops = sl.filter(e => e.kind === 'tool' && !isProcess(e)).map(e => { const r = res.get(e.id), d = e.detail || {}, f = d.file_path || d.notebook_path;
     return {t: toolName(e), text: e.text.replace(/^↳ /, '').slice(0, 300), cmd: typeof d.command === 'string' ? d.command.slice(0, 600) : '', ts: e.ts,
@@ -1618,9 +1625,10 @@ function attRef(i) { // inserts [name w/o extension] at the caret; a space befor
   const ins = (s && !/\s/.test(v[s - 1]) ? ' ' : '') + r + (e < v.length && /\s/.test(v[e]) ? '' : ' ');
   el.setRangeText(ins, s, e, 'end'); el.focus(); grow(); keepDraft();
 }
+const refB = i => `<button class="aref" title="Refer to it in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button>`; // #237 image thumbs: bottom-right; file chips: top bar (too short for 2 rows)
 function drawAtts() {
   $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
-    <span class="abtns"><button class="aref" title="Refer to it in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button><button title="Remove" onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button></span>
+    <span class="abtns">${a.url ? '' : refB(i)}<button title="Remove" onclick="atts[cur].splice(${i},1); drawAtts()">${icon('x')}</button></span>${a.url ? `<span class="abtns bot">${refB(i)}</span>` : ''}
     ${a.notes?.length ? `<button class="anote" title="${esc(a.notes.join('\n').slice(0, 160))}&#10;(click to edit the notes)" onclick="viewAtt(${i}); editImage()">${icon('doc')}</button>` : ''}</div>`).join('');
   attArr(); pbDraw(); if (cur) { drawChrome(); keepDraft(); }
 }
@@ -1687,16 +1695,17 @@ function editImage() {
     c.onpointerdown = e => { c.setPointerCapture(e.pointerId); const [x, y] = pt(e), t = ED.tool;
       if (t === 'sel' || t === 'erase') { const o = edHit(x, y); if (t === 'erase') { if (o) { edSnap(); ED.ops.splice(ED.ops.indexOf(o), 1); edDraw(); edNotes(); } return; }
         ED.sel = o; if (o) { edSnap(); ED.drag = {x, y, rs: o.t === 'box' && Math.hypot(x - o.x - o.w, y - o.y - o.h) < ED.w * 5}; } edDraw(); return; }
-      edSnap(); ED.cur = t === 'pen' ? {t, color: edColor, pts: [[x, y]]} : t === 'line' ? {t, color: edColor, x1: x, y1: y, x2: x, y2: y} : {t: 'box', color: edColor, x, y, w: 0, h: 0, note: ''}; ED.ops.push(ED.cur); };
+      edSnap(); ED.cur = t === 'pen' ? {t, color: edColor, pts: [[x, y]]} : t === 'line' ? {t, color: edColor, x1: x, y1: y, x2: x, y2: y} : {t: 'box', color: edColor, x, y, w: 0, h: 0, note: '', n: ++ED.nmax}; ED.ops.push(ED.cur); };
     c.onpointermove = e => { const [x, y] = pt(e);
       if (ED.drag && ED.sel) { const o = ED.sel, dx = x - ED.drag.x, dy = y - ED.drag.y; ED.drag.x = x; ED.drag.y = y;
         if (ED.drag.rs) { o.w = Math.max(8, o.w + dx); o.h = Math.max(8, o.h + dy); } else edMove(o, dx, dy); edDraw(); edNotes(); return; }
       const o = ED.cur; if (!o) return;
       if (o.t === 'pen') { const [px, py] = o.pts.at(-1); if (Math.hypot(x - px, y - py) > ED.w / 2) o.pts.push([x, y]); } else if (o.t === 'line') { o.x2 = x; o.y2 = y; } else { o.w = x - o.x; o.h = y - o.y; } edDraw(); };
     c.onpointerup = () => { ED.drag = null; const o = ED.cur; ED.cur = null; if (!o) return;
-      if (o.t === 'box') { if (Math.abs(o.w) < 8 || Math.abs(o.h) < 8) { ED.ops.pop(); ED.undo.pop(); }
-        else { if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } o.n = ++ED.nmax; edDraw(); return edNotes(o); } }
+      if (o.t === 'box') { if (Math.abs(o.w) < 8 || Math.abs(o.h) < 8) { ED.ops.pop(); ED.undo.pop(); ED.nmax--; }
+        else { if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } edDraw(); return edNotes(o); } }
       edDraw(); };
+    c.onpointercancel = c.onpointerup; // #237 box numbered at pointerdown (was pointerup → 'undefined' tag when the up got lost)
   };
   img.src = m.ed?.orig || m.url;
 }
@@ -2361,7 +2370,8 @@ function relItems(c, p) {
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
     ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'Online build passed', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no online builds yet',
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.bill || ci?.url}] : []),
-    {s: 2, id: 'icon', t: 'App icon', ok: c.icon},
+    // #237 required file: icon source SVG or PNG ≥1024px (stores: 512 Play / 1024 App Store; `tauri icon` wants 1024)
+    {s: 1, id: 'icon', t: 'App icon (SVG or PNG ≥ 1024 px)', ok: !!c.icon && (c.icon_px == null || c.icon_px >= 1024), d: !c.icon ? 'none found' : c.icon_px ? `${c.icon} · ${c.icon_px} px` : c.icon},
     ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: S.ci_builds ? 'Mac signing keys on GitHub' : 'Mac signing keys saved', d: 'so Macs trust and open the app', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
     // #40 stores (Play/App Store) want privacy + terms URLs: RC up, mobile targets only; c.site = HTTP statuses (relWizard)
     ...((p.targets || []).some(x => x === 'ios' || x === 'android') ? [{s: 2, id: 'site_legal', t: 'Privacy policy and terms online',
@@ -2371,8 +2381,7 @@ function relItems(c, p) {
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
     ...((un => un.length ? [{s: 0, id: 'targets', t: 'Every picked platform can be built', ok: false, d: un.map(x => `${tgtName(x)}: ${tgtWhy(p, x)[0]}`).join(' · '), go: tgtWhy(p, un[0])[1]}] : [])((p.targets || []).filter(x => !(S.ci_builds && miss.includes(x)) && !tgtReady(p, x)))),
     ...(miss.length && S.ci_builds ? [{s: 0, id: 'ci_targets', t: 'GitHub builds the other platforms', ok: false, d: `GitHub can't build: ${miss.map(tgtName).join(', ')}`}] : []),
-    {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length && !stale.length,
-      d: stale.length ? `Outdated builds: ${stale.map(f => f.name).join(', ')}` : lack.length && files.length ? `Not built yet: ${lack.map(tgtName).join(', ')}` : files.length ? files.map(f => f.name).join(', ') + (cit.length ? ` · built on GitHub: ${cit.map(tgtName).join(', ')}` : '') : v ? `version ${v} isn't built yet` : '',
+    {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length && !stale.length, ...relBuildD(c, files, stale, lack, cit, v),
       go: p.build.build ? 'relBuild(this)' : 'openManager(cur)', gl: p.build.build ? 'Build' : 'Set up', dh: builds[cur]?.busy ? bfiles(p, files) : ''},
   ];
 }
@@ -2391,6 +2400,17 @@ const bfiles = (p, files) => { const done = bdone(builds[cur]), loc = (p.targets
   const exp = loc.flatMap(x => { const f = files.filter(f => TGTEXT[x].test(f.name)).map(f => f.name); return f.length ? f.map(n => [n, done.includes(n)]) : [[tgtName(x), done.some(n => TGTEXT[x].test(n))]]; });
   return exp.map(([n, ok]) => `<span class="bfile${ok ? '' : ' shim'}">${esc(n)}${ok ? icon('check') : ''}</span>`).join(''); };
 const relFilesFor = (pid, v) => v ? relPick(GHI[pid]?.g?.builds || [], v).filter(b => fver(b.name) === v) : [];
+/* #237 build row: "Update build(s) from <last release>:" + one file (or missing target) per line, Win/Linux/mac ─ Android/iOS */
+const BORD = ['windows', 'linux', 'macos', 'android', 'ios'], bplat = n => BORD.find(x => TGTEXT[x].test(n)) || n;
+function relBuildD(c, files, stale, lack, cit, v) {
+  const todo = stale.length || (lack.length && files.length), rows = todo ? [...stale.map(f => [bplat(f.name), f.name]), ...lack.map(x => [x, tgtName(x) + ' (not built yet)'])] : files.map(f => [bplat(f.name), f.name]);
+  if (!rows.length) return {d: v ? `version ${v} isn't built yet` : ''};
+  const mob = x => x === 'android' || x === 'ios', rel = GHI[cur]?.g?.release, tag = rel?.tagName || c.tag;
+  rows.sort((a, b) => BORD.indexOf(a[0]) - BORD.indexOf(b[0]));
+  const head = todo ? `Update build${rows.length > 1 ? 's' : ''}${tag ? ` from ${rel?.url ? `<a data-url="${esc(rel.url)}" style="cursor:pointer;color:var(--accent)">${esc(tag)}</a>` : esc(tag)}` : ''}:` : '';
+  return {h: (head ? `<span style="display:block">${head}</span>` : '') + rows.map(([pl, n], i) => (i && mob(pl) && !mob(rows[i - 1][0]) ? '<hr class="bsep">' : '') + `<span style="display:block">${esc(n)}</span>`).join('')
+    + (cit.length && !todo ? `<span style="display:block">built on GitHub: ${esc(cit.map(tgtName).join(', '))}</span>` : '')};
+}
 const stHead = (t, a = '') => `<div class="label row" style="gap:4px;align-items:center;margin-bottom:6px">${t}<span class="grow"></span>${a}</div>`; // #232 Build tab step title row
 async function relWizard(p, force, cached) { // cached → draw RELC as is (caller ensures it exists)
   const pid = cur, k = p.stage ? SK.indexOf(p.stage) : -1, to = RELTO[pid] ?? Math.max(k, 0);
@@ -2416,16 +2436,16 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   }
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
   const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;display:inline-flex;padding-top:2px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${icon(x.ai ? 'sparkle' : x.ok ? 'check' : 'x')}</span>
-    <span class="grow">${esc(x.t)}${x.dh ? '' : x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
+    <span class="grow">${esc(x.t)}${x.dh ? '' : x.h ? `<small class="dim" style="display:block">${x.h}</small>` : x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
     ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with AI'}</button>` : ''}</div>${x.dh ? `<small class="dim" style="display:block;padding-left:24px">${x.dh}</small>` : ''}`; /* #182 dh below the row: full width, not squeezed by the Building… button */
-  const seg = `<span class="seg" style="margin-bottom:8px">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
-  const up = to > k, gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, ''); // up: moving a stage (or starting)
+  const seg = `<span class="seg">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
+  const gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, '');
   const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : left ? `${left} check${left > 1 ? 's' : ''} open` : '';
   // Release = publish v<version> (that version's build files) on GitHub + set the stage; grayed out till every check is green
   const act = RELBUSY[pid] ? `<button class="btn sm primary block" disabled><i class="spin"></i>Publishing…</button>` : `<button class="btn sm primary block" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this)">${icon('rocket')}Release v${esc(v)} as ${STAGES[SK[to]]}</button>`; /* #122 RELBUSY survives redraws */
-  return stHead('Release', (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re) + `<p class="dim" style="margin:0 0 6px">${k < 0 ? 'Not released yet' : `Stage: <b>${STAGES[SK[k]]}</b>`}${up && k >= 0 ? ` · preparing ${STAGES[SK[to]]}` : ''}${gi?.release?.tagName ? ` · latest <a data-url="${esc(gi.release.url)}" style="cursor:pointer;color:var(--accent)">${esc(gi.release.tagName)}</a>` : ''}</p>${seg}
-    <div>${items.map(row).join('')}</div><div class="btnrow col">${ask}</div>
-    <div class="nextstep"><p>${why ? esc(why) : 'Ready to build!'}</p>${act}</div>`; // #232 Release button in the next-step box
+  return stHead('Release', (left ? `<span class="pill" style="background:var(--hover);color:var(--dim)">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re) + `<div class="row" style="gap:8px;align-items:center;margin-bottom:8px"><span class="dim">Stage:</span>${seg}</div>
+    <div>${items.map(row).join('')}</div>
+    <div class="nextstep"><p>${why ? esc(why) : 'Ready to build!'}</p>${act}</div><div class="btnrow col" style="margin-top:8px">${ask}</div>`; /* #237 header = Stage + switcher only; ask under the Release box */ // #232 Release button in the next-step box
 }
 /* #123 recheck CI while a run is in flight (one timer per project; only while Build & Release shows it) */
 const CIPOLL = {};
