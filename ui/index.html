@@ -220,7 +220,7 @@ pre.termout { background:#161514; color:#d8d4cb; padding:8px 12px; white-space:p
 .rfiles { display:flex; flex-wrap:wrap; gap:6px; } .rfiles .btn.on { border-color:var(--accent); color:var(--accent); }
 .rtl .rstep { display:flex; gap:10px; align-items:flex-start; position:relative; padding-bottom:14px; } .rtl .rstep > small:first-child { width:44px; flex:none; text-align:right; }
 .rtl .rstep > i { width:10px; height:10px; border-radius:50%; background:var(--accent); flex:none; margin-top:4px; } .rtl .rstep:not(:last-child) > i::after { content:''; position:absolute; left:58px; top:16px; bottom:0; width:2px; background:var(--line); }
-.rtl .rstep.tot > i { background:#3fbf6f; } .rhead h2 { font-size:18px; }
+.rtl .rstep.tot > i { background:#3fbf6f; } .rhead h2 { font-size:18px; } .rtl .rstep b { font-size:13.5px; font-weight:600; } /* #367 = chat text size, not heading-big */
 .rpdf.busy .i { animation:spin .8s linear infinite; }
 pre.diff { margin:0; padding:8px 0; font:12px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; white-space:pre; }
 pre.diff > .ctx, pre.diff > .del, pre.diff > .add { display:block; padding:0 10px; } /* diff rows only, not colour spans */
