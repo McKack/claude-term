@@ -345,10 +345,11 @@ fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
     }
     let p = st.project(&pid).unwrap();
     let over = store::over_limit(&st.cfg.lock().unwrap(), &p.account);
-    if over.is_some() {
+    if let Some(w) = over {
         let pick = store::relay_pick(&st.cfg.lock().unwrap(), &p.account); // own statement: an if-let would hold the lock into with_project → deadlock
         if let Some(n) = pick {
-            st.with_project(&pid, |p| p.account = n);
+            st.with_project(&pid, |q| q.account = n.clone());
+            claude::relay_switched(&app, &st, &pid, &p.account, &n, &w);
         }
     }
     let p = st.project(&pid).unwrap(); // after a relay switch: same path/gh anyway

@@ -2803,6 +2803,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   queued: () => refresh(),
   mac_setup: () => macLine(d.line),
   ctxmenu: () => CTXP ? (clearTimeout(CTXP.t), CTXP.show(d.sp)) : d.sp.length && call('ctx_pick', {id: -1}), // #390 late → release deferral
+  switched: () => toast(d.text, 'warn'), // #398 auto relay switch
   janitor: () => toast(`Storage Janitor freed ${mb(d.freed)} (old caches, Claude Code versions)`, 'ok'),
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),

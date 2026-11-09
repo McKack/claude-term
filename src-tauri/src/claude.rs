@@ -681,11 +681,9 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
         let next = store::relay_pick(&st.cfg.lock().unwrap(), &p.account);
         match next {
             Some(n) => {
-                let nick = store::account_or_main(&st.cfg.lock().unwrap(), &n).nick.clone();
                 // #111: keep = gh stays as set in the project, no "Keep current / Use these" suggestion
                 st.with_project(pid, |p| { p.account = n.clone(); p.keep = true; });
-                line(app, pid, "note", &format!("{} reached its {} limit: switched to {nick}.", p.account, label(&window)));
-                emit(app, "project", json!(st.project(pid)));
+                relay_switched(app, st, pid, &p.account, &n, &window);
             }
             None => {
                 let msg = format!("Paused: {} is at its {} limit and no relay account has room.", p.account, label(&window));
@@ -760,6 +758,21 @@ pub fn prepare(app: &AppHandle, live: &Live, pid: &str, why: &str) {
     live.handing_over.store(true, SeqCst);
     line(app, pid, "note", "Writing the handover, then the context gets cleared.");
     live.inbox.front(vec![Input::Msg(PREPARE.replace("{why}", why))]);
+}
+
+/// #398 auto relay switch (never manual picks) → log note + in-app toast (bell list) + desktop/phone notify.
+pub fn relay_switched(app: &AppHandle, st: &State, pid: &str, from: &str, to: &str, window: &str) {
+    let (f, t, relay) = {
+        let c = st.cfg.lock().unwrap();
+        let (a, b) = (store::account_or_main(&c, from), store::account_or_main(&c, to));
+        (a.nick.clone(), b.nick.clone(), b.relay.clone())
+    };
+    let name = st.project(pid).map(|p| p.name).unwrap_or_default();
+    let msg = format!("{f} reached its {} limit: switched to {t} (relay {relay}).", label(window));
+    line(app, pid, "note", &msg);
+    emit(app, "project", json!(st.project(pid)));
+    emit(app, "switched", json!({"pid": pid, "text": format!("{name}: {msg}")}));
+    notify(app, st, &format!("{name}: account switched"), &msg);
 }
 
 pub fn notify(app: &AppHandle, st: &State, title: &str, body: &str) {
