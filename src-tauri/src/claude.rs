@@ -1202,7 +1202,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     if cmd.trim().is_empty() {
         return (true, String::new());
     }
-    let say = |t: &str, done: Option<bool>| emit(app, "build", json!({"pid": pid, "step": step, "line": t, "done": done}));
+    let say = |t: &str, done: Option<bool>| emit(app, "build", json!({"pid": pid, "step": step, "line": t, "done": done, "local": local})); // #361 local = this-machine pass only (UI: "Local build", no bundle list)
     // #175 marker: still there at the next start = the app died mid-build → resume_builds() starts it again
     let marker = store::home().join(format!("building-{pid}"));
     if step == "build" { let _ = std::fs::write(&marker, ""); }

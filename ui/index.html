@@ -2633,6 +2633,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.step === 'build' && b.busy && d.line && d.pid === cur && tab === 'build' && /\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/i.test(d.line) && /Finished \d+ bundle/.test(b.out.slice(b.from || 0))) drawRight(); /* #174 an artifact landed → tick it */
+    if (d.step === 'build' && 'local' in d) b.local = d.local; /* #361 every line: buildNow sets busy before the 1st event */
     if (d.step === 'build' && !!b.busy !== (d.done == null)) { if (!b.busy) b.from = b.out.length - (d.line != null ? d.line.length + 1 : 0); b.busy = d.done == null; if (b.busy && !b.manual) addEntry(d.pid, {kind: 'note', text: 'Building…'}); /* after a task / resumed (#170/#175); Build button = manual */ if (d.pid === cur) tabDots(); if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
     if (d.step === 'build' && d.done) { BUILT[d.pid] = 1; if (d.pid === cur) tabDots(); } /* green dot till Build & Release is opened */
     if (d.step === 'build' && d.done != null) { b.ok = d.done; b.at = Date.now(); b.own = !!d.own; /* statusline right zone + card */
@@ -3048,7 +3049,7 @@ const bdone = b => (b?.out || '').slice(b.from || 0).split(/Finished \d+ bundles
 /* #349 expected names from the start: this version's files, else known names (local builds + last release assets) with the
    version swapped in; one per extension. ✓ = a finished bundle with that extension (Network Mac output names may differ) */
 const bext = n => n.toLowerCase().split('.').pop();
-const bfiles = (p, files, pid = cur) => { const done = bdone(builds[pid]), loc = (p.targets || []).filter(tgtLocal), v = (RELC[pid]?.c?.version || '').replace(/^v/, '');
+const bfiles = (p, files, pid = cur) => { if (builds[pid]?.local) return `<span class="bfile${builds[pid].busy ? ' shim' : ''}">Local build${builds[pid].busy || !builds[pid].ok ? '' : icon('check')}</span>`; /* #361 smart/after-task this-machine build: no release bundles */ const done = bdone(builds[pid]), loc = (p.targets || []).filter(tgtLocal), v = (RELC[pid]?.c?.version || '').replace(/^v/, '');
   const known = [...files.map(f => f.name), ...(GHI[pid]?.g?.builds || []).map(f => f.name), ...(GHI[pid]?.g?.release?.assets || []).map(a => a.name)];
   const exp = loc.flatMap(x => { const seen = new Set(), f = known.filter(n => TGTEXT[x].test(n)).map(n => v && fver(n) ? n.replace(fver(n), v) : n).filter(n => !seen.has(bext(n)) && seen.add(bext(n)));
     return f.length ? f.map(n => [n, done.some(d => bext(d) === bext(n))]) : [[tgtName(x), done.some(n => TGTEXT[x].test(n))]]; });
