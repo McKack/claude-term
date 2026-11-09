@@ -2245,10 +2245,12 @@ function caretClear() { const p = $('prompt'), b = $('pback'); if (document.acti
   let n, k = p.selectionEnd; const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
   while ((n = w.nextNode()) && k > n.length) k -= n.length; if (!n) return;
   const rg = document.createRange(); rg.setStart(n, k); rg.setEnd(n, k); const c = rg.getClientRects()[0] || rg.getBoundingClientRect(), r = p.getBoundingClientRect(), F = 18;
-  if (!c.height) return; const d = c.bottom > r.bottom - F ? c.bottom - r.bottom + F : c.top < r.top + F && p.scrollTop > 0 ? c.top - r.top - F : 0;
+  // #417 nudge only a caret sitting IN a fade band; fully scrolled away (user scrolled / dragged the thumb) → leave it (typing reveals it natively)
+  if (!c.height || c.top >= r.bottom || c.bottom <= r.top) return; const d = c.bottom > r.bottom - F ? c.bottom - r.bottom + F : c.top < r.top + F && p.scrollTop > 0 ? c.top - r.top - F : 0;
   if (d) { p.scrollTop += d; b.scrollTop = p.scrollTop; } }
 const pbSync = () => { const f = () => { $('pback').scrollTop = $('prompt').scrollTop; caretClear(); }; f(); requestAnimationFrame(f); };
-['scroll', 'keyup', 'mouseup', 'select'].forEach(e => $('prompt').addEventListener(e, pbSync));
+['keyup', 'mouseup', 'select'].forEach(e => $('prompt').addEventListener(e, pbSync));
+$('prompt').addEventListener('scroll', () => { $('pback').scrollTop = $('prompt').scrollTop; }); // #417 user scroll = mirror only, no caret clamp (it pinned the view to a bottom-line caret)
 // #223 link cursor over a pill: hit-test the mirror's <mark> rects (#pback is pointer-events:none)
 // #341 + hovered pill → its thumb gets .hov (same look as .hl); mark text = "@[name]" (svg has no text)
 const attHov = i => [...$('atts').children].forEach((t, k) => t.classList.toggle('hov', k === i));
