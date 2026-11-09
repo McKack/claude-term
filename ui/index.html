@@ -1472,13 +1472,13 @@ document.addEventListener('mouseover', e => {
   hideTip();
   if (!el) return;
   if (!el.dataset.tip) return;
-  tipEl = el; const mx = e.clientX;
+  tipEl = el; const mx = e.clientX, my = e.clientY;
   tipT = setTimeout(() => {
     if (!el.isConnected) return;
     tip.textContent = el.dataset.tip; tip.showPopover(); // shown last = above an open dialog/menu
-    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight, x = r.width > 160 ? mx : r.left + r.width / 2; // wide rows: at the pointer
+    const b = el.getBoundingClientRect(), r = b.height > 160 ? {top: my - 10, bottom: my + 18, left: b.left, width: b.width} : b, w = tip.offsetWidth, h = tip.offsetHeight, x = r.width > 160 ? mx : r.left + r.width / 2; // wide rows: at the pointer
     tip.style.left = Math.max(6, Math.min(x - w / 2, innerWidth - w - 6)) + 'px';
-    tip.style.top = (r.top - h - 6 >= 6 ? r.top - h - 6 : r.bottom + 6) + 'px'; // above (the pointer covers below), else below
+    tip.style.top = (r.top - h - 6 >= 6 ? r.top - h - 6 : r.bottom + 6) + 'px'; // above (the pointer covers below), else below; #347 tall els (grips) = at the pointer, not their far edge
   }, 450);
 });
 ['mousedown', 'wheel', 'keydown'].forEach(t => document.addEventListener(t, hideTip, true));
