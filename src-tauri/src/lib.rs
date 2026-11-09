@@ -1867,9 +1867,12 @@ fn report_pdf(st: St, pid: String, rep: Option<Value>) -> R<String> {
     let mut data = serde_json::to_string(&reps).unwrap_or_default();
     if data.len() > 80_000 { data = data.chars().take(80_000).collect(); } // ponytail: cut, Sonnet still sees most of the week
     let what = if week { "the last 7 days of work (one JSON object per finished task)" } else { "one finished task" };
+    // #368 week: tasks grouped by area (sprint-meeting style), each group = <h3> + 1-2 sentence summary + its tasks
+    let done = if week { "What was done: group the tasks by area/topic (e.g. UI, release, accounts), one <h3> per area, \
+        each with a 1-2 sentence summary of what changed in that area this week, then a short <ul> of its tasks" } else { "What was done (<ul>)" };
     let prompt = format!("Write a short, sleek report for a team meeting about {what} on the software project \"{}\". \
         Output ONLY an HTML fragment (no <html>/<head>/<body>, no markdown, no code fences). Sections as <h2>: Summary (2-3 sentences), \
-        What was done (<ul>), Problems spotted (failed commands, missing tools; skip if none), Time (a small <table> of tasks and durations), \
+        {done}, Problems spotted (failed commands, missing tools; skip if none), Time (a small <table> of tasks and durations), \
         Suggestions (2-4 concrete next steps). Plain business tone, no filler. Data:\n{data}", p.name);
     let d = rep_dir(&pid)?.join("pdf");
     std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
@@ -1882,7 +1885,7 @@ fn report_pdf(st: St, pid: String, rep: Option<Value>) -> R<String> {
 @page{{margin:18mm}}body{{font:11pt/1.5 "Segoe UI",system-ui,sans-serif;color:#222;max-width:720px;margin:auto}}
 header{{display:flex;gap:14px;align-items:center;border-bottom:3px solid #D77655;padding-bottom:12px;margin-bottom:8px}}
 header svg{{width:48px;height:48px}}h1{{margin:0;font-size:20pt}}header small{{color:#777}}
-h2{{color:#D77655;font-size:13pt;margin:20px 0 6px}}table{{border-collapse:collapse;width:100%}}td,th{{border-bottom:1px solid #eee;padding:4px 6px;text-align:left}}
+h2{{color:#D77655;font-size:13pt;margin:20px 0 6px}}h3{{font-size:11.5pt;margin:12px 0 2px}}table{{border-collapse:collapse;width:100%}}td,th{{border-bottom:1px solid #eee;padding:4px 6px;text-align:left}}
 code{{background:#f4f1ef;padding:0 4px;border-radius:3px}}</style>
 <header>{logo}<div><small>Clauracle · {kind}</small><h1>{n}</h1><small>{date}</small></div></header>{body}"#,
         n = html_esc(&p.name), kind = if week { "7-day report" } else { "Task report" });
