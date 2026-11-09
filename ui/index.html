@@ -486,7 +486,7 @@ pre.diff .ctx { color:var(--faint); }
 #prompt { width:100%; border:0; padding:4px 0; resize:none; min-height:26px; max-height:260px; background:none; box-shadow:none; position:relative; display:block; color:transparent; caret-color:var(--text); } /* #223 text drawn by #pback ∴ [ ] can hide */
 #pwrap { position:relative; } #pback { position:absolute; inset:0; padding:4px 0; white-space:pre-wrap; overflow-wrap:break-word; color:var(--text); pointer-events:none; overflow:hidden; } #pback mark i { font-style:normal; color:transparent; }
 #pback mark { padding:.1em 0; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); border-radius:99px; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); box-decoration-break:clone; -webkit-box-decoration-break:clone; } /* #225 real pill: hidden [ ] = its side padding */
-.att.hl { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+.att:is(.hl, .hov) { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
 #slash { display:flex; flex-direction:column; max-height:280px; overflow:auto; margin:0 0 6px -6px; padding-bottom:6px; border-bottom:1px solid var(--line); }
 #slash[hidden] { display:none; }
 #slash button { display:flex; flex-wrap:wrap; gap:2px 8px; align-items:baseline; text-align:left; border:0; background:none; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:13px; }
@@ -2027,8 +2027,11 @@ function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.sty
 const pbSync = () => { const f = () => $('pback').scrollTop = $('prompt').scrollTop; f(); requestAnimationFrame(f); };
 ['scroll', 'keyup', 'mouseup', 'select'].forEach(e => $('prompt').addEventListener(e, pbSync));
 // #223 link cursor over a pill: hit-test the mirror's <mark> rects (#pback is pointer-events:none)
-$('prompt').addEventListener('mousemove', e => { const hit = [...$('pback').querySelectorAll('mark')].some(m => [...m.getClientRects()].some(r => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom));
-  e.target.style.cursor = hit ? 'pointer' : ''; });
+// #341 + hovered pill → its thumb gets .hov (same look as .hl); mark text = "@[name]" (svg has no text)
+const attHov = i => [...$('atts').children].forEach((t, k) => t.classList.toggle('hov', k === i));
+$('prompt').addEventListener('mousemove', e => { const hit = [...$('pback').querySelectorAll('mark')].find(m => [...m.getClientRects()].some(r => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom));
+  e.target.style.cursor = hit ? 'pointer' : ''; attHov(hit ? attAt(hit.textContent.slice(2, -1)) : -1); });
+$('prompt').addEventListener('mouseleave', () => attHov(-1));
 $('prompt').addEventListener('click', () => { const p = $('prompt'), c = p.selectionStart, v = p.value, o = v.lastIndexOf('[', c), z = v.indexOf(']', o);
   if (o < 0 || z < c || v.slice(o, z).includes('\n')) return; const i = attAt(v.slice(o + 1, z)); if (i < 0) return;
   const t = $('atts').children[i]; document.querySelectorAll('.att.hl').forEach(x => x.classList.remove('hl')); t?.classList.add('hl'); t?.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'smooth'});
