@@ -640,6 +640,13 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .pathbar .crumbs { flex:1; min-width:0; margin:0 0 0 4px; padding:4px 8px; background:var(--card); border:1px solid var(--line); border-radius:8px;
   white-space:nowrap; overflow-x:auto; scrollbar-width:none; display:flex; gap:4px; font-size:12px; } .pathbar .crumbs a { color:var(--dim); } .pathbar .crumbs a:hover { color:var(--accent); }
 .tree div { padding:3px 8px; border-radius:6px; cursor:pointer; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; gap:6px; align-items:center; }
+.tree .fn { overflow:hidden; text-overflow:ellipsis; }
+/* #377 Icons view: dense grid like the start menu */
+.tree.icons { display:grid; grid-template-columns:repeat(auto-fill, minmax(66px, 1fr)); gap:2px; }
+.tree.icons div { position:relative; flex-direction:column; justify-content:flex-start; gap:4px; height:66px; padding:8px 2px 0; white-space:normal; font-size:11.5px; text-align:center; }
+.tree.icons div > .i { width:22px; height:22px; flex:none; }
+.tree.icons .fn { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; line-height:1.2; overflow-wrap:anywhere; }
+.tree.icons .eb { position:absolute; top:4px; right:4px; margin:0; }
 .tree div:hover { background:var(--hover); } .tree svg { color:var(--faint); }
 /* edited-lately badge: count pill (folder, < 1 min) or dot; opacity set in badgeFiles, eased between its 5s ticks */
 .tree .eb { margin-left:auto; flex:none; min-width:8px; height:8px; border-radius:99px; background:var(--accent); transition:opacity 5s linear; }
@@ -790,7 +797,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 </div>
   <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="notes" onclick="setSide('notes')" title="Notes: NOTES.md, only on this computer (git-ignored)"><svg class="i"><use href="#i-feather"/></svg><span>Notes</span></button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
-    <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
+    <button class="ib" title="More: Project manager, sort and view of Files" onclick="sideMenu(this)"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
   <div id="files" hidden></div>
   <div id="notes" hidden></div>
@@ -3396,7 +3403,7 @@ async function buildHtml(p, has, live, force) {
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) { ghiSet(pid0, g); c = GHI[pid0]; } }
   // #232 stepper ① targets ② manual build ③ release (+ next-step box w/ Release); #34: no Deploy button ∵ Release runs the deploy command after publishing
   return `<ol class="stepper ghsteps"><li><span class="sn">1</span>${tgtHtml(p)}</li>
-    <li><span class="sn">2</span>${stHead('Manual build', `<button class="ib" title="Edit commands (tasks build by themselves: see Then on the GitHub tab)" onclick="buildSet()">${icon('more')}</button>`)}${has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+    <li><span class="sn">2</span>${stHead('Manual build', `<button class="ib" title="Edit commands (tasks build by themselves: see Then on the GitHub tab)" onclick="buildSet()">${icon('gear')}</button>`)}${has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn primary" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
           : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
@@ -3780,17 +3787,26 @@ async function drawFiles(rel = filesAt[cur] ?? '') {
   const box = $('files');
   if (!cur) { box.innerHTML = '<p class="faint" style="padding:4px 10px;font-size:13px">Open a project to see its files.</p>'; return; }
   filesAt[cur] = rel;
-  const parts = rel ? rel.split('/') : [], items = await call('list_dir', {pid: cur, rel}).catch(() => []);
+  const parts = rel ? rel.split('/') : [], items = fsort(await call('list_dir', {pid: cur, rel}).catch(() => []));
   box.innerHTML = `<div class="pathbar"><button class="ib" title="Back" ${filesHist[cur]?.length ? '' : 'disabled'} onclick="filesBack()">${icon('back')}</button>
       <button class="ib" title="Project root" onclick="filesGo('')">${icon('home')}</button>
       <div class="crumbs mono"><a data-p="" onclick="filesGo(this.dataset.p)">${esc(P().name)}</a>${parts.map((x, i) =>
       `<span class="faint">/</span><a data-p="${esc(parts.slice(0, i + 1).join('/'))}" onclick="filesGo(this.dataset.p)">${esc(x)}</a>`).join('')}</div></div>
-    <div class="tree">${items.map(i => { const path = (rel ? rel + '/' : '') + i.name;
-      return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p, event.ctrlKey || event.metaKey)"${i.dir || view !== 'edit' ? '' : ' title="Ctrl+click: open in the Code tab on the side"'}>${i.dir ? icon('folder') : ftIcon(i.name)}${esc(i.name)}</div>`; }).join('')
+    <div class="tree${UI.fv === 'icons' ? ' icons' : ''}">${items.map(i => { const path = (rel ? rel + '/' : '') + i.name;
+      return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p, event.ctrlKey || event.metaKey)"${i.dir || view !== 'edit' ? '' : ' title="Ctrl+click: open in the Code tab on the side"'}>${i.dir ? icon('folder') : ftIcon(i.name)}<span class="fn">${esc(i.name)}</span></div>`; }).join('')
       || '<p class="dim" style="padding:0 8px">Empty.</p>'}</div>`;
   const c = box.querySelector('.pathbar .crumbs'); c.scrollLeft = c.scrollWidth;
   badgeFiles();
 }
+/* #377 sidebar '…' = menu (rule: '…' opens a menu, gear opens Settings). UI.fs sort name|type|date|size, UI.fv list|icons;
+   dirs always first; Rust list_dir gives name order + t (mtime s) + size */
+const FSORT = [['name', 'Name'], ['type', 'Type'], ['date', 'Date modified'], ['size', 'Size']];
+const fsort = xs => { const k = UI.fs, ext = n => n.includes('.') ? n.split('.').pop().toLowerCase() : '';
+  return k && k !== 'name' ? [...xs].sort((a, b) => b.dir - a.dir || (k === 'type' ? ext(a.name).localeCompare(ext(b.name)) : k === 'date' ? b.t - a.t : b.size - a.size)) : xs; }; // stable ∴ ties keep name order
+const fset = (k, v) => { UI[k] = v; layout(); if (UI.st === 'files') drawFiles(); };
+const sideMenu = b => menuAt(b, [{icon: 'folder', label: 'Project manager…', run: () => openManager()}, '-', {title: 'Sort Files by'},
+  ...FSORT.map(([k, l]) => ({label: l, check: (UI.fs || 'name') === k, run: () => fset('fs', k)})), '-', {title: 'View'},
+  {label: 'List', check: UI.fv !== 'icons', run: () => fset('fv', 'list')}, {label: 'Icons', check: UI.fv === 'icons', run: () => fset('fv', 'icons')}]);
 // Files tree badges: files Claude edited (live, this app run). < 1 min: folders show how many files inside, files a dot;
 // 1–2 min: a plain dot that fades out; then gone. EDITS[pid][rel path] = ms of the last edit
 const EDITS = {}, EDIT_MS = 60000;
@@ -5047,7 +5063,7 @@ function agentIdle() {
   if (!AGENTS) { agentIdle.p ||= call('agents').then(a => { AGENTS = a; drawAtp(); }); return skel(40); }
   const on = S.agents_on;
   return `<div class="row" style="margin-bottom:8px;gap:8px"><span data-tip="${on ? 'Switch helper agents off' : 'Switch helper agents on'}">${sw(on, "call('set_agents', {agents: AGENTS, on: this.checked}).then(refresh)")}</span>
-      <small class="dim grow">${on ? 'No helper agents started in this session' : 'Helper agents are off'}</small><button class="ib" title="Agent settings" onclick="openSettings('agents')">${icon('more')}</button></div>
+      <small class="dim grow">${on ? 'No helper agents started in this session' : 'Helper agents are off'}</small><button class="ib" title="Agent settings" onclick="openSettings('agents')">${icon('gear')}</button></div>
     <div style="${on ? '' : 'opacity:.45'}">${AGENTS.map(a => `<div class="atrow" style="${a.on ? '' : 'opacity:.5'}"><span class="dot ready"></span><span class="grow" style="min-width:0"><b>${esc(a.name)}</b> <small class="am">${esc(a.model || 'inherit')}</small>
       <small>${esc(a.description || '')}</small></span></div>`).join('') || '<p class="dim">No agents set up yet.</p>'}</div>`;
 }

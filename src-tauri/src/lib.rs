@@ -1641,11 +1641,14 @@ fn list_dir(st: St, pid: String, rel: String) -> R<Value> {
     let p = st.project(&pid).ok_or("no such project")?;
     let dir = inside(&p.path, &rel)?;
     let skip = [".git", "node_modules", "target", "dist", "build", "__pycache__", ".venv", ".next"];
-    let mut items: Vec<(bool, String)> = std::fs::read_dir(dir).map_err(|e| e.to_string())?.flatten()
-        .map(|e| (e.path().is_dir(), e.file_name().to_string_lossy().to_string()))
-        .filter(|(d, n)| !(*d && skip.contains(&n.as_str()))).collect();
+    // #377 t = mtime (s), size = bytes: UI sorts by date/size
+    let mut items: Vec<(bool, String, u64, u64)> = std::fs::read_dir(dir).map_err(|e| e.to_string())?.flatten()
+        .map(|e| { let m = e.metadata().ok();
+            let t = m.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+            (e.path().is_dir(), e.file_name().to_string_lossy().to_string(), t, m.map_or(0, |m| m.len())) })
+        .filter(|(d, n, ..)| !(*d && skip.contains(&n.as_str()))).collect();
     items.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.to_lowercase().cmp(&b.1.to_lowercase())));
-    Ok(json!(items.iter().map(|(d, n)| json!({"name": n, "dir": d})).collect::<Vec<_>>()))
+    Ok(json!(items.iter().map(|(d, n, t, s)| json!({"name": n, "dir": d, "t": t, "size": s})).collect::<Vec<_>>()))
 }
 
 /// #221 Hot files: sizes + 30-day churn (async: git + many stats)
