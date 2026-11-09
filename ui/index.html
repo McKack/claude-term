@@ -617,7 +617,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .tree .eb:not(:empty) { min-width:18px; height:16px; padding:0 5px; color:var(--ink); font-size:10.5px; font-weight:700; line-height:16px; text-align:center; }
 .code { font:12.5px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); counter-reset:l; }
 .code pre { margin:0; padding:8px 12px 8px 0; white-space:pre; min-width:max-content; } .code.wrap pre { white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; }
-.code i { font-style:normal; } .code .hk { color:#c678dd; } .code .hs { color:#98c379; } .code .hc { color:var(--faint); font-style:italic; } .code .hn { color:#d19a66; } .code .ht { color:#61afef; }
+.code i { font-style:normal; } .code .hb { font-weight:700; } .code.plain i { color:inherit; font-style:normal; font-weight:inherit; } .code .hk { color:#c678dd; } .code .hs { color:#98c379; } .code .hc { color:var(--faint); font-style:italic; } .code .hn { color:#d19a66; } .code .ht { color:#61afef; }
 :root:not([data-theme=dark]) .code .hk { color:#a626a4; } :root:not([data-theme=dark]) .code .hs { color:#50a14f; } :root:not([data-theme=dark]) .code .hn { color:#986801; } :root:not([data-theme=dark]) .code .ht { color:#4078f2; }
 .tree small { overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .code pre > div { display:grid; grid-template-columns:var(--lw) 1fr; } .code pre > div > span { min-width:0; } /* #286 line text = ONE grid item; bare tokens each took a cell → spilled into the gutter */ /* #231 one row per line: line no. = ::before (not copied), wrapped lines indent under the text */
@@ -2144,7 +2144,7 @@ function vZoom(f, e) {
 function fileView(f) {
   VF = f; const pdf = /\.pdf$/i.test(f.path || ''), wrap = localStorage.diffWrap !== '0';
   vWin(`${icon(pdf ? 'pdf' : 'term')}<span class="vname">${esc(f.name)}</span>`, `<button class="btn primary sm" onclick="vSaveAs()">Save as…</button>`,
-    (pdf ? '' : `<button class="ib${wrap ? ' on' : ''}" title="Wrap long lines" onclick="const s=$('dlg').querySelector('.vtext');try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('on',s.classList.contains('wrap'))">${icon('wrap')}</button>
+    (pdf ? '' : (/class="code/.test(f.html) ? hlBtn(`$('dlg').querySelector('.code')`) : '') + `<button class="ib${wrap ? ' on' : ''}" title="Wrap long lines" onclick="const s=$('dlg').querySelector('.vtext');try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('on',s.classList.contains('wrap'))">${icon('wrap')}</button>
       <button class="ib" title="Copy all" onclick="navigator.clipboard.writeText(VF.text);toast('Copied','ok')">${icon('copy')}</button>`)
     + (f.path ? `<button class="ib" title="Show in folder" onclick="T.opener.revealItemInDir(VF.path).catch(e=>toast(String(e),'err'))">${icon('folder')}</button>` : ''),
     pdf ? `<iframe class="vdoc" src="${f.url}"></iframe>` : `<div class="dscroll vtext sel${wrap ? ' wrap' : ''}">${f.html}</div>`, null, pdf ? null : 'text');
@@ -3617,9 +3617,17 @@ function previewFile(rel) {
 /* #248 syntax colour, regex per line (no parser, no dep): block comments carry across lines; # comments only in hash langs.
    ponytail: one keyword set for all langs; > 2 MB → plain. 5k lines ≈ a few ms */
 const HKW = new Set('if else for while do return function const let var class new this import export from as async await try catch finally throw switch case break continue default typeof instanceof in of fn pub mut impl struct enum use mod match self Self where trait loop def elif lambda None True False null undefined true false and or not with yield static void type interface extends implements package func defer crate super move ref dyn unsafe extern'.split(' '));
+/* #338 Markdown: fences (whole block = string colour), headings, list/quote markers, inline `code`, **bold**, [links](url) */
+function hiMd(lines) { let fence = false;
+  const inl = l => esc(l).replace(/(`+)(.+?)\1|\*\*(.+?)\*\*|(\[[^\]]*\]\([^)]*\))/g, (m, b, c, bo, ln) => b ? `<i class="hs">${m}</i>` : bo ? `<i class="hb">${m}</i>` : `<i class="ht">${m}</i>`);
+  return lines.map(l => { if (/^\s*(```|~~~)/.test(l)) { fence = !fence; return `<i class="hc">${esc(l)}</i>`; }
+    if (fence) return `<i class="hs">${esc(l)}</i>`;
+    if (/^#{1,6}\s/.test(l)) return `<i class="hk hb">${esc(l)}</i>`;
+    const m = l.match(/^(\s*(?:[-*+]|\d+[.)]|>)\s)(.*)$/); return m ? `<i class="hn">${esc(m[1])}</i>${inl(m[2])}` : inl(l); }); }
 function hiCode(text, ext) {
   const lines = text.split('\n');
-  if (text.length > 2e6 || /^(md|txt|log|csv)$/.test(ext)) return lines.map(esc);
+  if (text.length > 2e6 || /^(txt|log|csv)$/.test(ext)) return lines.map(esc);
+  if (/^(md|markdown|mdx)$/.test(ext)) return hiMd(lines);
   const hash = /^(py|sh|bash|zsh|ps1|toml|ya?ml|rb|r|conf|ini|env|gitignore|dockerfile|mk)$/.test(ext), ml = /^(html?|xml|svg|vue)$/.test(ext);
   const re = new RegExp(String.raw`(/\*[\s\S]*?(?:\*/|$)${ml ? '|<!--[^]*?(?:-->|$)' : ''})|(${hash ? '#' : '//'}.*)|("(?:\\.|[^"\\])*"?|'(?:\\.|[^'\\])*'?|\`(?:\\.|[^\`\\])*\`?)|(\b\d[\w.]*)|(</?[A-Za-z][\w-]*|/?>)|([A-Za-z_$][\w$]*)`, 'g');
   let blk = null; // open block comment end token
@@ -3631,7 +3639,10 @@ function hiCode(text, ext) {
       o += c ? `<i class="${c}">${esc(t)}</i>` : esc(t); i = re.lastIndex; if (!t) re.lastIndex++; }
     return o + esc(l.slice(i)); });
 }
-const codeHtml = (text, ext, wrap) => { const h = hiCode(text, ext); return `<div class="code${wrap ? ' wrap' : ''}"><pre class="sel" style="--lw:calc(${String(h.length).length}ch + 20px)">${h.map(l => `<div><span>${l}</span></div>`).join('')}</pre></div>`; };
+// #338 colour toggle (left of Wrap): .code.plain = CSS-only, no re-render; remembered in localStorage.codeHl
+const hlOn = () => localStorage.codeHl !== '0';
+const hlBtn = (q, st = '') => `<button class="ib${hlOn() ? ' on' : ''}" style="${st}" title="Syntax highlighting" onclick="const p=${q}.classList.toggle('plain');try{localStorage.codeHl=p?'0':'1'}catch{}this.classList.toggle('on',!p)">${icon('code')}</button>`;
+const codeHtml = (text, ext, wrap) => { const h = hiCode(text, ext); return `<div class="code${wrap ? ' wrap' : ''}${hlOn() ? '' : ' plain'}"><pre class="sel" style="--lw:calc(${String(h.length).length}ch + 20px)">${h.map(l => `<div><span>${l}</span></div>`).join('')}</pre></div>`; };
 // #248 recent files: newest first from this project's chat log (tool file_path) then git heat; ≤ 8, inside the project only
 function recentFiles() {
   const out = [], add = f => { if (!f) return; const r = relOf(cur, f); if (r && !/^[a-z]:|^\//i.test(r) && !out.includes(r)) out.push(r); };
@@ -3647,7 +3658,7 @@ async function drawCode() {
     if (UI.lc || UI.st !== 'files') { UI.lc = false; setSide('files'); } return; }
   const wrap = localStorage.codeWrap !== '0'; // #231 wrap ON by default, choice remembered (like the diff dialog)
   const head = `<div class="row" style="align-items:center;margin-bottom:10px;gap:4px"><a class="crumbs mono" style="overflow-wrap:anywhere;margin:0;cursor:pointer" title="Open in the File viewer" onclick="codeView()">${esc(file)}</a>
-    <button class="ib" style="width:26px;height:26px" title="Open in the File viewer" onclick="codeView()">${icon('expand')}</button><span class="grow"></span><button class="ib${wrap ? ' on' : ''}" style="width:26px;height:26px" title="Wrap long lines"
+    <button class="ib" style="width:26px;height:26px" title="Open in the File viewer" onclick="codeView()">${icon('expand')}</button><span class="grow"></span>${hlBtn(`$('rbody').querySelector('.code')`, 'width:26px;height:26px')}<button class="ib${wrap ? ' on' : ''}" style="width:26px;height:26px" title="Wrap long lines"
     onclick="const c=$('rbody').querySelector('.code'),w=c.classList.toggle('wrap');try{localStorage.codeWrap=w?'1':'0'}catch{}this.classList.toggle('on',w)">${icon('wrap')}</button></div>`;
   let text;
   try { text = await call('read_file', {pid: cur, rel: file}); } catch (e) { box.innerHTML = head + `<p class="dim">${esc(e)}</p>`; return; }
