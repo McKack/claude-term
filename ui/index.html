@@ -130,6 +130,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
 .seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
 .seg button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
+.vsw button { padding:4px 7px; } /* #330 header view switcher icon-only */
 #log { flex:1; overflow:auto; padding:8px 24px 24px; margin-top:-54px; padding-top:62px; mask-image:linear-gradient(to bottom, transparent 36px, #000 52px); } /* under #head: 16px fade, lower part of the header */
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
 .msg { max-width:100%; }
@@ -771,7 +772,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="head" hidden>
     <button class="ib" title="Sidebar: projects and files" onclick="toggleLeft()"><svg class="i"><use href="#i-panelL"/></svg></button>
     <span class="title" id="pname"></span><span id="branch" hidden title="Branches: switch, new, push" onclick="branchMenu(this)"></span><span class="grow"></span>
-    <span class="seg"><button data-v="chat" onclick="setView('chat')"><svg class="i"><use href="#i-chat"/></svg>Chat</button><button data-v="term" onclick="setView('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button><button data-v="edit" onclick="setView('edit')" title="Edit: file tabs + Terminal/Shell panel"><svg class="i"><use href="#i-pen"/></svg>Edit</button></span>
+    <span class="seg vsw"><button data-v="chat" onclick="setView('chat')" title="Chat" aria-label="Chat"><svg class="i"><use href="#i-chat"/></svg></button><button data-v="term" onclick="setView('term')" title="Terminal" aria-label="Terminal"><svg class="i"><use href="#i-term"/></svg></button><button data-v="edit" onclick="setView('edit')" title="Edit: file tabs + Terminal/Shell panel" aria-label="Edit"><svg class="i"><use href="#i-pen"/></svg></button></span>
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
   <div id="edv"><div id="etabs"></div><div id="ebody"></div></div>
