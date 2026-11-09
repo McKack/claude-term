@@ -577,16 +577,16 @@ pre.diff .ctx { color:var(--faint); }
 .gdot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse .8s ease-in-out infinite alternate; flex:none; } /* #179 */
 #status button:hover { color:var(--text); background:var(--hover); } #status b { color:var(--dim); font-weight:500; }
 #status > span, #status button > span { display:inline-flex; gap:4px; align-items:center; } #status .i { width:14px; height:14px; }
-.menu button.sub { padding-left:34px; font-size:12.5px; color:var(--dim); } .menu button.sub .chk { width:12px; }
+.menu button.sub { padding-left:34px; font-size:12px; color:var(--dim); } .menu button.sub .chk { width:12px; }
 .bar { display:inline-block; width:34px; height:4px; border-radius:2px; background:var(--line2); overflow:hidden; vertical-align:middle; } .bar i { display:block; height:100%; background:var(--accent); }
 #working { display:inline-flex; gap:6px; align-items:center; color:var(--accent); }
 
 /* popover menu */
 .glass { background:color-mix(in srgb, var(--card) 76%, transparent); backdrop-filter:blur(28px) saturate(170%); -webkit-backdrop-filter:blur(28px) saturate(170%);
   border:1px solid color-mix(in srgb, #fff 10%, var(--line2)); box-shadow:inset 0 1px 0 #ffffff12, 0 18px 50px #00000040; }
-.menu { position:fixed; inset:auto; margin:0; color:var(--text); min-width:200px; border-radius:14px; padding:5px; } /* a manual popover: top layer, above dialogs */
-.menu button { display:flex; width:100%; gap:9px; align-items:center; text-align:left; border:0; background:none; padding:7px 10px; border-radius:8px; cursor:pointer; }
-.menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); }
+.menu { position:fixed; inset:auto; margin:0; color:var(--text); min-width:180px; border-radius:12px; padding:4px; font-size:12.5px; line-height:1.4; } /* #395 one size = #emenu bar */ /* a manual popover: top layer, above dialogs */
+.menu button { display:flex; width:100%; gap:8px; align-items:center; text-align:left; border:0; background:none; padding:4px 9px; border-radius:6px; cursor:pointer; }
+.menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); } .menu button svg { width:14px; height:14px; } .menu button small { font-size:11px; }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
 .menu .mand { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--faint); padding:2px 10px; } .menu .mand::before, .menu .mand::after { content:''; flex:1; border-top:1px solid var(--line); }
 .vctx { grid-column:1/-1; display:flex; align-items:center; gap:8px; min-height:34px; padding:0 12px; border-bottom:1px solid var(--line); font-size:12px; white-space:nowrap; overflow:hidden; } .vctx:empty { display:none; } .vctx input[type=range] { width:140px; padding:0; border:0; accent-color:var(--accent); } .vctx b { min-width:24px; font-weight:500; font-variant-numeric:tabular-nums; } .vctx .ib { width:26px; height:26px; padding:0; } .vctx .sep { width:1px; height:16px; background:var(--line); } /* #379 context bar = per-tool settings (was #293 stroke popover) */
