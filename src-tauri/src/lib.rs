@@ -1456,9 +1456,14 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
                 r["why"] = json!(why);
             }
         }
-        json!({"readme": readme, "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "lic_id": lic_id, "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
+        // #350 README stale = untouched since the last tag while code changed after it. ponytail: commit times, no content check
+        let ct = |a: &[&str]| git(a).stdout.trim().parse::<u64>().unwrap_or(0);
+        let tag_t = if tag.ok { ct(&["log", "-1", "--format=%ct", tag.stdout.trim()]) } else { 0 };
+        let code_t = store::code_time(&p.path);
+        let readme_old = tag_t > 0 && code_t > tag_t && ct(&["log", "-1", "--format=%ct", "--", "README*"]) < tag_t;
+        json!({"readme": readme, "readme_old": readme_old, "credits": has(&["CREDITS"]), "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "lic_id": lic_id, "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
                "version": ver.as_ref().map(|v| &v.0), "vfile": ver.as_ref().map(|v| v.1), "tag": if tag.ok { tag.stdout.trim() } else { "" },
-               "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon.map(|i| i.0), "icon_px": icon.and_then(|i| i.1), "remote": remote, "code_t": store::code_time(&p.path),
+               "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon.map(|i| i.0), "icon_px": icon.and_then(|i| i.1), "remote": remote, "code_t": code_t,
                "ci": ci, "sign": store::sign_env(&p.path).into_iter().map(|(k, _)| k).collect::<Vec<_>>()})
     }).await.map_err(|e| e.to_string())
 }

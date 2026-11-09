@@ -2978,7 +2978,12 @@ const useGuess = () => call('update_project', {pid: cur, changes: {build: {...P(
 const STAGES = {alpha: 'Alpha', beta: 'Beta', rc: 'Release candidate', published: 'Published'}, SK = Object.keys(STAGES);
 const RELC = {}, RELTO = {}, RELBUSY = {}; // pid → {c, t} check cache · pid → target stage while moving up
 const RELAI = { // fix prompts: Claude writes/judges, never template
-  readme: 'Write README.md by hand-feel: plain voice of this project, what it does and for whom, how to install and run it. No template headings, badge walls or emoji; short beats complete. Read the code first.',
+  // #350 one row = README (exists, ≥10 lines, touched since the last tag) + CREDITS.md; LICENSE has its own row
+  get readme() { const c = RELC[cur]?.c || {}; return [
+    c.readme < 10 ? 'Write README.md by hand-feel: plain voice of this project, what it does and for whom, how to install and run it. No template headings, badge walls or emoji; short beats complete. Read the code first.'
+      : c.readme_old ? `README.md wasn't touched since ${c.tag}: bring it up to date with what changed since (git log ${c.tag}..HEAD), keep its voice, change only what's out of date.` : '',
+    c.credits ? '' : 'Write CREDITS.md: who made it (git authors / repo owner) and the third-party libraries, fonts, icons and assets it ships, each with its licence (read the dependency manifests and asset folders). Plain list, no filler.',
+  ].filter(Boolean).join(' '); },
   version: 'Give the project a version (0.1.0) in its main config (package.json / Cargo.toml / tauri.conf.json), consistent across files.',
   get license() { return `Write LICENSE with the full ${LICS[P().license] || P().license} text (this year, copyright holder from the git author / repo owner), replacing any other licence file, and set the licence field in the project's config files that carry one.`; },
   changelog: 'Write CHANGELOG.md from git history since the last tag: user-facing changes only, newest first, grouped by version.',
@@ -2998,13 +3003,14 @@ function relItems(c, p) {
   const stale = files.filter(f => f.mtime && f.mtime < (c.code_t || 0)); // #92: built before the newest code commit → rebuild before release
   // array order = display order (filter keeps it) → Build stays last whatever the stage
   return [
-    {s: 0, id: 'readme', t: 'README written', ok: c.readme >= 10, d: c.readme ? `${c.readme} lines` : 'none'},
+    {s: 0, id: 'readme', t: 'Markdown files written', ok: c.readme >= 10 && !c.readme_old && c.credits,
+      d: [c.readme < 10 ? (c.readme ? `README ${c.readme} lines` : 'no README') : c.readme_old ? `README not updated since ${c.tag}` : 'README', c.credits ? 'CREDITS' : 'no CREDITS.md'].join(' · ')},
     {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` + (tv ? ` · last released ${c.tag}` : ' · first release') : 'not found'},
     // #121: semver ≤ last tag → auto-bumped in relWizard; row stays only when that can't happen (non-semver) → AI fix
     ...(tv && !(v && vcmp(v, tv) > 0) ? [{s: 0, id: 'bump', t: 'Version newer than the last release', ok: false, d: `last released ${c.tag}`}] : []),
     {s: 0, id: 'clean', t: 'All changes saved to Git', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
     // #264 picked in Settings › Projects (p-lic); never picked → Choose / Confirm (a file exists) → licPick; picked but file missing/other → AI writes it
-    {s: 1, id: 'license', t: 'License', ok: !!p.license && c.license && (!c.lic_id || c.lic_id === p.license),
+    {s: 0, id: 'license', t: 'License', ok: !!p.license && c.license && (!c.lic_id || c.lic_id === p.license),
       d: p.license ? LICS[p.license] + (!c.license ? ' · no LICENSE file yet' : c.lic_id && c.lic_id !== p.license ? ` · file says ${c.lic_id}` : '') : c.license ? `not picked · file looks like ${c.lic_id || 'an unknown license'}` : 'not picked',
       ...(p.license ? {} : {go: 'licPick()', gl: c.license ? 'Confirm' : 'Choose'})},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
