@@ -1689,7 +1689,7 @@ new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) {
 // bottom pad ≡ H − padTop (mod LH) ∴ scrollMax is a whole row too (end = on grid)
 // #342 dock pad-bottom = (log h + current pad) mod LH ∴ log height = whole rows → dock top lands on the log's row grid (stable: 2nd pass = same value)
 const termPad = () => { const l = $('log'), d = $('dock'); if (view === 'chat') return l.style.paddingBottom = d.style.paddingBottom = '';
-  d.style.paddingBottom = ((l.getBoundingClientRect().height + (parseFloat(d.style.paddingBottom) || 0)) % LH).toFixed(2) + 'px'; l.style.paddingBottom = LH + ((l.clientHeight - parseFloat(getComputedStyle(l).paddingTop)) % LH + LH) % LH + 'px'; };
+  d.style.paddingBottom = view !== 'term' ? '' : ((l.getBoundingClientRect().height + (parseFloat(d.style.paddingBottom) || 0)) % LH).toFixed(2) + 'px'; l.style.paddingBottom = LH + ((l.clientHeight - parseFloat(getComputedStyle(l).paddingTop)) % LH + LH) % LH + 'px'; };
 new ResizeObserver(termPad).observe($('log'));
 let wAcc = 0; $('log').addEventListener('wheel', e => { if (view === 'chat' || e.ctrlKey || !e.deltaY) return; e.preventDefault(); const l = $('log');
   wAcc += e.deltaY * (e.deltaMode === 1 ? LH : e.deltaMode === 2 ? l.clientHeight : 1); const n = Math.trunc(wAcc / LH); if (n) { wAcc -= n * LH; l.scrollTop = Math.round(l.scrollTop / LH) * LH + n * LH; } }, {passive: false});
