@@ -484,8 +484,6 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
   background:var(--card); border:1px solid var(--line); cursor:pointer; flex:none; }
 .tile:hover { border-color:var(--line2); } .tile.on { border-color:var(--accent); color:var(--accent); }
 .tile .dot { position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border:2px solid var(--side); }
-.stat { text-align:center; line-height:1.15; padding:2px 0; } .stat b { display:block; font-size:14px; font-weight:600; }
-.stat small { font-size:10px; color:var(--faint); }
 #rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
 [data-dot] { position:relative; } [data-dot]::after { content:''; position:absolute; top:3px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--dotc, var(--accent)); box-shadow:0 0 0 2px var(--side); } [data-dot=pulse]::after { animation:pulse .8s ease-in-out infinite alternate; } /* #177 build running */
 .rsep { flex:none; width:1px; margin:4px 4px; background:var(--line2); }
@@ -4766,12 +4764,13 @@ async function queueToTeam(btn) {
 function drawRails() {
   drawAtp();
   if (UI.lc) {
-    const p = P();
+    const p = P(), pid = cur;
+    if (p && !HEAT[pid]) { HEAT[pid] = {t: 0, d: {files: []}}; call('file_heat', {pid}).then(d => { HEAT[pid] = {t: Date.now(), d}; pid === cur && drawRails(); }, () => {}); } // git heat fills the rail past the chat log; t:0 → Graph still rescans
     $('lrail').innerHTML = `<button class="ib" title="Home" onclick="goHome()" style="width:36px;height:36px"><svg style="width:22px;height:22px"><use href="#i-logo"/></svg></button>
       <button class="ib" title="Expand the sidebar" onclick="toggleLeft()">${icon('panelL')}</button>
       <button class="ib" title="Files" onclick="UI.lc = false; setSide('files')">${icon('folder')}</button><hr>`
       + (p ? `<div class="tile on" title="${esc(p.name)} (open)">${initials(p.name)}<span class="dot ${dotOf(p)}"></span></div>`
-        + touched(cur).map(f => `<button class="ib" title="${esc(f)}" data-file="${esc(f)}" onclick="openFile(this.dataset.file)">${icon('file')}</button>`).join('') + '<hr>' : '')
+        + recentFiles().map(f => `<button class="ib" title="${esc(f)}" data-p="${esc(f)}" onclick="previewFile(this.dataset.p)">${icon('file')}</button>`).join('') + '<hr>' : '') // #291 = Code tab's "Recently worked on"; redrawn per tool entry
       + recent().filter(x => x.id !== cur).map(x => `<div class="tile" title="${esc(x.name)}" onclick="openProject('${x.id}')">${initials(x.name)}<span class="dot ${dotOf(x)}"></span>
           ${x.questions.length ? '<span class="pill" style="position:absolute;top:-6px;right:-8px;padding:0 4px;font-size:10px">' + x.questions.length + '</span>' : ''}</div>`).join('')
       + `<span class="grow"></span><button class="ib" title="Add a project" onclick="menuAt(this, addItems())">${icon('plus')}</button>
@@ -4779,20 +4778,10 @@ function drawRails() {
   }
   if (UI.rc && cur && !$('right').hidden) drawRRail();
 }
+// #291 rail = the tab bar as icons (same data-t → tabDots, same divider); stats live in the statusbar
 function drawRRail() {
-  const p = P(), t = todos(cur), u = S.usage[p.account] || {};
-  const stat = (big, small, title, attrs = '') => `<div class="stat" title="${esc(title)}" ${attrs}><b>${big}</b><small>${small}</small></div>`;
-  const list = t.map(x => (x.status === 'completed' ? '✓ ' : x.status === 'in_progress' ? '▸ ' : '○ ') + x.content).join('\n');
-  $('rrail').innerHTML = stat(t.length ? `${t.filter(x => x.status === 'in_progress').length}/${t.length}` : '–', 'tasks', list || "No task list yet (Clauracle's to-dos show here)")
-    + (t.length ? stat(t.filter(x => x.status === 'completed').length, 'done', list) : '')
-    + (p.questions.length ? stat(p.questions.length, 'asks', 'Questions waiting', `onclick="showQuestions(cur)" style="cursor:pointer;color:var(--accent)"`) : '')
-    + (team[cur]?.repo ? stat(`${teamTasks(cur).filter(isDoing).length}/${teamTasks(cur).length}`, 'team', teamTasks(cur).map(x => `#${x.number} ${x.title}${x.assignees.length ? ' (' + x.assignees.map(a => a.login).join(', ') + ')' : ''}`).join('\n') || 'No open team tasks', `onclick="expandRight('gh')" style="cursor:pointer"`) : '')
-    + (team[cur]?.conflicts?.length ? stat(team[cur].conflicts.length, 'overlap', team[cur].conflicts.map(c => `@${c.author} #${c.number}: ${c.files.join(', ')}`).join('\n'), `onclick="expandRight('gh')" style="cursor:pointer;color:var(--err)"`) : '')
-    + (ctx[cur] != null ? stat(ctx[cur] + '%', 'context', 'Context window used') : '')
-    + (u.five_hour != null ? stat(u.five_hour + '%', '5h', '5-hour usage') : '')
-    + (u.seven_day != null ? stat(u.seven_day + '%', '7d', 'Weekly usage') : '')
-    + '<hr>' + [['gh', 'gh', 'GitHub'], ['svc', 'layers', 'Services & Secrets'], ['build', 'hammer', 'Build'], ['agents', 'bot', 'Agents'], ['code', 'code', 'Code'], ['web', 'globe', 'Browser']]
-      .map(([k, i, l]) => `<button class="ib" data-t="${k}" title="${l}" onclick="expandRight('${k}')">${icon(i)}</button>`).join('');
+  $('rrail').innerHTML = [...$('rtabs').children].map(b => b.dataset.t ? `<button class="ib${b.dataset.t === tab ? ' on' : ''}" data-t="${b.dataset.t}" title="${esc(b.title)}" onclick="expandRight('${b.dataset.t}')">${b.querySelector('svg').outerHTML}</button>` : '<hr>').join('');
+  tabDots();
 }
 function expandRight(t) { tab = t; UI.rc = false; layout(); drawRight(); }
 function openFile(abs) {
