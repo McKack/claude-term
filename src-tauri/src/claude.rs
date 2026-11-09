@@ -1,6 +1,6 @@
 //! One `claude` process per project, spoken to over its stream-json protocol (what claude-agent-sdk does):
 //! user messages in, messages out, plus control requests both ways (permissions, our in-process MCP tools,
-//! interrupt, context usage). On top: the continue modes, held questions, limits and pool switching.
+//! interrupt, context usage). On top: the continue modes, held questions, limits and relay switching.
 use crate::store::{self, Config, Project, Question};
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
@@ -542,7 +542,7 @@ fn show(app: &AppHandle, st: &State, pid: &str, acct: &str, m: &Value) { // acct
             }
         }
         Some("rate_limit_event") => {
-            // #111: spawn-time account, ≠ p.account ∵ a pool switch changes p.account before the reconnect
+            // #111: spawn-time account, ≠ p.account ∵ a relay switch changes p.account before the reconnect
             let mut cfg = st.cfg.lock().unwrap();
             store::record_usage(&mut cfg, &acct, &m["rate_limit_info"]);
             store::save(&cfg);
@@ -673,12 +673,12 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
     live.first_turn.store(false, SeqCst);
 }
 
-/// Auto modes: check the limits, switch to a pool account or stop, else start the next session.
+/// Auto modes: check the limits, switch to a relay account or stop, else start the next session.
 fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) {
     let p = st.project(pid).unwrap();
     let over = store::over_limit(&st.cfg.lock().unwrap(), &p.account);
     if let Some(window) = over {
-        let next = store::pool_pick(&st.cfg.lock().unwrap(), &p.account);
+        let next = store::relay_pick(&st.cfg.lock().unwrap(), &p.account);
         match next {
             Some(n) => {
                 let nick = store::account_or_main(&st.cfg.lock().unwrap(), &n).nick.clone();
@@ -688,7 +688,7 @@ fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) 
                 emit(app, "project", json!(st.project(pid)));
             }
             None => {
-                let msg = format!("Paused: {} is at its {} limit and no pool account has room.", p.account, label(&window));
+                let msg = format!("Paused: {} is at its {} limit and no relay account has room.", p.account, label(&window));
                 line(app, pid, "note", &msg);
                 if !p.questions.is_empty() {
                     emit(app, "questions", json!({"pid": pid, "questions": p.questions}));

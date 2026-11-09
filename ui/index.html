@@ -710,6 +710,9 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 .box { border:1px solid var(--line); border-radius:12px; padding:4px 14px; margin:8px 0 14px; }
 .grid2 { display:grid; grid-template-columns:150px 1fr; gap:10px 14px; align-items:center; margin:8px 0 14px; }
 .acct { border:1px solid var(--line); border-radius:12px; margin:10px 0; } .acct > summary { padding:12px 14px; cursor:pointer; list-style:none; display:flex; gap:10px; align-items:center; }
+.relay { border:1px solid var(--line); border-radius:14px; padding:8px 10px 2px; margin:10px 0; background:var(--side); } .relay .rh { display:flex; gap:8px; align-items:center; padding:2px 4px; }
+.relay .rname { font-weight:600; border-color:transparent; background:none; padding:2px 6px; width:16ch; } .relay .rname:hover, .relay .rname:focus { border-color:var(--line2); }
+.relay .rl { min-height:52px; } .relay .rl:empty { border:1px dashed var(--line2); border-radius:12px; margin:10px 0; } .relay .acct { background:var(--card); } .relay .acct > summary { cursor:grab; } /* #383 */
 .acct > div { padding:0 14px 14px; } .acct .chev { display:inline-flex; color:var(--faint); transition:rotate .15s; } .acct .chev svg { width:14px; height:14px; } .acct[open] .chev { rotate:90deg; }
 .ordiv { display:flex; align-items:center; gap:10px; margin:14px 0; color:var(--faint); font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
 .ordiv::before, .ordiv::after { content:""; flex:1; border-top:1px solid var(--line2); } .acct[open] > summary { border-bottom:1px solid var(--line); margin-bottom:10px; }
@@ -4479,6 +4482,7 @@ async function openSettings(p) {
     ${{look: lookPage, projects: projectsPage, build: buildPage, cx: cxPage, ai: aiPage, notify: notifyPage}[page]()}</div>
     <div class="sfoot"><select id="sjump" title="Jump to a section" onchange="sjumpGo(this)"></select><span class="row grow">${(FOOT[page] || (() => ''))()}</span><button class="btn primary" onclick="closeDlg()">Done</button></div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
+  if (page === 'ai') relaySort();
   sjumpFill(); setTimeout(sjumpFill, 1500); // ponytail: 2nd pass ∵ some pages fill sections async
 }
 // #215 footer: Jump to = the page's section titles (folds + secs), live from the DOM; FOOT[page] = contextual actions
@@ -4751,26 +4755,43 @@ function acctSteps() {
   if (st[0][0] && st[1][0]) return '';
   return `<ol class="stepper" style="margin-bottom:14px">${st.map(([ok, t, body], i) => `<li class="${ok ? 'done' : ''}"><span class="sn">${ok ? icon('check') : i + 1}</span><b>${t}</b>${ok ? '' : body}</li>`).join('')}</ol>`;
 }
+/* #383 relays (was "pool"): accounts in one relay take over from each other at their limits. ≥1 relay → outer sections
+   (.relay > .rl[data-r]) + "Not in a relay"; drag (Sortable, handle summary) between them → acct relay. RLS = section names this
+   render (handlers use the index ∵ names in attrs need escaping); RNEW = added but still empty (UI-only, gone at restart). */
+let RLS = [], RNEW = [];
+const relays = () => [...new Set([...S.accounts.map(a => a.relay).filter(Boolean), ...RNEW])];
+function relayAdd() { const all = relays(); let n = all.length + 1; while (all.includes('Relay ' + n)) n++; RNEW.push('Relay ' + n); openSettings(); }
+async function relayRename(i, v) { const old = RLS[i]; v = v.trim(); if (!v || v === old) return openSettings();
+  RNEW = RNEW.map(r => r === old ? v : r);
+  for (const a of S.accounts.filter(a => a.relay === old)) await call('update_account', {id: a.id, changes: {relay: v}});
+  openSettings(); }
+const relayDrop = i => { RNEW = RNEW.filter(r => r !== RLS[i]); openSettings(); };
+const relaySort = () => $('dlg').querySelectorAll('.rl').forEach(l => Sortable.create(l, {group: 'relay', draggable: '.acct', handle: 'summary', animation: 150,
+  onEnd: e => e.from !== e.to && acct(e.item.dataset.id, {relay: RLS[e.to.dataset.r] || ''})}));
 function aiPage() {
-  const pools = [...new Set(S.accounts.map(a => a.pool).filter(Boolean))];
+  RLS = relays();
   const meter = (v, l) => v == null ? '' : `<small class="dim">${l} <span class="bar"><i style="width:${v}%"></i></span> ${v}%</small>`;
-  return acctSteps() + youHtml() + sec('AI accounts', `<p class="dim" style="margin:0 0 8px;font-size:13px">An AI account is a login with limits. Accounts in the same <b>pool</b> take over from each other: when one reaches a limit, auto mode carries on with the one that has the most left. New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>`
-    + S.accounts.map(a => { const u = S.usage[a.id] || {}; return `<details class="acct"><summary>
+  const row = a => { const u = S.usage[a.id] || {}; return `<details class="acct" data-id="${esc(a.id)}"><summary>
       <span class="chev">${icon('chev')}</span>${icon('user')}<b>${esc(a.nick)}</b><small class="dim">${a.id === 'Main' ? 'Claude Code login' : a.base_url ? esc(a.base_url) : 'setup-token'}</small>
-      ${a.pool ? `<span class="pill">${esc(a.pool)}</span>` : ''}${a.id === S.default_account ? '<span class="pill">default</span>' : ''}<span class="grow"></span>${meter(u.five_hour, '5h')} ${meter(u.seven_day, 'week')}</summary>
+      ${a.id === S.default_account ? '<span class="pill">default</span>' : ''}<span class="grow"></span>${meter(u.five_hour, '5h')} ${meter(u.seven_day, 'week')}</summary>
       <div><div class="grid2">
         <span>Name</span><input value="${esc(a.nick)}" onchange="this.value.trim() && acct('${esc(a.id)}', {nick:this.value.trim()})">
         <span>Limits</span><span class="row wrap">5-hour <input type="number" min="1" max="100" value="${a.limits.five_hour}" style="width:70px" onchange="acct('${esc(a.id)}', {limits:{...limitsOf('${esc(a.id)}'), five_hour:+this.value}})">%
           weekly <input type="number" min="1" max="100" value="${a.limits.seven_day}" style="width:70px" onchange="acct('${esc(a.id)}', {limits:{...limitsOf('${esc(a.id)}'), seven_day:+this.value}})">%</span>
         <span></span><small class="dim" style="margin-top:-6px">Auto mode switches account or pauses here; held questions show then.</small>
-        <span>Pool</span><span class="row"><input class="grow" value="${esc(a.pool)}" placeholder="None (type a new pool name)" onchange="acct('${esc(a.id)}', {pool:this.value.trim()})">
-          ${pools.length ? `<button class="ib" title="Pick a pool" onclick="poolMenu(this, '${esc(a.id)}')">${icon('chev')}</button>` : ''}</span>
+        <span>Relay</span><span class="row"><input class="grow" value="${esc(a.relay)}" placeholder="None (type a new relay name)" onchange="acct('${esc(a.id)}', {relay:this.value.trim()})">
+          ${RLS.length ? `<button class="ib" title="Pick a relay" onclick="relayMenu(this, '${esc(a.id)}')">${icon('chev')}</button>` : ''}</span>
         <span>GitHub for new projects</span><select onchange="acct('${esc(a.id)}', {gh:this.value})">${options({'': 'None', ...Object.fromEntries(ghUsers.map(g => [g, '@' + g]))}, a.gh)}</select>
       </div>
       ${cxGroup('a-cx', 'Connections &amp; Skills for new projects', a.id, a)}${cxFold('a-plugin', 'Plugins & mods for new projects', 'plugin', a.id, a)}
       <div class="btns"><button class="btn" onclick="csAcct('${esc(a.id)}')">${icon('sliders')}Advanced AI settings</button><span class="grow"></span>${a.id === S.default_account ? '' : `<button class="btn" onclick="call('set_default_account', {id:'${esc(a.id)}'}).then(() => openSettings())">Make default</button>`}
-        ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; }).join(''),
-      `<button class="btn primary sm" onclick="addAcctDlg()">${icon('plus')}Add account</button>`)
+        ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; };
+  const list = !RLS.length ? S.accounts.map(row).join('') : [...RLS, ''].map((r, i) => { const as = S.accounts.filter(a => (a.relay || '') === r);
+    return `<div class="relay"><div class="rh">${r ? `<input class="rname" value="${esc(r)}" title="Rename this relay" onchange="relayRename(${i}, this.value)">` : '<b>Not in a relay</b>'}
+      <small class="dim">${as.length} account${as.length === 1 ? '' : 's'}</small><span class="grow"></span>${r && !as.length ? `<button class="ib" title="Remove this empty relay" onclick="relayDrop(${i})">${icon('trash')}</button>` : ''}</div>
+      <div class="rl" data-r="${r ? i : ''}">${as.map(row).join('')}</div></div>`; }).join('');
+  return acctSteps() + youHtml() + sec('AI accounts', `<p class="dim" style="margin:0 0 8px;font-size:13px">An AI account is a login with limits. Put accounts in a <b>relay</b> to let them take over from each other: when one reaches a limit, auto mode carries on with the account in the same relay that has the most left.${RLS.length ? ' Drag an account by its title to move it to another relay.' : ''} New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>`
+    + list, `<button class="btn sm" onclick="relayAdd()">${icon('plus')}Add relay</button><button class="btn primary sm" onclick="addAcctDlg()">${icon('plus')}Add account</button>`)
     + `${fold('a-gh', 'GitHub accounts', ghPage() + `<p class="dim" style="font-size:13px">CI builds: <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>`,
       ghUsers.map(u => '@' + u).join(' · '), '', !ghUsers.length)}
     ${fold('a-lessons', 'Lessons', `<p class="dim" style="margin:0 0 6px;font-size:13px">Never-again rules Clauracle records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.</p>
@@ -4779,8 +4800,8 @@ function aiPage() {
 }
 const limitsOf = id => S.accounts.find(a => a.id === id).limits;
 // own dropdown ∵ native <datalist> popup = off-style WebView box; typing a new name stays in the input
-const poolMenu = (el, id) => { const cur = S.accounts.find(a => a.id === id).pool || '';
-  menuAt(el, ['', ...new Set(S.accounts.map(a => a.pool).filter(Boolean))].map(p => ({label: p || 'None', check: p === cur, run: () => acct(id, {pool: p})}))); };
+const relayMenu = (el, id) => { const cur = S.accounts.find(a => a.id === id).relay || '';
+  menuAt(el, ['', ...relays()].map(p => ({label: p || 'None', check: p === cur, run: () => acct(id, {relay: p})}))); };
 const acct = (id, changes) => call('update_account', {id, changes}).then(() => openSettings());
 // Appearance: per computer (localStorage), applied before anything draws
 const ACCENTS = {Mono: ['#000000', '#ffffff'], Indigo:['#4f5bd5', '#8b93ff'], Blue: ['#2563eb', '#6ea8fe'], Teal: ['#0f8b80', '#3cc9b9'], Green: ['#2b8a3e', '#69db7c'],

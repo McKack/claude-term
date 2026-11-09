@@ -346,12 +346,12 @@ fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
     let p = st.project(&pid).unwrap();
     let over = store::over_limit(&st.cfg.lock().unwrap(), &p.account);
     if over.is_some() {
-        let pick = store::pool_pick(&st.cfg.lock().unwrap(), &p.account); // own statement: an if-let would hold the lock into with_project → deadlock
+        let pick = store::relay_pick(&st.cfg.lock().unwrap(), &p.account); // own statement: an if-let would hold the lock into with_project → deadlock
         if let Some(n) = pick {
             st.with_project(&pid, |p| p.account = n);
         }
     }
-    let p = st.project(&pid).unwrap(); // after a pool switch: same path/gh anyway
+    let p = st.project(&pid).unwrap(); // after a relay switch: same path/gh anyway
     // #220: open question = runner paused in every mode (auto_answer holds them by design) ∵ next task went on unanswered
     if !p.questions.is_empty() && p.cont != "auto_answer" {
         claude::line(&app, &pid, "note", "Paused: a question needs you. Answering it carries on.");
@@ -522,7 +522,7 @@ fn update_account(st: St, id: String, changes: Value) {
     if let Some(a) = cfg.accounts.iter_mut().find(|a| a.id == id) {
         let mut v = json!(a);
         for (k, val) in changes.as_object().cloned().unwrap_or_default() {
-            if ["nick", "gh", "limits", "pool"].contains(&k.as_str()) {
+            if ["nick", "gh", "limits", "relay"].contains(&k.as_str()) {
                 v[k] = val;
             }
         }

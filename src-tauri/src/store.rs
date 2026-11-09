@@ -1,4 +1,4 @@
-//! Persistence and CLI helpers: projects, AI accounts (tokens in the OS keychain), usage limits and pools,
+//! Persistence and CLI helpers: projects, AI accounts (tokens in the OS keychain), usage limits and relays,
 //! GitHub through gh, the Connections & Skills catalog, and fetching `claude`/`gh` when they're missing.
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ const KEYRING: &str = "clauracle";
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Limits {
-    pub five_hour: f64, // % of the window; at it the loop switches account (pool) or stops
+    pub five_hour: f64, // % of the window; at it the loop switches account (relay) or stops
     pub seven_day: f64,
 }
 impl Default for Limits {
@@ -24,7 +24,7 @@ impl Default for Limits {
     }
 }
 
-/// An AI account: the login, its limits and pool. Its gh/off are only the starting point for new projects.
+/// An AI account: the login, its limits and relay. Its gh/off are only the starting point for new projects.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default)]
 pub struct Account {
@@ -35,7 +35,8 @@ pub struct Account {
     pub off: Vec<String>,       // legacy deny-list, used only while `on` is None
     pub on: Option<Vec<String>>, // what new projects start with (connections/skills); Some([]) = nothing yet
     pub limits: Limits,
-    pub pool: String, // accounts sharing a pool take over from each other at their limits
+    #[serde(alias = "pool")] // #383: was "pool"; old configs still load
+    pub relay: String, // accounts in one relay take over from each other at their limits
     pub base_url: String, // "" = Anthropic login (setup-token); else custom endpoint, keychain holds its API key
 }
 
@@ -612,7 +613,7 @@ pub fn remove_account(cfg: &mut Config, id: &str) {
     }
 }
 
-// ---- usage, limits and pools ---------------------------------------------------------------
+// ---- usage, limits and relays ---------------------------------------------------------------
 
 /// Keep the windows from a rate-limit event (`rate_limit_info`).
 pub fn record_usage(cfg: &mut Config, account: &str, raw: &serde_json::Value) {
@@ -656,14 +657,14 @@ pub fn over_limit(cfg: &Config, account: &str) -> Option<String> {
         .find(|(k, lim)| u.get(*k).copied().unwrap_or(0.0) >= *lim).map(|(k, _)| k.to_string())
 }
 
-/// Another account of the same pool that's under its limits, the one with the most left.
-pub fn pool_pick(cfg: &Config, account: &str) -> Option<String> {
-    let pool = &account_or_main(cfg, account).pool;
-    if pool.is_empty() {
+/// Another account of the same relay that's under its limits, the one with the most left.
+pub fn relay_pick(cfg: &Config, account: &str) -> Option<String> {
+    let relay = &account_or_main(cfg, account).relay;
+    if relay.is_empty() {
         return None;
     }
     cfg.accounts.iter()
-        .filter(|a| &a.pool == pool && a.id != account && over_limit(cfg, &a.id).is_none())
+        .filter(|a| &a.relay == relay && a.id != account && over_limit(cfg, &a.id).is_none())
         .map(|a| (a.id.clone(), usage(cfg, &a.id).values().cloned().fold(0.0, f64::max)))
         .min_by(|x, y| x.1.partial_cmp(&y.1).unwrap()).map(|x| x.0)
 }
@@ -2296,10 +2297,10 @@ mod tests {
     }
 
     #[test]
-    fn limits_and_pools() {
+    fn limits_and_relays() {
         let mut cfg = Config::default();
-        for (id, pool) in [("A", "team"), ("B", "team"), ("C", "team"), ("D", "")] {
-            cfg.accounts.push(Account { id: id.into(), pool: pool.into(), ..Default::default() });
+        for (id, relay) in [("A", "team"), ("B", "team"), ("C", "team"), ("D", "")] {
+            cfg.accounts.push(Account { id: id.into(), relay: relay.into(), ..Default::default() });
         }
         let soon = now() + 3600.0;
         let ev = |u: f64| serde_json::json!({"status": "allowed", "unifiedWindows": {
@@ -2309,11 +2310,12 @@ mod tests {
         record_usage(&mut cfg, "C", &ev(0.20));
         assert_eq!(over_limit(&cfg, "A").as_deref(), Some("five_hour"));
         assert_eq!(over_limit(&cfg, "B"), None);
-        assert_eq!(pool_pick(&cfg, "A").as_deref(), Some("C"), "the one with the most left");
-        assert_eq!(pool_pick(&cfg, "D"), None, "no pool, no switch");
+        assert_eq!(relay_pick(&cfg, "A").as_deref(), Some("C"), "the one with the most left");
+        assert_eq!(relay_pick(&cfg, "D"), None, "no relay, no switch");
         record_usage(&mut cfg, "C", &serde_json::json!({"status": "rejected", "rateLimitType": "seven_day", "resetsAt": soon}));
-        assert_eq!(pool_pick(&cfg, "A").as_deref(), Some("B"));
+        assert_eq!(relay_pick(&cfg, "A").as_deref(), Some("B"));
         cfg.usage.get_mut("A").unwrap().get_mut("five_hour").unwrap().resets_at = Some(now() - 1.0);
+        assert_eq!(serde_json::from_str::<Account>(r#"{"pool":"x"}"#).unwrap().relay, "x", "#383 old key still loads");
         assert_eq!(over_limit(&cfg, "A"), None, "a reset window no longer counts");
     }
 
