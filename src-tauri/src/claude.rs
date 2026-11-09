@@ -1147,6 +1147,13 @@ fn step_cmd(p: &Project, step: &str) -> String {
     match step { "build" | "local" => &p.build.build, "run" => &p.build.run, _ => &p.build.deploy }.clone()
 }
 
+/// #288 full build cmd → fast this-machine twin (debug, no installers). ponytail: Tauri + cargo only; others unchanged
+pub fn fast_cmd(cmd: &str) -> String {
+    if cmd.contains("tauri build") && !cmd.contains("--debug") { return cmd.replacen("tauri build", "tauri build --debug --no-bundle", 1); }
+    if cmd.contains("cargo build") { return cmd.replace(" --release", ""); }
+    cmd.to_string()
+}
+
 fn shell(cmd: &str) -> tokio::process::Command {
     let mut c = if cfg!(windows) {
         let mut c = tokio::process::Command::new("cmd");
@@ -1177,10 +1184,12 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     let Some(p) = st.project(pid) else { return (false, String::new()) };
     // "local" (/build, "build and run"): the build command on THIS machine only, no WSL / Network Mac passes
     // #262 "build:<os>" (/build windows|linux|macos|ios|android): only that target's pass; host os = same as local
+    let fast = step == "local" && !p.build.release; // #288 after-task / smart / /build: debug unless Release is on
     let only = step.strip_prefix("build:").filter(|t| *t != std::env::consts::OS);
     let local = step == "local" || step.starts_with("build:") && only.is_none();
     let step = if local || only.is_some() { "build" } else { step };
     let mut cmd = step_cmd(&p, step);
+    if fast { cmd = if p.build.local.trim().is_empty() { fast_cmd(&cmd) } else { p.build.local.clone() }; }
     if let Some(t @ ("ios" | "android")) = only { cmd = match mobile_cmd(&cmd, t) { Some(c) => c, None => {
         let e = format!("No {t} build command known for `{cmd}` (Tauri / Flutter only)"); emit(app, "build", json!({"pid": pid, "step": step, "line": e, "done": false})); return (false, e); } }; }
     if only.is_some_and(|t| !["ios", "android", "linux", "macos"].contains(&t) || t == "ios" && !cfg!(target_os = "macos")) {
@@ -1653,6 +1662,9 @@ mod tests {
     fn answers_are_numbered_with_notes() {
         let qs = vec![Question { id: "a".into(), question: "Which db?".into(), ..Default::default() },
                       Question { id: "b".into(), question: "Name?".into(), ..Default::default() }];
+        assert_eq!(fast_cmd("npx tauri build"), "npx tauri build --debug --no-bundle");
+        assert_eq!(fast_cmd("cargo build --release"), "cargo build");
+        assert_eq!(fast_cmd("npm run build"), "npm run build");
         let t = answers_text(&qs, &[json!({"id": "a", "choice": ["SQLite"], "note": "keep it local"}),
                                    json!({"id": "b", "choice": ["Other"], "note": "Clauracle"})]);
         assert_eq!(t, "Answers to your questions:\n1. Which db? → SQLite (note: keep it local)\n2. Name? → Other (note: Clauracle)");

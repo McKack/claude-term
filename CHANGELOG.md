@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Smart build and builds after a task now do a fast local debug build (no installers). Turn on "Release builds after tasks" in Settings › Projects › Build for the full build, or set your own Local build command. Releases and deploys still use the full build.
 - Edit view: a third option next to Chat and Terminal. Files open as tabs you can edit and save (Ctrl+S), with a resizable panel below holding the Terminal view and a real Shell in the project folder.
 - Notification center: a bell bottom right keeps the history of notifications, with the current time next to it.
 - Start menu: click your account (bottom left) for one menu with search (files, secret names, tasks, settings), every tab as a tile, and Settings / Restart / Shut down.

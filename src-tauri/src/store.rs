@@ -67,9 +67,11 @@ pub struct Build {
     pub deploy: String,
     pub after: String, // after each finished task
     pub fix: bool,     // a failed step goes back to Claude to fix
+    pub local: String, // #288 this-machine build (after tasks, /build); "" = fast debug twin of `build` (claude::fast_cmd)
+    pub release: bool, // #288 true = local builds use the full `build` cmd
 }
 impl Default for Build { // #229 every new project (add/clone/new_local, partial JSON) = Smart build + Run; saved ones keep theirs
-    fn default() -> Self { Build { build: String::new(), run: String::new(), deploy: String::new(), after: "smart_run".into(), fix: true } }
+    fn default() -> Self { Build { build: String::new(), run: String::new(), deploy: String::new(), after: "smart_run".into(), fix: true, local: String::new(), release: false } }
 }
 
 /// The project is the source of truth: its own GitHub account, connections and skills, whatever AI account runs it.

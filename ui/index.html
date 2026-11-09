@@ -2617,6 +2617,8 @@ function projectsPage() {
       ${optRow('Keep .env away from Clauracle', 'Clauracle can\'t read or edit .env files; manage them in Services &amp; Secrets › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on', '', false)}
     ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
+      <span>Local build</span><input class="mono" value="${esc(p.build.local || '')}" placeholder="Auto: fast debug build (e.g. tauri build --debug --no-bundle)" title="Used by builds after a task and /build on this machine. Release / deploy keep the full Build command." onchange="setBuild('local', this.value)">
+      <span></span><label class="row">${sw(p.build.release, 'setBuild(\'release\', this.checked)')}<small>Release builds after tasks (slower: the full Build command)</small></label>
       <span>After each task</span><span>${thenBtn(p, 'm')}</span>
       <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Clauracle to fix</small></label></div>`,
       ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3', '', !p.build.build)}
