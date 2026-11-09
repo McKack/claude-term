@@ -876,10 +876,14 @@ const tli = (h, {done, on, cls = '', tip, end = ''} = {}) => `<div class="ti ${c
 // Confirm files accepted ones (unpicked = dismissed). State per fence content hash, localStorage ∴ survives reload/redraw
 const SUGS = (() => { try { return JSON.parse(localStorage.sugs || '{}'); } catch { return {}; } })();
 const saveSugs = () => { const k = Object.keys(SUGS); k.slice(0, -300).forEach(x => delete SUGS[x]); /* newest 300 ∵ grew forever */ try { localStorage.sugs = JSON.stringify(SUGS); } catch {} };
+const sugKey = code => [...code].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7).toString(36);
+// #337: unanswered ```tasks fences of the old session → re-posted after "Fresh session" ∴ the card stays in view
+const sugPend = es => es.filter(x => x.kind === 'claude' && !x.old).flatMap(x => [...(x.text || '').matchAll(/```tasks[^\n]*\n?([\s\S]*?)```/g)])
+  .filter(m => !SUGS[sugKey(m[1])]?.done).map(m => ({kind: 'claude', text: '```tasks\n' + m[1] + '```', ts: new Date().toISOString()}));
 function sugCards(code) {
   const t = code.split('\n').map(l => l.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)/)?.[1]).filter(Boolean);
   if (!t.length) return '';
-  const k = [...code].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7).toString(36);
+  const k = sugKey(code);
   SUGS[k] ||= {t, p: {}, n: {}};
   return `<div class="sugs" data-k="${k}">${sugBox(k)}</div>`;
 }
@@ -2555,9 +2559,11 @@ const reading = {};
 const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading[pid]; if (pid === cur) drawChrome(); };
 // a clear keeps the conversation so far above the new one, faded (ponytail: last 300 entries, older ones drop)
 const keepOld = pid => (logs[pid] || []).filter(x => x.kind !== 'ask').slice(-300).map(x => ({...x, old: true}));
+const freshLog = pid => { logs[pid] = [...keepOld(pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}, ...sugPend(logs[pid] || [])]; saveLog(pid); };
 function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); /* first: a drawing error can't swallow the Continue */
+  if (!extra && !nextUp(cur).length) return; // #337: nothing queued → Rust only notes "nothing to continue": no clear, old log stays live
   hiddenQs[cur] = false; qsOpen[cur] = true; P().ready = false; $('ready').hidden = true;
-  logs[cur] = [...keepOld(cur), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; saveLog(cur); readNote(cur, true); drawLog(); }
+  freshLog(cur); readNote(cur, true); drawLog(); }
 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
@@ -2579,7 +2585,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
     drawProjects(); if (d.pid === cur) drawChrome(); },
   restarting: () => { RESTARTING = true; setTimeout(() => { if (!RESTARTING) return; RESTARTING = false; toast("Restart didn't happen: queued messages are sending again.", "warn"); Object.keys(queue).forEach(flushQueue); }, 20000); }, // relaunch spawn failed → app lives on; RESTARTING stuck = queue frozen forever
-  cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note' && !x.cont)) { logs[d.pid] = [...keepOld(d.pid), {kind: 'note', text: 'Fresh session', ts: new Date().toISOString()}]; saveLog(d.pid); } /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
+  cleared: () => { workOf(d.pid, true); if ((logs[d.pid] || []).some(x => !x.old && x.kind !== 'note' && !x.cont)) freshLog(d.pid); /* else cont_ did it already */ if (reading[d.pid]) readNote(d.pid, true); ctx[d.pid] = 0; { const t = tk(d.pid); t.drop += t.now; t.now = 0; } saveCtx(); /* fresh session ≈ 0%, keeps the UI steady until the first reply reports it */ live[d.pid] = ''; refresh().then(() => d.pid === cur && drawLog()); },
   pushed: () => { ghiStale(d.pid); if (d.pid === cur && tab === 'gh') drawRight(true); },
   ready: () => { qsOpen[d.pid] = false; refresh().then(() => d.pid === cur && drawLog()); }, // unanswered → wait for the next Continue
   project: () => { if (!d) return; const o = P(d.id); S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { if (d.keep) $('suggest').hidden = true; drawChrome(); drawLog(); if (o?.build?.after !== d.build?.after) drawRight(); /* #227 Then picker follows any change (answer applied by AI, Settings) at once */ } },
