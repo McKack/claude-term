@@ -283,6 +283,8 @@ pre.diff .ctx { color:var(--faint); }
 #etabs .et.dirty .x::before { content:"●"; font-size:11px; } #etabs .et.dirty .x:not(:hover) .i { display:none; } #etabs .add { width:30px; height:auto; border-radius:0; }
 #ebody { flex:1; min-height:0; display:flex; position:relative; }
 #ebody textarea { flex:1; border:0; border-radius:0; resize:none; outline:0; padding:10px 14px; font:13px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; tab-size:4; background:var(--bg); color:var(--text); white-space:pre; }
+#ebody .ecode { flex:1; max-height:none; border:0; border-radius:0; background:var(--bg); tab-size:4; } #ebody .ew { position:relative; min-width:max-content; min-height:100%; } /* #329 */
+#ebody .ecode pre { font:inherit; pointer-events:none; -webkit-user-select:none; user-select:none; tab-size:4; } #ebody .ecode textarea { position:absolute; inset:0; width:100%; height:100%; max-height:none; min-height:0; field-sizing:fixed; overflow:hidden; padding:8px 12px 8px var(--lw); font:inherit; background:none; color:transparent; caret-color:var(--text); }
 #ebody .eimg { margin:auto; max-width:100%; max-height:100%; object-fit:contain; } #ebody .empty { margin:auto; text-align:center; }
 #log.term { background:var(--term); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
 #log.term { padding-top:60px; } /* #327 3 rows; rows sit at 60+20k */
@@ -1582,19 +1584,22 @@ function evDraw() { if (view !== 'edit' || !cur) return;
   const E = etabs(), t = E.tabs[E.on], b = $('ebody');
   $('etabs').innerHTML = E.tabs.map((x, i) => `<div class="et${i === E.on ? ' on' : ''}${evDirty(x) ? ' dirty' : ''}" title="${esc(x.rel || x.name)}" onclick="evPick(${i})" onauxclick="if (event.button === 1) evClose(${i})">${icon(/\.(png|jpe?g|gif|webp|bmp)$/i.test(x.rel || '') ? 'image' : 'file')}${esc(x.name)}<button class="ib x" title="Close" onclick="event.stopPropagation(); evClose(${i})">${icon('x')}</button></div>`).join('')
     + `<button class="ib add" title="New tab" onclick="evNew()">${icon('plus')}</button>`;
-  const ta = b.querySelector('textarea'); if (ta && b._t) Object.assign(b._t, {ss: ta.selectionStart, se: ta.selectionEnd, sy: ta.scrollTop}); // caret + scroll survive tab switches
+  const ta = b.querySelector('textarea'); if (ta && b._t) Object.assign(b._t, {ss: ta.selectionStart, se: ta.selectionEnd, sy: b.firstChild.scrollTop}); // caret + scroll survive tab switches
   if (ta && b._t === t) return;
   b._t = null;
   if (!t) { b.innerHTML = `<div class="empty dim"><p>No files open</p><button class="btn" onclick="evNew()">${icon('plus')}New file</button> <button class="btn ghost" onclick="UI.lc = false; setSide('files')">${icon('folder')}Open from Files</button></div>`; return; }
   if (t.err) { b.innerHTML = `<div class="empty dim">${esc(t.err)}</div>`; return; }
   if (t.img) { b.innerHTML = `<img class="eimg" src="${t.img}">`; return; }
   if (t.text === undefined) { b.innerHTML = `<div style="flex:1;padding:14px">${skel(60)}</div>`; if (!t.loading) { t.loading = 1; evLoad(t, cur); } return; }
-  b.innerHTML = '<textarea spellcheck="false" autocomplete="off"></textarea>'; b._t = t;
-  const a = b.firstChild; a.value = t.text;
-  a.oninput = () => { t.text = a.value; $('etabs').querySelector('.et.on')?.classList.toggle('dirty', evDirty(t)); };
+  // #329 Code-tab look: highlighted .code pre (codeHtml) under a transparent textarea, both sized by the pre ∴ one scroller, no scroll sync
+  const ext = (t.rel || t.name).split('.').pop().toLowerCase(), hi = () => { b.querySelector('pre')?.remove(); b.querySelector('.ew').insertAdjacentHTML('afterbegin', codeHtml(t.text, ext).replace(/^<div[^>]*>|<\/div>$/g, '')); const w = b.querySelector('.ew'); w.style.setProperty('--lw', w.firstChild.style.getPropertyValue('--lw')); }; /* --lw on .ew ∴ textarea pads past the gutter */
+  b.innerHTML = '<div class="code ecode"><div class="ew"><textarea spellcheck="false" autocomplete="off"></textarea></div></div>'; b._t = t;
+  const a = b.querySelector('textarea'); a.value = t.text; hi();
+  let raf = 0; // ponytail: whole-file re-highlight per frame; fine ≤ ~5k lines, incremental per line if big files lag
+  a.oninput = () => { t.text = a.value; $('etabs').querySelector('.et.on')?.classList.toggle('dirty', evDirty(t)); cancelAnimationFrame(raf); raf = requestAnimationFrame(hi); };
   a.onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); evSave(t); }
     else if (e.key === 'Tab' && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); document.execCommand('insertText', false, '\t'); } }; /* execCommand keeps native undo */
-  if (t.ss != null) { a.setSelectionRange(t.ss, t.se); a.scrollTop = t.sy; } a.focus(); }
+  if (t.ss != null) { a.setSelectionRange(t.ss, t.se); b.firstChild.scrollTop = t.sy; } a.focus(); }
 // Shell tab: xterm.js (vendored in ui/xterm, MIT) loaded on first use; SH[pid] = {el, term, fit, dead}; one pty per project (lib shell_open)
 let XT; const SH = {};
 const xtLoad = () => XT ||= new Promise((ok, no) => { const add = (tag, k, v, then) => { const x = document.createElement(tag); x[k] = v; if (tag === 'link') x.rel = 'stylesheet'; x.onload = then; x.onerror = no; document.head.append(x); };
