@@ -404,6 +404,14 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock #composer:focus-within { box-shadow:inset 0 1px color-mix(in srgb, var(--accent) 50%, #3a3733), inset 0 -1px color-mix(in srgb, var(--accent) 50%, #3a3733); } #log.term + #dock #composer.drop { outline:1px dashed var(--accent); outline-offset:-1px; }
 #log.term + #dock :is(#prompt, #pback) { padding:0; min-height:20px; } #log.term + #dock #pwrap::before { top:0; }
 #log.term + #dock .tb { margin:0; height:20px; min-height:0; } #log.term + #dock .tb > :is(.ib, #send) { height:20px; } #log.term + #dock #status button { padding:0 4px; height:20px; }
+/* #394 term composer bottom row: action = [x], opens menu = [x...]; one hover = bg behind chars + white text; icons 12px centred; Send = solid block */
+#log.term + #dock .tb > .ib, #log.term + #dock #status button { gap:.5ch; padding:0 .3ch; height:20px; border-radius:0; display:inline-flex; align-items:center; background:none; transition:none; }
+#log.term + #dock #status button::before { content:"["; } #log.term + #dock #status button::after, #log.term + #dock .tb > #tCont::after { content:"...]"; }
+#log.term + #dock #status button > svg:last-child:not(:first-child) { display:none; } /* menu chevron → "..." */
+#log.term + #dock :is(.tb > .ib, #status button):hover { background:#2f2d2a; color:#fff !important; }
+#log.term + #dock :is(.tb, #status) .i { width:12px; height:12px; flex:none; }
+#log.term + #dock .tb > #send { padding:0 1ch; background:var(--accent); color:var(--term); font-weight:700; } #log.term + #dock .tb > #send::before, #log.term + #dock .tb > #send::after { content:none; }
+#log.term + #dock .tb > #send:hover { background:color-mix(in srgb, var(--accent) 80%, #fff); color:var(--term); }
 #log.term + #dock .qp .ib:nth-of-type(1)::before { content:"[edit]"; } #log.term + #dock .qp .ib:nth-of-type(2)::before { content:"[↑]"; } #log.term + #dock .qp .ib:nth-of-type(3)::before { content:"[x]"; }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
   overflow:hidden; overflow-wrap:anywhere; color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
