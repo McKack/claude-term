@@ -43,7 +43,7 @@ svg.i { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.
 .btn.primary { background:var(--primary); border-color:var(--primary); color:var(--ink); } .btn.primary:hover { background:var(--primary2); }
 .btn.ghost { background:none; border-color:transparent; } .btn.ghost:hover { background:var(--hover); }
 .ib { display:inline-grid; place-items:center; width:30px; height:30px; border-radius:8px; border:0; background:none; color:var(--dim); cursor:pointer; transition:background .12s, color .12s; }
-.ib:hover { background:var(--hover); color:var(--text); } .ib.on { color:var(--accent); background:var(--soft); }
+.ib:hover { background:var(--hover); color:var(--text); } .ib.on { color:var(--accent); background:var(--soft); } .ib:disabled, .menu button:disabled { opacity:.35; cursor:default; pointer-events:none; }
 input, select, textarea { background:var(--card); border:1px solid var(--line2); border-radius:10px; padding:6px 10px; outline:none; }
 textarea { resize:none; field-sizing:content; min-height:4.5em; max-height:60vh; } /* #234 auto-grow ≠ ugly native corner */ @supports not (field-sizing:content) { textarea { resize:vertical; } } /* WKWebView w/o field-sizing → keep a handle */
 /* own chevron: the native one hugs the edge; this one sits 10px in, same as the text on the left */
@@ -728,6 +728,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <body>
 <svg width="0" height="0" style="position:absolute">
   <!-- ponytail: a handful of Lucide-style icons (ISC) inline; no icon font -->
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-wrap" viewBox="0 0 24 24"><path d="M3 6h18M3 12h15a3 3 0 0 1 0 6h-5m0 0 2-2m-2 2 2 2M3 18h6"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
@@ -1027,7 +1028,7 @@ function buildMenu(items, r, side, level = 0) {
   document.querySelectorAll('.menu').forEach(x => +x.dataset.level >= level && x.remove());
   const m = document.createElement('div');
   m.className = MENU_TUI ? 'menu tui' : 'menu glass'; m.dataset.level = level; m.popover = 'manual'; // top layer, opened last → over Settings/dialogs
-  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.and ? `<div class="mand">${esc(it.and)}</div>` : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? icon('check') : ''}</span>` : it.icon ? icon(it.icon) : ''}
+  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.and ? `<div class="mand">${esc(it.and)}</div>` : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}${it.off ? ' disabled' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? icon('check') : ''}</span>` : it.icon ? icon(it.icon) : ''}
     <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact${a.label ? ' lab' : ''}" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}${a.label ? `${esc(a.label)}${icon('down')}` : ''}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
   (document.querySelector('dialog:modal') || document.body).appendChild(m); m.showPopover(); // inside a modal: else inert
   m.style.maxHeight = innerHeight - 16 + 'px'; m.style.overflowY = 'auto';
@@ -1652,7 +1653,7 @@ function etabs(pid = cur) { if (!ETABS[pid]) { let o = {}; try { o = JSON.parse(
   const tabs = (o.rels || []).map(rel => ({rel, name: rel.split('/').pop()})); ETABS[pid] = {tabs, on: Math.max(0, tabs.findIndex(t => t.rel === o.on))}; } return ETABS[pid]; }
 function evKeep(pid = cur) { const E = ETABS[pid]; if (E) try { localStorage['etabs:' + pid] = JSON.stringify({rels: E.tabs.filter(t => t.rel).map(t => t.rel), on: E.tabs[E.on]?.rel}); } catch {} }
 const evDirty = t => t.text !== undefined && t.text !== t.orig;
-function evOpen(rel) { const E = etabs(); let i = E.tabs.findIndex(t => t.rel === rel); if (i < 0) i = E.tabs.push({rel, name: rel.split('/').pop()}) - 1; E.on = i; evKeep(); evDraw(); }
+function evOpen(rel) { const E = etabs(); let i = E.tabs.findIndex(t => t.rel === rel); if (i < 0) i = E.tabs.push({rel, name: rel.split('/').pop(), pv: 1}) - 1; E.on = i; evKeep(); evDraw(); }
 function evNew() { const E = etabs(), n = Math.max(0, ...E.tabs.map(t => +(t.name.match(/^Untitled-(\d+)$/)?.[1] || 0))) + 1;
   E.on = E.tabs.push({rel: null, name: 'Untitled-' + n, text: '', orig: ''}) - 1; evDraw(); }
 function evPick(i) { etabs().on = i; evKeep(); evDraw(); }
@@ -1733,16 +1734,16 @@ function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.tex
       {label: 'Paste', hint: 'Ctrl+V', run: () => navigator.clipboard.readText().then(v => evCmd('insertText', v), () => toast('Clipboard blocked: use Ctrl+V', 'warn'))},
       {label: 'Select all', hint: 'Ctrl+A', run: () => { evTa()?.focus(); evTa()?.select(); }},
       ...(pv === 'json' ? ['-', {label: 'Format JSON', icon: 'braces', run: () => { try { const v = JSON.stringify(JSON.parse(t.text), null, 2); evTa().select(); evCmd('insertText', v); } catch (e) { toast(String(e), 'err'); } }}] : [])]
-      : [{title: t?.pv ? 'Preview: switch it off in View to edit' : 'Nothing to edit'}],
+      : [{title: t?.pv ? 'Formatted view: switch it off in View to edit' : 'Nothing to edit'}],
     /* #382: order = evBar icon order (preview, highlight, lint, wrap) */
-    view: [...(pv ? [{label: pv === 'md' ? 'Rendered Markdown' : 'Formatted JSON (read-only)', check: !!t.pv, run: () => { t.pv = !t.pv; evSet(); }}] : []),
-      ...(tx ? [{label: 'Syntax highlighting', check: hlOn(), run: () => { try { localStorage.codeHl = hlOn() ? '0' : '1'; } catch {} evSet(); }}, {label: 'Lint (errors and warnings)', check: !UI.nl, run: () => evSet('nl', !UI.nl)}, {label: 'Word wrap', check: !!UI.ew, run: () => evSet('ew', !UI.ew)}] : []), ...(tx || pv ? ['-'] : []),
+    view: [...(pv ? [{label: 'Formatted view' + (pv === 'json' ? ' (read-only)' : ''), check: !!t.pv, run: () => { t.pv = !t.pv; evSet(); }}] : []),
+      ...(tx ? [{label: 'Syntax highlighting', check: hlOn(), off: !!t.pv && pv === 'md', run: () => { try { localStorage.codeHl = hlOn() ? '0' : '1'; } catch {} evSet(); }}, {label: 'Lint (errors and warnings)', check: !UI.nl, run: () => evSet('nl', !UI.nl)}, {label: 'Word wrap', check: !!UI.ew, run: () => evSet('ew', !UI.ew)}] : []), ...(tx || pv ? ['-'] : []),
       {label: 'Zoom in', icon: 'plus', run: () => evZoom(.1)}, {label: 'Zoom out', icon: 'minus', run: () => evZoom(-.1)}, {label: 'Reset zoom', hint: Math.round((UI.ez || 1) * 100) + '%', run: () => evZoom(0)}]};
   menuAt(btn, M[k]); }
 function evBar(t) { const pv = evPv(t), tx = t?.text !== undefined;
   $('emenu').innerHTML = ['File', 'Edit', 'View'].map(k => `<button class="mb" onclick="evMenu('${k.toLowerCase()}', this)">${k}</button>`).join('') + '<span class="grow"></span>'
-    + (pv ? `<button class="ib${t.pv ? ' on' : ''}" title="${pv === 'md' ? 'Rendered Markdown' : 'Formatted JSON'}" onclick="etabs().tabs[etabs().on].pv ^= 1; evSet()">${icon(pv === 'md' ? 'doc' : 'braces')}</button>` : '')
-    + (tx && !(t.pv && pv === 'md') ? hlBtn(`$('ebody').querySelector('.code')`) : '') /* #373 same toggle as the Code tab (localStorage.codeHl) */
+    + (pv ? `<button class="ib${t.pv ? ' on' : ''}" title="Formatted view" onclick="etabs().tabs[etabs().on].pv ^= 1; evSet()">${icon('eye')}</button>` : '')
+    + (tx ? hlBtn(`$('ebody').querySelector('.code')`, '', !!t.pv && pv === 'md') : '') /* #373 same toggle as the Code tab (localStorage.codeHl) */
     + (tx && !t.pv && !UI.nl && t.lint?.length ? `<button class="ib ez" title="Problems: click to jump" onclick="evProbs(this, etabs().tabs[etabs().on])">${['e', 'w'].map(s => { const n = t.lint.filter(x => x.s === s).length; return n ? `<span style="color:${s === 'e' ? 'var(--err)' : '#d9a21b'}">${icon(s === 'e' ? 'x' : 'warn')}${n}</span>` : ''; }).join(' ')}</button>` : '')
     + (tx ? `<button class="ib${UI.nl ? '' : ' on'}" title="Lint: errors/warnings in the gutter (JS/HTML scripts via node or the project's eslint, Python, Rust on save, JSON)" onclick="evSet('nl', !UI.nl)">${icon('bug')}</button>` : '')
     + (tx ? `<button class="ib${UI.ew ? ' on' : ''}" title="Word wrap" onclick="evSet('ew', !UI.ew)">${icon('wrap')}</button>` : '')
@@ -2312,7 +2313,7 @@ function fileView(f) {
   VF = f; const pdf = /\.pdf$/i.test(f.path || ''), wrap = localStorage.diffWrap !== '0', md = isMd(f.name) && f.text != null;
   if (md) f.html = docHtml(f.text, f.name, wrap); // #371 rendered/raw per localStorage.mdRaw
   vWin(`${icon(pdf ? 'pdf' : 'term')}<span class="vname">${esc(f.name)}</span>`, `<button class="btn primary sm" onclick="vSaveAs()">Save as…</button>`,
-    (pdf ? '' : (md ? `<button class="ib${mdOn() ? ' on' : ''}" title="Rendered Markdown" onclick="try{localStorage.mdRaw=mdOn()?'1':'0'}catch{} fileView(VF)">${icon('doc')}</button>` : '') + (/class="code/.test(f.html) && !(md && mdOn()) ? hlBtn(`$('dlg').querySelector('.code')`) : '') + `<button class="ib${wrap ? ' on' : ''}" title="Wrap long lines" onclick="const s=$('dlg').querySelector('.vtext');try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('on',s.classList.contains('wrap'))">${icon('wrap')}</button>
+    (pdf ? '' : (md ? `<button class="ib${mdOn() ? ' on' : ''}" title="Formatted view" onclick="try{localStorage.mdRaw=mdOn()?'1':'0'}catch{} fileView(VF)">${icon('eye')}</button>` : '') + (/class="code/.test(f.html) || md ? hlBtn(`$('dlg').querySelector('.code')`, '', md && mdOn()) : '') + `<button class="ib${wrap ? ' on' : ''}" title="Wrap long lines" onclick="const s=$('dlg').querySelector('.vtext');try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('on',s.classList.contains('wrap'))">${icon('wrap')}</button>
       <button class="ib" title="Copy all" onclick="navigator.clipboard.writeText(VF.text);toast('Copied','ok')">${icon('copy')}</button>`)
     + (f.path ? `<button class="ib" title="Show in folder" onclick="T.opener.revealItemInDir(VF.path).catch(e=>toast(String(e),'err'))">${icon('folder')}</button>` : ''),
     pdf ? `<iframe class="vdoc" src="${f.url}"></iframe>` : `<div class="dscroll vtext sel${wrap ? ' wrap' : ''}">${f.html}</div>`, null, pdf ? null : 'text');
@@ -3881,7 +3882,7 @@ function hiCode(text, ext) {
 }
 // #338 colour toggle (left of Wrap): .code.plain = CSS-only, no re-render; remembered in localStorage.codeHl
 const hlOn = () => localStorage.codeHl !== '0';
-const hlBtn = (q, st = '') => `<button class="ib${hlOn() ? ' on' : ''}" style="${st}" title="Syntax highlighting" onclick="const p=${q}.classList.toggle('plain');try{localStorage.codeHl=p?'0':'1'}catch{}this.classList.toggle('on',!p)">${icon('code')}</button>`;
+const hlBtn = (q, st = '', off = false) => `<button class="ib${hlOn() ? ' on' : ''}" style="${st}"${off ? ' disabled' : ''} title="Syntax highlighting${off ? ' (not used in the formatted view)' : ''}" onclick="const p=${q}.classList.toggle('plain');try{localStorage.codeHl=p?'0':'1'}catch{}this.classList.toggle('on',!p)">${icon('code')}</button>`;
 // #371 .md in Code tab / File viewer: rendered (mdDoc) by default, toggle remembered in localStorage.mdRaw
 const isMd = f => /\.(md|markdown|mdx)$/i.test(f), mdOn = () => localStorage.mdRaw !== '1';
 const docHtml = (text, file, wrap) => isMd(file) && mdOn() ? `<div class="mdoc" style="padding:2px 4px">${mdDoc(text)}</div>` : codeHtml(text, file.split('.').pop().toLowerCase(), wrap);
@@ -3901,7 +3902,7 @@ async function drawCode() {
     if (UI.lc || UI.st !== 'files') { UI.lc = false; setSide('files'); } return; }
   const wrap = localStorage.codeWrap !== '0'; // #231 wrap ON by default, choice remembered (like the diff dialog)
   const head = `<div class="row" style="align-items:center;margin-bottom:10px;gap:4px"><a class="crumbs mono" style="overflow-wrap:anywhere;margin:0;cursor:pointer" title="Open in the File viewer" onclick="codeView()">${esc(file)}</a>
-    <button class="ib" style="width:26px;height:26px" title="Open in the File viewer" onclick="codeView()">${icon('expand')}</button><span class="grow"></span>${isMd(file) ? `<button class="ib${mdOn() ? ' on' : ''}" style="width:26px;height:26px;padding:0" title="Rendered Markdown" onclick="try{localStorage.mdRaw=mdOn()?'1':'0'}catch{}drawCode()">${icon('doc')}</button>` : ''}${isMd(file) && mdOn() ? '' : hlBtn(`$('rbody').querySelector('.code')`, 'width:26px;height:26px')}<button class="ib${wrap ? ' on' : ''}" style="width:26px;height:26px" title="Wrap long lines"
+    <button class="ib" style="width:26px;height:26px" title="Open in the File viewer" onclick="codeView()">${icon('expand')}</button><span class="grow"></span>${isMd(file) ? `<button class="ib${mdOn() ? ' on' : ''}" style="width:26px;height:26px;padding:0" title="Formatted view" onclick="try{localStorage.mdRaw=mdOn()?'1':'0'}catch{}drawCode()">${icon('eye')}</button>` : ''}${hlBtn(`$('rbody').querySelector('.code')`, 'width:26px;height:26px', isMd(file) && mdOn())}<button class="ib${wrap ? ' on' : ''}" style="width:26px;height:26px" title="Wrap long lines"
     onclick="const c=$('rbody').querySelector('.code'),w=c.classList.toggle('wrap');try{localStorage.codeWrap=w?'1':'0'}catch{}this.classList.toggle('on',w)">${icon('wrap')}</button></div>`;
   let text;
   try { text = await call('read_file', {pid: cur, rel: file}); } catch (e) { box.innerHTML = head + `<p class="dim">${esc(e)}</p>`; return; }
@@ -5046,6 +5047,7 @@ function barMin(id) {
 const rMin = () => barMin('rtabs'), lMin = () => Math.max(180, barMin('shead'));
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
+UI.ew ??= true; // #386 Edit view word wrap on by default
 if (UI.tab) tab = {tasks: 'gh', env: 'svc'}[UI.tab] || UI.tab; // old Plan tab → GitHub, old .env tab → Services & Secrets
 applyLook();
 function layout() {
