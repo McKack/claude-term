@@ -350,7 +350,7 @@ pre.diff .ctx { color:var(--faint); }
 .menu.tui { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; border-radius:0; background:var(--term); backdrop-filter:none; border:1px solid #3a3733; box-shadow:none; color:#d8d4cb; }
 .menu.tui :is(button, .mact, .mact.lab) { border-radius:0; } .menu.tui button:hover { background:color-mix(in srgb, var(--accent) 22%, transparent); } .menu.tui .mact.lab { border:0; } .menu.tui .mact.lab::before { content:"["; } .menu.tui .mact.lab::after { content:"]"; }
 .menu.tui hr { border-top-style:dashed; border-color:#3a3733; } .menu.tui .mcap { text-transform:none; letter-spacing:0; } .menu.tui svg { width:13px; height:13px; }
-#dlg:has(.viewer.tui) { border-radius:0; } .viewer.tui { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; background:var(--term); color:#d8d4cb; }
+#dlg:has(.viewer) { border-radius:0; } .viewer.tui { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; background:var(--term); color:#d8d4cb; }
 .viewer.tui :is(.vbar, .vtools) { background:var(--term); border-color:#3a3733; } .viewer.tui :is(.btn, .ib, input, select) { border-radius:0 !important; box-shadow:none; }
 
 /* composer */
@@ -494,7 +494,7 @@ pre.diff .ctx { color:var(--faint); }
 .edpair { position:relative; width:42px; height:42px; flex:none; }
 .edcols input { position:absolute; left:0; top:0; z-index:1; width:28px; height:28px; padding:0; border:2px solid var(--line); border-radius:50%; background:none; cursor:pointer; overflow:hidden; } /* #237 1:1 circle, colour fills it */
 .edcols input + input { left:auto; top:auto; right:0; bottom:0; z-index:0; } /* #294 secondary, behind */
-.viewer.tui .edcols input { border-radius:50% !important; } /* beats the tui square rule: swatches stay round */
+.viewer :not(.edcols input, .ednote.col) { border-radius:0 !important; } /* #324 viewer = square corners throughout (tools, thumb, canvas, pdf, notes); swatches + number dots stay round */
 .edtr { width:22px; height:22px; padding:0; border:2px solid var(--line); border-radius:6px; cursor:pointer; background:repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 8px 8px; }
 .edcols input::-webkit-color-swatch-wrapper { padding:0; } .edcols input::-webkit-color-swatch { border:0; border-radius:50%; }
 .edcols input.tr { background:repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 10px 10px; } .edcols input.tr::-webkit-color-swatch { opacity:0; } /* transparent = checkerboard */
