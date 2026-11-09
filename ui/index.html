@@ -130,7 +130,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
 .seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
 .seg button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
-.vsw button.ic { padding:4px 7px; } .ic > .vl { display:none; } /* #331/#332 icoFit: .ic = label hidden, icon only (title/aria-label keep the name) */
+.vsw button { padding:4px 7px; } /* #334 icon-only always, name = title tooltip */ .ic > .vl { display:none; } /* #331/#332 icoFit: .ic = label hidden, icon only (title/aria-label keep the name) */
 #log { flex:1; overflow:auto; padding:8px 24px 24px; margin-top:-54px; padding-top:62px; mask-image:linear-gradient(to bottom, transparent 36px, #000 52px); } /* under #head: 16px fade, lower part of the header */
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
 .msg { max-width:100%; }
@@ -773,7 +773,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="head" hidden>
     <button class="ib" title="Sidebar: projects and files" onclick="toggleLeft()"><svg class="i"><use href="#i-panelL"/></svg></button>
     <span class="title" id="pname"></span><span id="branch" hidden title="Branches: switch, new, push" onclick="branchMenu(this)"></span><span class="grow"></span>
-    <span class="seg vsw"><button data-v="chat" onclick="setView('chat')" title="Chat" aria-label="Chat"><svg class="i"><use href="#i-chat"/></svg><span class="vl">Chat</span></button><button data-v="term" onclick="setView('term')" title="Terminal" aria-label="Terminal"><svg class="i"><use href="#i-term"/></svg><span class="vl">Terminal</span></button><button data-v="edit" onclick="setView('edit')" title="Edit: file tabs + Terminal/Shell panel" aria-label="Edit"><svg class="i"><use href="#i-pen"/></svg><span class="vl">Edit</span></button></span>
+    <span class="seg vsw"><button data-v="chat" onclick="setView('chat')" title="Chat" aria-label="Chat"><svg class="i"><use href="#i-chat"/></svg></button><button data-v="term" onclick="setView('term')" title="Terminal" aria-label="Terminal"><svg class="i"><use href="#i-term"/></svg></button><button data-v="edit" onclick="setView('edit')" title="Edit: file tabs + Terminal/Shell panel" aria-label="Edit"><svg class="i"><use href="#i-pen"/></svg></button></span>
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
   <div id="edv"><div id="etabs"></div><div id="ebody"></div></div>
@@ -1622,13 +1622,11 @@ async function shellShow() { const pid = cur;
 async function shellStart(pid) { const s = SH[pid]; s.dead = false;
   try { await call('shell_open', {pid, cols: s.term.cols, rows: s.term.rows}); } catch (e) { s.dead = true; s.term.write('\r\n\x1b[31m' + e + '\x1b[0m\r\n'); } }
 // #317 DH = last visible dock height (hidden in Shell → keep the old one) → --dh pads #shellbox to Terminal's log+dock size
-// #331 vswFit: full labels → c2 (only Chat labelled) → c1 (icons); tight = title truncated or head overflows
 // icoFit: bs = buttons in collapse order (first = drops its label first); stops once tight() is false
 function icoFit(bs, tight) { bs.forEach(b => b.classList.remove('ic')); for (const b of bs) { if (!tight()) return; b.classList.add('ic'); } }
-function vswFit() { const h = $('head'), t = $('pname'); icoFit([...h.querySelectorAll('.vsw button')].reverse(), () => t.scrollWidth > t.clientWidth || h.scrollWidth > h.clientWidth); }
 // #332 What next? presets: one line, labels drop from the last preset back, primary (Build) last; term view = [text] buttons, no icons ∴ skipped
 function readyFit() { const r = $('readytext'); if (!r.querySelector('.btn') || $('log').classList.contains('term') || r.classList.contains('full')) return; const t = () => r.scrollWidth > r.clientWidth; r.classList.remove('wrap'); icoFit([...r.querySelectorAll('.btn')].reverse(), t); r.classList.toggle('wrap', t()); } // icons still too wide → wrap
-{ new ResizeObserver(() => readyFit()).observe($('readytext')); const ro = new ResizeObserver(() => vswFit()); ro.observe($('head')); new MutationObserver(vswFit).observe($('pname'), { childList: true, characterData: true, subtree: true }); }
+{ new ResizeObserver(() => readyFit()).observe($('readytext')); }
 let DH = 0; new ResizeObserver(() => { const h = $('dock').offsetHeight; if (h) { DH = h; $('main').style.setProperty('--dh', h + 'px'); } }).observe($('dock'));
 new ResizeObserver(() => { const s = SH[cur]; if (s?.term.element && $('shellbox').offsetHeight) s.fit.fit(); }).observe($('shellbox'));
 // panel grip: drag = height (snaps shut under 60px, like the side rails), double-click = collapse
