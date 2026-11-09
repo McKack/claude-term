@@ -1129,11 +1129,13 @@ function resetIn(id, k) {
   return `Reset: ${h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m}m`} · ${tm(new Date(r * 1000).toISOString())}`;
 }
 // a usage window that reset in the last 10 min → one toast (seen keys kept per page load)
+// #366 any passed reset → S.usage 0% locally (no provider call; Rust usage() does the same on state()), redraw once
 const RESEEN = new Set();
-setInterval(() => { for (const [id, w] of Object.entries(S.resets || {})) for (const [k, r] of Object.entries(w)) {
+setInterval(() => { let z = 0; for (const [id, w] of Object.entries(S.resets || {})) for (const [k, r] of Object.entries(w)) {
   const key = id + k + r, ago = Date.now() - r * 1000;
+  if (ago > 0 && S.usage?.[id]?.[k]) { S.usage[id][k] = 0; z = 1; }
   if (ago > 0 && ago < 6e5 && !RESEEN.has(key)) { RESEEN.add(key); toast(`${k === 'five_hour' ? '5-hour' : 'Weekly'} limit reset for ${nick(id)}: fresh quota`, 'ok'); }
-} }, 30000);
+} if (z && P()) drawChrome(); }, 30000);
 // #39 kind → [icon, colour]: info | ok | warn | err
 const TOASTK = {info: ['info', 'var(--accent)'], ok: ['check', 'var(--ok)'], warn: ['warn', '#d9a21b'], err: ['x', 'var(--err)']};
 // #284 notification center: every toast → NOTES (newest first, ≤50, localStorage.notes; act fn kept this run only) → bell in #gbar
