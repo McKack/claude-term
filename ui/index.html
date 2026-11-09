@@ -287,12 +287,46 @@ pre.diff .ctx { color:var(--faint); }
 #log.term { background:var(--term); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
 #log.term .col { max-width:none; gap:4px; font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
 #log.term .msg { white-space:pre-wrap; align-self:stretch; background:none; border:0; padding:0; border-radius:0; max-width:none; }
-#log.term .msg.user { color:#fff; font-weight:600; } #log.term .msg.user::before { content:"› "; color:var(--accent); }
+/* #311 IRC rows: [HH:MM] <nick> text; nick col right-aligned (--nk) ∴ all text starts at --irc; every other row (tools, notes, cards) indents to it */
+#log.term .col { --nk:14ch; --irc:calc(7ch + var(--nk) + 2ch); } #log.term .col > :not(.irc, #empty, #dockpill) { margin-left:var(--irc); }
+#log.term .irc { display:grid; grid-template-columns:7ch var(--nk) minmax(0, 1fr); column-gap:1ch; margin-top:2px; }
+#log.term .irc .its { color:#6f6a62; font-variant-numeric:tabular-nums; } #log.term .irc .nk { text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+#log.term .irc.user .nk { color:var(--accent); } #log.term .irc.claude .nk { color:#7fc49a; } #log.term .msg.user { color:inherit; }
 #log.term .msg.tool { white-space:pre-wrap; color:#93c0e6; display:block; } #log.term .msg.tool::before { content:"● "; width:auto; height:auto; background:none; }
 #log.term .msg.out { color:#9f9a90; padding-left:2ch; border-left:2px solid #2f2d2a; max-height:320px; overflow:auto; }
 #log.term .msg.think { color:#857f75; font-style:italic; } #log.term .msg.think::before { content:"∴ "; }
-#log.term .msg.note { color:#c9a86a; text-align:left; } #log.term .card { color:var(--text); font:14px/1.55 system-ui,sans-serif; }
+#log.term .msg.note { color:#c9a86a; text-align:left; }
 #log.term .tools { gap:4px; }
+/* #311 text-mode cards (questions, You answered, permissions): box-drawn frame, ( )/[ ] choices, [Buttons] */
+#log.term .card { color:inherit; font:inherit; background:none; border:1px solid #3a3733; border-radius:0 !important; box-shadow:none; padding:4px 1ch 6px; }
+#log.term .card.qs:not(.done) { border-style:dashed; border-color:color-mix(in srgb, var(--accent) 55%, #3a3733); }
+#log.term .card h4 { font-size:inherit; color:var(--accent); margin:0 0 2px; } #log.term .card h4::before { content:"── "; } #log.term .card h4::after { content:" ──"; }
+#log.term .q { border-top:0; padding:3px 0; } #log.term .q .num { display:inline; width:auto; height:auto; background:none; border-radius:0; font:inherit; color:var(--accent); margin-right:1ch; } #log.term .q .num::after { content:"."; }
+#log.term .q .ans { margin-left:3ch; } #log.term .q .ans:not(.dim)::before { content:"> "; color:var(--accent); } #log.term .q .ans.dim { font-size:inherit; color:#857f75; }
+#log.term .choice { position:relative; border:0; border-radius:0; padding:0; margin:1px 0 0 3ch; gap:1ch; background:none !important; }
+#log.term .choice input { position:absolute; opacity:0; } #log.term .choice::before { content:"( )"; flex:none; color:var(--accent); } #log.term .choice:has(input:checked)::before { content:"(*)"; }
+#log.term .choice:has([type=checkbox])::before { content:"[ ]"; } #log.term .choice:has([type=checkbox]:checked)::before { content:"[x]"; }
+#log.term .choice:hover span, #log.term .choice:has(input:checked) span { color:#fff; } #log.term .choice:has(input:focus-visible) { outline:1px dotted var(--accent); }
+#log.term .card :is(input.other, input.note) { font:inherit; color:inherit; background:none; border:0; border-bottom:1px dashed #3a3733; border-radius:0; box-shadow:none; margin-left:3ch; width:calc(100% - 3ch); }
+#log.term .card .btns { margin-top:6px; } #log.term .card .btn { font:inherit; border:0; border-radius:0; background:none; box-shadow:none; color:inherit; padding:0 .5ch; height:auto; }
+#log.term .card .btn::before { content:"["; } #log.term .card .btn::after { content:"]"; } #log.term .card .btn.primary { color:var(--accent); font-weight:600; } #log.term .card .btn:hover { color:#fff; }
+/* #311 working line: ASCII spinner + bouncing bar (CSS content keyframes, steps(1) = hard frame flips), left in the text column */
+#log.term #dockpill { justify-content:flex-start; margin-left:var(--irc); } #log.term #skel { margin-top:4px; }
+#log.term #dockpill > :is(#workpill, #handpill) { font:inherit; border:0; border-radius:0; background:none; animation:none; padding:0; color:var(--accent) !important; gap:1ch; }
+#log.term #workpill .i { display:none; } #log.term #dockpill > *::before { content:"|"; width:1ch; order:-2; animation:tspin .5s steps(1) infinite; } #log.term #worktext { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+#log.term #workpill::after { content:"[=     ]"; order:-1; color:#6f6a62; animation:tbar 1.2s steps(1) infinite; } /* spinner, bar, then text (text may ellipsis; frames never cut) */
+@keyframes tspin { 0% { content:"|"; } 25% { content:"/"; } 50% { content:"-"; } 75% { content:"\\"; } }
+@keyframes tbar { 0% { content:"[=     ]"; } 10% { content:"[==    ]"; } 20% { content:"[ ==   ]"; } 30% { content:"[  ==  ]"; } 40% { content:"[   == ]"; } 50% { content:"[    ==]"; } 60% { content:"[     =]"; } 70% { content:"[    ==]"; } 80% { content:"[   == ]"; } 90% { content:"[ ==   ]"; } }
+/* #311 TUI composer: same elements, text-mode look (› prompt, rules instead of a box, [icon] buttons) */
+#log.term + #dock, #log.term + #dock :is(#prompt, #pback, #status, .qp, #slash button, #ready) { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
+#log.term + #dock #composer { background:none; border:0; border-block:1px solid #3a3733; border-radius:0 !important; box-shadow:none; padding:2px 0 2px 2ch; }
+#log.term + #dock #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 50%, #3a3733); } #log.term + #dock #composer.drop { border-style:dashed; border-color:var(--accent); }
+#log.term + #dock #pwrap::before { content:"›"; position:absolute; left:-2ch; top:4px; color:var(--accent); font-weight:700; } #log.term + #dock #prompt { caret-color:var(--accent); }
+#log.term + #dock :is(#pback mark, .qp, .qp .qi, #slash, #slash button, #status button, #ready) { border-radius:0; }
+#log.term + #dock .tb { margin-top:2px; } #log.term + #dock .tb > :is(.ib, #send) { display:inline-flex; align-items:center; width:auto; height:22px; padding:0 .3ch; border-radius:0; background:none; color:#857f75; }
+#log.term + #dock .tb > :is(.ib, #send)::before { content:"["; } #log.term + #dock .tb > :is(.ib, #send)::after { content:"]"; }
+#log.term + #dock .tb > :is(.ib.on, #send) { color:var(--accent); } #log.term + #dock .tb > :is(.ib, #send):hover { color:#fff; } #log.term + #dock .tb .i { width:14px; height:14px; }
+#log.term + #dock #jump { font:12.5px ui-monospace,Consolas,monospace; border-radius:0; }
 
 /* composer */
 /* dock overlays the log's bottom: transparent at its top, fading into the page behind pills + composer */
@@ -1672,6 +1706,7 @@ function entry(e) {
   if (e.rid) d.dataset.rid = e.rid;
   if (view === 'chat' && e.act === 'pdf') { d.insertAdjacentHTML('beforeend', ` <button class="btn sm">${icon('pdf')}${esc(e.file.split(/[\\/]/).pop())}</button>`); d.lastElementChild.onclick = () => openPdf(e.file); }
   if (view === 'chat' && e.kind === 'note' && NOTEACT[e.act]) d.insertAdjacentHTML('beforeend', ` <button class="btn sm" onclick="${NOTEACT[e.act][1]}">${NOTEACT[e.act][0]}</button>`);
+  if (view !== 'chat' && (e.kind === 'user' || e.kind === 'claude')) return ircRow(e, d);
   if (view !== 'chat' || (e.kind !== 'user' && e.kind !== 'claude')) return d;
   const row = chatRow(e.kind, d, e.ts); if (e.kind === 'user' && e.st) row.querySelector('.cm').insertAdjacentHTML('beforeend', tickHtml(e));
   return row;
@@ -1682,6 +1717,13 @@ const NOTEACT = {run: [icon('play') + 'Run', "call('run_step', {pid: cur, step: 
 const tm = ts => { const d = ts ? new Date(ts) : null; if (!d || isNaN(d)) return '';
   const t = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
   return d.toDateString() === new Date().toDateString() ? t : d.toLocaleDateString([], {day: 'numeric', month: 'short'}) + ', ' + t; };
+// #311 terminal view = IRC line: [HH:MM] <@you>/<Clauracle> text (grid in CSS; @ = you're the channel admin)
+function ircRow(e, d) {
+  const w = document.createElement('div'), t = e.ts && new Date(e.ts), u = e.kind === 'user';
+  w.className = 'irc ' + e.kind;
+  w.innerHTML = `<span class="its">${t && !isNaN(t) ? '[' + t.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false}) + ']' : ''}</span><span class="nk">&lt;${u ? '@' + esc(S.you?.nick || P()?.gh || 'You') : 'Clauracle'}&gt;</span>`;
+  w.append(d); return w;
+}
 function chatRow(kind, inner, ts) {
   const w = document.createElement('div'), me = P()?.gh;
   w.className = 'crow ' + kind;
