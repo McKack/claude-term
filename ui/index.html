@@ -336,7 +336,7 @@ pre.diff .ctx { color:var(--faint); }
 #log.term .choice:hover span, #log.term .choice:has(input:checked) span { color:#fff; } #log.term .choice:has(input:focus-visible) { outline:1px dotted var(--accent); }
 #log.term .card :is(input.other, input.note) { font:inherit; color:inherit; background:none; border:0; border-bottom:1px dashed #3a3733; border-radius:0; box-shadow:none; margin-left:3ch; width:calc(100% - 3ch); }
 #log.term .card .btns { margin-top:0; } #log.term .card .btn { font:inherit; border:0; border-radius:0; background:none; box-shadow:none; color:inherit; padding:0 .5ch; height:auto; }
-#log.term .card .btn::before { content:"["; } #log.term .card .btn::after { content:"]"; } #log.term .card .btn.primary { color:var(--accent); font-weight:600; } #log.term .card .btn:hover { color:#fff; }
+#log.term .card .btn.primary { color:var(--accent); font-weight:600; } #log.term .card .btn:hover { color:#fff; }
 /* #311 working line: ASCII spinner (CSS content keyframes, steps(1) = hard frame flips), left in the text column */
 #log.term #dockpill { justify-content:flex-start; } #log.term #skel { margin-top:0; }
 #log.term #dockpill > :is(#workpill, #handpill) { font:inherit; border:0; border-radius:0; background:none; animation:none; padding:0; color:var(--accent) !important; gap:1ch; }
@@ -350,7 +350,6 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock #pwrap::before { content:"›"; position:absolute; left:-2ch; top:4px; color:var(--accent); font-weight:700; } #log.term + #dock #prompt { caret-color:var(--accent); }
 #log.term + #dock :is(#pback mark, .qp, .qp .qi, #slash, #slash button, #status button, #ready) { border-radius:0; }
 #log.term + #dock .tb { margin-top:2px; } #log.term + #dock .tb > :is(.ib, #send) { display:inline-flex; align-items:center; width:auto; height:22px; padding:0 .3ch; border-radius:0; background:none; color:#857f75; }
-#log.term + #dock .tb > :is(.ib, #send)::before { content:"["; } #log.term + #dock .tb > :is(.ib, #send)::after { content:"]"; }
 #log.term + #dock .tb > :is(.ib.on, #send) { color:var(--accent); } #log.term + #dock .tb > :is(.ib, #send):hover { color:#fff; } #log.term + #dock .tb .i { width:14px; height:14px; }
 #log.term + #dock #jump { font:12.5px ui-monospace,Consolas,monospace; border-radius:0; }
 /* #322 term composer: full width; thumbs = borderless 8ch × 3-line cells on the char grid; @[ref] = plain "[<icon>name]" (mono ∴ "@" slot shows "[", icon on "[" slot) */
@@ -358,26 +357,25 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock #atts { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; gap:1ch; padding:0 0 calc(20px); }
 #log.term + #dock .att.img { flex:none; width:8ch !important /* beats onload inline width */; min-width:0; height:calc(20px * 3); border:0; border-radius:0; background:none; } #log.term + #dock .att.img img { object-fit:cover; }
 #log.term + #dock .att .abtns { border-radius:0; } #log.term + #dock .att .abtns button { border-radius:0; }
-#log.term + #dock #pback mark { padding:0; background:none; box-shadow:none; } #log.term + #dock #pback mark i { color:var(--accent); }
-#log.term + #dock #pback .fic { color:transparent; } #log.term + #dock #pback .fic::before { content:"["; position:absolute; left:0; color:var(--accent); } #log.term + #dock #pback .fic svg { left:calc(1ch + .1em); }
+#log.term + #dock #pback mark { padding:0; background:#ffffff12; box-shadow:none; } #log.term + #dock #pback mark i { color:transparent; }
+#log.term + #dock #pback .fic { color:transparent; } #log.term + #dock #pback .fic svg { left:calc(1ch + .1em); }
 /* #312 text-mode only: tool calls/output clamp to 2 lines + "…" (click = .open toggles, like the CLI); jump pill = [↓ text]; image refs = accent [tag]s */
 #log.term :is(.msg.out, .msg.tool):not(.open) { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; max-height:none; cursor:pointer; }
 #log.term .msg.out.open { max-height:none; } #log.term .msg.tool.open, #log.term .msg.out.open { cursor:pointer; }
-#log.term .itag { color:var(--accent); cursor:pointer; } #log.term .itag:hover { text-decoration:underline; }
+#log.term .itag { color:var(--accent); cursor:pointer; padding:0 .5ch; } #log.term .itag:hover { background:#2f2d2a; color:#fff; }
 #log.term + #dock #jump { border:0; background:var(--term); box-shadow:none; padding:0 1ch; height:auto; color:var(--accent); animation:none; gap:1ch; } #log.term + #dock #jump svg { display:none; }
-#log.term + #dock #jump::before { content:"[↓"; } #log.term + #dock #jump::after { content:"]"; } #log.term + #dock #jump:hover { color:#fff; }
+#log.term + #dock #jump::before { content:"↓"; } #log.term + #dock #jump:hover { color:#fff; }
 /* #312 Continue ribbon = static text bar above the composer (no tuck/peek), ^ (#readyx) expands the full task */
 #readyx { display:none; } #log.term + #dock #ready { margin:0 0 2px; padding:0 0 0 2ch; border:0; border-top:1px solid #3a3733; border-radius:0; background:none; opacity:1; -webkit-mask-image:none; mask-image:none; transition:none; animation:none; align-items:flex-start; gap:1ch; }
 #log.term + #dock #ready > * { pointer-events:auto; } #log.term + #dock #ready > svg { width:14px; height:14px; margin-top:4px; } #log.term + #dock #readytext { line-height:20px; color:#c9a86a; } #log.term + #dock #readytext.full { padding:0; }
 #log.term + #dock #ready :is(#contBtn, #readyx) { display:inline; font:inherit; height:auto; padding:0 .3ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); font-weight:600; cursor:pointer; }
 #log.term + #dock #readytext:has(.btn) { line-height:20px; } #log.term + #dock #readytext .btn { display:inline; font:inherit; height:auto; margin:0 0 0 .5ch; padding:0 .3ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); } /* #319 What next? presets = [Build] [Sweep]… */
 #log.term + #dock #readytext .btn .i { display:none; } #log.term + #dock #readytext .btn.primary { font-weight:600; } #log.term + #dock #readytext .btn:hover:not(:disabled) { color:#fff; } #log.term + #dock #readytext .btn:disabled { opacity:.5; }
-#log.term + #dock #readytext .btn::before { content:"["; } #log.term + #dock #readytext .btn::after { content:"]"; }
-#log.term + #dock #contBtn::before { content:"["; } #log.term + #dock #contBtn::after { content:"]"; } #log.term + #dock #ready :is(#contBtn, #readyx):hover { color:#fff; }
+#log.term + #dock #ready :is(#contBtn, #readyx):hover { color:#fff; }
 #readyx::before { content:"^"; } #ready:has(#readytext.full) #readyx::before { content:"v"; }
 /* #312 composer popovers (menuAt from #dock in term view → .menu.tui) */
 .menu.tui { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; border-radius:0; background:var(--term); backdrop-filter:none; border:1px solid #3a3733; box-shadow:none; color:#d8d4cb; }
-.menu.tui :is(button, .mact, .mact.lab) { border-radius:0; } .menu.tui button:hover { background:color-mix(in srgb, var(--accent) 22%, transparent); } .menu.tui .mact.lab { border:0; } .menu.tui .mact.lab::before { content:"["; } .menu.tui .mact.lab::after { content:"]"; }
+.menu.tui :is(button, .mact, .mact.lab) { border-radius:0; } .menu.tui button:hover { background:color-mix(in srgb, var(--accent) 22%, transparent); } .menu.tui .mact.lab { border:0; }
 .menu.tui hr { border-top-style:dashed; border-color:#3a3733; } .menu.tui .mcap { text-transform:none; letter-spacing:0; } .menu.tui svg { width:13px; height:13px; }
 
 /* composer */
@@ -391,7 +389,7 @@ pre.diff .ctx { color:var(--faint); }
 #workpill, #handpill, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:28px; }
 #log.term .msg { font-size:inherit; } /* #339 13px inline notes beside the 12.5px strut grew line boxes past 20px → every later block drifted */
 #log.term .msg.note :is(.btn, .npill) { display:inline; height:auto; font:inherit; padding:0 .5ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); vertical-align:top; } #log.term .msg.note .btn svg { display:none; }
-#log.term .msg.note .btn::before { content:"["; } #log.term .msg.note .btn::after { content:"]"; } #log.term .msg.note .btn:hover { color:#fff; }
+#log.term .msg.note .btn:hover { color:#fff; }
 #log.term #skel, #log.term #skel.hd:has(#dockpill > :not([hidden])) { margin-top:0; } /* #339 working line = next whole row (16px chat gap put it half a row off) */
 #log.term + #dock { background:var(--term); margin-top:0; padding-top:0; } /* #339 no overlap over the log ∴ nothing sits half over a row */
 #log.term + #dock #jump { position:static; transform:none; translate:none; margin:0 0 0 24px; height:20px; line-height:20px; max-width:calc(100% - 48px); overflow:hidden; text-overflow:ellipsis; } /* #339 Running/New! = an in-flow dock row, not floating over text */
@@ -399,7 +397,7 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock .col { gap:0; } #log.term + #dock #queue { height:20px; } #log.term + #dock #queue .qnav { width:auto; height:20px; border-radius:0; }
 #log.term + #dock .qp { height:20px; max-width:60ch; padding:0; gap:0; border:0; border-radius:0; background:none; animation:none; color:#9f9a90; } #log.term + #dock .qp:hover { color:#fff; } /* #339 queued msg = text row: [queued] words… @n [edit][↑][x] */
 #log.term + #dock .qp :is(.qi, .qa) { width:auto; height:20px; background:none; border-radius:0; font:inherit; } #log.term + #dock .qp svg { display:none; }
-#log.term + #dock .qp .qi::before { content:"[queued]"; color:#c9a86a; margin-right:1ch; } #log.term + #dock .qp .qa::before { content:"@"; } #log.term + #dock .qp .qa { color:var(--accent); margin-right:1ch; }
+#log.term + #dock .qp .qi::before { content:"queued"; color:#c9a86a; margin-right:1ch; padding:0 .5ch; background:#ffffff12; } #log.term + #dock .qp .qa::before { content:"@"; } #log.term + #dock .qp .qa { color:var(--accent); margin-right:1ch; }
 #log.term + #dock .qp .qt { padding:0 1ch 0 0; } #log.term + #dock .qp .ib { width:auto; height:20px; border-radius:0; background:none; color:var(--accent); } #log.term + #dock .qp .ib:hover { color:#fff; }
 /* #342 dock rows on the 20px grid: rules = inset shadows (take no height), no 2/4px paddings → ready/prompt/toolbar = whole rows under the log */
 #log.term + #dock #ready { margin:0; border:0; box-shadow:inset 0 1px #3a3733; } #log.term + #dock #ready > svg { margin-top:3px; } #log.term + #dock #readytext * { vertical-align:top; line-height:20px; } /* 11.5px .pill/input on the baseline grew the line to 20.5 */
@@ -409,13 +407,17 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock .tb { margin:0; height:20px; min-height:0; } #log.term + #dock .tb > :is(.ib, #send) { height:20px; } #log.term + #dock #status button { padding:0 4px; height:20px; }
 /* #394 term composer bottom row: action = [x], opens menu = [x...]; one hover = bg behind chars + white text; icons 12px centred; Send = solid block */
 #log.term + #dock .tb > .ib, #log.term + #dock #status button { gap:.5ch; padding:0 .3ch; height:20px; border-radius:0; display:inline-flex; align-items:center; background:none; transition:none; }
-#log.term + #dock #status button::before { content:"["; } #log.term + #dock #status button::after, #log.term + #dock .tb > #tCont::after { content:"...]"; }
-#log.term + #dock #status button > svg:last-child:not(:first-child) { display:none; } /* menu chevron → "..." */
+/* #409 menu = CSS chevron pointing up (menus open upward) */ #log.term + #dock #status button::after, #log.term + #dock .tb > #tCont::after { content:""; flex:none; width:4px; height:4px; margin:3px 1px 0 2px; border:solid currentColor; border-width:1.5px 0 0 1.5px; rotate:45deg; }
+#log.term + #dock #status button > svg:last-child:not(:first-child) { display:none; } /* own svg chevron → CSS ::after one */
 #log.term + #dock :is(.tb > .ib, #status button):hover { background:#2f2d2a; color:#fff !important; }
 #log.term + #dock :is(.tb, #status) .i { width:12px; height:12px; flex:none; }
 #log.term + #dock .tb > #send { padding:0 1ch; background:var(--accent); color:var(--term); font-weight:700; } #log.term + #dock .tb > #send::before, #log.term + #dock .tb > #send::after { content:none; }
+/* #409 term buttons: no [ ] brackets; tinted bg behind the text instead, hover unchanged (#2f2d2a/white) */
+#log.term + #dock :is(.tb, #status) { gap:.5ch; } /* tints apart */
+#log.term .card .btn, #log.term .msg.note .btn, #log.term .itag, #log.term + #dock :is(.tb > .ib, #status button, #readytext .btn, #contBtn, #readyx, .qp .ib, #jump), .menu.tui .mact.lab { background:#ffffff12; }
+#log.term .card .btn:hover, #log.term .msg.note .btn:hover, #log.term .itag:hover, #log.term + #dock :is(.tb > .ib, #status button, #readytext .btn, #contBtn, #readyx, .qp .ib, #jump):hover, .menu.tui .mact.lab:hover { background:#2f2d2a; color:#fff; }
 #log.term + #dock .tb > #send:hover { background:color-mix(in srgb, var(--accent) 80%, #fff); color:var(--term); }
-#log.term + #dock .qp .ib:nth-of-type(1)::before { content:"[edit]"; } #log.term + #dock .qp .ib:nth-of-type(2)::before { content:"[↑]"; } #log.term + #dock .qp .ib:nth-of-type(3)::before { content:"[x]"; }
+#log.term + #dock .qp .ib:nth-of-type(1)::before { content:"edit"; } #log.term + #dock .qp .ib:nth-of-type(2)::before { content:"↑"; } #log.term + #dock .qp .ib:nth-of-type(3)::before { content:"x"; }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
   overflow:hidden; overflow-wrap:anywhere; color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
 #dock .col { gap:8px; }
@@ -1976,7 +1978,7 @@ function entry(e) {
   if (e.kind === 'user' && e.images?.length) { // older entries: url strings; newer: {url, name}
     const imgs = e.images.map((x, k) => typeof x === 'string' ? {url: x, name: `image ${k + 1}`} : x);
     if (view !== 'chat') { // #312 term: no thumbs; image refs = accent [stem] tags (click → viewer), unreferenced images listed first
-      const st = imgs.map(x => stem(x.name)), used = new Set(), tag = k => `<span class="itag" data-k="${k}">[${esc(st[k])}]</span>`;
+      const st = imgs.map(x => stem(x.name)), used = new Set(), tag = k => `<span class="itag" data-k="${k}">${esc(st[k])}</span>`;
       const body = esc(e.text).replace(/@?\[([^\]\n]+)\]/g, (m, n) => { const k = st.indexOf(n.replace(/&amp;/g, '&').trim()); if (k < 0) return m; used.add(k); return tag(k); });
       d.innerHTML = imgs.map((x, k) => used.has(k) ? '' : tag(k) + ' ').join('') + body;
       d.querySelectorAll('.itag').forEach(t => t.onclick = () => openViewer(imgs, +t.dataset.k, null));
