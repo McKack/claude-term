@@ -613,7 +613,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti.working .tt { color:transparent; background:linear-gradient(90deg, var(--accent) 25%, color-mix(in srgb, var(--accent) 35%, var(--text)) 50%, var(--accent) 75%) 0 0/200% 100%;
   -webkit-background-clip:text; background-clip:text; animation:shimmer 1.8s linear infinite; } /* Claude works on it: Working… pill's shimmer, on the text */
 .shim { color:transparent; background:linear-gradient(90deg, var(--dim) 25%, var(--text) 50%, var(--dim) 75%) 0 0/200% 100%; -webkit-background-clip:text; background-clip:text; animation:shimmer 1.8s linear infinite; } /* #174 artifact still building */
-.bfile { display:block; color:var(--text); } .bfile svg { width:12px; height:12px; color:var(--ok); vertical-align:-1px; margin-left:4px; }
+.bfile { display:block; color:var(--dim); } /* #349 muted; row title carries the state */ .bfile svg { width:12px; height:12px; color:var(--ok); vertical-align:-1px; margin-left:4px; }
 .ti.working > input { outline:1.5px solid var(--accent); outline-offset:-1.5px; border-radius:3px; } /* unchecked box ignores accent-color → outline tints it */
 .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
 .item a { color:var(--text); text-decoration:none; cursor:pointer; } .item a:hover { color:var(--accent); }
@@ -3036,8 +3036,13 @@ const tgtSplit = (p, c, files) => { const t = p.targets || [], here = tgtLocal; 
 // release files for version v: newest build per file type named with v (versionless could be stale); builds via gh_info (GHI)
 /* #174 while building: expected artifacts (last build's names, else target name) shimmer → check once Tauri prints them under "Finished N bundle(s) at:" (b.from = out offset at build start) */
 const bdone = b => (b?.out || '').slice(b.from || 0).split(/Finished \d+ bundles? at:/).slice(1).join('\n').match(/[^\s\\/]+\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/gi) || [];
-const bfiles = (p, files, pid = cur) => { const done = bdone(builds[pid]), loc = (p.targets || []).filter(tgtLocal);
-  const exp = loc.flatMap(x => { const f = files.filter(f => TGTEXT[x].test(f.name)).map(f => f.name); return f.length ? f.map(n => [n, done.includes(n)]) : [[tgtName(x), done.some(n => TGTEXT[x].test(n))]]; });
+/* #349 expected names from the start: this version's files, else known names (local builds + last release assets) with the
+   version swapped in; one per extension. ✓ = a finished bundle with that extension (Network Mac output names may differ) */
+const bext = n => n.toLowerCase().split('.').pop();
+const bfiles = (p, files, pid = cur) => { const done = bdone(builds[pid]), loc = (p.targets || []).filter(tgtLocal), v = (RELC[pid]?.c?.version || '').replace(/^v/, '');
+  const known = [...files.map(f => f.name), ...(GHI[pid]?.g?.builds || []).map(f => f.name), ...(GHI[pid]?.g?.release?.assets || []).map(a => a.name)];
+  const exp = loc.flatMap(x => { const seen = new Set(), f = known.filter(n => TGTEXT[x].test(n)).map(n => v && fver(n) ? n.replace(fver(n), v) : n).filter(n => !seen.has(bext(n)) && seen.add(bext(n)));
+    return f.length ? f.map(n => [n, done.some(d => bext(d) === bext(n))]) : [[tgtName(x), done.some(n => TGTEXT[x].test(n))]]; });
   return exp.map(([n, ok]) => `<span class="bfile${ok ? '' : ' shim'}">${esc(n)}${ok ? icon('check') : ''}</span>`).join(''); };
 const relFilesFor = (pid, v) => v ? relPick(GHI[pid]?.g?.builds || [], v).filter(b => fver(b.name) === v) : [];
 /* #237 build row: "Update build(s) from <last release>:" + one file (or missing target) per line, Win/Linux/mac ─ Android/iOS */
