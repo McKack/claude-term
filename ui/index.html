@@ -2228,7 +2228,14 @@ function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.sty
   b.innerHTML = esc(p.value).replace(/@\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m;
     return `<mark><i class="fic">@[${icon(fIcon(atts[cur][i].name))}</i>${n}<i>]</i></mark>`; }) + '\n'; pbSync(); }
 // #258 sync now + next frame ∵ Chromium reveals the caret (scrolls) after the input event/keys, not always w/ a timely scroll event → text drifted till the user scrolled
-const pbSync = () => { const f = () => $('pback').scrollTop = $('prompt').scrollTop; f(); requestAnimationFrame(f); };
+// #403 caret line kept out of the #381 top/bottom fades (18px): mirror text = value + '\n' ∴ caret offset → Range in #pback → rect → nudge scrollTop
+function caretClear() { const p = $('prompt'), b = $('pback'); if (document.activeElement !== p || p.scrollHeight <= p.clientHeight) return;
+  let n, k = p.selectionEnd; const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+  while ((n = w.nextNode()) && k > n.length) k -= n.length; if (!n) return;
+  const rg = document.createRange(); rg.setStart(n, k); rg.setEnd(n, k); const c = rg.getClientRects()[0] || rg.getBoundingClientRect(), r = p.getBoundingClientRect(), F = 18;
+  if (!c.height) return; const d = c.bottom > r.bottom - F ? c.bottom - r.bottom + F : c.top < r.top + F && p.scrollTop > 0 ? c.top - r.top - F : 0;
+  if (d) { p.scrollTop += d; b.scrollTop = p.scrollTop; } }
+const pbSync = () => { const f = () => { $('pback').scrollTop = $('prompt').scrollTop; caretClear(); }; f(); requestAnimationFrame(f); };
 ['scroll', 'keyup', 'mouseup', 'select'].forEach(e => $('prompt').addEventListener(e, pbSync));
 // #223 link cursor over a pill: hit-test the mirror's <mark> rects (#pback is pointer-events:none)
 // #341 + hovered pill → its thumb gets .hov (same look as .hl); mark text = "@[name]" (svg has no text)
