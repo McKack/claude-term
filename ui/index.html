@@ -324,6 +324,13 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock .tb > :is(.ib, #send)::before { content:"["; } #log.term + #dock .tb > :is(.ib, #send)::after { content:"]"; }
 #log.term + #dock .tb > :is(.ib.on, #send) { color:var(--accent); } #log.term + #dock .tb > :is(.ib, #send):hover { color:#fff; } #log.term + #dock .tb .i { width:14px; height:14px; }
 #log.term + #dock #jump { font:12.5px ui-monospace,Consolas,monospace; border-radius:0; }
+/* #322 term composer: full width; thumbs = borderless 8ch × 3-line cells on the char grid; @[ref] = plain "[<icon>name]" (mono ∴ "@" slot shows "[", icon on "[" slot) */
+#log.term + #dock .col { max-width:none; }
+#log.term + #dock #atts { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; gap:1ch; padding:0 0 calc(12.5px * 1.55); }
+#log.term + #dock .att.img { flex:none; width:8ch !important /* beats onload inline width */; min-width:0; height:calc(12.5px * 1.55 * 3); border:0; border-radius:0; background:none; } #log.term + #dock .att.img img { object-fit:cover; }
+#log.term + #dock .att .abtns { border-radius:0; } #log.term + #dock .att .abtns button { border-radius:0; }
+#log.term + #dock #pback mark { padding:0; background:none; box-shadow:none; } #log.term + #dock #pback mark i { color:var(--accent); }
+#log.term + #dock #pback .fic { color:transparent; } #log.term + #dock #pback .fic::before { content:"["; position:absolute; left:0; color:var(--accent); } #log.term + #dock #pback .fic svg { left:calc(1ch + .1em); }
 /* #312 text-mode only: tool calls/output clamp to 2 lines + "…" (click = .open toggles, like the CLI); jump pill = [↓ text]; image refs = accent [tag]s */
 #log.term :is(.msg.out, .msg.tool):not(.open) { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; max-height:none; cursor:pointer; }
 #log.term .msg.out.open { max-height:none; } #log.term .msg.tool.open, #log.term .msg.out.open { cursor:pointer; }
