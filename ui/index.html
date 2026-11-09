@@ -2612,7 +2612,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
   status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) { setDoing(d.pid, 'Thinking'); TURN0[d.pid] = Date.now(); if (lastBusy[d.pid]) delete WORK[d.pid]; /* #226 new turn (seen idle this run): recompute, never carry an old turn's #N */ } const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
-    if (d.busy === false) { repDone(d.pid); if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; delete PEND[d.pid]; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
+    if (d.busy === false) { if (RELFIX[d.pid]) { delete RELFIX[d.pid]; if (RELC[d.pid]) RELC[d.pid].t = 0; if (d.pid === cur && tab === 'build') drawRight(); } repDone(d.pid); if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; delete PEND[d.pid]; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) { const r = cq && P(d.pid).ready, t = nextUp(d.pid)[0]; contGo(d.pid); if (r) contNote(d.pid, t); } else { if (cq) contQ[d.pid] = true; /* Continue clicked + msgs queued: msgs first, Continue after (was dropped) */ flushQueue(d.pid); } }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
@@ -2977,7 +2977,7 @@ const useGuess = () => call('update_project', {pid: cur, changes: {build: {...P(
    target stage (stricter going up). Facts from release_check (plain code, cached 60s/project); Claude only writes/judges
    via a Fix prompt. Same stage = light update (tag + publish in GitHub tab); Move up = target's full list first. */
 const STAGES = {alpha: 'Alpha', beta: 'Beta', rc: 'Release candidate', published: 'Published'}, SK = Object.keys(STAGES);
-const RELC = {}, RELTO = {}, RELBUSY = {}; // pid → {c, t} check cache · pid → target stage while moving up
+const RELC = {}, RELTO = {}, RELBUSY = {}, RELFIX = {}; // RELFIX pid → Set of row ids whose Fix/Run turn is out (#359: spin till turn end → recheck) // pid → {c, t} check cache · pid → target stage while moving up
 const RELAI = { // fix prompts: Claude writes/judges, never template
   // #357 one row = README (≥10 lines, touched since the last tag) + LICENSE (picked, present, id matches) + CREDITS.md
   get readme() { const c = RELC[cur]?.c || {}, l = P().license; return [
@@ -3093,7 +3093,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
   const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;display:inline-flex;padding-top:2px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${icon(x.ai ? 'sparkle' : x.ok ? 'check' : 'x')}</span>
     <span class="grow"><span${x.ok ? ' style="color:var(--text)"' : ''}>${esc(x.t)}</span>${x.dh ? '' : x.h ? `<small class="dim" style="display:block">${x.h}</small>` : x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
-    ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" onclick="relAsk('${x.id}')">${x.ai ? 'Run' : 'Fix with Clauracle'}</button>` : ''}</div>${x.dh ? `<small class="dim" style="display:block;padding-left:24px">${x.dh}</small>` : ''}`; /* #182 dh below the row: full width, not squeezed by the Building… button */
+    ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" ${RELFIX[cur]?.has(x.id) ? 'disabled><i class="spin"></i>' : `onclick="relAsk('${x.id}')">`}${x.ai ? 'Run' : 'Fix'}</button>` : ''}</div>${x.dh ? `<small class="dim" style="display:block;padding-left:24px">${x.dh}</small>` : ''}`; /* #182 dh below the row: full width, not squeezed by the Building… button */
   const seg = `<span class="seg">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, '');
   // #265 build in flight → say so (was an enabled-looking button under "Ready to build!")
@@ -3118,6 +3118,7 @@ async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
   const text = id === 'summary' ? `Release prep: in a few lines, what this project is and does, then what's missing for ${relNext(P())} (that stage's checklist; open checks: ${open || 'none'}). Plan only, don't change files.` : RELAI[id];
   if (!await sure(`Ask Clauracle?\n\n${text}\n${estTok()}`)) return;
+  if (id !== 'summary') { (RELFIX[cur] ||= new Set()).add(id); drawRight(); } // ponytail: cleared on the next turn end, even when the ask waits queued behind a running turn
   sendNow(cur, {text, atts: []});
 }
 async function relRelease(to, btn, sv) { // sv = staged version (#266): its copies + commit
