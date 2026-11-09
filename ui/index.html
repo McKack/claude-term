@@ -1077,7 +1077,7 @@ function missCheck(pid, t) {
     catch (e) { toast(String(e), 'err'); } }]);
 }
 // #218 opener toggles its card: light-dismiss fires on pointerdown, so the same click must not reopen it
-const SHUT = {}, reopen = k => Date.now() - (SHUT[k] || 0) < 400, shutOn = (card, k) => card.addEventListener('toggle', e => e.newState === 'closed' && (SHUT[k] = Date.now()));
+const SHUT = {}, reopen = k => Date.now() - (SHUT[k] || 0) < 400, shutOn = (card, k) => card.addEventListener('beforetoggle', e => e.newState === 'closed' && (SHUT[k] = Date.now())); /* #307 beforetoggle = sync; toggle is queued → ran after the click had already reopened */
 /* #283 Start menu: account row → morphs (clip-path) into the Clauracle menu; row stays put at its bottom.
    Grid = every side tab (left + right); search → rows: tabs/settings, projects, files (HEAT, file_heat), secret NAMES (env_list, never values), tasks.
    ponytail: plain substring match, ≤ 60 rows; fuzzy ranking when lists get long */
