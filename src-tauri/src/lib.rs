@@ -1392,10 +1392,11 @@ fn lic_guess(t: &str) -> &'static str {
     [("mit license", "MIT"), ("apache license", "Apache-2.0"), ("lesser general public", "LGPL-3.0"), ("affero general public", "AGPL-3.0"),
      ("general public license", "GPL-3.0"), ("mozilla public license", "MPL-2.0"), ("bsd 3-clause", "BSD-3-Clause"), ("redistributions of source", "BSD-3-Clause"),
      ("unlicense", "Unlicense"), ("isc license", "ISC"), ("permission is hereby granted, free of charge", "MIT")]
-        .iter().find(|(k, _)| t.contains(k)).map_or("", |x| x.1)
+        .iter().filter_map(|(k, id)| t.find(k).map(|i| (i, *id))).min().map_or("", |x| x.1) // #362 earliest match = the title ∵ GPL-3.0 §13 names the Affero licence
 }
 #[test]
-fn lic_guess_ids() { assert_eq!(lic_guess("MIT License\n\nCopyright"), "MIT"); assert_eq!(lic_guess("GNU LESSER GENERAL PUBLIC LICENSE"), "LGPL-3.0"); assert_eq!(lic_guess("hi"), ""); }
+fn lic_guess_ids() { assert_eq!(lic_guess("MIT License\n\nCopyright"), "MIT"); assert_eq!(lic_guess("GNU LESSER GENERAL PUBLIC LICENSE"), "LGPL-3.0"); assert_eq!(lic_guess("hi"), "");
+    assert_eq!(lic_guess("GNU GENERAL PUBLIC LICENSE\n... 13. Use with the GNU Affero General Public License."), "GPL-3.0"); }
 
 fn version_of(root: &std::path::Path) -> Option<(String, &'static str)> {
     ["src-tauri/tauri.conf.json", "package.json", "Cargo.toml", "src-tauri/Cargo.toml", "pyproject.toml"].into_iter().find_map(|f| {
