@@ -151,6 +151,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .cm .tk { margin-left:6px; color:var(--faint); display:inline-flex; } .cm .tk.read { color:#34b7f1; } .cm .tk.fail { color:var(--err); } .cm .tk .i { width:13px; height:13px; vertical-align:-2px; }
 .rpill { display:inline; white-space:nowrap; padding:.1em 8px .1em 6px; border-radius:99px; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); } .rpill svg { width:1em; height:1em; margin-right:4px; vertical-align:-.1em; } /* #271 inline (≠ inline-flex: svg-baseline lifted the pill), nowrap */
 #pback .fic { position:relative; } #pback .fic svg { position:absolute; left:.2em; top:50%; width:.8em; height:.8em; transform:translateY(-50%); color:var(--accent); } /* #270 icon over the "@[" slot */
+.cm .mid { border:0; background:none; padding:0 4px; border-radius:4px; font:inherit; font-size:11px; color:var(--faint); cursor:pointer; opacity:.7; font-variant-numeric:tabular-nums; } .cm .mid:hover { opacity:1; color:var(--accent); background:var(--soft); } .rpill.mref { cursor:pointer; } /* #418 message ID → reply ref */
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
 /* #250 = composer .att.img: 56px high, real aspect, 56..220px wide, 10px radius, gap 8 */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; max-width:100%; }
@@ -2020,11 +2021,21 @@ function ircRow(e, d) {
   w.innerHTML = `<div class="ih">${t && !isNaN(t) ? '<span class="its">[' + t.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false}) + ']</span>' : ''}<span class="nk">&lt;${u ? '@' + esc(S.you?.nick || P()?.gh || 'You') : 'Clauracle'}&gt;:</span></div>`;
   w.append(d); return w;
 }
+// #418 message ID = 4 base36 chars of FNV-1a(ts + kind): stable across reloads (log keeps ts), no stored field. ponytail: 1.7M space, collisions per project ≈ never
+const mid = (ts, kind) => { let h = 2166136261; for (const c of ts + kind) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0).toString(36).slice(-4).padStart(4, '0'); };
+const midEntry = (pid, id) => (logs[pid] || []).findLast(e => e.ts && mid(e.ts, e.kind === 'user' ? 'user' : 'claude') === id); // ≠ user → 'claude' ∵ a .thead row's ts = its first tool entry's
+function midRef(id) { const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = `@[^${id}]`; // reply ref, like attRef
+  el.setRangeText((s && !/\s/.test(v[s - 1]) ? ' ' : '') + r + (e < v.length && /\s/.test(v[e]) ? '' : ' '), s, e, 'end'); el._pv = el.value; el.focus(); grow(); keepDraft(); }
+function midJump(id) { const el = $('log').querySelector(`.crow[data-mid="${id}"]`); if (!el) return toast('That message is no longer in the history', 'info');
+  el.scrollIntoView({behavior: 'smooth', block: 'center'}); el.classList.remove('jumphl'); void el.offsetWidth; el.classList.add('jumphl'); }
+// sent text: "@[^id]" alone means nothing to Claude → quote what it points at (first 400 chars)
+const midTxt = (pid, t) => [...new Set([...t.matchAll(/@\[\^(\w{4})\]/g)].map(m => m[1]))].map(id => { const e = midEntry(pid, id);
+  return e ? `\n\n(^${id} = reply reference to ${e.kind === 'user' ? 'my' : 'your'} earlier message: "${bare(e.text).trim().slice(0, 400).replace(/\n+/g, ' ')}${e.text.length > 400 ? '…' : ''}")` : ''; }).join('');
 function chatRow(kind, inner, ts) {
-  const w = document.createElement('div'), me = P()?.gh;
-  w.className = 'crow ' + kind;
+  const w = document.createElement('div'), me = P()?.gh, id = ts && mid(ts, kind);
+  w.className = 'crow ' + kind; if (id) w.dataset.mid = id;
   w.innerHTML = (kind === 'claude' ? '<svg class="av"><use href="#i-logo"/></svg>' : me ? avGh(me) : `<span class="av" style="background:var(--accent)">${icon('user')}</span>`)
-    + `<div class="cb"><div class="cm"><b>${kind === 'claude' ? 'Clauracle' : esc(S.you?.nick || me || 'You')}</b>${ts ? `<span>${esc(tm(ts))}</span>` : ''}</div></div>`;
+    + `<div class="cb"><div class="cm"><b>${kind === 'claude' ? 'Clauracle' : esc(S.you?.nick || me || 'You')}</b>${ts ? `<span>${esc(tm(ts))}</span>` : ''}${id ? `<button class="mid" data-tip="Reply to this message (adds ^${id} to your message)" onclick="midRef('${id}')">^${id}</button>` : ''}</div></div>`;
   w.querySelector('.cb').append(inner);
   return w;
 }
@@ -2218,7 +2229,7 @@ const ftIcon = n => { const b = n.split('/').pop().toLowerCase(), e = (b.match(/
 // #270 composer ref = plain "@[name]" (same text in prompt, logs, issues); mirror draws the icon over "@[". unpad: old drafts' "[  name ]" pads → @[name]
 const unpad = t => t.replace(/\[\u2007\u2007([^\]\n]*?)\u2002\]/g, '@[$1]'), reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // #227 chat bubble: @[ref] (old logs: [ref]) naming one of the message's files → same pill
-const refPills = (t, names) => esc(unpad(t)).replace(/@?\[([^\]\n]+)\]/g, (m, n) => { const f = names.find(x => stem(x) === n.replace(/&amp;/g, '&').trim() || x === n); return f ? `<span class="rpill">${icon(fIcon(f))}${n}</span>` : m; });
+const refPills = (t, names) => esc(unpad(t)).replace(/@?\[([^\]\n]+)\]/g, (m, n) => { if (/^\^\w{4}$/.test(n)) return `<span class="rpill mref" onclick="midJump('${n.slice(1)}')" data-tip="Jump to that message">${icon('reply')}${n.slice(1)}</span>`; const f = names.find(x => stem(x) === n.replace(/&amp;/g, '&').trim() || x === n); return f ? `<span class="rpill">${icon(fIcon(f))}${n}</span>` : m; });
 function attRef(i) { // inserts [name w/o extension] at the caret; a space before/after only where the neighbour isn't one already
   const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = view !== 'chat' ? `@[ ${stem(atts[cur][i].name)}]` : `@[${stem(atts[cur][i].name)}]`; // #325 term: "@[ " ∴ mirror shows "[icon name]" w/ a space (mono slots)
   const ins = (s && !/\s/.test(v[s - 1]) ? ' ' : '') + r + (e < v.length && /\s/.test(v[e]) ? '' : ' ');
@@ -2238,7 +2249,7 @@ function drawAtts() {
 // its own text). Click inside one → highlight + scroll its thumb, image → viewer. Icon drawn over the "@[" chars (same text ∴ mirror stays aligned)
 const attAt = name => { name = name.trim().replace(/[   ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
 function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.style.overflowY = p.offsetWidth > p.clientWidth ? 'scroll' : 'hidden'; /* #231/#405 textarea scrollbar narrows its lines → mirror gets the SAME scrollbar (thumb hidden): `right:Npx` was off by fractional px at DPR 2.19 (10px bar ≈ 10.06) → other wraps → caret mid-word */
-  b.innerHTML = esc(p.value).replace(/@\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m;
+  b.innerHTML = esc(p.value).replace(/@\[([^\]\n]+)\]/g, (m, n) => { if (/^\^\w{4}$/.test(n)) return `<mark class="mref"><i class="fic">@[^${icon('reply')}</i>${n.slice(1)}<i>]</i></mark>`; /* #418 reply ref: "^" hidden too, icon over "@[" */ const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m;
     return `<mark data-i="${i}"><i class="fic">@[${icon(fIcon(atts[cur][i].name))}</i>${n}<i>]</i></mark>`; }) + '\n'; pbSync(); }
 // #258 sync now + next frame ∵ Chromium reveals the caret (scrolls) after the input event/keys, not always w/ a timely scroll event → text drifted till the user scrolled
 // #403 caret line kept out of the #381 top/bottom fades (18px): mirror text = value + '\n' ∴ caret offset → Range in #pback → rect → nudge scrollTop
@@ -2260,7 +2271,7 @@ $('prompt').addEventListener('mousemove', e => { const hit = [...$('pback').quer
   e.target.style.cursor = hit ? 'pointer' : ''; attHov(hit ? attAt(hit.textContent.slice(2, -1)) : -1); });
 $('prompt').addEventListener('mouseleave', () => attHov(-1));
 $('prompt').addEventListener('click', () => { const p = $('prompt'), c = p.selectionStart, v = p.value, o = v.lastIndexOf('[', c), z = v.indexOf(']', o);
-  if (o < 0 || z < c || v.slice(o, z).includes('\n')) return; const i = attAt(v.slice(o + 1, z)); if (i < 0) return;
+  if (o < 0 || z < c || v.slice(o, z).includes('\n')) return; const rid = /^\^(\w{4})$/.exec(v.slice(o + 1, z))?.[1]; if (rid) return midJump(rid); const i = attAt(v.slice(o + 1, z)); if (i < 0) return;
   const t = $('atts').children[i]; document.querySelectorAll('.att.hl').forEach(x => x.classList.remove('hl')); t?.classList.add('hl'); t?.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'smooth'});
   setTimeout(() => t?.classList.remove('hl'), 2500); if (atts[cur][i].url) viewAtt(i); });
 // #192 scroll arrows only toward hidden thumbs; ResizeObserver ∵ composer width changes w/o a redraw
@@ -2607,7 +2618,7 @@ const RNOTE = '\n\n(A remark, not a task (Clauracle): acknowledge it in a line; 
 // → issue number, 'question'/'remark' when triage says it's no task (nothing filed), 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
   // #220: images → Rust saves them + lists their paths in the body (was names only → the session on the issue never saw them)
-  const fs = a.filter(x => x.path), body = t + noteTxt(a) + (fs.length ? `\n\nAttached files:\n${fs.map(x => '- ' + x.path).join('\n')}` : '');
+  const fs = a.filter(x => x.path), body = t + midTxt(pid, t) + noteTxt(a) + (fs.length ? `\n\nAttached files:\n${fs.map(x => '- ' + x.path).join('\n')}` : '');
   // #309 local draft: row in the task list at once (gray "local" dot) while Sonnet writes the neutral issue text, then gh files it
   const loc = {number: 0, local: true, title: t.split('\n')[0].slice(0, 90), url: '', labels: [{name: 'local (being filed)', color: '9aa0a6'}], assignees: [], t: Date.now()};
   (FRESH[pid] ||= []).push(loc); issueRedraw(pid);
@@ -2702,7 +2713,7 @@ const readAll = pid => { (UNREAD[pid] || []).forEach(e => e.st !== 'fail' && tic
 const INBOX = {};
 function sendNow(pid, {text: t, atts: a, work}, e) {
   const images = a.filter(x => x.data), files = a.filter(x => x.path).map(x => x.path);
-  const nt = noteTxt(a);
+  const nt = midTxt(pid, t) + noteTxt(a); // #418 reply refs quoted
   if (e) { reBub(e, t, a); if (e.st !== 'pend') tick(e, 'pend'); }
   else e = userEntry(pid, t, a);
   (UNREAD[pid] ||= []).push(e);
