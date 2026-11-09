@@ -3,6 +3,8 @@
 User-facing changes, newest first.
 
 ## Unreleased
+
+- Library license check: Settings › Projects › License and the release checklist list every shipped Rust/npm library with its license, flag ones your license doesn't allow or that have no known license, and add uncredited libraries to CREDITS.md in one click. The license file is now LICENSE.md.
 - Notifications: Snooze 24h or Snooze ∞ in the bell card silences popups, desktop and phone notifications (they still land in the list); Unsnooze turns them back on.
 - Right-click on a misspelled word in a text field now offers spelling suggestions (Windows).
 - Clauracle is now licensed under GPL-3.0 (was MIT); CREDITS.md lists who made it and the libraries, font and icons it ships.

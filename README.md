@@ -33,4 +33,4 @@ Nothing else to install: if `claude` or `gh` is missing, Clauracle offers to ins
 All three OSes: push a `v*` tag (or run the *build* workflow); `.github/workflows/build.yml` builds each and drafts a release.
 
 The terminal predecessor, claude-term, is archived in `archive/tui/` (git tag `tui-final`); the Python prototype in `archive/python/`.
-GPL-3.0 licence (`LICENSE`); what changed per version: `CHANGELOG.md`; who and what it's built with: `CREDITS.md`.
+GPL-3.0 licence (`LICENSE.md`); what changed per version: `CHANGELOG.md`; who and what it's built with: `CREDITS.md`.

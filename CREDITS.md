@@ -1,6 +1,6 @@
 # Credits
 
-Clauracle is made by Kim ([McKack](https://github.com/McKack)), licensed under GPL-3.0 (`LICENSE`).
+Clauracle is made by Kim ([McKack](https://github.com/McKack)), licensed under GPL-3.0 (`LICENSE.md`).
 
 ## Shipped with the app
 

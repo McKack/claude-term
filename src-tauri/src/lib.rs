@@ -1399,6 +1399,97 @@ fn lic_guess(t: &str) -> &'static str {
 fn lic_guess_ids() { assert_eq!(lic_guess("MIT License\n\nCopyright"), "MIT"); assert_eq!(lic_guess("GNU LESSER GENERAL PUBLIC LICENSE"), "LGPL-3.0"); assert_eq!(lic_guess("hi"), "");
     assert_eq!(lic_guess("GNU GENERAL PUBLIC LICENSE\n... 13. Use with the GNU Affero General Public License."), "GPL-3.0"); }
 
+/// #412 licence family: 0 permissive, 1 weak copyleft (file/library-level), 2 GPL, 3 AGPL, 8 proprietary/no-reuse, 9 unknown.
+fn lic_cat(id: &str) -> u8 {
+    let u = id.trim().trim_matches(|c| c == '(' || c == ')').to_uppercase();
+    let has = |l: &[&str]| l.iter().any(|x| u.starts_with(x));
+    if has(&["AGPL"]) { 3 } else if has(&["LGPL"]) { 1 } else if has(&["GPL"]) { 2 }
+    else if has(&["MPL", "EPL", "CDDL", "OFL"]) { 1 }
+    else if has(&["MIT", "APACHE", "BSD", "CDLA-PERMISSIVE", "ISC", "ZLIB", "UNLICENSE", "0BSD", "CC0", "UNICODE", "BSL-1.0", "BOOST", "WTFPL", "PYTHON", "PSF", "CC-BY-4.0", "CC-BY-3.0", "BLUEOAK", "X11", "NCSA", "ARTISTIC", "POSTGRESQL", "W3C"]) { 0 }
+    else if has(&["PROPRIETARY", "UNLICENSED", "SSPL", "BUSL", "CC-BY-NC", "COMMONS-CLAUSE"]) { 8 } else { 9 }
+}
+/// #412 can a project under `proj` ship a dep under SPDX expr `expr`? → "ok" | "note" (weak copyleft: keep it a separate,
+/// unmodified library) | "bad" | "unk". OR/"/" = best alternative, AND = worst. ponytail: parens ignored (A AND (B OR C) ≈ flat)
+fn lic_fit(proj: &str, expr: &str) -> &'static str {
+    let p = lic_cat(proj);
+    let one = |id: &str| match lic_cat(id) { 0 => 0, 1 => 1, 2 if p == 2 || p == 3 => 0, 3 if p == 3 => 0, 9 => 3, _ => 4 }; // 0 ok 1 note 3 unk 4 bad
+    let e = expr.replace('/', " OR ");
+    let r = e.split(" OR ").map(|alt| alt.split(" AND ").map(one).max().unwrap_or(3)).min().unwrap_or(3);
+    if expr.trim().is_empty() { "unk" } else { ["ok", "note", "", "unk", "bad"][r as usize] }
+}
+#[test]
+fn lic_fit_rules() {
+    assert_eq!(lic_fit("MIT", "MIT OR Apache-2.0"), "ok"); assert_eq!(lic_fit("MIT", "GPL-3.0-only"), "bad");
+    assert_eq!(lic_fit("GPL-3.0", "GPL-2.0-or-later"), "ok"); assert_eq!(lic_fit("GPL-3.0", "AGPL-3.0"), "bad");
+    assert_eq!(lic_fit("Proprietary", "MPL-2.0"), "note"); assert_eq!(lic_fit("MIT", "MIT/Apache-2.0"), "ok");
+    assert_eq!(lic_fit("MIT", "(MIT OR Apache-2.0) AND Unicode-3.0"), "ok"); assert_eq!(lic_fit("MIT", ""), "unk"); assert_eq!(lic_fit("MIT", "LGPL-2.1"), "note");
+}
+/// #412 shipped deps + licences from data only (never AI): cargo tree (normal deps, all targets, offline) + package-lock
+/// non-dev packages. → [{n, v, l, e, d(direct), s(lic_fit)}] deduped. ponytail: Python/Go/etc. not scanned; no lock → npm skipped
+fn lic_deps(root: &std::path::Path, proj: &str) -> Vec<Value> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = vec![];
+    let mut add = |n: &str, v: &str, l: &str, e: &str, d: bool| if seen.insert(format!("{e}:{n}@{v}")) {
+        out.push(json!({"n": n, "v": v, "l": l, "e": e, "d": d, "s": lic_fit(proj, l)}));
+    };
+    if let Some(m) = ["Cargo.toml", "src-tauri/Cargo.toml"].iter().map(|f| root.join(f)).find(|f| f.exists()) {
+        let o = store::run("cargo", &["tree", "--manifest-path", &m.to_string_lossy(), "-e", "normal", "--target", "all", "--prefix", "depth", "--format", "{p}|{l}", "--offline"], None, &[]);
+        for ln in o.stdout.lines() {
+            let dep = ln.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+            let depth: usize = ln[..ln.len() - dep].parse().unwrap_or(0);
+            let (pk, l) = ln[ln.len() - dep..].split_once('|').unwrap_or((ln, ""));
+            let mut w = pk.split_whitespace();
+            // "(D:\…" path crate = own code, "(proc-macro)" = build-time only → skipped; "(https…" git dep kept; " (*)" = cargo's dedupe mark
+            let own = pk.contains('(') && !pk.contains("(http") && !pk.contains("(git");
+            if let (Some(n), Some(v), true) = (w.next(), w.next(), depth > 0 && !own) { add(n, v.trim_start_matches('v'), l.trim().trim_end_matches("(*)").trim(), "cargo", depth == 1); }
+        }
+    }
+    let pj: Value = std::fs::read_to_string(root.join("package.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let lock: Value = std::fs::read_to_string(root.join("package-lock.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    for (k, x) in lock["packages"].as_object().into_iter().flatten() {
+        let Some(n) = k.rsplit_once("node_modules/").map(|x| x.1) else { continue };
+        if x["dev"] == true || x["link"] == true { continue }
+        let l = x["license"].as_str().map(String::from).or_else(|| x["license"]["type"].as_str().map(String::from)).unwrap_or_default();
+        add(n, x["version"].as_str().unwrap_or(""), &l, "npm", k.matches("node_modules/").count() == 1 && pj["dependencies"].get(n).is_some());
+    }
+    out
+}
+/// #412 direct deps CREDITS.md doesn't name. Match = full name, or first+last name part (tauri-plugin-dialog ↔ "Tauri … dialog").
+fn credits_miss(root: &std::path::Path, deps: &[Value]) -> Vec<String> {
+    let t = std::fs::read_dir(root).into_iter().flatten().flatten().find(|e| e.file_name().to_string_lossy().to_uppercase().starts_with("CREDITS"))
+        .and_then(|e| std::fs::read_to_string(e.path()).ok()).unwrap_or_default().to_lowercase().replace('_', "-");
+    deps.iter().filter(|d| d["d"] == true).filter_map(|d| d["n"].as_str()).filter(|n| {
+        let n = n.to_lowercase().replace('_', "-");
+        let parts: Vec<&str> = n.trim_start_matches('@').split(['-', '/']).filter(|s| !s.is_empty()).collect();
+        !(t.contains(&n) || parts.len() > 1 && t.contains(parts[0]) && t.contains(parts[parts.len() - 1]))
+    }).map(String::from).collect()
+}
+#[test]
+fn credits_match() {
+    let d = std::env::temp_dir().join("clauracle-credits-test"); let _ = std::fs::create_dir_all(&d);
+    std::fs::write(d.join("CREDITS.md"), "- Tauri 2 and its dialog plugin\n- serde_json").unwrap();
+    let deps: Vec<Value> = ["tauri-plugin-dialog", "serde-json", "ureq", "libc"].iter().enumerate().map(|(i, n)| json!({"n": n, "d": i < 3})).collect();
+    assert_eq!(credits_miss(&d, &deps), vec!["ureq"]); let _ = std::fs::remove_dir_all(&d);
+}
+/// #412 appends the uncredited direct deps to CREDITS.md (creates it), lines built from scan data: "- name version: licence".
+#[tauri::command(async)]
+fn lic_credits(st: St, pid: String) -> R<usize> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let root = std::path::PathBuf::from(&p.path);
+    let deps = lic_deps(&root, &p.license);
+    let miss = credits_miss(&root, &deps);
+    if miss.is_empty() { return Ok(0) }
+    let f = std::fs::read_dir(&root).into_iter().flatten().flatten().map(|e| e.path()).find(|f| f.file_name().is_some_and(|n| n.to_string_lossy().to_uppercase().starts_with("CREDITS"))).unwrap_or(root.join("CREDITS.md"));
+    let mut t = std::fs::read_to_string(&f).unwrap_or_else(|_| "# Credits\n".into());
+    if !t.ends_with('\n') { t.push('\n') }
+    t += "\n## Third-party libraries\n\n";
+    for n in &miss { if let Some(d) = deps.iter().find(|d| d["n"] == n.as_str() && d["d"] == true) {
+        t += &format!("- {n} {}: {}\n", d["v"].as_str().unwrap_or(""), d["l"].as_str().filter(|l| !l.is_empty()).unwrap_or("licence not stated"));
+    } }
+    store::write_atomic(&f, t.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(miss.len())
+}
+
 fn version_of(root: &std::path::Path) -> Option<(String, &'static str)> {
     ["src-tauri/tauri.conf.json", "package.json", "Cargo.toml", "src-tauri/Cargo.toml", "pyproject.toml"].into_iter().find_map(|f| {
         let t = std::fs::read_to_string(root.join(f)).ok()?;
@@ -1479,7 +1570,9 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
         let tag_t = if tag.ok { ct(&["log", "-1", "--format=%ct", tag.stdout.trim()]) } else { 0 };
         let code_t = store::code_time(&p.path);
         let readme_old = tag_t > 0 && code_t > tag_t && ct(&["log", "-1", "--format=%ct", "--", "README*"]) < tag_t;
-        json!({"readme": readme, "readme_old": readme_old, "credits": has(&["CREDITS"]), "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "lic_id": lic_id, "lic_file": lic_file,"changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
+        let deps = lic_deps(&root, &p.license); // #412
+        let cmiss = credits_miss(&root, &deps);
+        json!({"deps": deps, "credits_miss": cmiss, "readme": readme, "readme_old": readme_old, "credits": has(&["CREDITS"]), "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "lic_id": lic_id, "lic_file": lic_file,"changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
                "version": ver.as_ref().map(|v| &v.0), "vfile": ver.as_ref().map(|v| v.1), "tag": if tag.ok { tag.stdout.trim() } else { "" },
                "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon.map(|i| i.0), "icon_px": icon.and_then(|i| i.1), "remote": remote, "code_t": code_t,
                "ci": ci, "sign": store::sign_env(&p.path).into_iter().map(|(k, _)| k).collect::<Vec<_>>()})
@@ -2374,7 +2467,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![rel_fix, ctx_pick, 
+        .invoke_handler(tauri::generate_handler![rel_fix, lic_credits, ctx_pick, 
             fullscreen, state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
             continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
@@ -2422,3 +2515,6 @@ mod rep_tests {
         assert_eq!(super::civil(951_782_400), "2000-02-29 00:00 UTC");
     }
 }
+#[test] #[ignore]
+fn lic_scan_here() { let d = lic_deps(std::path::Path::new(".."), "GPL-3.0"); let bad: Vec<_> = d.iter().filter(|x| x["s"] != "ok").collect();
+    println!("{} deps, non-ok: {:?}\nmiss: {:?}", d.len(), bad, credits_miss(std::path::Path::new(".."), &d)); }
