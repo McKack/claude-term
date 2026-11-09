@@ -75,7 +75,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .side-head { display:flex; align-items:center; gap:2px; padding:8px 8px 6px 10px; }
 #stabs { display:flex; gap:2px; min-width:0; } #brand .ib { margin-left:auto; }
 #files { flex:1; overflow:auto; padding:2px 8px; }
-#graph { flex:1; display:flex; flex-direction:column; margin:2px 8px 8px; border-radius:10px; overflow:hidden; background:#161514; color:#cfd6e4; min-height:120px; font-size:12px; } /* #137 always dark; #221 hot files; #223 bg = .termcard */
+#graph { height:340px; display:flex; flex-direction:column; margin:0; border-radius:10px; overflow:hidden; background:#161514; color:#cfd6e4; min-height:120px; font-size:12px; } /* #137 always dark; #221 hot files; #223 bg = .termcard */
 #graph .ghd { display:flex; align-items:center; padding:2px 4px 2px 10px; } #graph .ginfo { opacity:.6; } #graph .gre { color:#cfd6e4; } #graph .faint { padding:10px; }
 #graph .tm { flex:1; position:relative; min-height:100px; } #graph .tm div { position:absolute; box-sizing:border-box; border:1px solid #161514; overflow:hidden; padding:1px 3px; font-size:10.5px; line-height:1.25; white-space:nowrap; text-overflow:ellipsis; color:#e6ebf5; cursor:pointer; }
 #graph .tm div.on { outline:2px solid #fff; outline-offset:-2px; z-index:1; } #graph .gdet { max-height:45%; overflow:auto; padding:6px 10px; border-top:1px solid #ffffff1a; line-height:1.5; }
@@ -776,7 +776,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="side">
   <div id="brand"><svg class="logo" onclick="goHome()" style="cursor:pointer" title="Home"><use href="#i-logo"/></svg><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b><small id="appver"></small>
 </div>
-  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="graph" onclick="setSide('graph')" title="Hot files: size × recent churn"><svg class="i"><use href="#i-graph"/></svg><span>Hot</span></button></span>
+  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
@@ -1177,7 +1177,7 @@ const SHUT = {}, reopen = k => Date.now() - (SHUT[k] || 0) < 400, shutOn = (card
 /* #283 Start menu: account row → morphs (clip-path) into the Clauracle menu; row stays put at its bottom.
    Grid = every side tab (left + right); search → rows: tabs/settings, projects, files (HEAT, file_heat), secret NAMES (env_list, never values), tasks.
    ponytail: plain substring match, ≤ 60 rows; fuzzy ranking when lists get long */
-const SMTABS = () => [['projects', 'folder', 'Projects', 'l'], ['files', 'doc', 'Files', 'l'], ['graph', 'graph', 'Hot files', 'l'],
+const SMTABS = () => [['projects', 'folder', 'Projects', 'l'], ['files', 'doc', 'Files', 'l'],
   ...(cur ? [...document.querySelectorAll('#rtabs button[data-t]')].map(b => [b.dataset.t, b.querySelector('use').getAttribute('href').slice(3), b.textContent.trim(), 'r']) : [])];
 const SMENV = {}; // pid → {t, keys: [[name, file]]}; 60 s
 function smTab(k, side) {
@@ -2777,6 +2777,7 @@ const optRow = (title, hint, control) => `<div class="opt-row"><div class="grow"
 // collapsible section: open state remembered per key (only when clicked); never clicked → open when it has something.
 // count (number or short text) shows as a pill = collapsed summary; buttons in `actions` don't toggle it; open = default when never clicked (#257: filled → false)
 const folds = (() => { try { return JSON.parse(localStorage.folds || '{}'); } catch { return {}; } })();
+delete folds['w-hot']; // #370 Hot files fold always starts collapsed (open state kept in-session only)
 const fold = (key, title, body, count = 0, actions = '', open = !!count) => `<details class="sec fold" data-f="${key}" ${(folds[key] ?? open) ? 'open' : ''}>
   <summary class="sh" onclick="setTimeout(() => { folds['${key}'] = this.parentNode.open; try { localStorage.folds = JSON.stringify(folds); } catch {} })">${icon('chev')}<span class="label">${title}</span>
   ${count ? `<span class="pill">${count}</span>` : ''}<span onclick="event.preventDefault()">${actions}</span></summary><div class="sc">${body}</div></details>`;
@@ -3774,11 +3775,10 @@ function codeView() { const c = codeAt[cur]; if (!c?.text) return;
 function setSide(t) { UI.st = t; layout(); drawSide(); }
 function toggleLeft() { UI.lc = !UI.lc; layout(); }
 function drawSide() {
-  const t = ['files', 'graph'].includes(UI.st) ? UI.st : 'projects'; // old saved 'tasks' tab (removed) → projects
+  const t = UI.st === 'files' ? 'files' : 'projects'; // old saved 'tasks'/'graph' tab (removed; #370 Hot → GitHub tab fold) → projects
   document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', b.dataset.s === t));
-  $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files'; $('graph').hidden = t !== 'graph';
+  $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files';
   if (t === 'files') drawFiles();
-  if (t === 'graph') drawGraph();
 }
 /* #221 Hot files: squarified treemap, area = size, colour = 30-day churn (Rust file_heat: git log --numstat).
    Click a cell → its recent commits + the #N issues they name (→ editIssue); file name → open in Code. 60s cache per project.
@@ -4966,10 +4966,15 @@ function drawAtp() {
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
     : agentIdle();
-  const h = tab === 'agents' ? agents : iq && tab === 'gh' ? ghSteps(iq, qRows, t, open, fin, dn) : tasks;
+  const h = (tab === 'agents' ? agents : iq && tab === 'gh' ? ghSteps(iq, qRows, t, open, fin, dn) : tasks)
+    + (tab === 'gh' ? fold('w-hot', 'Hot files', '') : ''); // #370 treemap (#graph) moved in after render
   if (qDragging) return; // mid-drag: a rebuild would drop the row
   if (el._h === h) return; // drawChrome → drawRails → here on every keystroke: same HTML → keep DOM (open rows, animations)
+  const g = $('graph'); g?.remove(); // #370 keep the treemap DOM (+ its ResizeObserver) across rebuilds: detach, re-home below
   el.innerHTML = el._h = h;
+  const hf = el.querySelector('[data-f=w-hot]');
+  if (hf && g) { g.hidden = false; hf.querySelector('.sc').append(g); hf.ontoggle = () => hf.open && drawGraph(true); if (hf.open) drawGraph(); } // scans only while open (HEAT 60s cache)
+  else if (g) document.body.append(Object.assign(g, {hidden: true}));
   if ($('qlist')) qSortable($('qlist'));
 }
 // sweep: Claude merges every plan file's open tasks into PLAN.md (confirmed first, showing what moves)
