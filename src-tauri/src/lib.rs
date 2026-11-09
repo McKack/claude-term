@@ -1683,7 +1683,85 @@ fn write_file(st: St, pid: String, rel: String, text: String) -> R<()> {
     std::fs::write(inside(&p.path, &rel)?, text).map_err(|e| e.to_string())
 }
 
-/// #371 Notes tab: `<project>/NOTES.md` (missing → ""). text = save; first save adds `/NOTES.md` to .git/info/exclude (local-only, repo untouched).
+/// #374 Edit view lint → [{l, s: "e"|"w", m}]. js-family: project eslint (stdin, own config) if installed, else `node --check` (syntax only);
+/// py: py_compile; rs: `cargo check` at the nearest Cargo.toml (reads the SAVED file, whole crate ∴ UI calls it on open/save only). Tool missing → [].
+/// HTML: UI blanks non-script lines and sends ext js/mjs (line numbers kept); eslint skipped then (rel ≠ .ext).
+#[tauri::command(async)]
+fn lint(st: St, pid: String, rel: String, text: String, ext: String) -> R<Vec<Value>> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let root = std::path::Path::new(&p.path);
+    let js = matches!(ext.as_str(), "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx");
+    if ext == "rs" {
+        let f = inside(&p.path, &rel)?;
+        let rc = std::fs::canonicalize(root).unwrap_or_default(); // f is canonical (\\?\ on Windows)
+        let Some(dir) = f.ancestors().skip(1).take_while(|d| d.starts_with(&rc)).find(|d| d.join("Cargo.toml").is_file()) else { return Ok(vec![]) };
+        let o = store::run("cargo", &["check", "--message-format", "short", "--color", "never"], Some(&dir.to_string_lossy()), &[]);
+        return Ok(cargo_marks(&o.stderr, &rel));
+    }
+    let es = root.join("node_modules/.bin").join(if cfg!(windows) { "eslint.cmd" } else { "eslint" });
+    if js && es.is_file() && rel.ends_with(&format!(".{ext}")) {
+        use std::io::Write;
+        let mut c = store::command(&es);
+        c.args(["--stdin", "--stdin-filename", &rel, "-f", "json"]).current_dir(root)
+            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
+        if let Ok(mut ch) = c.spawn() {
+            if let Some(mut i) = ch.stdin.take() { let _ = i.write_all(text.as_bytes()); }
+            if let Ok(o) = ch.wait_with_output() {
+                if let Ok(v) = serde_json::from_slice::<Value>(&o.stdout) { // not JSON (no config…) → syntax check below
+                    return Ok(v[0]["messages"].as_array().into_iter().flatten().map(|m| json!({"l": m["line"].as_u64().unwrap_or(1),
+                        "s": if m["severity"] == 2 { "e" } else { "w" }, "m": format!("{} ({})", m["message"].as_str().unwrap_or(""), m["ruleId"].as_str().unwrap_or("eslint"))})).collect());
+                }
+            }
+        }
+    }
+    let tool = match ext.as_str() { "js" | "mjs" | "cjs" => "node", "py" => if cfg!(windows) { "python" } else { "python3" }, _ => return Ok(vec![]) };
+    let id: String = pid.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    let tmp = std::env::temp_dir().join(format!("clauracle-lint-{id}.{ext}"));
+    std::fs::write(&tmp, &text).map_err(|e| e.to_string())?;
+    let t = tmp.to_string_lossy();
+    let o = if tool == "node" { store::run(tool, &["--check", &t], None, &[]) } else { store::run(tool, &["-m", "py_compile", &t], None, &[]) };
+    let _ = std::fs::remove_file(&tmp);
+    Ok(if o.ok { vec![] } else { syn_marks(&o.stderr) })
+}
+
+/// node --check ("file:LINE" … "SyntaxError: msg") / py_compile ('File "…", line N' … "SyntaxError: msg") → one error mark.
+fn syn_marks(out: &str) -> Vec<Value> {
+    let num = |s: &str| s.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse::<u64>().ok();
+    let line = out.lines().find_map(|x| x.split_once(", line ").and_then(|(_, n)| num(n))
+        .or_else(|| x.trim_end().rsplit_once(':').and_then(|(_, n)| if n.chars().all(|c| c.is_ascii_digit()) { num(n) } else { None })));
+    let msg = out.lines().map(str::trim).find(|x| x.contains("Error:")).unwrap_or("Syntax error");
+    line.map(|l| vec![json!({"l": l, "s": "e", "m": msg})]).unwrap_or_default()
+}
+
+/// cargo --message-format short: "src\lib.rs:12:5: warning: msg" → marks for `rel` (suffix match ∵ paths are crate-relative).
+fn cargo_marks(out: &str, rel: &str) -> Vec<Value> {
+    let rel = rel.replace('\\', "/");
+    out.lines().filter_map(|x| {
+        let mut it = x.splitn(4, ':');
+        let f = it.next()?.replace('\\', "/");
+        let l = it.next()?.parse::<u64>().ok()?;
+        it.next()?;
+        let rest = it.next()?.trim();
+        if f.is_empty() || !(rel == f || rel.ends_with(&format!("/{f}"))) { return None; }
+        let s = if rest.starts_with("error") { "e" } else if rest.starts_with("warning") { "w" } else { return None };
+        Some(json!({"l": l, "s": s, "m": rest.split_once(": ").map_or(rest, |r| r.1)}))
+    }).collect()
+}
+
+#[cfg(test)]
+#[test]
+fn lint_parsers() {
+    let n = syn_marks("C:\\t\\x.js:3\nfoo(;\n    ^\n\nSyntaxError: Unexpected token ';'\n    at wrap (node:internal/x:1378:20)");
+    assert_eq!((n[0]["l"].as_u64(), n[0]["m"].as_str()), (Some(3), Some("SyntaxError: Unexpected token ';'")));
+    let p = syn_marks("  File \"C:\\t\\x.py\", line 2\n    x = (\n        ^\nSyntaxError: '(' was never closed");
+    assert_eq!(p[0]["l"].as_u64(), Some(2));
+    assert!(syn_marks("node not found").is_empty());
+    let c = cargo_marks("src\\lib.rs:12:5: warning: unused variable: `x`\nsrc/main.rs:2:1: error[E0425]: nope\nwarning: `x` (lib) generated 1 warning", "src-tauri/src/lib.rs");
+    assert_eq!(c.len(), 1);
+    assert_eq!((c[0]["l"].as_u64(), c[0]["s"].as_str(), c[0]["m"].as_str()), (Some(12), Some("w"), Some("unused variable: `x`")));
+}
+
+/// #371 Notes tab:`<project>/NOTES.md` (missing → ""). text = save; first save adds `/NOTES.md` to .git/info/exclude (local-only, repo untouched).
 #[tauri::command(async)]
 fn notes(st: St, pid: String, text: Option<String>) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
@@ -2248,7 +2326,7 @@ pub fn run() {
             continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, notes, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, lint, notes, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {
