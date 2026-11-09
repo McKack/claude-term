@@ -319,6 +319,10 @@ fn set_lessons(st: St, lessons: Vec<String>) {
 #[tauri::command]
 fn set_you(st: St, you: store::You) {
     let mut cfg = st.cfg.lock().unwrap();
+    // #356 nick baked into the Voice prompt at spawn (claude::args) → live sessions reconnect to pick it up
+    if cfg.you.nick != you.nick.trim() {
+        for l in st.live.lock().unwrap().values() { l.inbox.front(vec![Input::Reconnect]); }
+    }
     cfg.you = store::You {nick: you.nick.trim().into(), prefs: you.prefs.trim().into(),
         tags: you.tags.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()};
     let md = format!("# About the user
