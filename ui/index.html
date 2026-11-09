@@ -73,7 +73,8 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 @font-face { font-family:'Fredoka'; font-weight:600; font-display:swap; src:url(fredoka-600.woff2) format('woff2'); }
 #brand b, .brandname { font-family:'Fredoka',system-ui,sans-serif; font-weight:600; font-size:19px; letter-spacing:.01em; }
 .side-head { display:flex; align-items:center; gap:2px; padding:8px 8px 6px 10px; }
-#stabs { display:flex; gap:2px; min-width:0; } #brand .ib { margin-left:auto; }
+#shead { align-items:flex-end; padding-bottom:0; box-shadow:inset 0 -1px var(--line); } #shead > :not(#stabs) { align-self:center; margin-bottom:4px; }
+#stabs { display:flex; align-items:flex-end; gap:2px; min-width:0; } #brand .ib { margin-left:auto; }
 #files { flex:1; overflow:auto; padding:2px 8px; }
 #notes { flex:1; display:flex; flex-direction:column; min-height:0; padding:2px 8px 8px; } #notes .nbar { display:flex; align-items:center; gap:4px; padding:2px 0 6px; } #notes .nbar .ib { width:26px; height:26px; padding:0; }
 #notes textarea { flex:1; resize:none; font:12.5px/1.5 ui-monospace,Consolas,monospace; max-height:none; } #notes .mdoc { flex:1; overflow:auto; }
@@ -281,16 +282,20 @@ pre.diff .ctx { color:var(--faint); }
 /* #285 Edit view: #edv (file tabs) above, docked panel below = #ptabs + (#log.term + #dock | #shellbox); --ph = panel height */
 #edv, #ptabs, #shellbox { display:none; } #main.edit:has(> #edv) { background:var(--bg); }
 #main.edit #edv { display:flex; flex-direction:column; flex:1 1 0; min-height:80px; }
-#main.edit #ptabs { display:flex; align-items:center; gap:2px; padding:2px 8px; border-top:1px solid var(--line); position:relative; background:var(--side); }
-#ptabs > button:not(.ib) { border:0; background:none; color:var(--dim); padding:5px 10px; display:inline-flex; gap:5px; align-items:center; font-size:12.5px; cursor:pointer; border-radius:6px; }
-#ptabs > button.on, #ptabs > button:hover { color:var(--text); background:var(--hover); } #ptabs .ib { width:24px; height:24px; padding:0; } #pcol .i { rotate:90deg; } #main.pc #pcol .i { rotate:-90deg; }
+#main.edit #ptabs { display:flex; align-items:stretch; gap:2px; padding:4px 8px 0; border-top:1px solid var(--line); position:relative; background:var(--side); box-shadow:inset 0 -1px var(--line); --tabbg:var(--term); }
+#ptabs > button:not(.ib) { padding:5px 10px; display:inline-flex; gap:5px; align-items:center; font-size:12.5px; } #main.edit #ptabs > button:not(.ib).on { color:#d8d4cb; } #ptabs .ib { align-self:center; }
+/* #385 ONE tab style (Edit/File viewer/Terminal-Shell/right panel/sidebar): folder tab, rounded top (8px; c-square/c-round override), .on = content bg (--tabbg) + borders, no bottom line ∵ bar line = inset box-shadow, painted under the tab */
+:is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button) { border:1px solid transparent; border-bottom:0; border-radius:8px 8px 0 0; background:none; color:var(--dim); cursor:pointer; flex:none; }
+:is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button):hover { color:var(--text); background:var(--hover); }
+:is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button).on { color:var(--text); background:var(--tabbg, var(--bg)); border-color:var(--line); box-shadow:inset 0 2px var(--accent); }
+:root.c-round :is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button) { border-radius:14px 14px 0 0 !important; }
+#ptabs .ib { width:24px; height:24px; padding:0; } #pcol .i { rotate:90deg; } #main.pc #pcol .i { rotate:-90deg; }
 #pgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } #pgrip:hover, body.dragging #pgrip { background:color-mix(in srgb, var(--accent) 30%, transparent); }
 #main.edit #log { flex:0 1 var(--ph); min-height:0; /* #344 shrinks before overflowing the window; #edv keeps its 80px */ margin-top:0; padding-top:8px; mask-image:none; }
 #main.edit.shell #log, #main.edit.shell #dock, #main.edit.pc #log, #main.edit.pc #dock { display:none; }
 #main.edit.shell:not(.pc) #shellbox { display:block; flex:0 1 calc(var(--ph) + var(--dh, 0px)); min-height:0; /* #317 + last dock height ∴ Terminal ⇄ Shell keeps the panel size */ background:var(--term); padding:6px 0 0 10px; overflow:hidden; } #shellbox > div { height:100%; }
-#etabs { display:flex; align-items:stretch; border-bottom:1px solid var(--line); background:var(--side); overflow-x:auto; scrollbar-width:none; min-height:34px; }
-#etabs .et, .vtabs .et { display:flex; align-items:center; gap:6px; padding:0 6px 0 12px; font-size:12.5px; color:var(--dim); border-right:1px solid var(--line); cursor:pointer; white-space:nowrap; }
-#etabs .et.on, .vtabs .et.on { background:var(--bg); color:var(--text); box-shadow:inset 0 2px var(--accent); } #etabs .et .ib { width:20px; height:20px; padding:0; opacity:0; } #etabs .et:hover .ib, #etabs .et.on .ib { opacity:1; }
+#etabs { display:flex; align-items:stretch; gap:2px; padding:4px 4px 0; box-shadow:inset 0 -1px var(--line); background:var(--side); overflow-x:auto; scrollbar-width:none; min-height:34px; }
+#etabs .et, .vtabs .et { display:flex; align-items:center; gap:6px; padding:0 6px 0 12px; font-size:12.5px; white-space:nowrap; } #etabs .et .ib { width:20px; height:20px; padding:0; opacity:0; } #etabs .et:hover .ib, #etabs .et.on .ib { opacity:1; }
 #etabs .et.dirty .x::before { content:"●"; font-size:11px; } #etabs .et.dirty .x:not(:hover) .i { display:none; } #etabs .add { width:30px; height:auto; border-radius:0; }
 #ebody { flex:1; min-height:0; display:flex; position:relative; }
 #ebody textarea { flex:1; border:0; border-radius:0; resize:none; outline:0; padding:10px 14px; font:13px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; tab-size:4; background:var(--bg); color:var(--text); white-space:pre; }
@@ -595,12 +600,12 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
   background:var(--card); border:1px solid var(--line); cursor:pointer; flex:none; }
 .tile:hover { border-color:var(--line2); } .tile.on { border-color:var(--accent); color:var(--accent); }
 .tile .dot { position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border:2px solid var(--side); }
-#rtabs { display:flex; gap:2px; padding:10px 10px 6px; border-bottom:1px solid var(--line); }
+#rtabs { display:flex; align-items:flex-end; gap:2px; padding:10px 10px 0; box-shadow:inset 0 -1px var(--line); }
 [data-dot] { position:relative; } [data-dot]::after { content:''; position:absolute; top:3px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--dotc, var(--accent)); box-shadow:0 0 0 2px var(--side); } [data-dot=pulse]::after { animation:pulse .8s ease-in-out infinite alternate; } /* #177 build running */
 .rsep { flex:none; width:1px; margin:4px 4px; background:var(--line2); }
-#rtabs button, #stabs button { border:0; background:none; padding:5px 9px; border-radius:8px; cursor:pointer; color:var(--dim); display:inline-flex; gap:6px; align-items:center; font-size:13px; flex:none; }
+#rtabs button, #stabs button { padding:5px 9px; display:inline-flex; gap:6px; align-items:center; font-size:13px; }
 #rtabs button span, #stabs button span { display:none; } #rtabs button.on span, #stabs button.on span { display:inline; }
-#rtabs button:hover, #stabs button:hover { background:var(--hover); } #rtabs button.on, #stabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
+#rtabs, #shead { --tabbg:var(--side); } #rtabs .rsep { align-self:center; }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 #atp { display:flex; flex-direction:column; gap:5px; } #atp:empty { display:none; } #atp .label { margin:6px 0 0; } #atp .sh .label { margin:0; } /* #269: fold titles in GitHub tab sank 6px */
 .atrow { display:flex; gap:8px; align-items:baseline; font-size:13px; } .atrow small { display:block; color:var(--faint); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .atrow small.am { display:inline; } /* #274 model after the name, wraps under it when narrow */
