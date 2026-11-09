@@ -972,7 +972,7 @@ async fn task_do(st: St<'_>, pid: String, action: String, mut arg: String, image
     if action == "new" { // #309 privacy: raw ask never reaches GitHub (edit history keeps first bodies) → Sonnet's neutral rewrite filed
         let tags: String = store::hash_tags(&arg).iter().map(|t| format!(" #{t}")).collect(); // raw #Tags → labels still
         let (st2, p2, raw) = (st.inner().clone(), p.clone(), arg.clone());
-        let dir = store::home().join(".clauracle");
+        let dir = store::home(); // = ~/.clauracle (≠ join again → missing dir → os error 267)
         let r = tauri::async_runtime::spawn_blocking(move || sonnet(&st2, &p2, "low", &dir, &neutral_prompt(&raw))).await.map_err(|e| e.to_string())?
             .map(|s| s.trim_matches('`').trim().to_string()).and_then(|s| if s.is_empty() { Err("empty reply".into()) } else { Ok(s) });
         // ponytail: Sonnet down → placeholder title, the session working it writes the summary (never the raw text); err → UI toast
