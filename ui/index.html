@@ -1657,11 +1657,11 @@ function evDraw(re) { if (view !== 'edit' || !cur) return;
   if (t.err) { b.innerHTML = `<div class="empty dim">${esc(t.err)}</div>`; return; }
   if (t.img) { b.innerHTML = `<img class="eimg" src="${t.img}">`; return; }
   if (t.text === undefined) { b.innerHTML = `<div style="flex:1;padding:14px">${skel(60)}</div>`; if (!t.loading) { t.loading = 1; evLoad(t, cur); } return; }
-  if (t.pv && evPv(t)) { let h; try { h = evPv(t) === 'md' ? `<div class="mdoc">${mdDoc(t.text)}</div>` : codeHtml(JSON.stringify(JSON.parse(t.text), null, 2), 'json', !!UI.ew); } catch (e) { h = `<div class="dim">${esc(String(e))}</div>`; }
+  if (t.pv && evPv(t)) { let h; try { h = evPv(t) === 'md' ? `<div class="mdoc">${mdDoc(t.text)}</div>` : codeHtml(JSON.stringify(JSON.parse(t.text), null, 2), 'json', !!UI.ew).replace('class="code', 'class="code' + (hlOn() ? '' : ' plain')); } catch (e) { h = `<div class="dim">${esc(String(e))}</div>`; }
     b.innerHTML = `<div class="epv">${h}</div>`; return; } /* #372 read-only preview; edits = View › Preview off */
   // #329 Code-tab look: highlighted .code pre (codeHtml) under a transparent textarea, both sized by the pre ∴ one scroller, no scroll sync
   const ext = (t.rel || t.name).split('.').pop().toLowerCase(), hi = () => { b.querySelector('pre')?.remove(); b.querySelector('.ew').insertAdjacentHTML('afterbegin', codeHtml(t.text, ext).replace(/^<div[^>]*>|<\/div>$/g, '')); const w = b.querySelector('.ew'); w.style.setProperty('--lw', w.firstChild.style.getPropertyValue('--lw')); }; /* --lw on .ew ∴ textarea pads past the gutter */
-  b.innerHTML = '<div class="code ecode' + (UI.ew ? ' wrap' : '') + '"><div class="ew"><textarea spellcheck="false" autocomplete="off"></textarea></div></div>'; b._t = t;
+  b.innerHTML = '<div class="code ecode' + (UI.ew ? ' wrap' : '') + (hlOn() ? '' : ' plain') + '"><div class="ew"><textarea spellcheck="false" autocomplete="off"></textarea></div></div>'; b._t = t;
   const a = b.querySelector('textarea'); a.value = t.text; hi();
   let raf = 0; // ponytail: whole-file re-highlight per frame; fine ≤ ~5k lines, incremental per line if big files lag
   a.oninput = () => { t.text = a.value; $('etabs').querySelector('.et.on')?.classList.toggle('dirty', evDirty(t)); cancelAnimationFrame(raf); raf = requestAnimationFrame(hi); };
@@ -1677,7 +1677,7 @@ const evZoom = d => evSet('ez', d ? Math.min(3, Math.max(.5, Math.round(((UI.ez 
 function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.text !== undefined, ed = tx && !t.pv, pv = evPv(t);
   const M = {
     file: [{label: 'New file', icon: 'plus', run: evNew}, {label: 'Open from Files', icon: 'folder', run: () => { UI.lc = false; setSide('files'); }}, '-',
-      ...(tx ? [{label: 'Save', hint: 'Ctrl+S', run: () => evSave(t)}] : []), ...(t?.rel ? [{label: 'Open in side Code tab', icon: 'code', run: () => previewFile(t.rel, true)}] : []),
+      ...(tx ? [{label: 'Save', hint: 'Ctrl+S', run: () => evSave(t)}] : []), ...(t?.rel ? [{label: 'Open in Code tab', icon: 'code', run: () => previewFile(t.rel, true)}] : []),
       ...(t ? ['-', {label: 'Close tab', icon: 'x', run: () => evClose(E.on)}] : [])],
     edit: ed ? [{label: 'Undo', hint: 'Ctrl+Z', run: () => evCmd('undo')}, {label: 'Redo', hint: 'Ctrl+Y', run: () => evCmd('redo')}, '-',
       {label: 'Cut', hint: 'Ctrl+X', run: () => evCmd('cut')}, {label: 'Copy', icon: 'copy', hint: 'Ctrl+C', run: () => evCmd('copy')},
@@ -1685,13 +1685,14 @@ function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.tex
       {label: 'Select all', hint: 'Ctrl+A', run: () => { evTa()?.focus(); evTa()?.select(); }},
       ...(pv === 'json' ? ['-', {label: 'Format JSON', icon: 'braces', run: () => { try { const v = JSON.stringify(JSON.parse(t.text), null, 2); evTa().select(); evCmd('insertText', v); } catch (e) { toast(String(e), 'err'); } }}] : [])]
       : [{title: t?.pv ? 'Preview: switch it off in View to edit' : 'Nothing to edit'}],
-    view: [...(tx ? [{label: 'Word wrap', check: !!UI.ew, run: () => evSet('ew', !UI.ew)}] : []),
+    view: [...(tx ? [{label: 'Word wrap', check: !!UI.ew, run: () => evSet('ew', !UI.ew)}, {label: 'Syntax highlighting', check: hlOn(), run: () => { try { localStorage.codeHl = hlOn() ? '0' : '1'; } catch {} evSet(); }}] : []),
       ...(pv ? [{label: pv === 'md' ? 'Rendered Markdown' : 'Formatted JSON (read-only)', check: !!t.pv, run: () => { t.pv = !t.pv; evSet(); }}] : []), ...(tx || pv ? ['-'] : []),
       {label: 'Zoom in', icon: 'plus', run: () => evZoom(.1)}, {label: 'Zoom out', icon: 'minus', run: () => evZoom(-.1)}, {label: 'Reset zoom', hint: Math.round((UI.ez || 1) * 100) + '%', run: () => evZoom(0)}]};
   menuAt(btn, M[k]); }
 function evBar(t) { const pv = evPv(t), tx = t?.text !== undefined;
   $('emenu').innerHTML = ['File', 'Edit', 'View'].map(k => `<button class="mb" onclick="evMenu('${k.toLowerCase()}', this)">${k}</button>`).join('') + '<span class="grow"></span>'
     + (pv ? `<button class="ib${t.pv ? ' on' : ''}" title="${pv === 'md' ? 'Rendered Markdown' : 'Formatted JSON'}" onclick="etabs().tabs[etabs().on].pv ^= 1; evSet()">${icon(pv === 'md' ? 'doc' : 'braces')}</button>` : '')
+    + (tx && !(t.pv && pv === 'md') ? hlBtn(`$('ebody').querySelector('.code')`) : '') /* #373 same toggle as the Code tab (localStorage.codeHl) */
     + (tx ? `<button class="ib${UI.ew ? ' on' : ''}" title="Word wrap" onclick="evSet('ew', !UI.ew)">${icon('wrap')}</button>` : '')
     + `<button class="ib ez" title="Zoom (Ctrl+wheel) · click: reset" onclick="evZoom(0)">${Math.round((UI.ez || 1) * 100)}%</button>`; }
 $('ebody').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); evZoom(e.deltaY < 0 ? .1 : -.1); } }, {passive: false});
