@@ -961,7 +961,8 @@ async fn disk_clean(st: St<'_>, pid: String, dirs: Vec<String>) -> R<u64> {
 fn neutral_prompt(ask: &str) -> String {
     format!("Rewrite this request to a software assistant as a GitHub issue. It goes on a shared repo, so write it neutrally: \
         no quotes of the request, no personal remarks, names, emotions or private details; keep every technical fact, file path and \
-        requirement. Output ONLY plain text: line 1 = imperative title (≤ 80 chars), blank line, then a short task summary (bullets ok). \
+        requirement. If it doesn't name which screen/element it means (vague \"buttons\", \"this\"), never guess: end the summary with \
+        \"Target unclear: confirm which UI element with the user (screenshot) before changing anything.\" Output ONLY plain text: line 1 = imperative title (≤ 80 chars), blank line, then a short task summary (bullets ok). \
         No preamble, no code fences.\n\nRequest:\n{ask}")
 }
 
