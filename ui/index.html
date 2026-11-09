@@ -429,8 +429,11 @@ pre.diff .ctx { color:var(--faint); }
 .att .anote { position:absolute; left:6px; bottom:6px; width:8px; height:8px; border-radius:50%; border:0; background:var(--accent); color:#fff; display:grid; place-items:center; padding:0; cursor:pointer; box-shadow:0 0 6px 4px var(--side); transition:all .12s; overflow:hidden; }
 .att .anote svg { width:11px; height:11px; opacity:0; transition:opacity .12s; } /* #237 dot → full button on hover, same .12s as .abtns */
 .att:hover .anote, .att.hl .anote { left:3px; bottom:3px; width:20px; height:20px; } .att:hover .anote svg, .att.hl .anote svg { opacity:1; }
-#edColor { width:30px; height:30px; flex:none; padding:0; border:2px solid var(--line); border-radius:50%; background:none; cursor:pointer; overflow:hidden; } /* #237 1:1 circle, colour fills it */
-#edColor::-webkit-color-swatch-wrapper { padding:0; } #edColor::-webkit-color-swatch { border:0; border-radius:50%; }
+.edcols { display:inline-flex; align-items:center; gap:4px; flex:none; }
+.edcols input { width:30px; height:30px; flex:none; padding:0; border:2px solid var(--line); border-radius:50%; background:none; cursor:pointer; overflow:hidden; } /* #237 1:1 circle, colour fills it */
+.edcols input + input { width:22px; height:22px; } /* #294 secondary = smaller */
+.edcols input::-webkit-color-swatch-wrapper { padding:0; } .edcols input::-webkit-color-swatch { border:0; border-radius:50%; }
+.edcols input.tr { background:repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 10px 10px; } .edcols input.tr::-webkit-color-swatch { opacity:0; } /* transparent = checkerboard */
 .tb { display:flex; align-items:center; gap:2px; margin-top:4px; }
 #send { width:32px; height:32px; border-radius:50%; border:0; background:var(--primary); color:var(--ink); display:grid; place-items:center; cursor:pointer; }
 #send:hover { background:var(--primary2); } #send:disabled { opacity:.4; cursor:default; }
@@ -1917,7 +1920,13 @@ const stepViewer = d => { VW.i = (VW.i + d + VW.imgs.length) % VW.imgs.length; d
 /* #217 vector editor: ops = shapes (pen pts | line | box+note), selectable/movable/resizable/erasable; flattened to one PNG on save
    (PNG ∵ tokens ∝ pixels, not format; JPG blurs text). Attachment keeps a.ed = {orig, ops, nmax} → re-edit stays vector + box numbers
    never repeat (nmax persists); a.notes = ["1. …"] → sent inside the message (sendNow), never typed into the composer. */
-let ED = null, edColor = (() => { try { return localStorage.penColor || '#ff4d4f'; } catch { return '#ff4d4f'; } })();
+/* #294 EDC2 = [primary, secondary]; 'transparent' = valid canvas colour (≠ input value). Left btn draws color=primary fill=secondary, right swaps.
+   fill only shows as the box dot's number colour (note boxes/lines/pen ignore it). Colour change → recolours ED.sel, else ED.act (last focused note) */
+let ED = null, EDC2 = (() => { try { return [localStorage.penColor || '#ff4d4f', localStorage.penColor2 || '#ffffff']; } catch { return ['#ff4d4f', '#ffffff']; } })();
+function edSetCol(k, v) { EDC2[k] = v; try { localStorage[k ? 'penColor2' : 'penColor'] = v; } catch {}
+  const s = $('edCol' + k); s.classList.toggle('tr', v === 'transparent'); if (v !== 'transparent') s.value = v;
+  const T = ED?.sel.length ? ED.sel : ED?.act && ED.ops.includes(ED.act) ? [ED.act] : [];
+  if (T.length) { if (!ED.csnap) { ED.csnap = 1; edSnap(); } T.forEach(o => o[k ? 'fill' : 'color'] = v); edDraw(); edNotes(); } }
 const ETOOLS = [['sel', 'cursor', 'Select: drag empty space = marquee, Shift/Ctrl+click adds/removes, drag inside the box moves, handles scale, Delete removes'], ['pen', 'pen', 'Pen: draw freehand'], ['line', 'line', 'Line: straight line'], ['box', 'boxnote', 'Box + note: drag a box, then type a note for it'], ['erase', 'eraser', 'Eraser: click a shape to remove it']]; // #238 icons + data-tip
 function editImage() {
   const m = VW.imgs[VW.i], n = VW.imgs.length;
@@ -1928,18 +1937,23 @@ function editImage() {
     `<button class="btn primary sm" id="edSave" onclick="edDone()"${VW.map ? ' disabled title="Nothing changed yet"' : ''}>${VW.map ? 'Save' : 'Add to message'}</button>`,
     `<span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
     <button class="ib" id="edStroke" data-tip="Line width and arrows (also for the selected shapes)" onclick="edStrokeMenu(this)">${icon('stroke')}</button>
-    <input type="color" id="edColor" value="${edColor}" title="Colour (applies at once, also to the selected shape)">
+    <span class="edcols">${EDC2.map((v, k) => `<input type="color" id="edCol${k}" class="${v === 'transparent' ? 'tr' : ''}" value="${v === 'transparent' ? '#ffffff' : v}" data-tip="${k ? 'Secondary colour: right mouse button (left button: number in the note dot)' : 'Primary colour: left mouse button'}. Also recolours the selection / the note being typed">`).join('')}
+      <button class="ib edtr" data-tip="Transparent: click = primary, right-click = secondary">∅</button></span>
     <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>`,
     '<div id="edWrap"><canvas id="edC"></canvas></div>', S => { $('edC').style.maxHeight = S.clientHeight - 28 + 'px'; if (ED) edNotes(); }, 'img');
   $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; ED.sel = []; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); edCursor(); edDraw(); });
-  $('edColor').oninput = e => { edColor = e.target.value; try { localStorage.penColor = edColor; } catch {} if (ED?.sel.length) { edSnap(); ED.sel.forEach(o => o.color = edColor); edDraw(); edNotes(); } };
+  [0, 1].forEach(k => { const s = $('edCol' + k); s.oninput = () => edSetCol(k, s.value); s.onchange = () => { if (ED) ED.csnap = 0; }; }); // one undo snap per picker session
+  const tr = document.querySelector('.edtr'); tr.onclick = () => { edSetCol(0, 'transparent'); if (ED) ED.csnap = 0; };
+  tr.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); edSetCol(1, 'transparent'); if (ED) ED.csnap = 0; };
   const img = new Image();
   img.onload = () => {
     const c = $('edC'); c.width = img.naturalWidth; c.height = img.naturalHeight;
     ED = {img, ops: structuredClone(m.ed?.ops || []), nmax: m.ed?.nmax || 0, tool: 'pen', cur: null, sel: [], drag: null, undo: [], w: Math.max(3, img.naturalWidth / 300)};
     edCursor(); edDraw(); edNotes();
     const pt = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
-    c.onpointerdown = e => { if (e.button === 1) return; c.setPointerCapture(e.pointerId); const [x, y] = pt(e), t = ED.tool;
+    c.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); }; // right btn = secondary colour, no menu
+    c.onpointerdown = e => { if (e.button === 1) return; c.setPointerCapture(e.pointerId); const [x, y] = pt(e), t = ED.tool; ED.act = null;
+      const [color, fill] = e.button === 2 ? [EDC2[1], EDC2[0]] : EDC2;
       if (t === 'erase') { const o = edHit(x, y); if (o) { edSnap(); ED.ops.splice(ED.ops.indexOf(o), 1); edDraw(); edNotes(); } return; }
       if (t === 'sel') { // #240 handle → scale | shape/inside box → move all | empty → marquee (Shift/Ctrl = add/toggle)
         const add = e.shiftKey || e.ctrlKey || e.metaKey, h = add ? -1 : edHandle(x, y), o = h < 0 && edHit(x, y);
@@ -1947,7 +1961,7 @@ function editImage() {
         if (h >= 0 || o || (ED.sel.length && edIn(x, y))) { if (o && !ED.sel.includes(o)) ED.sel = [o]; edSnap();
           ED.drag = {x, y, h, o, bb: edSelBB(), src: structuredClone(ED.sel), moved: false}; return edDraw(); }
         ED.drag = {mq: [x, y, x, y], base: add ? [...ED.sel] : []}; ED.sel = [...ED.drag.base]; return edDraw(); }
-      edSnap(); ED.cur = t === 'pen' ? {t, color: edColor, lw: edLW, pts: [[x, y]]} : t === 'line' ? {t, color: edColor, lw: edLW, a0: edArr[0], a1: edArr[1], x1: x, y1: y, x2: x, y2: y} : {t: 'box', color: edColor, lw: edLW, x, y, w: 0, h: 0, note: '', n: ++ED.nmax}; ED.ops.push(ED.cur); };
+      edSnap(); ED.cur = t === 'pen' ? {t, color, lw: edLW, pts: [[x, y]]} : t === 'line' ? {t, color, lw: edLW, a0: edArr[0], a1: edArr[1], x1: x, y1: y, x2: x, y2: y} : {t: 'box', color, fill, lw: edLW, x, y, w: 0, h: 0, note: '', n: ++ED.nmax}; ED.ops.push(ED.cur); };
     c.onpointermove = e => { const [x, y] = pt(e);
       const D = ED.drag;
       if (D?.mq) { D.mq[2] = x; D.mq[3] = y; const [a, b, c2, d] = D.mq, l = Math.min(a, c2), r = Math.max(a, c2), tp = Math.min(b, d), bt = Math.max(b, d); // touches = bbox overlap
@@ -2058,7 +2072,7 @@ function edDraw(flat) {
     if (o.w || o.h) g.strokeRect(o.x, o.y, o.w, o.h); g.setLineDash([]);
     const r = ED.w * 4; // numbered tag on the corner = the note's number in the message
     g.beginPath(); g.arc(o.x, o.y, r, 0, 7); g.fill();
-    g.fillStyle = '#fff'; g.font = `bold ${r * 1.2}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(o.n, o.x, o.y);
+    g.fillStyle = o.fill || '#fff'; g.font = `bold ${r * 1.2}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(o.n, o.x, o.y);
   }
   if (flat) return; const r = ED.w * 4, box = ([a, b, c2, d]) => { g.setLineDash([ED.w * 2, ED.w * 2]); g.lineWidth = ED.w / 2; g.strokeStyle = '#4096ff'; g.strokeRect(a, b, c2 - a, d - b); g.setLineDash([]); };
   if (ED.drag?.mq) { const [a, b, c2, d] = ED.drag.mq; g.fillStyle = '#4096ff22'; g.fillRect(a, b, c2 - a, d - b); box(ED.drag.mq); } // marquee
@@ -2075,7 +2089,7 @@ function edNotes(focus) {
     if (o.col) { d.innerHTML = icon('doc'); d.title = o.n + '. ' + (o.note || 'Empty note'); d.onclick = () => { o.col = false; edNotes(o); }; return W.append(d); }
     d.innerHTML = `<textarea rows="1" placeholder="${o.n}. Note (Ctrl+Enter folds)" title="Enter = new line · ✓ or Ctrl+Enter = done (folds it to an icon)"></textarea><button class="ib" title="Done">${icon('check')}</button>`;
     const t = d.querySelector('textarea'), fit = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }; // #232 grows on soft wraps too
-    t.value = o.note; t.oninput = () => { o.note = t.value; fit(); edDirty(); };
+    t.value = o.note; t.onfocus = () => ED.act = o; t.oninput = () => { o.note = t.value; fit(); edDirty(); };
     t.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); o.col = o.ok = true; edNotes(); }
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !t.value && !o.ok) { e.preventDefault(); ED.ops.splice(ED.ops.indexOf(o), 1); if (o.n === ED.nmax) ED.nmax--; ED.sel = ED.sel.filter(x => x !== o); edDraw(); edNotes(); } }; // #292 fresh (never confirmed) empty note → Ctrl+Z drops it
     d.querySelector('button').onclick = () => { o.col = o.ok = true; edNotes(); }; // ✓ = done → folds like Ctrl+Enter (#232: blur alone looked dead)
