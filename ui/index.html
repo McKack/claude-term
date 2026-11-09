@@ -92,7 +92,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .side-foot { display:flex; gap:4px; padding:10px; border-top:1px solid var(--line); align-items:center; }
 #acctBtn { justify-content:flex-start; gap:8px; min-width:0; padding-left:6px; } #acctBtn .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; text-align:left; line-height:1.2; }
 #acctBtn .nm small { display:block; color:var(--faint); font-size:11px; }
-.racct { position:relative; } .racct .av { border-color:var(--side); } .racct .sdot { position:absolute; top:0; right:0; width:14px; height:14px; border-radius:50%; background:var(--side); display:grid; place-items:center; } .racct .sdot svg { width:10px; height:10px; stroke-width:2.4; } /* #305 */
+.racct { position:relative; } .racct .av { border-color:var(--side); } .racct .sdot { position:absolute; top:-4px; right:-4px; width:14px; height:14px; border-radius:50%; background:var(--side); display:grid; place-items:center; } .racct .sdot svg { width:10px; height:10px; stroke-width:2.4; } /* #305; #306 -4px = less avatar overlap */
 #acctBtn .sic { opacity:.3; transition:opacity .15s; margin-right:4px; } #acctBtn:hover .sic { opacity:1; }
 /* #283 Start menu */
 .smenu { position:fixed; inset:auto; margin:0; width:372px; max-height:min(560px, calc(100vh - 20px)); border-radius:16px; padding:10px; display:flex; flex-direction:column; gap:8px; color:var(--text); }
