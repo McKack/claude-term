@@ -1273,7 +1273,7 @@ function drawChrome() {
   // questions never block a Continue: they open in the fresh session (qsOpen), the bar keeps showing the next task
   const dis = busy[cur] ? ' disabled title="Clauracle is working: wait for this turn to end"' : ''; // #117 presets faded while a turn runs
   $('readytext').innerHTML = next.length ? `<input type="checkbox" disabled style="vertical-align:-2px;margin:0 6px 0 0;opacity:.55">Next: <b>${esc(next[0])}</b>${next.length > 1 ? ` <span class="pill">+${next.length - 1}</span>` : ''}`
-    : `All tasks done! What next? ${(([l, ic, js]) => `<button class="btn primary"${dis} onclick="${js}">${icon(ic)}${l}</button>`)(nextStep(p))}${NEXT_IDEAS.map(([l, ic], i) => `<button class="btn"${dis} onclick="askNext(${i})">${icon(ic)}${l}</button>`).join('')}`;
+    : `What next? ${(([l, ic, js]) => `<button class="btn primary"${dis} onclick="${js}">${icon(ic)}${l}</button>`)(nextStep(p))}${NEXT_IDEAS.map(([l, ic], i) => `<button class="btn"${dis} onclick="askNext(${i})">${icon(ic)}${l}</button>`).join('')}`;
   $('ready').title = ''; // #95: click toggles .full only when truncated (readyMore), title set there
   $('handpill').hidden = !(reading[cur] || busy[cur] && hand[cur]);
   $('handpill').textContent = reading[cur] ? 'Reading handover…' : 'Preparing handover…';
@@ -3228,9 +3228,9 @@ const teamTasks = pid => { if (!Array.isArray(team[pid]?.tasks)) return []; cons
 const isDoing = x => x.labels.some(l => l.name === 'in progress') || x.assignees.length;
 // what's next: HANDOVER.md's queue, else free team tasks
 // "All tasks done" presets: [button, prompt sent]
-const NEXT_IDEAS = [['Bugs &amp; bloat', 'bug', 'Review the recent changes for bugs and over-engineering (what to delete or simplify), then fix what you find.'],
-  ['Add tests', 'shield', 'Find the riskiest untested code and add one small check for it.'],
-  ['Suggest next', 'sparkle', 'Suggest the three most useful next improvements for this project, briefly, and ask which to do.']];
+const NEXT_IDEAS = [['Sweep', 'bug', 'Review the recent changes for bugs and over-engineering (what to delete or simplify), then fix what you find.'],
+  ['Tests', 'shield', 'Find the riskiest untested code and add one small check for it.'],
+  ['Suggest', 'sparkle', 'Suggest the three most useful next improvements for this project, briefly, and ask which to do.']];
 const askNext = i => sendNow(cur, {text: NEXT_IDEAS[i][2], atts: []});
 /* #37 done bar's first button = the next dev→release step, from cached state only (no calls): open services →
    Services & Secrets; no build command → set it up; release checks open → Build & Release; else build */
