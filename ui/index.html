@@ -37,6 +37,7 @@ body { margin:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gr
 #log, #log *, input, textarea, .sel, .sel *, .dscroll, .dscroll *, .code pre, .code pre *, .out, .out * { -webkit-user-select:text; user-select:text; }
 #empty, #empty *, #log button, #log button * { -webkit-user-select:none; user-select:none; }
 button, select, input, textarea { font:inherit; color:inherit; }
+:where(button, select, summary, a[href], label:has(> input[type=checkbox], > input[type=radio]), input:is([type=checkbox], [type=radio], [type=range], [type=color], [type=file])) { cursor:pointer; } :where(:disabled) { cursor:default; } /* #419 base cursor rule: clickable = hand, disabled = arrow; :where() = 0 specificity ∴ any component rule overrides */
 svg.i { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none; }
 .btn { display:inline-flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line2); border-radius:99px; padding:2px 12px; line-height:20px; /* #304 = Next step size (26px): standard max for regular buttons */ cursor:pointer; transition:background .12s, border-color .12s; }
 .btn:hover { background:var(--hover); } .btn:disabled { opacity:.45; cursor:default; }
@@ -358,7 +359,7 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock .col { max-width:none; } #log.term + #dock #attw { display:none; } /* #325 no thumbs: refs only */
 #log.term + #dock #atts { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; gap:1ch; padding:0 0 calc(20px); }
 #log.term + #dock .att.img { flex:none; width:8ch !important /* beats onload inline width */; min-width:0; height:calc(20px * 3); border:0; border-radius:0; background:none; } #log.term + #dock .att.img img { object-fit:cover; }
-#log.term + #dock .att .abtns { border-radius:0; } #log.term + #dock .att .abtns button { border-radius:0; }
+#log.term + #dock .att .amore { border-radius:0; box-shadow:none; }
 #log.term + #dock #pback mark { padding:0; background:#ffffff12; box-shadow:none; } #log.term + #dock #pback mark i { color:transparent; }
 #log.term + #dock #pback .fic { color:transparent; } #log.term + #dock #pback .fic svg { left:calc(1ch + .1em); }
 /* #312 text-mode only: tool calls/output clamp to 2 lines + "…" (click = .open toggles, like the CLI); jump pill = [↓ text]; image refs = accent [tag]s */
@@ -545,14 +546,14 @@ pre.diff .ctx { color:var(--faint); }
 #atts { display:flex; gap:8px; padding:2px 0 8px; overflow-x:auto; scrollbar-width:none; }
 .aarr { position:absolute; top:2px; bottom:8px; z-index:1; width:24px; border:0; padding:0; cursor:pointer; color:var(--text); background:linear-gradient(to right, var(--card) 40%, transparent); display:grid; place-items:center; }
 .aarr.r { right:0; background:linear-gradient(to left, var(--card) 40%, transparent); } .aarr[hidden] { display:none; } .aarr svg { width:16px; height:16px; }
-.att.img { flex:0 1 auto; min-width:56px; height:56px; padding:0; overflow:hidden; } .att.img img { width:100%; height:100%; border-radius:0; display:block; }
-.att { flex:none; position:relative; display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--bg); font-size:12px; padding:4px 52px 4px 6px; max-width:220px; }
+/* #419 --th = thumb height (grow(): dragged-small composer → shorter thumbs); width = aspect-ratio set on load */
+.att.img { flex:0 1 auto; min-width:var(--th, 56px); height:var(--th, 56px); padding:0; overflow:hidden; } .att.img img { width:100%; height:100%; border-radius:0; display:block; cursor:pointer; }
+.att { flex:none; position:relative; display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; background:var(--bg); font-size:12px; padding:4px 30px 4px 6px; max-width:220px; }
 .att img { width:44px; height:44px; object-fit:cover; border-radius:7px; } .att span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.att .abtns { position:absolute; top:0; right:0; display:flex; gap:3px; padding:3px 3px 6px 14px; border-radius:0 10px 0 12px; background:linear-gradient(to right, transparent, var(--side) 12px); opacity:0; transition:opacity .12s; }
-.att:hover .abtns, .att.hl .abtns, .att:not(.img) .abtns { opacity:1; }
-.att .abtns button { width:20px; height:20px; border-radius:50%; border:0; background:var(--hover); color:var(--dim); cursor:pointer; display:grid; place-items:center; padding:0; }
-.att .abtns button:hover { background:var(--soft); color:var(--accent); } .att .abtns button svg { width:11px; height:11px; }
-.att .abtns.bot { top:auto; bottom:0; padding:6px 3px 3px 14px; border-radius:12px 0 10px 0; } /* #237 Refer bottom-right, × top-right */
+/* #419 one "…" blob top-right (View / Refer / Remove menu) replaces the hover × + refer buttons; images: on hover, chips: always */
+.att .amore { position:absolute; top:3px; right:3px; width:22px; height:22px; border-radius:50%; border:1px solid var(--line); background:color-mix(in srgb, var(--card) 85%, transparent); color:var(--text); display:grid; place-items:center; padding:0; box-shadow:0 1px 4px rgb(0 0 0 / .35); opacity:0; transition:opacity .12s; }
+.att:not(.img) .amore { top:50%; transform:translateY(-50%); box-shadow:none; }
+.att:hover .amore, .att.hl .amore, .att:not(.img) .amore { opacity:1; } .att .amore:hover { color:var(--accent); border-color:var(--accent); } .att .amore svg { width:14px; height:14px; }
 .att .anote { position:absolute; left:6px; bottom:6px; width:8px; height:8px; border-radius:50%; border:0; background:var(--accent); color:#fff; display:grid; place-items:center; padding:0; cursor:pointer; box-shadow:0 0 6px 4px var(--side); transition:all .12s; overflow:hidden; }
 .att .anote svg { width:11px; height:11px; opacity:0; transition:opacity .12s; } /* #237 dot → full button on hover, same .12s as .abtns */
 .att:hover .anote, .att.hl .anote { left:3px; bottom:3px; width:20px; height:20px; } .att:hover .anote svg, .att.hl .anote svg { opacity:1; }
@@ -2238,10 +2239,14 @@ function attRef(i) { // inserts [name w/o extension] at the caret; a space befor
 // #270 remove → its @[name] tags go too (+ one trailing space), unless another attachment shares the name
 function rmAtt(i) { const n = stem(atts[cur].splice(i, 1)[0].name), p = $('prompt');
   if (!atts[cur].some(a => stem(a.name) === n)) { p.value = p.value.replace(new RegExp(`@\\[ ?${reEsc(n)}\\] ?`, 'g'), ''); grow(); } drawAtts(); }
-const refB = i => `<button class="aref" title="Refer to it in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button>`; // #237 image thumbs: bottom-right; file chips: top bar (too short for 2 rows)
+// #419 one "…" per thumb/chip → View / Refer / Remove (replaced hover × + refer buttons)
+function attMenu(b, i) { const a = atts[cur][i], base = (P().path || '').replace(/\\/g, '/').replace(/\/$/, '').toLowerCase(), ap = (a.path || '').replace(/\\/g, '/'),
+    pdf = /\.pdf$/i.test(ap), inP = ap.toLowerCase().startsWith(base + '/'), canV = a.url || pdf || inP; // ponytail: non-pdf files outside the project → disabled (no generic text reader for abs paths)
+  menuAt(b, [{label: 'View file', icon: 'eye', off: !canV, hint: canV ? '' : 'Only files inside the project', run: () => a.url ? viewAtt(i) : pdf ? openPdf(a.path) : openFile(a.path)},
+    {label: 'Refer to this', icon: 'reply', run: () => attRef(i)}, '-', {label: 'Remove', icon: 'trash', run: () => rmAtt(i)}]); }
 function drawAtts() {
-  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}" onmouseenter="markHov(${i})" onmouseleave="markHov(-1)">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
-    <span class="abtns">${a.url ? '' : refB(i)}<button title="Remove" onclick="rmAtt(${i})">${icon('trash')}</button></span>${a.url ? `<span class="abtns bot">${refB(i)}</span>` : ''}
+  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}" onmouseenter="markHov(${i})" onmouseleave="markHov(-1)">${a.url ? `<img src="${a.url}" onclick="viewAtt(${i})" onload="this.parentNode.style.aspectRatio = this.naturalWidth + '/' + this.naturalHeight; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
+    <button class="amore" title="View, refer to or remove" onmousedown="event.preventDefault()" onclick="attMenu(this, ${i})">${icon('more')}</button>
     ${a.notes?.length ? `<button class="anote" title="${esc(a.notes.join('\n').slice(0, 160))}&#10;(click to edit the notes)" onclick="viewAtt(${i}); editImage()">${icon('doc')}</button>` : ''}</div>`).join('');
   attArr(); pbDraw(); if (cur) { drawChrome(); keepDraft(); }
 }
@@ -2801,7 +2806,7 @@ $('prompt').addEventListener('keydown', e => {
 });
 // #249 measure w/o scrollbar (it narrowed the lines → over-tall + a stray 10px bar that later vanished → mirror wrapped wider/narrower → caret drift); bar only past max-height
 let PH = 0; // #378 dragged prompt height (0 = auto-grow to content, CSS max 260)
-const grow = () => { const t = $('prompt'), st = t.scrollTop; t.style.overflowY = 'hidden'; t.style.height = 'auto'; t.style.maxHeight = PH ? 'none' : ''; const h = t.scrollHeight; t.style.height = (PH || h) + 'px'; t.style.overflowY = h > (PH || parseFloat(getComputedStyle(t).maxHeight)) ? 'auto' : 'hidden'; t.scrollTop = st; pbDraw(); }; // #258 height:auto reset scrollTop to 0 → restore the spot
+const grow = () => { const t = $('prompt'), st = t.scrollTop; t.style.overflowY = 'hidden'; t.style.height = 'auto'; t.style.maxHeight = PH ? 'none' : ''; const h = t.scrollHeight; t.style.height = (PH || h) + 'px'; t.style.overflowY = h > (PH || parseFloat(getComputedStyle(t).maxHeight)) ? 'auto' : 'hidden'; t.scrollTop = st; $('composer').style.setProperty('--th', PH ? Math.max(28, Math.min(56, Math.round(PH / 2))) + 'px' : ''); pbDraw(); }; // #419 dragged-small composer (PH < 112) → thumbs PH/2 (28..56) ∴ text keeps room. #258 height:auto reset scrollTop to 0 → restore the spot
 // #326 arrow over scrollbars: hit = past clientWidth/Height (padding box minus bar); target = the scroller itself there
 let sbEl = null; document.addEventListener('mousemove', e => { const t = e.target, on = t instanceof Element && ((t.offsetWidth - t.clientWidth > 4 && e.offsetX >= t.clientWidth) || (t.offsetHeight - t.clientHeight > 4 && e.offsetY >= t.clientHeight));
   if (sbEl && (sbEl !== t || !on)) { sbEl.classList.remove('onsb'); sbEl = null; } if (on && !sbEl) (sbEl = t).classList.add('onsb'); }, { passive: true });
