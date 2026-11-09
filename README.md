@@ -16,8 +16,12 @@ Nothing else to install: if `claude` or `gh` is missing, Clauracle offers to ins
   Questions come as a numbered card with notes and an *Other* answer; in auto mode they push to desktop and phone (ntfy).
 - **Token savers:** Ponytail (simplest code that works), dense comments, helper **agents** on cheaper models
   (Settings › Agents), `.env` hidden from Claude, build/run/deploy after each task done by code, not by the AI.
-- **Side panel:** GitHub · Build · `.env` (masked values, OAuth presets) · Code · Browser (open in a real browser profile).
-- **Chat / Terminal** view switch; attach files or paste images into the message box.
+- **Side panel:** GitHub · Services & Secrets (`.env` with masked values, OAuth presets) · Build & Release · Agents · Code
+  (with Hot: files coloured by recent change) · Browser (open in a real browser profile).
+- **Chat / Terminal / Edit** views: Edit opens files as tabs with a Terminal and a real Shell below. Attach files or paste
+  images into the message box; `/model` and `/build` pick a model or a build target.
+- **Build & Release:** a per-stage checklist (alpha → published) with one-click fixes; finished builds are kept as staged
+  releases until you publish them on GitHub.
 
 ## Run / build
 
@@ -29,4 +33,4 @@ Nothing else to install: if `claude` or `gh` is missing, Clauracle offers to ins
 All three OSes: push a `v*` tag (or run the *build* workflow); `.github/workflows/build.yml` builds each and drafts a release.
 
 The terminal predecessor, claude-term, is archived in `archive/tui/` (git tag `tui-final`); the Python prototype in `archive/python/`.
-MIT licence (`LICENSE`); what changed per version: `CHANGELOG.md`. Ponytail skills: © Dietrich Gebert, MIT (`plugin/LICENSE-ponytail`).
+GPL-3.0 licence (`LICENSE`); what changed per version: `CHANGELOG.md`; who and what it's built with: `CREDITS.md`.
