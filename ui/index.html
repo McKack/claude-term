@@ -444,6 +444,7 @@ pre.diff .ctx { color:var(--faint); }
 #readytext b { font-weight:600; } #readytext:has(.btn) { line-height:2.2; text-overflow:clip; } /* #332 one line, readyFit drops labels */ #readytext.wrap { white-space:normal; } #readytext .btn { margin-left:6px; padding:2px 10px; font-size:12.5px; border:1px solid color-mix(in srgb, var(--accent) 35%, transparent); color:var(--accent); background:var(--soft); }
 #readytext .btn:hover { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 24%, var(--bg)); } #readytext .btn.primary { background:var(--accent); color:#fff; } #readytext { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
 #readytext.full { white-space:pre-wrap; max-height:40vh; overflow:auto; } /* click: the whole next task, line breaks kept */
+#readytext:not(.full):has(> b) { display:flex; align-items:baseline; } #readytext:not(.full) > b { min-width:0; margin-left:.5ch; overflow:hidden; text-overflow:ellipsis; } #readytext:not(.full) > .pill { flex:none; margin-left:6px; } /* #388 title truncates, +N stays at the end */
 .btn.sm { padding:2px 8px; font-size:12px; }
 .warn { background:color-mix(in srgb, var(--err) 12%, transparent); color:var(--err); border-radius:10px; padding:8px 10px; font-size:12.5px; margin:6px 0; }
 .sec { margin:0 0 18px; } .sh { display:flex; align-items:center; gap:6px; min-height:26px; margin:0 2px 6px; } .sh .label { flex:1; display:flex; align-items:center; gap:6px; min-width:0; } /* #269: inline btn in title (ⓘ) made a 26px line box → text sank to its baseline */
@@ -2576,7 +2577,7 @@ let readyT = 0, readyHold = false; const readyWas = {}; // pid → p.ready at la
 function readyTuck(r = $('ready')) { clearTimeout(readyT); readyHold = false; if ($('log').classList.contains('term')) return; /* #312 term = static bar, ^ toggles .full */ if (r.hidden) return r.classList.add('tuck'); /* height 0 → bad --tk */ $('readytext').classList.remove('full'); r.style.setProperty('--tk', `${17 - r.offsetHeight}px`) /* 25px showing: -(h - 25) - 8px gap; h same tucked or not ∴ same depth from any trigger */; r.classList.add('tuck'); }
 const readyLater = ms => { clearTimeout(readyT); readyT = setTimeout(() => !$('ready').hidden && readyTuck(), ms); };
 // #95: anything to expand? (nowrap ellipsis cut it, or already .full) → pointer + title; else click = no-op (no jump)
-function readyMore(t) { const m = t.classList.contains('full') || t.scrollWidth > t.clientWidth + 1; t.classList.toggle('more', m); t.title = m ? (t.classList.contains('full') ? 'Click to collapse' : 'Click to show the whole task') : ''; return m; }
+function readyMore(t) { const o = e => e && e.scrollWidth > e.clientWidth + 1, m = t.classList.contains('full') || o(t) || o(t.querySelector(':scope > b')); /* #388 flex: the <b> clips, not #readytext */ t.classList.toggle('more', m); t.title = m ? (t.classList.contains('full') ? 'Click to collapse' : 'Click to show the whole task') : ''; return m; }
 function readyPeek() { // drawChrome: just shown
   const r = $('ready');
   if (!r.onmouseleave) { // wire once
