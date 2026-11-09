@@ -368,7 +368,19 @@ pre.diff .ctx { color:var(--faint); }
 #jump { position:absolute; bottom:100%; margin-bottom:4px; left:50%; transform:translateX(-50%); pointer-events:auto; cursor:pointer; color:var(--text); white-space:nowrap; box-shadow:0 4px 14px #00000030; font-variant-numeric:tabular-nums; } #jump[hidden] { display:none; } #jump:not([hidden]) { animation:jumpin .45s cubic-bezier(.34,1.56,.64,1); } @keyframes jumpin { from { opacity:0; translate:0 24px; } } /* #276 bounce up from below; replays on every unhide (display none→flex) */ #jump:hover { border-color:var(--accent); }
 #jump.on { color:var(--accent); background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%) 0 0/200% 100%; animation:jumpin .45s cubic-bezier(.34,1.56,.64,1), shimmer 1.8s linear infinite; } #jump span:empty { display:none; }
 #workpill, #handpill, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:28px; }
-#log.term + #dock { background:linear-gradient(to bottom, transparent, var(--term) 20px); }
+#log.term .msg { font-size:inherit; } /* #339 13px inline notes beside the 12.5px strut grew line boxes past 20px → every later block drifted */
+#log.term .msg.note :is(.btn, .npill) { display:inline; height:auto; font:inherit; padding:0 .5ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); vertical-align:top; } #log.term .msg.note .btn svg { display:none; }
+#log.term .msg.note .btn::before { content:"["; } #log.term .msg.note .btn::after { content:"]"; } #log.term .msg.note .btn:hover { color:#fff; }
+#log.term #skel, #log.term #skel.hd:has(#dockpill > :not([hidden])) { margin-top:0; } /* #339 working line = next whole row (16px chat gap put it half a row off) */
+#log.term + #dock { background:var(--term); margin-top:0; padding-top:0; } /* #339 no overlap over the log ∴ nothing sits half over a row */
+#log.term + #dock #jump { position:static; transform:none; translate:none; margin:0 0 0 24px; height:20px; line-height:20px; max-width:calc(100% - 48px); overflow:hidden; text-overflow:ellipsis; } /* #339 Running/New! = an in-flow dock row, not floating over text */
+#log.term + #dock #jump span { overflow:hidden; text-overflow:ellipsis; }
+#log.term + #dock .col { gap:0; } #log.term + #dock #queue { height:20px; } #log.term + #dock #queue .qnav { width:auto; height:20px; border-radius:0; }
+#log.term + #dock .qp { height:20px; max-width:60ch; padding:0; gap:0; border:0; border-radius:0; background:none; animation:none; color:#9f9a90; } #log.term + #dock .qp:hover { color:#fff; } /* #339 queued msg = text row: [queued] words… @n [edit][↑][x] */
+#log.term + #dock .qp :is(.qi, .qa) { width:auto; height:20px; background:none; border-radius:0; font:inherit; } #log.term + #dock .qp svg { display:none; }
+#log.term + #dock .qp .qi::before { content:"[queued]"; color:#c9a86a; margin-right:1ch; } #log.term + #dock .qp .qa::before { content:"@"; } #log.term + #dock .qp .qa { color:var(--accent); margin-right:1ch; }
+#log.term + #dock .qp .qt { padding:0 1ch 0 0; } #log.term + #dock .qp .ib { width:auto; height:20px; border-radius:0; background:none; color:var(--accent); } #log.term + #dock .qp .ib:hover { color:#fff; }
+#log.term + #dock .qp .ib:nth-of-type(1)::before { content:"[edit]"; } #log.term + #dock .qp .ib:nth-of-type(2)::before { content:"[↑]"; } #log.term + #dock .qp .ib:nth-of-type(3)::before { content:"[x]"; }
 #tip { position:fixed; inset:auto; margin:0; max-width:320px; padding:5px 9px; border-radius:8px; font-size:12px; line-height:1.4; white-space:pre-line;
   overflow:hidden; overflow-wrap:anywhere; color:var(--text); pointer-events:none; border:1px solid var(--line2); background:var(--card); box-shadow:0 8px 24px #00000040; }
 #dock .col { gap:8px; }
@@ -1555,7 +1567,7 @@ function makeBranch() {
 // ---- the log: chat or terminal ----
 let view = (() => { try { return localStorage.view || 'chat'; } catch { return 'chat'; } })();
 function setView(v) { view = v; try { localStorage.view = v; } catch {} applyView(); if (cur) drawLog(); }
-function applyView() { $('log').classList.toggle('term', view !== 'chat'); document.querySelectorAll('#head .seg button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
+function applyView() { $('log').classList.toggle('term', view !== 'chat'); requestAnimationFrame(() => termPad()); document.querySelectorAll('#head .seg button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
   panelLay(); if (view === 'edit') { evDraw(); if (UI.pt === 'shell' && !UI.pc && cur) shellShow(); } }
 /* #285 Edit view. Tabs per project: ETABS[pid] = {tabs: [{rel|null, name, text, orig, img, err}], on}; open rels persist (localStorage etabs:<pid>).
    ponytail: plain textarea (no highlight/line numbers); Untitled tabs not persisted. Panel: UI.ph px, UI.pc collapsed, UI.pt term|shell */
@@ -1669,7 +1681,13 @@ $('log').addEventListener('scroll', () => { const j = $('jump'), e = atEnd(); if
 const LH = 20, gridRO = new ResizeObserver(es => { const t = view !== 'chat'; for (const e of es) { const h = e.borderBoxSize[0].blockSize; e.target.style.marginBottom = t && h ? Math.ceil(h / LH - .01) * LH - h + 'px' : ''; } });
 new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) { if (n.nodeType !== 1) continue; if (n.classList.contains('col')) [...n.children].forEach(c => gridRO.observe(c)); else if (n.parentElement?.classList.contains('col')) gridRO.observe(n); } }).observe($('log'), {childList: true, subtree: true});
 // #327 scroll: native momentum, then settle on a whole row (bottom = stays at the end; ponytail: snaps after scrollend, not mid-fling)
-$('log').addEventListener('scrollend', () => { const l = $('log'); if (view === 'chat' || l.scrollHeight - l.scrollTop - l.clientHeight < 2) return; const t = Math.round(l.scrollTop / LH) * LH; if (Math.abs(t - l.scrollTop) > .5) l.scrollTo({top: t, behavior: 'smooth'}); });
+// #339 scroll = whole rows, no smooth/snap-after: wheel → own row steps (acc keeps touchpad deltas), any other scroll (drag, keys) quantized instantly
+// bottom pad ≡ H − padTop (mod LH) ∴ scrollMax is a whole row too (end = on grid)
+const termPad = () => { const l = $('log'); if (view === 'chat') return l.style.paddingBottom = ''; l.style.paddingBottom = LH + ((l.clientHeight - parseFloat(getComputedStyle(l).paddingTop)) % LH + LH) % LH + 'px'; };
+new ResizeObserver(termPad).observe($('log'));
+let wAcc = 0; $('log').addEventListener('wheel', e => { if (view === 'chat' || e.ctrlKey || !e.deltaY) return; e.preventDefault(); const l = $('log');
+  wAcc += e.deltaY * (e.deltaMode === 1 ? LH : e.deltaMode === 2 ? l.clientHeight : 1); const n = Math.trunc(wAcc / LH); if (n) { wAcc -= n * LH; l.scrollTop = Math.round(l.scrollTop / LH) * LH + n * LH; } }, {passive: false});
+$('log').addEventListener('scroll', () => { const l = $('log'); if (view === 'chat') return; const t = Math.round(l.scrollTop / LH) * LH; if (Math.abs(t - l.scrollTop) > .5 && l.scrollHeight - l.scrollTop - l.clientHeight >= 2) l.scrollTop = t; }, {passive: true});
 // consecutive tool lines share one compact group in chat view; the same call again bumps "×N" on its line; click → what it did
 function put(box, e) {
   const el = entry(e);
