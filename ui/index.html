@@ -141,6 +141,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
 /* #250 = composer .att.img: 56px high, real aspect, 56..220px wide, 10px radius, gap 8 */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; max-width:100%; }
+.msg .thumbs .tcap { flex-basis:100%; font-size:12px; color:var(--dim); } .msg .thumbs.read img { height:40px; opacity:.8; } /* #333 Claude's own Reads: captioned, smaller */
 .msg .thumbs img { width:auto; height:56px; min-width:56px; max-width:min(220px, 100%); object-fit:cover; border-radius:10px; border:1px solid var(--line); background:var(--bg); display:block; }
 .crow .cb, .msg.user { min-width:0; } #log { overflow-x:hidden; } #log::-webkit-scrollbar-track { margin:52px 0 20px; } /* thumb stops short of the top mask (52px) + #dock overlap (20px) */
 .crow { display:flex; gap:10px; align-items:flex-start; } .crow.user { flex-direction:row-reverse; }
@@ -1695,7 +1696,8 @@ function put(box, e) {
   }
   if (e.kind === 'claude' && box._shots?.length) { // images Claude read since its last message → thumbs on this one
     const imgs = box._shots.map(f => ({path: f, name: f.split(/[\\/]/).pop().replace(/^[0-9a-f]{8,}-(?!\d+\.\w+$)/, '')})); box._shots = []; // #239 att_save = <id>-<attachment stem>.<ext> → show the attachment's own name
-    const th = document.createElement('div'); th.className = 'thumbs'; el.querySelector('.msg')?.prepend(th);
+    const th = document.createElement('div'); th.className = 'thumbs read'; el.querySelector('.msg')?.prepend(th);
+    th.innerHTML = `<span class="tcap">Looked at ${imgs.map(x => esc(x.name)).join(', ')} while working</span>`; // #333 caption ∵ bare thumb read as "this message is about that image"
     imgs.forEach((x, k) => { const im = document.createElement('img'); im.title = x.path; th.append(im);
       shotUrl(x.path).then(u => { x.url = im.src = u; }, () => im.remove());
       im.onclick = () => openViewer(imgs.filter(y => y.url), imgs.filter(y => y.url).indexOf(x), null); });
