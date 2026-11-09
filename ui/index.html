@@ -338,7 +338,8 @@ pre.diff .ctx { color:var(--faint); }
 /* #311 working line: ASCII spinner (CSS content keyframes, steps(1) = hard frame flips), left in the text column */
 #log.term #dockpill { justify-content:flex-start; } #log.term #skel { margin-top:0; }
 #log.term #dockpill > :is(#workpill, #handpill) { font:inherit; border:0; border-radius:0; background:none; animation:none; padding:0; color:var(--accent) !important; gap:1ch; }
-#log.term #workpill .i { display:none; } #log.term #dockpill > *::before { content:"|"; width:1ch; flex:none; order:-2; animation:tspin .5s steps(1) infinite; } #log.term #worktext { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+#log.term #workpill .i { display:none; } #log.term #dockpill > *::before { content:"\25DC"; display:inline-block; width:1ch; overflow:hidden; text-align:center; flex:none; order:-2; animation:tspin .6s steps(1) infinite; }
+@keyframes tspin { 0% { content:"\25DC"; } 16.67% { content:"\25E0"; } 33.33% { content:"\25DD"; } 50% { content:"\25DE"; } 66.67% { content:"\25E1"; } 83.33% { content:"\25DF"; } } /* #397 round ◜◠◝◞◡◟; 1ch box ∵ fallback-font glyph width ≠ 1ch */ #log.term #worktext { overflow:hidden; text-overflow:ellipsis; min-width:0; }
 #log.term #workpill::after { content:none; } /* #315 bar dropped: its frames shifted the text; spinner only (1ch, flex:none = fixed slot) */
 /* #311 TUI composer: same elements, text-mode look (› prompt, rules instead of a box, [icon] buttons) */
 #log.term + #dock, #log.term + #dock :is(#prompt, #pback, #status, .qp, #slash button, #ready) { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; }
