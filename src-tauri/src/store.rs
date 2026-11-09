@@ -1123,6 +1123,10 @@ pub fn restrictions(cfg: &Config, p: &Project) -> (Vec<String>, Option<Vec<Strin
     if has(&cfg.off, "web") { // composer's globe: web search off everywhere
         deny.extend(["WebSearch", "WebFetch"].map(String::from));
     }
+    // #407 Claude Code's own agents switched off (Settings › Helper agents): Agent = current tool name, Task = older CLIs
+    for a in cfg.off.iter().filter_map(|i| i.strip_prefix("agent:")) {
+        deny.extend([format!("Agent({a})"), format!("Task({a})")]);
+    }
     if p.hide_env {
         deny.extend(["Read(**/.env*)", "Edit(**/.env*)", "Write(**/.env*)", "Bash(cat *.env*)"].map(String::from));
     }
@@ -2331,6 +2335,8 @@ mod tests {
         cfg.off = vec!["mcp:rea".into()];
         p.off = vec!["skill:a".into()];
         assert_eq!(restrictions(&cfg, &p), (vec!["mcp__rea".to_string()], Some(vec!["p:b".to_string()])));
+        cfg.off.push("agent:Plan".into()); // #407
+        assert_eq!(restrictions(&cfg, &p).0, ["mcp__rea", "Agent(Plan)", "Task(Plan)"].map(String::from).to_vec());
     }
 
     #[test]

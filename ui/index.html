@@ -2839,7 +2839,8 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
   usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },
-  commands: () => { if (Array.isArray(d.models) && d.models.length) { CMODELS = d.models; try { localStorage.cmodels = JSON.stringify(d.models); } catch {} }
+  commands: () => { if (Array.isArray(d.agents)) { CCAG = d.agents; try { localStorage.ccag = JSON.stringify(d.agents); } catch {} }
+    if (Array.isArray(d.models) && d.models.length) { CMODELS = d.models; try { localStorage.cmodels = JSON.stringify(d.models); } catch {} }
     if (Array.isArray(d.commands)) cmds[d.pid] = [{name: 'ask', argumentHint: '<question>', description: 'Clauracle: ask a question; answered, never filed as a task'}, {name: 'build', argumentHint: '[windows|linux|macos|ios|android|all]', description: 'Clauracle: build a local copy and run it; or build one target / all'}, ...d.commands.map(c => typeof c === 'string' ? {name: c} : c)]; },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
@@ -4718,7 +4719,7 @@ function cxPage() {
       <input id="exq" class="grow" placeholder="Search, e.g. pdf, postgres, figma" value="${esc(EXF.q)}" onkeydown="if(event.key==='Enter')extFind()">
       <button class="btn" onclick="extFind()">${icon('search')}Search</button></p><div id="exr">${extRows()}</div>`, EXF.q ? 1 : 0)}
     ${cxGroup('g-cx', 'Connections &amp; Skills', 'global')}${cxFold('g-plugin', 'Plugins & mods', 'plugin', 'global')}
-    ${fold('g-agents', 'Helper agents', optRow('Give helper agents to Clauracle', '', sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')) + agentsPage(),
+    ${fold('g-agents', 'Helper agents', optRow('Give helper agents to Clauracle', '', sw(S.agents_on, 'call(\'set_agents\', {agents: AGENTS, on: this.checked}).then(() => openSettings())')) + agentsPage() + ccAgents(),
       S.agents_on ? `${AGENTS.filter(a => a.on).length}/${AGENTS.length}` : 'off')}
     <p class="dim" style="font-size:13px">Build toolchains (Node, Rust, WSL, Xcode…): <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>`;
 }
@@ -4823,6 +4824,16 @@ function agentsPage() {
       <input value="${esc(a.description)}" placeholder="When Clauracle should use it" onchange="agentSet(${i}, 'description', this.value)">
       <textarea placeholder="Its instructions" onchange="agentSet(${i}, 'prompt', this.value)">${esc(a.prompt)}</textarea></div>`).join('')
     + `<p class="row"><button class="btn" onclick="AGENTS.push({name:'helper', model:'haiku', description:'', prompt:'', on:true}); saveAgents()">${icon('plus')}Add agent</button></p></div>`;
+}
+/* #407 Claude Code's own agents (built-ins, ~/.claude/agents, plugins): CCAG ← "commands" event (CLI initialize `agents`);
+   off = global cfg.off "agent:<name>" → Rust denies Agent(name)/Task(name); session reconnects (set_off) */
+let CCAG; try { CCAG = JSON.parse(localStorage.ccag || 'null'); } catch {}
+function ccAgents() {
+  const own = new Set(AGENTS.map(a => a.name.trim())), off = SET.off.filter(i => i.startsWith('agent:')).map(i => i.slice(6));
+  const xs = [...(CCAG || []).filter(a => !own.has(a.name)), ...off.filter(n => !(CCAG || []).some(a => a.name === n)).map(name => ({name}))];
+  return `<div class="sh"><span class="label">Claude Code agents</span>${infoI('Agents Claude Code brings itself (built-in, ~/.claude/agents, plugins). Switched off = Clauracle can\'t start it, in every project.')}</div>`
+    + (xs.map(a => optRow(esc(a.name), esc((a.description || '').split('. ')[0]), sw(!off.includes(a.name), `setGlobalOff('agent:${esc(a.name)}', !this.checked)`))).join('')
+      || `<p class="dim">Listed once a project's session has started. <a href="#" onclick="event.preventDefault(); closeDlg()">Back to the project</a></p>`);
 }
 const agentSet = (i, k, v) => { AGENTS[i][k] = v; saveAgents(); };
 const saveAgents = () => call('set_agents', {agents: AGENTS}).then(() => openSettings());
