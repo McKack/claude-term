@@ -325,7 +325,7 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock .tb > :is(.ib.on, #send) { color:var(--accent); } #log.term + #dock .tb > :is(.ib, #send):hover { color:#fff; } #log.term + #dock .tb .i { width:14px; height:14px; }
 #log.term + #dock #jump { font:12.5px ui-monospace,Consolas,monospace; border-radius:0; }
 /* #322 term composer: full width; thumbs = borderless 8ch × 3-line cells on the char grid; @[ref] = plain "[<icon>name]" (mono ∴ "@" slot shows "[", icon on "[" slot) */
-#log.term + #dock .col { max-width:none; }
+#log.term + #dock .col { max-width:none; } #log.term + #dock #attw { display:none; } /* #325 no thumbs: refs only */
 #log.term + #dock #atts { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; gap:1ch; padding:0 0 calc(12.5px * 1.55); }
 #log.term + #dock .att.img { flex:none; width:8ch !important /* beats onload inline width */; min-width:0; height:calc(12.5px * 1.55 * 3); border:0; border-radius:0; background:none; } #log.term + #dock .att.img img { object-fit:cover; }
 #log.term + #dock .att .abtns { border-radius:0; } #log.term + #dock .att .abtns button { border-radius:0; }
@@ -1723,7 +1723,7 @@ function entry(e) {
     const imgs = e.images.map((x, k) => typeof x === 'string' ? {url: x, name: `image ${k + 1}`} : x);
     if (view !== 'chat') { // #312 term: no thumbs; image refs = accent [stem] tags (click → viewer), unreferenced images listed first
       const st = imgs.map(x => stem(x.name)), used = new Set(), tag = k => `<span class="itag" data-k="${k}">[${esc(st[k])}]</span>`;
-      const body = esc(e.text).replace(/@?\[([^\]\n]+)\]/g, (m, n) => { const k = st.indexOf(n.replace(/&amp;/g, '&')); if (k < 0) return m; used.add(k); return tag(k); });
+      const body = esc(e.text).replace(/@?\[([^\]\n]+)\]/g, (m, n) => { const k = st.indexOf(n.replace(/&amp;/g, '&').trim()); if (k < 0) return m; used.add(k); return tag(k); });
       d.innerHTML = imgs.map((x, k) => used.has(k) ? '' : tag(k) + ' ').join('') + body;
       d.querySelectorAll('.itag').forEach(t => t.onclick = () => openViewer(imgs, +t.dataset.k, null));
     } else {
@@ -1956,15 +1956,15 @@ const ftIcon = n => { const b = n.split('/').pop().toLowerCase(), e = (b.match(/
 // #270 composer ref = plain "@[name]" (same text in prompt, logs, issues); mirror draws the icon over "@[". unpad: old drafts' "[  name ]" pads → @[name]
 const unpad = t => t.replace(/\[\u2007\u2007([^\]\n]*?)\u2002\]/g, '@[$1]'), reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // #227 chat bubble: @[ref] (old logs: [ref]) naming one of the message's files → same pill
-const refPills = (t, names) => esc(unpad(t)).replace(/@?\[([^\]\n]+)\]/g, (m, n) => { const f = names.find(x => stem(x) === n.replace(/&amp;/g, '&') || x === n); return f ? `<span class="rpill">${icon(fIcon(f))}${n}</span>` : m; });
+const refPills = (t, names) => esc(unpad(t)).replace(/@?\[([^\]\n]+)\]/g, (m, n) => { const f = names.find(x => stem(x) === n.replace(/&amp;/g, '&').trim() || x === n); return f ? `<span class="rpill">${icon(fIcon(f))}${n}</span>` : m; });
 function attRef(i) { // inserts [name w/o extension] at the caret; a space before/after only where the neighbour isn't one already
-  const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = `@[${stem(atts[cur][i].name)}]`;
+  const el = $('prompt'), v = el.value, s = el.selectionStart ?? v.length, e = el.selectionEnd ?? s, r = view !== 'chat' ? `@[ ${stem(atts[cur][i].name)}]` : `@[${stem(atts[cur][i].name)}]`; // #325 term: "@[ " ∴ mirror shows "[icon name]" w/ a space (mono slots)
   const ins = (s && !/\s/.test(v[s - 1]) ? ' ' : '') + r + (e < v.length && /\s/.test(v[e]) ? '' : ' ');
-  el.setRangeText(ins, s, e, 'end'); el.focus(); grow(); keepDraft();
+  el.setRangeText(ins, s, e, 'end'); el._pv = el.value; el.focus(); grow(); keepDraft();
 }
 // #270 remove → its @[name] tags go too (+ one trailing space), unless another attachment shares the name
 function rmAtt(i) { const n = stem(atts[cur].splice(i, 1)[0].name), p = $('prompt');
-  if (!atts[cur].some(a => stem(a.name) === n)) { p.value = p.value.replace(new RegExp(`@\\[${reEsc(n)}\\] ?`, 'g'), ''); grow(); } drawAtts(); }
+  if (!atts[cur].some(a => stem(a.name) === n)) { p.value = p.value.replace(new RegExp(`@\\[ ?${reEsc(n)}\\] ?`, 'g'), ''); grow(); } drawAtts(); }
 const refB = i => `<button class="aref" title="Refer to it in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button>`; // #237 image thumbs: bottom-right; file chips: top bar (too short for 2 rows)
 function drawAtts() {
   $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
@@ -1974,7 +1974,7 @@ function drawAtts() {
 }
 // #217 [ref] pills: #pback mirrors the textarea text; refs naming an attachment get a <mark> behind them (a textarea can't style
 // its own text). Click inside one → highlight + scroll its thumb, image → viewer. Icon drawn over the "@[" chars (same text ∴ mirror stays aligned)
-const attAt = name => { name = name.replace(/[   ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
+const attAt = name => { name = name.trim().replace(/[   ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
 function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.style.right = p.offsetWidth - p.clientWidth + 'px'; /* #231 scrollbar (max-height hit) narrows the textarea's lines → mirror must wrap the same or the caret drifts */
   b.innerHTML = esc(p.value).replace(/@\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m;
     return `<mark><i class="fic">@[${icon(fIcon(atts[cur][i].name))}</i>${n}<i>]</i></mark>`; }) + '\n'; pbSync(); }
@@ -2244,7 +2244,7 @@ function addImage(file) {
   r.onload = () => { (atts[cur] ||= []).push({name, url: r.result, media_type: file.type, data: r.result.split(',')[1]}); attRef(atts[cur].length - 1); drawAtts(); };
   r.readAsDataURL(file);
 }
-const addPaths = paths => { for (const p of paths) (atts[cur] ||= []).push({name: p.split(/[\\/]/).pop(), path: p}); drawAtts(); };
+const addPaths = paths => { for (const p of paths) { (atts[cur] ||= []).push({name: p.split(/[\\/]/).pop(), path: p}); if (view !== 'chat') attRef(atts[cur].length - 1); } drawAtts(); }; // #325 term: no chips ∴ ref = only sign of it
 async function pickFiles() { const f = await T.dialog.open({multiple: true}); if (f) addPaths([].concat(f)); }
 $('prompt').addEventListener('paste', e => {
   const imgs = [...e.clipboardData.items].filter(i => i.type.startsWith('image/'));
@@ -2513,7 +2513,11 @@ $('prompt').addEventListener('keydown', e => {
 const grow = () => { const t = $('prompt'), st = t.scrollTop; t.style.overflowY = 'hidden'; t.style.height = 'auto'; const h = t.scrollHeight; t.style.height = h + 'px'; t.style.overflowY = h > parseFloat(getComputedStyle(t).maxHeight) ? 'auto' : 'hidden'; t.scrollTop = st; pbDraw(); }; // #258 height:auto reset scrollTop to 0 → restore the spot
 new ResizeObserver(() => pbDraw()).observe($('prompt')); // width/scrollbar changes w/o typing (window, side panels) → mirror re-measured
 let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
-$('prompt').addEventListener('input', () => { grow(); slashSel = 0; drawSlash(); if (cur) { if (!chromeRAF) chromeRAF = requestAnimationFrame(() => { chromeRAF = 0; drawChrome(); }); keepDraft(); } });
+// #325 term view: refs = the attachments (no chips) ∴ deleting its last @[name] drops the attachment; chat keeps it (chip stays)
+// only refs present before this edit count (_pv) ∴ an attachment added in Chat view w/o a ref never vanishes on typing
+const attSync = () => { const p = $('prompt'), v = p.value, pv = p._pv || '', a = atts[cur] || [], has = (t, x) => new RegExp(`@\\[ ?${reEsc(stem(x.name))}\\]`).test(t), k = a.filter(x => has(v, x) || !has(pv, x)); p._pv = v; if (k.length < a.length) { atts[cur] = k; drawAtts(); } };
+$('prompt').addEventListener('focus', e => e.target._pv = e.target.value);
+$('prompt').addEventListener('input', () => { if (cur && view !== 'chat') attSync(); grow(); slashSel = 0; drawSlash(); if (cur) { if (!chromeRAF) chromeRAF = requestAnimationFrame(() => { chromeRAF = 0; drawChrome(); }); keepDraft(); } });
 // Continue/auto-clear → "Reading handover…" pill (same spot as Working…) until Claude's first own line/tool or turn end
 const reading = {};
 const readNote = (pid, on) => { if (on) reading[pid] = true; else delete reading[pid]; if (pid === cur) drawChrome(); };
