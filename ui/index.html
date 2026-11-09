@@ -75,6 +75,15 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .side-head { display:flex; align-items:center; gap:2px; padding:8px 8px 6px 10px; }
 #stabs { display:flex; gap:2px; min-width:0; } #brand .ib { margin-left:auto; }
 #files { flex:1; overflow:auto; padding:2px 8px; }
+#notes { flex:1; display:flex; flex-direction:column; min-height:0; padding:2px 8px 8px; } #notes .nbar { display:flex; align-items:center; gap:4px; padding:2px 0 6px; } #notes .nbar .ib { width:26px; height:26px; padding:0; }
+#notes textarea { flex:1; resize:none; font:12.5px/1.5 ui-monospace,Consolas,monospace; max-height:none; } #notes .mdoc { flex:1; overflow:auto; }
+/* #371 rendered markdown (Notes, Code tab, File viewer) */
+.mdoc { font-size:13.5px; line-height:1.6; overflow-wrap:anywhere; } .mdoc > :first-child { margin-top:0; }
+.mdoc h1, .mdoc h2 { font-size:1.35em; margin:1em 0 .4em; padding-bottom:.2em; border-bottom:1px solid var(--line); } .mdoc h2 { font-size:1.2em; } .mdoc h3 { font-size:1.08em; margin:1em 0 .3em; } .mdoc h4, .mdoc h5, .mdoc h6 { font-size:1em; margin:.8em 0 .3em; }
+.mdoc p, .mdoc ul, .mdoc ol, .mdoc table, .mdoc blockquote, .mdoc .code { margin:0 0 .7em; } .mdoc ul, .mdoc ol { padding-left:22px; } .mdoc li.task { list-style:none; margin-left:-18px; }
+.mdoc code { font:12px ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+.mdoc blockquote { border-left:3px solid var(--line); padding-left:10px; opacity:.85; } .mdoc hr { border:0; border-top:1px solid var(--line); margin:1em 0; }
+.mdoc table { border-collapse:collapse; display:block; overflow:auto; } .mdoc th, .mdoc td { border:1px solid var(--line); padding:3px 8px; text-align:left; } .mdoc img { max-width:100%; }
 #graph { height:340px; display:flex; flex-direction:column; margin:0; border-radius:10px; overflow:hidden; background:#161514; color:#cfd6e4; min-height:120px; font-size:12px; } /* #137 always dark; #221 hot files; #223 bg = .termcard */
 #graph .ghd { display:flex; align-items:center; padding:2px 4px 2px 10px; } #graph .ginfo { opacity:.6; } #graph .gre { color:#cfd6e4; } #graph .faint { padding:10px; }
 #graph .tm { flex:1; position:relative; min-height:100px; } #graph .tm div { position:absolute; box-sizing:border-box; border:1px solid #161514; overflow:hidden; padding:1px 3px; font-size:10.5px; line-height:1.25; white-space:nowrap; text-overflow:ellipsis; color:#e6ebf5; cursor:pointer; }
@@ -776,11 +785,12 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="side">
   <div id="brand"><svg class="logo" onclick="goHome()" style="cursor:pointer" title="Home"><use href="#i-logo"/></svg><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b><small id="appver"></small>
 </div>
-  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button></span>
+  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="notes" onclick="setSide('notes')" title="Notes: NOTES.md, only on this computer (git-ignored)"><svg class="i"><use href="#i-feather"/></svg><span>Notes</span></button></span>
     <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
     <button class="ib" title="Project manager" onclick="openManager()"><svg class="i"><use href="#i-more"/></svg></button></div>
   <div id="projects"></div>
   <div id="files" hidden></div>
+  <div id="notes" hidden></div>
   <div id="graph" hidden></div>
   <div id="lrail" class="railbox"></div><div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
   <div class="side-foot"><button class="btn ghost grow" id="acctBtn" onclick="startMenu(this)" title="Clauracle menu: search, tabs, settings, restart"></button></div>
@@ -886,6 +896,33 @@ function md(src) {
       .replace(/^#{1,4} (.*)$/gm, '<b>$1</b>')
       .replace(/(?:^[ \t]*(?:[-*]|\d+[.)]) .*(?:\n|$))+/gm, l => `<div class="tlist">${l.trim().split('\n').map(x => tli(x.replace(/^\s*(?:[-*]|\d+[.)]) /, ''))).join('')}</div>\n`)
       .split(/\n{2,}/).map(p => p.trim() && (p.startsWith('<div class="tlist"') ? p : `<p>${p.trim().replace(/\n/g, '<br>')}</p>`)).join('')).join('');
+}
+/* #371 document markdown (Notes tab, Code tab/File viewer for .md): headings, lists (+ [ ]/[x]), quotes, hr, tables, fences (hiCode colour), inline code/bold/italic/strike/links/images.
+   ponytail: line-based, no nested lists/quotes beyond indent → margin; add a real parser only if docs need it. Check: node scripts/mddoc-check.js */
+function mdDoc(src) {
+  const inl = s => { const cs = []; return esc(s).replace(/`([^`]+)`/g, (m, c) => `\0${cs.push(c) - 1}\0`)
+    .replace(/!\[([^\]]*)\]\((https?:[^)\s]+)\)/g, '<img alt="$1" src="$2">').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="#" data-url="$2">$1</a>')
+    .replace(/\*\*(.+?)\*\*|__(.+?)__/g, '<b>$1$2</b>').replace(/(^|[^\w*])[*_]([^*_\s][^*_]*?)[*_](?![\w*])/g, '$1<i>$2</i>').replace(/~~(.+?)~~/g, '<s>$1</s>')
+    .replace(/\0(\d+)\0/g, (m, i) => `<code>${cs[i]}</code>`); };
+  const L = src.replace(/\r/g, '').split('\n'), out = []; let i = 0;
+  while (i < L.length) { const l = L[i]; let m;
+    if ((m = l.match(/^\s*(```|~~~)\s*(\S*)/))) { const b = []; while (++i < L.length && !L[i].trim().startsWith(m[1])) b.push(L[i]); i++;
+      out.push(`<div class="code"><pre style="padding:8px 12px">${hiCode(b.join('\n'), (m[2] || 'txt').toLowerCase()).join('\n')}</pre></div>`); continue; }
+    if ((m = l.match(/^(#{1,6})\s+(.*?)\s*#*$/))) { out.push(`<h${m[1].length}>${inl(m[2])}</h${m[1].length}>`); i++; continue; }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) { out.push('<hr>'); i++; continue; }
+    if (/^\s*>/.test(l)) { const b = []; while (i < L.length && /^\s*>/.test(L[i])) b.push(L[i++].replace(/^\s*>\s?/, '')); out.push(`<blockquote>${mdDoc(b.join('\n'))}</blockquote>`); continue; }
+    if (/^\s*\|.*\|\s*$/.test(l) && /^\s*\|[\s:|-]+\|\s*$/.test(L[i + 1] || '')) { const row = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => inl(c.trim()));
+      const h = row(l); i += 2; const rs = []; while (i < L.length && /^\s*\|/.test(L[i])) rs.push(row(L[i++]));
+      out.push(`<table><tr>${h.map(c => `<th>${c}</th>`).join('')}</tr>${rs.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>`); continue; }
+    if (/^\s*([-*+]|\d+[.)])\s/.test(l)) { const ol = /^\s*\d/.test(l), it = [];
+      while (i < L.length && (m = L[i].match(/^(\s*)([-*+]|\d+[.)])\s+(\[[ xX]\]\s+)?(.*)$/))) { i++;
+        it.push(`<li style="margin-left:${Math.floor(m[1].length / 2) * 18}px"${m[3] ? ' class="task"' : ''}>${m[3] ? `<input type="checkbox" disabled${/x/i.test(m[3]) ? ' checked' : ''}> ` : ''}${inl(m[4])}</li>`); }
+      out.push(`<${ol ? 'ol' : 'ul'}>${it.join('')}</${ol ? 'ol' : 'ul'}>`); continue; }
+    if (!l.trim()) { i++; continue; }
+    const p = []; while (i < L.length && L[i].trim() && !/^(\s*(```|~~~|>|[-*+]\s|\d+[.)]\s|\|)|#{1,6}\s)/.test(L[i])) p.push(L[i++]);
+    if (!p.length) p.push(L[i++]);
+    out.push(`<p>${p.map(inl).join('<br>')}</p>`); }
+  return out.join('');
 }
 // one task row everywhere (chat lists, Plan tab, Next pill, team tasks): h = HTML; checkable only when `on` (onchange code)
 const tli = (h, {done, on, cls = '', tip, end = ''} = {}) => `<div class="ti ${cls}"${tip ? ` title="${esc(tip)}"` : ''}>${/\bsug\b/.test(cls) ? icon('sparkle') /* AI suggestion mark ≠ checkbox */ : `<input type="checkbox"${done ? ' checked' : ''}${on ? ` onchange="${on}"` : ' disabled'}>`}<span class="tt">${h}</span>${end}</div>`; // end: unclamped tail (buttons)
@@ -1177,7 +1214,7 @@ const SHUT = {}, reopen = k => Date.now() - (SHUT[k] || 0) < 400, shutOn = (card
 /* #283 Start menu: account row → morphs (clip-path) into the Clauracle menu; row stays put at its bottom.
    Grid = every side tab (left + right); search → rows: tabs/settings, projects, files (HEAT, file_heat), secret NAMES (env_list, never values), tasks.
    ponytail: plain substring match, ≤ 60 rows; fuzzy ranking when lists get long */
-const SMTABS = () => [['projects', 'folder', 'Projects', 'l'], ['files', 'doc', 'Files', 'l'],
+const SMTABS = () => [['projects', 'folder', 'Projects', 'l'], ['files', 'doc', 'Files', 'l'], ['notes', 'feather', 'Notes', 'l'],
   ...(cur ? [...document.querySelectorAll('#rtabs button[data-t]')].map(b => [b.dataset.t, b.querySelector('use').getAttribute('href').slice(3), b.textContent.trim(), 'r']) : [])];
 const SMENV = {}; // pid → {t, keys: [[name, file]]}; 60 s
 function smTab(k, side) {
@@ -2183,9 +2220,10 @@ function vZoom(f, e) {
 }
 // read-only files → "Save as…" (editable ones = images → Save in editImage). f = {name, path?(copied as is), text?(saved), url?(pdf blob), html?(text view)}
 function fileView(f) {
-  VF = f; const pdf = /\.pdf$/i.test(f.path || ''), wrap = localStorage.diffWrap !== '0';
+  VF = f; const pdf = /\.pdf$/i.test(f.path || ''), wrap = localStorage.diffWrap !== '0', md = isMd(f.name) && f.text != null;
+  if (md) f.html = docHtml(f.text, f.name, wrap); // #371 rendered/raw per localStorage.mdRaw
   vWin(`${icon(pdf ? 'pdf' : 'term')}<span class="vname">${esc(f.name)}</span>`, `<button class="btn primary sm" onclick="vSaveAs()">Save as…</button>`,
-    (pdf ? '' : (/class="code/.test(f.html) ? hlBtn(`$('dlg').querySelector('.code')`) : '') + `<button class="ib${wrap ? ' on' : ''}" title="Wrap long lines" onclick="const s=$('dlg').querySelector('.vtext');try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('on',s.classList.contains('wrap'))">${icon('wrap')}</button>
+    (pdf ? '' : (md ? `<button class="ib${mdOn() ? ' on' : ''}" title="Rendered Markdown" onclick="try{localStorage.mdRaw=mdOn()?'1':'0'}catch{} fileView(VF)">${icon('doc')}</button>` : '') + (/class="code/.test(f.html) && !(md && mdOn()) ? hlBtn(`$('dlg').querySelector('.code')`) : '') + `<button class="ib${wrap ? ' on' : ''}" title="Wrap long lines" onclick="const s=$('dlg').querySelector('.vtext');try{localStorage.diffWrap=s.classList.toggle('wrap')?'1':'0'}catch{}this.classList.toggle('on',s.classList.contains('wrap'))">${icon('wrap')}</button>
       <button class="ib" title="Copy all" onclick="navigator.clipboard.writeText(VF.text);toast('Copied','ok')">${icon('copy')}</button>`)
     + (f.path ? `<button class="ib" title="Show in folder" onclick="T.opener.revealItemInDir(VF.path).catch(e=>toast(String(e),'err'))">${icon('folder')}</button>` : ''),
     pdf ? `<iframe class="vdoc" src="${f.url}"></iframe>` : `<div class="dscroll vtext sel${wrap ? ' wrap' : ''}">${f.html}</div>`, null, pdf ? null : 'text');
@@ -3746,6 +3784,9 @@ function hiCode(text, ext) {
 // #338 colour toggle (left of Wrap): .code.plain = CSS-only, no re-render; remembered in localStorage.codeHl
 const hlOn = () => localStorage.codeHl !== '0';
 const hlBtn = (q, st = '') => `<button class="ib${hlOn() ? ' on' : ''}" style="${st}" title="Syntax highlighting" onclick="const p=${q}.classList.toggle('plain');try{localStorage.codeHl=p?'0':'1'}catch{}this.classList.toggle('on',!p)">${icon('code')}</button>`;
+// #371 .md in Code tab / File viewer: rendered (mdDoc) by default, toggle remembered in localStorage.mdRaw
+const isMd = f => /\.(md|markdown|mdx)$/i.test(f), mdOn = () => localStorage.mdRaw !== '1';
+const docHtml = (text, file, wrap) => isMd(file) && mdOn() ? `<div class="mdoc" style="padding:2px 4px">${mdDoc(text)}</div>` : codeHtml(text, file.split('.').pop().toLowerCase(), wrap);
 const codeHtml = (text, ext, wrap) => { const h = hiCode(text, ext); return `<div class="code${wrap ? ' wrap' : ''}${hlOn() ? '' : ' plain'}"><pre class="sel" style="--lw:calc(${String(h.length).length}ch + 20px)">${h.map(l => `<div><span>${l}</span></div>`).join('')}</pre></div>`; };
 // #248 recent files: newest first from this project's chat log (tool file_path) then git heat; ≤ 8, inside the project only
 function recentFiles() {
@@ -3762,24 +3803,39 @@ async function drawCode() {
     if (UI.lc || UI.st !== 'files') { UI.lc = false; setSide('files'); } return; }
   const wrap = localStorage.codeWrap !== '0'; // #231 wrap ON by default, choice remembered (like the diff dialog)
   const head = `<div class="row" style="align-items:center;margin-bottom:10px;gap:4px"><a class="crumbs mono" style="overflow-wrap:anywhere;margin:0;cursor:pointer" title="Open in the File viewer" onclick="codeView()">${esc(file)}</a>
-    <button class="ib" style="width:26px;height:26px" title="Open in the File viewer" onclick="codeView()">${icon('expand')}</button><span class="grow"></span>${hlBtn(`$('rbody').querySelector('.code')`, 'width:26px;height:26px')}<button class="ib${wrap ? ' on' : ''}" style="width:26px;height:26px" title="Wrap long lines"
+    <button class="ib" style="width:26px;height:26px" title="Open in the File viewer" onclick="codeView()">${icon('expand')}</button><span class="grow"></span>${isMd(file) ? `<button class="ib${mdOn() ? ' on' : ''}" style="width:26px;height:26px;padding:0" title="Rendered Markdown" onclick="try{localStorage.mdRaw=mdOn()?'1':'0'}catch{}drawCode()">${icon('doc')}</button>` : ''}${isMd(file) && mdOn() ? '' : hlBtn(`$('rbody').querySelector('.code')`, 'width:26px;height:26px')}<button class="ib${wrap ? ' on' : ''}" style="width:26px;height:26px" title="Wrap long lines"
     onclick="const c=$('rbody').querySelector('.code'),w=c.classList.toggle('wrap');try{localStorage.codeWrap=w?'1':'0'}catch{}this.classList.toggle('on',w)">${icon('wrap')}</button></div>`;
   let text;
   try { text = await call('read_file', {pid: cur, rel: file}); } catch (e) { box.innerHTML = head + `<p class="dim">${esc(e)}</p>`; return; }
   codeAt[cur].text = text;
-  box.innerHTML = head + codeHtml(text, file.split('.').pop().toLowerCase(), wrap);
+  box.innerHTML = head + docHtml(text, file, wrap);
 }
 // #248 Code tab file → File viewer (same colouring; Save as… copies the file)
 function codeView() { const c = codeAt[cur]; if (!c?.text) return;
-  fileView({name: c.file.split('/').pop(), path: P().path.replace(/[\/]+$/, '') + '/' + c.file, text: c.text, html: codeHtml(c.text, c.file.split('.').pop().toLowerCase(), localStorage.codeWrap !== '0')}); }
+  fileView({name: c.file.split('/').pop(), path: P().path.replace(/[\/]+$/, '') + '/' + c.file, text: c.text, html: docHtml(c.text, c.file, localStorage.codeWrap !== '0')}); }
 function setSide(t) { UI.st = t; layout(); drawSide(); }
 function toggleLeft() { UI.lc = !UI.lc; layout(); }
 function drawSide() {
-  const t = UI.st === 'files' ? 'files' : 'projects'; // old saved 'tasks'/'graph' tab (removed; #370 Hot → GitHub tab fold) → projects
+  const t = ['files', 'notes'].includes(UI.st) ? UI.st : 'projects'; // old saved 'tasks'/'graph' tab (removed; #370 Hot → GitHub tab fold) → projects
   document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', b.dataset.s === t));
-  $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files';
+  $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files'; $('notes').hidden = t !== 'notes';
   if (t === 'files') drawFiles();
+  if (t === 'notes') drawNotes();
 }
+/* #371 Notes tab: <project>/NOTES.md via lib notes (git-excluded on first save). Rendered by default (empty → editor); pen toggles.
+   Autosave 0.8s per project. NOTETXT[pid] = text, read once per session (ponytail: outside edits show after restart) */
+const NOTETXT = {}, NOTEST = {}; let notesEd = false;
+async function drawNotes() {
+  const box = $('notes'), pid = cur;
+  if (!pid) { box.innerHTML = '<p class="faint" style="font-size:13px">Open a project to keep notes.</p>'; return; }
+  if (NOTETXT[pid] == null) { box.innerHTML = skel(70, 50, 60); NOTETXT[pid] = await call('notes', {pid}).catch(() => ''); if (cur !== pid) return; }
+  const t = NOTETXT[pid], ed = notesEd || !t.trim();
+  box.innerHTML = `<div class="nbar"><span class="grow faint" style="font-size:12px" title="Saved to NOTES.md in the project, git-ignored">NOTES.md · only on this computer</span>${t.trim() ? `<button class="ib${ed ? ' on' : ''}" title="${ed ? 'Show rendered' : 'Edit'}" onclick="notesEd = !notesEd; drawNotes()">${icon(ed ? 'doc' : 'pen')}</button>` : ''}</div>`
+    + (ed ? `<textarea placeholder="Notes for this project, in Markdown" oninput="notesPut(this.value)"></textarea>` : `<div class="mdoc" ondblclick="notesEd = true; drawNotes()">${mdDoc(t)}</div>`);
+  const ta = box.querySelector('textarea'); if (ta) { ta.value = t; if (notesEd) ta.focus(); }
+}
+function notesPut(v) { const pid = cur; NOTETXT[pid] = v; clearTimeout(NOTEST[pid]);
+  NOTEST[pid] = setTimeout(() => call('notes', {pid, text: v}).catch(e => toast('Notes not saved: ' + e, 'err')), 800); }
 /* #221 Hot files: squarified treemap, area = size, colour = 30-day churn (Rust file_heat: git log --numstat).
    Click a cell → its recent commits + the #N issues they name (→ editIssue); file name → open in Code. 60s cache per project.
    ponytail: flat (no folder nesting); shown = 200 largest + every churned file, each ≥ 1/400 of the area so hot small files stay clickable */

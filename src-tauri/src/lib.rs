@@ -1683,6 +1683,23 @@ fn write_file(st: St, pid: String, rel: String, text: String) -> R<()> {
     std::fs::write(inside(&p.path, &rel)?, text).map_err(|e| e.to_string())
 }
 
+/// #371 Notes tab: `<project>/NOTES.md` (missing → ""). text = save; first save adds `/NOTES.md` to .git/info/exclude (local-only, repo untouched).
+#[tauri::command(async)]
+fn notes(st: St, pid: String, text: Option<String>) -> R<String> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let root = std::path::Path::new(&p.path);
+    let Some(t) = text else { return Ok(std::fs::read_to_string(root.join("NOTES.md")).unwrap_or_default()) };
+    let ex = root.join(".git/info/exclude");
+    if root.join(".git").is_dir() && !std::fs::read_to_string(&ex).unwrap_or_default().lines().any(|l| l.trim() == "/NOTES.md" || l.trim() == "NOTES.md") {
+        let _ = std::fs::create_dir_all(root.join(".git/info"));
+        let mut s = std::fs::read_to_string(&ex).unwrap_or_default();
+        if !s.is_empty() && !s.ends_with('\n') { s.push('\n'); }
+        let _ = std::fs::write(&ex, s + "/NOTES.md\n");
+    }
+    std::fs::write(root.join("NOTES.md"), t).map_err(|e| e.to_string())?;
+    Ok(String::new())
+}
+
 // ---- #285 Shell tab: the OS shell in a pty, one per project; bytes → event `shell` {pid, d} / {pid, exit} ----
 struct Shell { master: Box<dyn portable_pty::MasterPty + Send>, w: Box<dyn std::io::Write + Send>, child: Box<dyn portable_pty::Child + Send + Sync> }
 static SHELLS: std::sync::LazyLock<Mutex<std::collections::HashMap<String, Shell>>> = std::sync::LazyLock::new(Default::default);
@@ -2231,7 +2248,7 @@ pub fn run() {
             continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, notes, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {
