@@ -2165,7 +2165,7 @@ async function repOpen(rid, tb = 'done') {
   d.querySelectorAll('[data-ask]').forEach(b => b.onclick = () => { const o = bad[b.dataset.ask]; closeDlg(); putPrompt(`This failed during the last task; fix it:\n${o.cmd || o.text}\n${o.err.trim().split('\n').slice(-6).join('\n')}`); });
 }
 const repBtns = () => document.querySelectorAll('.rpdf').forEach(b => { b.disabled = !!REPBUSY[cur]; b.classList.toggle('busy', !!REPBUSY[cur]); });
-async function repPdf(rid, pid = cur) { // rid = that task, none = 7-day; Sonnet in the background, buttons off meanwhile (any window)
+async function repPdf(rid, pid = cur) { // rid = that task, none = 7-day (#413: task = code-built HTML, 7-day = Sonnet), buttons off meanwhile (any window)
   if (REPBUSY[pid]) return; REPBUSY[pid] = true; repBtns();
   // #247 chat pill (shimmers while REPBUSY) → turns into "Report ready!" + (pdf icon) filename → File viewer
   const e = {kind: 'note', text: rid ? 'Writing the detailed report…' : 'Writing the 7-day report…', pill: 'pdf', rb: 1}; addEntry(pid, e);
@@ -3229,14 +3229,11 @@ const STAGES = {alpha: 'Alpha', beta: 'Beta', rc: 'Release candidate', published
 const RELC = {}, RELTO = {}, RELBUSY = {}, RELFIX = {}; // RELFIX pid → Set of row ids whose background Fix/Run (#360 rel_fix) is out // pid → {c, t} check cache · pid → target stage while moving up
 const RELAI = { // fix prompts: Claude writes/judges, never template
   // #357 one row = README (≥10 lines, touched since the last tag) + LICENSE (picked, present, id matches) + CREDITS.md
-  get readme() { const c = RELC[cur]?.c || {}, l = P().license; return [
+  get readme() { const c = RELC[cur]?.c || {}; return [ // #413 LICENSE.md + CREDITS = code (relDocs), README prose = AI
     c.readme < 10 ? 'Write README.md by hand-feel: plain voice of this project, what it does and for whom, how to install and run it. No template headings, badge walls or emoji; short beats complete. Read the code first.'
       : c.readme_old ? `README.md wasn't touched since ${c.tag}: bring it up to date with what changed since (git log ${c.tag}..HEAD), keep its voice, change only what's out of date.` : '',
-    l && !licOk(c, l) ? RELAI.license : '',
-    c.credits ? '' : 'Write CREDITS.md: who made it (git authors / repo owner) and the third-party libraries, fonts, icons and assets it ships, each with its licence (read the dependency manifests and asset folders). Plain list, no filler.',
   ].filter(Boolean).join(' '); },
   version: 'Give the project a version (0.1.0) in its main config (package.json / Cargo.toml / tauri.conf.json), consistent across files.',
-  get license() { return `Write LICENSE.md with the full ${LICS[P().license] || P().license} text (this year, copyright holder from the git author / repo owner), replacing any other licence file (delete LICENSE, LICENSE.txt, COPYING…; the one file is named LICENSE.md), and set the licence field in the project's config files that carry one.`; },
   changelog: 'Write CHANGELOG.md from git history since the last tag: user-facing changes only, newest first, grouped by version.',
   bump: 'Bump the version for the next release (patch for fixes, minor for features, judge from git log since the last tag) in every config file that carries it.',
   ci: 'Add or fix a GitHub Actions workflow that builds and runs the tests on push, then push so it runs.',
@@ -3260,7 +3257,7 @@ function relItems(c, p) {
         // #264 licence picked in Settings › Projects (p-lic); not picked → Choose / Confirm (file exists) → licPick; picked but file missing/other → Fix prompt
         (c.lic_file || 'LICENSE.md') + (p.license ? `: ${LICS[p.license] || p.license}` + (!c.license ? ', no file yet' : c.lic_id && c.lic_id !== p.license ? `, file says ${c.lic_id}` : c.lic_file !== 'LICENSE.md' ? ', rename to LICENSE.md' : '') : c.license ? `: not picked, file looks like ${c.lic_id || 'an unknown license'}` : ': not picked'),
         c.credits ? 'CREDITS.md' : 'CREDITS.md: missing'].map(t => `<span style="display:block">${esc(t)}</span>`).join(''),
-      ...(p.license ? {} : {go: 'licPick()', gl: c.license ? 'Confirm license' : 'Choose license'})},
+      ...(p.license ? {go: 'relDocs(this)'} : {go: 'licPick()', gl: c.license ? 'Confirm license' : 'Choose license'})},
     ...(c.deps ? [{s: 0, id: 'libs', t: 'Library licenses compatible', ok: licOkDeps(c), d: (b => b.length ? `${b.length} not allowed or unknown: ${b.slice(0, 5).map(x => x.n + ' (' + (x.l || '?') + ')').join(', ')}${b.length > 5 ? '…' : ''}` : '')(c.deps.filter(x => x.s === 'bad' || x.s === 'unk'))
       + (c.credits_miss?.length ? ` ${c.credits_miss.length} not credited in CREDITS.md` : '') || `${c.deps.length} libraries checked`, go: c.credits_miss?.length ? `licCredits(cur, this)` : `licPick()`, gl: c.credits_miss?.length ? 'Add credits' : 'Details'}] : []),
     {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` + (tv ? ` · last released ${c.tag}` : ' · first release') : 'not found'},
@@ -3370,6 +3367,12 @@ async function bgAI(pid, label, text) {
   try { const r = await call('rel_fix', {pid, prompt: text}); addEntry(pid, {kind: 'note', text: `${label}: done in the background`, ts: Date.now()}); addEntry(pid, {kind: 'claude', text: r, ts: Date.now()}); toast(`${label}: done`, 'ok'); }
   catch (e) { toast(`${label}: ${e}`, 'err'); }
 }
+// #413 Markdown row Fix: LICENSE.md (GitHub licence text) + CREDITS.md (scan data) by code, no tokens; README prose → AI only if needed
+async function relDocs(b) { b.disabled = true; const pid = cur, c = RELC[pid]?.c || {};
+  try { if (!licOk(c, P(pid).license)) addEntry(pid, {kind: 'note', text: 'License written: ' + (await call('lic_write', {pid})).join(', ')});
+    if (!c.credits || c.credits_miss?.length) await call('lic_credits', {pid}); } catch (e) { toast(String(e), 'err'); }
+  if (c.readme < 10 || c.readme_old) return relAsk('readme');
+  if (RELC[pid]) RELC[pid].t = 0; drawRight(); }
 async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
   const text = id === 'summary' ? `Release prep: in a few lines, what this project is and does, then what's missing for ${relNext(P())} (that stage's checklist; open checks: ${open || 'none'}). Plan only, don't change files.` : RELAI[id];

@@ -1478,16 +1478,85 @@ fn lic_credits(st: St, pid: String) -> R<usize> {
     let root = std::path::PathBuf::from(&p.path);
     let deps = lic_deps(&root, &p.license);
     let miss = credits_miss(&root, &deps);
-    if miss.is_empty() { return Ok(0) }
     let f = std::fs::read_dir(&root).into_iter().flatten().flatten().map(|e| e.path()).find(|f| f.file_name().is_some_and(|n| n.to_string_lossy().to_uppercase().starts_with("CREDITS"))).unwrap_or(root.join("CREDITS.md"));
-    let mut t = std::fs::read_to_string(&f).unwrap_or_else(|_| "# Credits\n".into());
+    if miss.is_empty() && f.exists() { return Ok(0) }
+    // #413 no file yet → made-by line from git/GitHub (no AI)
+    let mut t = std::fs::read_to_string(&f).unwrap_or_else(|_| format!("# Credits\n\nMade by {}.\n", lic_holder(&p)));
     if !t.ends_with('\n') { t.push('\n') }
-    t += "\n## Third-party libraries\n\n";
+    if !miss.is_empty() { t += "\n## Third-party libraries\n\n"; }
     for n in &miss { if let Some(d) = deps.iter().find(|d| d["n"] == n.as_str() && d["d"] == true) {
         t += &format!("- {n} {}: {}\n", d["v"].as_str().unwrap_or(""), d["l"].as_str().filter(|l| !l.is_empty()).unwrap_or("licence not stated"));
     } }
     store::write_atomic(&f, t.as_bytes()).map_err(|e| e.to_string())?;
     Ok(miss.len())
+}
+
+/// copyright holder: project git user.name → repo owner → GitHub login
+fn lic_holder(p: &store::Project) -> String {
+    let n = store::run("git", &["config", "user.name"], Some(&p.path), &[]).stdout.trim().to_string();
+    if !n.is_empty() { return n }
+    store::repo_of(&p.path).map(|r| r.0).unwrap_or_else(|| p.gh.clone())
+}
+/// #413 LICENSE.md from GitHub's licence API text (no AI; [year]/[fullname] filled), other licence files removed, existing
+/// licence fields in package.json / tauri.conf.json / Cargo.toml / pyproject set. → changed files. ponytail: absent fields not added
+#[tauri::command(async)]
+fn lic_write(st: St, pid: String) -> R<Vec<String>> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let (root, id) = (std::path::PathBuf::from(&p.path), p.license.as_str());
+    if id.is_empty() { return Err("Pick a license first".into()) }
+    let (holder, year) = (lic_holder(&p), chrono_ish()[..4].to_string());
+    let text = if id == "Proprietary" {
+        format!("Copyright (c) {year} {holder}. All rights reserved.\n\nNo permission is granted to use, copy, modify or distribute this software without the copyright holder's written consent.\n")
+    } else {
+        let o = store::run("gh", &["api", &format!("licenses/{}", id.to_lowercase()), "--jq", ".body"], None, &store::gh_env(&p.gh));
+        if !o.ok || o.stdout.trim().is_empty() { return Err(format!("GitHub has no text for {id}: {}", o.stderr.trim())) }
+        o.stdout.replace("[year]", &year).replace("[fullname]", &holder)
+    };
+    let mut done = vec!["LICENSE.md".to_string()];
+    for e in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+        let n = e.file_name().to_string_lossy().to_string();
+        if n != "LICENSE.md" && ["LICENSE", "LICENCE", "COPYING"].iter().any(|x| n.to_uppercase().starts_with(x)) && std::fs::remove_file(e.path()).is_ok() { done.push(format!("{n} (removed)")); }
+    }
+    store::write_atomic(&root.join("LICENSE.md"), text.as_bytes()).map_err(|e| e.to_string())?;
+    if id != "Proprietary" {
+        let spdx = if id.contains("GPL") { format!("{id}-only") } else { id.to_string() };
+        let json_re = regex::Regex::new(r#""license"\s*:\s*"[^"]*""#).unwrap();
+        let toml_re = regex::Regex::new(r#"(?m)^license\s*=\s*"[^"]*""#).unwrap();
+        for f in ["package.json", "src-tauri/tauri.conf.json", "Cargo.toml", "src-tauri/Cargo.toml", "pyproject.toml"] {
+            let Ok(t) = std::fs::read_to_string(root.join(f)) else { continue };
+            let n = if f.ends_with(".json") { json_re.replacen(&t, 1, format!("\"license\": \"{spdx}\"")) } else { toml_re.replacen(&t, 1, format!("license = \"{spdx}\"")) };
+            if n != t && store::write_atomic(&root.join(f), n.as_bytes()).is_ok() { done.push(f.to_string()); }
+        }
+    }
+    Ok(done)
+}
+
+/// #413 one task's report → HTML from its data (no AI): summary counts, parts, files, failures, time table.
+fn rep_html(r: &Value) -> String {
+    let arr = |v: &Value| v.as_array().cloned().unwrap_or_default();
+    let mins = |v: &Value| format!("{} min", (v.as_f64().unwrap_or(0.0) / 60000.0).round().max(1.0));
+    let (segs, ops) = (arr(&r["segs"]), arr(&r["ops"]));
+    let nums = |k: &str| segs.iter().flat_map(|s| arr(&s[k])).map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ");
+    let files: std::collections::BTreeSet<&str> = ops.iter().filter(|o| o["d"].is_array()).filter_map(|o| o["f"].as_str()).filter(|f| !f.is_empty()).collect();
+    let bad: Vec<&Value> = ops.iter().filter(|o| o["ok"] == false).collect();
+    let (closed, filed) = (nums("closed"), nums("filed"));
+    let mut h = format!("<h2>Summary</h2><p>{} steps in {}, {} file{} changed{}{}.</p><h2>What was done</h2><ul>", ops.len(), mins(&r["ms"]), files.len(),
+        if files.len() == 1 { "" } else { "s" }, if closed.is_empty() { String::new() } else { format!(", closed {closed}") }, if filed.is_empty() { String::new() } else { format!(", filed {filed}") });
+    for s in &segs { h += &format!("<li>{} <small>({} steps, {} files)</small></li>", html_esc(s["title"].as_str().unwrap_or("")), s["n"], s["files"]); }
+    h += "</ul>";
+    if !files.is_empty() { h += &format!("<h3>Files changed</h3><ul>{}</ul>", files.iter().map(|f| format!("<li><code>{}</code></li>", html_esc(f))).collect::<String>()); }
+    let first = |v: &Value| v.as_str().unwrap_or("").lines().next().unwrap_or("").to_string();
+    if !bad.is_empty() { h += &format!("<h2>Problems spotted</h2><ul>{}</ul>", bad.iter().map(|o| format!("<li><code>{}</code>: {}</li>",
+        html_esc(&first(if o["cmd"].as_str().is_some_and(|c| !c.is_empty()) { &o["cmd"] } else { &o["text"] })), html_esc(&first(&o["err"])))).collect::<String>()); }
+    h += "<h2>Time</h2><table><tr><th>Part</th><th>Time</th></tr>";
+    for s in &segs { h += &format!("<tr><td>{}</td><td>{}</td></tr>", html_esc(s["title"].as_str().unwrap_or("")), mins(&s["ms"])); }
+    h + "</table>"
+}
+#[test]
+fn rep_html_works() {
+    let h = rep_html(&json!({"ms": 120000, "segs": [{"title": "Fix <x>", "n": 2, "files": 1, "ms": 90000, "closed": [5], "filed": []}],
+        "ops": [{"ok": true, "f": "a.rs", "d": [["", "x"]]}, {"ok": false, "cmd": "cargo test", "err": "boom\nmore"}]}));
+    assert!(h.contains("2 steps in 2 min, 1 file changed, closed #5.") && h.contains("Fix &lt;x&gt;") && h.contains("<code>cargo test</code>: boom</li>"), "{h}");
 }
 
 fn version_of(root: &std::path::Path) -> Option<(String, &'static str)> {
@@ -2068,7 +2137,8 @@ fn report_pdf(st: St, pid: String, rep: Option<Value>) -> R<String> {
         Suggestions (2-4 concrete next steps). Plain business tone, no filler. Data:\n{data}", p.name);
     let d = rep_dir(&pid)?.join("pdf");
     std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
-    let body = sonnet(&st, &p, "medium", &d, &prompt).map_err(|e| format!("Report writer failed: {e}"))?;
+    // #413 task report = plain data → rep_html; only the 7-day one needs Sonnet (groups by area + summaries/suggestions)
+    let body = if week { sonnet(&st, &p, "medium", &d, &prompt).map_err(|e| format!("Report writer failed: {e}"))? } else { rep_html(&reps[0]) };
     let body = body.trim_start_matches("```html").trim_matches('`').trim().to_string();
     let logo = include_str!("../../assets/icon.svg");
     let logo = &logo[logo.find("<svg").unwrap_or(0)..];
@@ -2467,7 +2537,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![rel_fix, lic_credits, ctx_pick, 
+        .invoke_handler(tauri::generate_handler![rel_fix, lic_credits, lic_write, ctx_pick, 
             fullscreen, state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
             continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
