@@ -968,14 +968,16 @@ fn neutral_prompt(ask: &str) -> String {
 #[tauri::command]
 async fn task_do(st: St<'_>, pid: String, action: String, mut arg: String, images: Option<Vec<Value>>) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
+    let mut err = String::new(); // "new": Sonnet failure → 3rd line of the reply → UI toast
     if action == "new" { // #309 privacy: raw ask never reaches GitHub (edit history keeps first bodies) → Sonnet's neutral rewrite filed
         let tags: String = store::hash_tags(&arg).iter().map(|t| format!(" #{t}")).collect(); // raw #Tags → labels still
         let (st2, p2, raw) = (st.inner().clone(), p.clone(), arg.clone());
         let dir = store::home().join(".clauracle");
-        arg = tauri::async_runtime::spawn_blocking(move || sonnet(&st2, &p2, "low", &dir, &neutral_prompt(&raw))).await.map_err(|e| e.to_string())?
-            .map(|s| s.trim_matches('`').trim().to_string()).ok().filter(|s| !s.is_empty())
-            // ponytail: Sonnet down → placeholder title, the session working it writes the summary (never the raw text)
-            .unwrap_or_else(|| "New task from Clauracle (summary pending)".into()) + &tags;
+        let r = tauri::async_runtime::spawn_blocking(move || sonnet(&st2, &p2, "low", &dir, &neutral_prompt(&raw))).await.map_err(|e| e.to_string())?
+            .map(|s| s.trim_matches('`').trim().to_string()).and_then(|s| if s.is_empty() { Err("empty reply".into()) } else { Ok(s) });
+        // ponytail: Sonnet down → placeholder title, the session working it writes the summary (never the raw text); err → UI toast
+        if let Err(e) = &r { err = format!("\nNeutral rewrite failed ({}): placeholder title filed", e.lines().last().unwrap_or("no output")); }
+        arg = r.unwrap_or_else(|_| "New task from Clauracle (summary pending)".into()) + &tags;
     }
     // #220: "new" + ask images → saved locally, paths in the body ∴ the session that works the issue sees them
     let saved = store::att_save(&p.path, images.as_deref().unwrap_or_default());
@@ -984,7 +986,7 @@ async fn task_do(st: St<'_>, pid: String, action: String, mut arg: String, image
     }
     // "new" → "URL\nfiled title" (UI's row shows the neutral title, not the raw ask)
     tauri::async_runtime::spawn_blocking(move || store::task_do(&p.path, &p.gh, &action, &arg)
-        .map(|u| if action == "new" { format!("{u}\n{}", store::split_task(&arg).0) } else { u })).await.map_err(|e| e.to_string())?
+        .map(|u| if action == "new" { format!("{u}\n{}{err}", store::split_task(&arg).0) } else { u })).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1791,7 +1793,8 @@ fn sonnet(st: &State, p: &store::Project, effort: &str, cwd: &std::path::Path, p
     let claude = store::which("claude").ok_or("Claude Code isn't installed")?;
     let base = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).map(|a| a.base_url.clone()).unwrap_or_default();
     let mut c = store::command(&claude);
-    for k in ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDECODE"] { c.env_remove(k); }
+    for k in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"] { c.env_remove(k); }
+    for (k, _) in std::env::vars() { if k.starts_with("CLAUDE") { c.env_remove(k); } } // inherited session vars (Clauracle started from a CLI)
     c.args(["-p", "--model", "sonnet", "--effort", effort, "--output-format", "text"]).envs(store::account_env(&p.account, &base))
         .current_dir(cwd).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     let mut ch = c.spawn().map_err(|e| e.to_string())?;

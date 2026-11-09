@@ -2257,7 +2257,7 @@ async function fileAsk(pid, t, a) {
   // #309 local draft: row in the task list at once (gray "local" dot) while Sonnet writes the neutral issue text, then gh files it
   const loc = {number: 0, local: true, title: t.split('\n')[0].slice(0, 90), url: '', labels: [{name: 'local (being filed)', color: '9aa0a6'}], assignees: [], t: Date.now()};
   (FRESH[pid] ||= []).push(loc); issueRedraw(pid);
-  try { const [url = '', title] = String(await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data, name: x.name}))})).trim().split('\n'); const n = +(url.match(/\/issues\/(\d+)/)?.[1] || 0);
+  try { const [url = '', title, warn] = String(await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data, name: x.name}))})).trim().split('\n'); if (warn) toast(warn, 'warn'); const n = +(url.match(/\/issues\/(\d+)/)?.[1] || 0);
     if (n) FRESH[pid].push({number: n, title: title || loc.title, url, labels: [{name: 'clauracle'}, {name: 'task', color: '888'}], assignees: [], t: Date.now()});
     pollTeam(); return n; }
   catch (e) { toast(`Couldn't file it as an issue: ${e}`, 'warn'); return 0; }
@@ -2502,6 +2502,8 @@ function questionCard(pid) {
   // one text field per question: "Note" → "Your own answer" while Other is picked (user 2026-11-05: two fields = same thing)
   d.onchange = e => { const q = e.target.closest('.q'); if (q && e.target.type !== 'text') q.querySelector('.note').placeholder =
     q.querySelector('[value=__other]').checked ? 'Your own answer' : 'Note (optional)'; };
+  // #310: one question → Enter in its text field = Confirm (several: Enter does nothing, user may still be on others)
+  d.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && qs.length === 1 && e.target.classList.contains('note')) { e.preventDefault(); confirmQs(pid, d); } };
   return d;
 }
 // #65: drawLog runs on every event while Clauracle works → reuse the card element (picks + typed notes survive);
