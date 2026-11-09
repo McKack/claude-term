@@ -2247,7 +2247,8 @@ T.event.listen('tauri://drag-drop', e => { $('composer').classList.remove('drop'
 
 // sent while a turn runs → queued here (editable, saved with the draft); the oldest goes out when the turn ends
 function send() {
-  const t = unpad($('prompt').value), a = atts[cur] || []; // #227 pill pads are display-only
+  let t = unpad($('prompt').value); const a = atts[cur] || [];
+  const ask = /^\s*\/ask\b/i.test(t); if (ask) t = t.replace(/^\s*\/ask\b\s*/i, ''); // #227 pill pads display-only; #320 /ask = forced question (QNOTE), never filed
   if (!t.trim() && !a.length) return;
   if (!a.length && !editing[cur] && (/^\s*\/build\b/i.test(t) || BUILD_RE.test(t))) { $('prompt').value = ''; grow(); keepDraft(); return buildLocal(cur, (t.match(/^\s*\/build\s+(all|windows|linux|macos|ios|android)\b/i)?.[1] || '').toLowerCase()); }
   const ed = editing[cur]; delete editing[cur];
@@ -2258,7 +2259,7 @@ function send() {
   // #93: a plain question (ends "?", not "can you…/please"; or "btw …") → not filed: answered + ```tasks cards (sugCards)
   // #212: doubt → file (a lost ask costs more than a filed question): Q only if ONE short sentence, no change/bug words
   const nw = noteTxt(a).split(/\s+/).length - 1; // #238 words in image notes count as the ask (a short text + notes = still a task)
-  const isQ = issueOn(pid) && !nw && !FILED_RE.test(t) && !QNOTE_RE.test(t) && !ASK_RE.test(t) && t.trim().split(/\s+/).length <= 30 && !/[.!?:]\s+\S/.test(t.trim())
+  const isQ = ask || issueOn(pid) && !nw && !FILED_RE.test(t) && !QNOTE_RE.test(t) && !ASK_RE.test(t) && t.trim().split(/\s+/).length <= 30 && !/[.!?:]\s+\S/.test(t.trim())
     && (/\?\s*$/.test(t) || /^\s*btw\b/i.test(t));
   // #142: a short status/unblock reply ("I've turned the Mac on", "done, try again") = context for the blocked task, not new work
   const isS = issueOn(pid) && !isQ && !nw && !FILED_RE.test(t) && !QNOTE_RE.test(t) && STATUS_RE.test(t) && t.trim().split(/\s+/).length <= 25;
@@ -2542,7 +2543,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
   usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },
   commands: () => { if (Array.isArray(d.models) && d.models.length) { CMODELS = d.models; try { localStorage.cmodels = JSON.stringify(d.models); } catch {} }
-    if (Array.isArray(d.commands)) cmds[d.pid] = [{name: 'build', argumentHint: '[windows|linux|macos|ios|android|all]', description: 'Clauracle: build a local copy and run it; or build one target / all'}, ...d.commands.map(c => typeof c === 'string' ? {name: c} : c)]; },
+    if (Array.isArray(d.commands)) cmds[d.pid] = [{name: 'ask', argumentHint: '<question>', description: 'Clauracle: ask a question; answered, never filed as a task'}, {name: 'build', argumentHint: '[windows|linux|macos|ios|android|all]', description: 'Clauracle: build a local copy and run it; or build one target / all'}, ...d.commands.map(c => typeof c === 'string' ? {name: c} : c)]; },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.step === 'build' && b.busy && d.line && d.pid === cur && tab === 'build' && /\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/i.test(d.line) && /Finished \d+ bundle/.test(b.out.slice(b.from || 0))) drawRight(); /* #174 an artifact landed → tick it */
