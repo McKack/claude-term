@@ -285,37 +285,39 @@ pre.diff .ctx { color:var(--faint); }
 #ebody textarea { flex:1; border:0; border-radius:0; resize:none; outline:0; padding:10px 14px; font:13px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; tab-size:4; background:var(--bg); color:var(--text); white-space:pre; }
 #ebody .eimg { margin:auto; max-width:100%; max-height:100%; object-fit:contain; } #ebody .empty { margin:auto; text-align:center; }
 #log.term { background:var(--term); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
-#log.term .col { max-width:none; gap:4px; font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
+#log.term { padding-top:60px; } /* #327 3 rows; rows sit at 60+20k */
+#log.term .col { max-width:none; display:block; /* #327 block flow: notes run inline + no flex gap; JS gridPad pads each block to whole 20px rows */ font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; }
+#log.term .col, #log.term .col * { line-height:20px; } #log.term .col > * { margin-top:0 !important; } /* #327 grid: one row height everywhere; top margins off (chat rules add them) ∵ gridPad only pads the bottom */
 #log.term .msg { white-space:pre-wrap; align-self:stretch; background:none; border:0; padding:0; border-radius:0; max-width:none; }
 /* #316 message = header line `[HH:MM] <@nick>:` + text below (full width, no column); faded dashed rule between messages (first one none) */
-#log.term .irc { margin-top:6px; } #log.term .irc ~ .irc { padding-top:6px; border-top:1px dashed color-mix(in srgb, #3a3733 70%, transparent); }
+#log.term .irc ~ .irc { padding-top:20px; background:linear-gradient(to right, color-mix(in srgb, #3a3733 70%, transparent) 50%, transparent 0) 0 10px / 6px 1px repeat-x; } /* #327 separator = one blank row w/ a dashed line drawn mid-row (no border px) */
 #log.term .irc .ih { display:flex; gap:1ch; } #log.term .irc .its { color:#6f6a62; font-variant-numeric:tabular-nums; } #log.term .irc .nk { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
 #log.term .irc.user .nk { color:var(--accent); } #log.term .irc.claude .nk { color:#7fc49a; } #log.term .msg.user { color:inherit; }
 #log.term .msg.tool { white-space:pre-wrap; color:#93c0e6; display:block; } #log.term .msg.tool::before { content:"● "; width:auto; height:auto; background:none; }
 #log.term .msg.out { color:#9f9a90; padding-left:2ch; border-left:2px solid #2f2d2a; max-height:320px; overflow:auto; }
 #log.term .msg.think { color:#857f75; font-style:italic; } #log.term .msg.think::before { content:"∴ "; }
-#log.term .msg.note { color:#c9a86a; text-align:left; }
-#log.term .tools { gap:4px; }
+#log.term .msg.note { color:#c9a86a; text-align:left; display:inline; } #log.term .msg.note + .msg.note::before { content:" · "; color:#6f6a62; } /* #327 status notes in a row = one wrapped line */
+#log.term .tools { gap:0; }
 /* #311 text-mode cards (questions, You answered, permissions): box-drawn frame, ( )/[ ] choices, [Buttons] */
-#log.term .card { color:inherit; font:inherit; background:none; border:1px solid #3a3733; border-radius:0 !important; box-shadow:none; padding:4px 1ch 6px; }
-#log.term .card.qs:not(.done) { border-style:dashed; border-color:color-mix(in srgb, var(--accent) 55%, #3a3733); }
-#log.term .card h4 { font-size:inherit; color:var(--accent); margin:0 0 2px; } #log.term .card h4::before { content:"── "; } #log.term .card h4::after { content:" ──"; }
-#log.term .q { border-top:0; padding:3px 0; } #log.term .q .num { display:inline; width:auto; height:auto; background:none; border-radius:0; font:inherit; color:var(--accent); margin-right:1ch; } #log.term .q .num::after { content:"."; }
+#log.term .card { color:inherit; font:inherit; background:none; border:0; outline:1px solid #3a3733; outline-offset:-1px; border-radius:0 !important; box-shadow:none; padding:0 1ch; } /* #327 outline = no layout px */
+#log.term .card.qs:not(.done) { outline-style:dashed; outline-color:color-mix(in srgb, var(--accent) 55%, #3a3733); border-color:color-mix(in srgb, var(--accent) 55%, #3a3733); }
+#log.term .card h4 { font-size:inherit; line-height:inherit; color:var(--accent); margin:0; } #log.term .card h4::before { content:"── "; } #log.term .card h4::after { content:" ──"; }
+#log.term .q { border-top:0; padding:0; } #log.term .q .num { display:inline; width:auto; height:auto; background:none; border-radius:0; font:inherit; color:var(--accent); margin-right:1ch; } #log.term .q .num::after { content:"."; }
 #log.term .q .ans { margin-left:3ch; } #log.term .q .ans:not(.dim)::before { content:"> "; color:var(--accent); } #log.term .q .ans.dim { font-size:inherit; color:#857f75; }
-#log.term .choice { position:relative; border:0; border-radius:0; padding:0; margin:1px 0 0 3ch; gap:1ch; background:none !important; }
+#log.term .choice { position:relative; border:0; border-radius:0; padding:0; margin:0 0 0 3ch; gap:1ch; background:none !important; }
 #log.term .choice input { position:absolute; opacity:0; } #log.term .choice::before { content:"( )"; flex:none; color:var(--accent); } #log.term .choice:has(input:checked)::before { content:"(*)"; }
 #log.term .choice:has([type=checkbox])::before { content:"[ ]"; } #log.term .choice:has([type=checkbox]:checked)::before { content:"[x]"; }
 #log.term .choice:hover span, #log.term .choice:has(input:checked) span { color:#fff; } #log.term .choice:has(input:focus-visible) { outline:1px dotted var(--accent); }
 #log.term .card :is(input.other, input.note) { font:inherit; color:inherit; background:none; border:0; border-bottom:1px dashed #3a3733; border-radius:0; box-shadow:none; margin-left:3ch; width:calc(100% - 3ch); }
-#log.term .card .btns { margin-top:6px; } #log.term .card .btn { font:inherit; border:0; border-radius:0; background:none; box-shadow:none; color:inherit; padding:0 .5ch; height:auto; }
+#log.term .card .btns { margin-top:0; } #log.term .card .btn { font:inherit; border:0; border-radius:0; background:none; box-shadow:none; color:inherit; padding:0 .5ch; height:auto; }
 #log.term .card .btn::before { content:"["; } #log.term .card .btn::after { content:"]"; } #log.term .card .btn.primary { color:var(--accent); font-weight:600; } #log.term .card .btn:hover { color:#fff; }
 /* #311 working line: ASCII spinner (CSS content keyframes, steps(1) = hard frame flips), left in the text column */
-#log.term #dockpill { justify-content:flex-start; } #log.term #skel { margin-top:4px; }
+#log.term #dockpill { justify-content:flex-start; } #log.term #skel { margin-top:0; }
 #log.term #dockpill > :is(#workpill, #handpill) { font:inherit; border:0; border-radius:0; background:none; animation:none; padding:0; color:var(--accent) !important; gap:1ch; }
 #log.term #workpill .i { display:none; } #log.term #dockpill > *::before { content:"|"; width:1ch; flex:none; order:-2; animation:tspin .5s steps(1) infinite; } #log.term #worktext { overflow:hidden; text-overflow:ellipsis; min-width:0; }
 #log.term #workpill::after { content:none; } /* #315 bar dropped: its frames shifted the text; spinner only (1ch, flex:none = fixed slot) */
 /* #311 TUI composer: same elements, text-mode look (› prompt, rules instead of a box, [icon] buttons) */
-#log.term + #dock, #log.term + #dock :is(#prompt, #pback, #status, .qp, #slash button, #ready) { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
+#log.term + #dock, #log.term + #dock :is(#prompt, #pback, #status, .qp, #slash button, #ready) { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; }
 #log.term + #dock #composer { background:none; border:0; border-block:1px solid #3a3733; border-radius:0 !important; box-shadow:none; padding:2px 0 2px 2ch; }
 #log.term + #dock #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 50%, #3a3733); } #log.term + #dock #composer.drop { border-style:dashed; border-color:var(--accent); }
 #log.term + #dock #pwrap::before { content:"›"; position:absolute; left:-2ch; top:4px; color:var(--accent); font-weight:700; } #log.term + #dock #prompt { caret-color:var(--accent); }
@@ -326,8 +328,8 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock #jump { font:12.5px ui-monospace,Consolas,monospace; border-radius:0; }
 /* #322 term composer: full width; thumbs = borderless 8ch × 3-line cells on the char grid; @[ref] = plain "[<icon>name]" (mono ∴ "@" slot shows "[", icon on "[" slot) */
 #log.term + #dock .col { max-width:none; } #log.term + #dock #attw { display:none; } /* #325 no thumbs: refs only */
-#log.term + #dock #atts { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; gap:1ch; padding:0 0 calc(12.5px * 1.55); }
-#log.term + #dock .att.img { flex:none; width:8ch !important /* beats onload inline width */; min-width:0; height:calc(12.5px * 1.55 * 3); border:0; border-radius:0; background:none; } #log.term + #dock .att.img img { object-fit:cover; }
+#log.term + #dock #atts { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; gap:1ch; padding:0 0 calc(20px); }
+#log.term + #dock .att.img { flex:none; width:8ch !important /* beats onload inline width */; min-width:0; height:calc(20px * 3); border:0; border-radius:0; background:none; } #log.term + #dock .att.img img { object-fit:cover; }
 #log.term + #dock .att .abtns { border-radius:0; } #log.term + #dock .att .abtns button { border-radius:0; }
 #log.term + #dock #pback mark { padding:0; background:none; box-shadow:none; } #log.term + #dock #pback mark i { color:var(--accent); }
 #log.term + #dock #pback .fic { color:transparent; } #log.term + #dock #pback .fic::before { content:"["; position:absolute; left:0; color:var(--accent); } #log.term + #dock #pback .fic svg { left:calc(1ch + .1em); }
@@ -339,18 +341,18 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock #jump::before { content:"[↓"; } #log.term + #dock #jump::after { content:"]"; } #log.term + #dock #jump:hover { color:#fff; }
 /* #312 Continue ribbon = static text bar above the composer (no tuck/peek), ^ (#readyx) expands the full task */
 #readyx { display:none; } #log.term + #dock #ready { margin:0 0 2px; padding:0 0 0 2ch; border:0; border-top:1px solid #3a3733; border-radius:0; background:none; opacity:1; -webkit-mask-image:none; mask-image:none; transition:none; animation:none; align-items:flex-start; gap:1ch; }
-#log.term + #dock #ready > * { pointer-events:auto; } #log.term + #dock #ready > svg { width:14px; height:14px; margin-top:4px; } #log.term + #dock #readytext { line-height:1.55; color:#c9a86a; } #log.term + #dock #readytext.full { padding:0; }
+#log.term + #dock #ready > * { pointer-events:auto; } #log.term + #dock #ready > svg { width:14px; height:14px; margin-top:4px; } #log.term + #dock #readytext { line-height:20px; color:#c9a86a; } #log.term + #dock #readytext.full { padding:0; }
 #log.term + #dock #ready :is(#contBtn, #readyx) { display:inline; font:inherit; height:auto; padding:0 .3ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); font-weight:600; cursor:pointer; }
-#log.term + #dock #readytext:has(.btn) { line-height:1.55; } #log.term + #dock #readytext .btn { display:inline; font:inherit; height:auto; margin:0 0 0 .5ch; padding:0 .3ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); } /* #319 What next? presets = [Build] [Sweep]… */
+#log.term + #dock #readytext:has(.btn) { line-height:20px; } #log.term + #dock #readytext .btn { display:inline; font:inherit; height:auto; margin:0 0 0 .5ch; padding:0 .3ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); } /* #319 What next? presets = [Build] [Sweep]… */
 #log.term + #dock #readytext .btn .i { display:none; } #log.term + #dock #readytext .btn.primary { font-weight:600; } #log.term + #dock #readytext .btn:hover:not(:disabled) { color:#fff; } #log.term + #dock #readytext .btn:disabled { opacity:.5; }
 #log.term + #dock #readytext .btn::before { content:"["; } #log.term + #dock #readytext .btn::after { content:"]"; }
 #log.term + #dock #contBtn::before { content:"["; } #log.term + #dock #contBtn::after { content:"]"; } #log.term + #dock #ready :is(#contBtn, #readyx):hover { color:#fff; }
 #readyx::before { content:"^"; } #ready:has(#readytext.full) #readyx::before { content:"v"; }
 /* #312 composer popovers (menuAt from #dock in term view → .menu.tui) + viewer opened from the term view (.viewer.tui) */
-.menu.tui { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; border-radius:0; background:var(--term); backdrop-filter:none; border:1px solid #3a3733; box-shadow:none; color:#d8d4cb; }
+.menu.tui { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; border-radius:0; background:var(--term); backdrop-filter:none; border:1px solid #3a3733; box-shadow:none; color:#d8d4cb; }
 .menu.tui :is(button, .mact, .mact.lab) { border-radius:0; } .menu.tui button:hover { background:color-mix(in srgb, var(--accent) 22%, transparent); } .menu.tui .mact.lab { border:0; } .menu.tui .mact.lab::before { content:"["; } .menu.tui .mact.lab::after { content:"]"; }
 .menu.tui hr { border-top-style:dashed; border-color:#3a3733; } .menu.tui .mcap { text-transform:none; letter-spacing:0; } .menu.tui svg { width:13px; height:13px; }
-#dlg:has(.viewer) { border-radius:0; } .viewer.tui { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; background:var(--term); color:#d8d4cb; }
+#dlg:has(.viewer) { border-radius:0; } .viewer.tui { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; background:var(--term); color:#d8d4cb; }
 .viewer.tui :is(.vbar, .vtools) { background:var(--term); border-color:#3a3733; } .viewer.tui :is(.btn, .ib, input, select) { border-radius:0 !important; box-shadow:none; }
 
 /* composer */
@@ -1645,6 +1647,11 @@ function toEnd(stick, n = 0) {
 // #251 jump pill = the live middle status while busy (Working pill's text), else New!
 function jumpTxt() { const j = $('jump'), w = busy[cur] && !$('workpill').hidden; j.classList.toggle('on', w); j.lastChild.textContent = w ? $('worktext').textContent : unseen ? 'New!' : ''; }
 $('log').addEventListener('scroll', () => { const j = $('jump'), e = atEnd(); if (e && !j.hidden) { unseen = 0; j.hidden = true; } else if (!e && j.hidden && busy[cur] && view === 'chat') { j.hidden = false; jumpTxt(); } }, {passive: true}); // #251 scrolled up mid-turn → status pill floats at the bottom
+// #327 term grid: every block child of .col padded (margin-bottom) to a whole 20px row ∴ next block starts on a row; inline notes skipped (line box = 20px already)
+const LH = 20, gridRO = new ResizeObserver(es => { const t = view !== 'chat'; for (const e of es) { const h = e.borderBoxSize[0].blockSize; e.target.style.marginBottom = t && h ? Math.ceil(h / LH - .01) * LH - h + 'px' : ''; } });
+new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) { if (n.nodeType !== 1) continue; if (n.classList.contains('col')) [...n.children].forEach(c => gridRO.observe(c)); else if (n.parentElement?.classList.contains('col')) gridRO.observe(n); } }).observe($('log'), {childList: true, subtree: true});
+// #327 scroll: native momentum, then settle on a whole row (bottom = stays at the end; ponytail: snaps after scrollend, not mid-fling)
+$('log').addEventListener('scrollend', () => { const l = $('log'); if (view === 'chat' || l.scrollHeight - l.scrollTop - l.clientHeight < 2) return; const t = Math.round(l.scrollTop / LH) * LH; if (Math.abs(t - l.scrollTop) > .5) l.scrollTo({top: t, behavior: 'smooth'}); });
 // consecutive tool lines share one compact group in chat view; the same call again bumps "×N" on its line; click → what it did
 function put(box, e) {
   const el = entry(e);
