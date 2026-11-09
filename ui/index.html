@@ -2371,6 +2371,10 @@ $('prompt').addEventListener('keydown', e => {
     // Enter on a fully typed name sends it; otherwise it fills in the highlighted one
     if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && $('prompt').value !== '/' + xs[slashSel].name)) { e.preventDefault(); return pickSlash(slashSel); }
   }
+  // #289 pill = one char: Backspace after / Delete before a live @[name] → select it, native delete removes it (undo + input event intact); attachment stays
+  if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey) { const p = $('prompt'), c = p.selectionStart;
+    if (c === p.selectionEnd) { const m = e.key === 'Backspace' ? /@\[([^\]\n]+)\]$/.exec(p.value.slice(0, c)) : /^@\[([^\]\n]+)\]/.exec(p.value.slice(c));
+      if (m && attAt(m[1]) >= 0) e.key === 'Backspace' ? p.setSelectionRange(c - m[0].length, c) : p.setSelectionRange(c, c + m[0].length); } }
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); $('slash').hidden = true; } // #206 value cleared w/o an input event → popup lingered
   if (e.key === 'Tab' && cur) { e.preventDefault(); const k = Object.keys(PERMS), i = k.indexOf(P().mode); setP({mode: k[(i + (e.shiftKey ? k.length - 1 : 1)) % k.length]}); } // #116 Tab/Shift+Tab cycles permission mode (like Claude Code)
   if (e.key === 'ArrowUp' && !hasInput() && queue[cur]?.length) { e.preventDefault(); editQueued(queue[cur].length - 1); }
