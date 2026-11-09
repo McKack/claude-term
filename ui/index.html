@@ -530,7 +530,8 @@ pre.diff .ctx { color:var(--faint); }
 #composer { timeline-scope:--pt; } #prompt { scroll-timeline:--pt; } #pwrap { animation-timeline:--pt, --pt; }
 #pwrap { position:relative; } #pback { position:absolute; inset:0; padding:4px 0; white-space:pre-wrap; overflow-wrap:break-word; color:var(--text); pointer-events:none; overflow:hidden; } #pback mark i { font-style:normal; color:transparent; }
 #pback mark { padding:.1em 0; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); border-radius:99px; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); box-decoration-break:clone; -webkit-box-decoration-break:clone; } /* #225 real pill: hidden [ ] = its side padding */
-.att:is(.hl, .hov) { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+.att:is(.hl, .hov) { border-color:var(--accent); outline:1px solid var(--accent); outline-offset:-2px; } /* #405 inside (outer ring got clipped by #atts overflow), 2px total */
+#pback mark.hov { background:color-mix(in srgb, var(--accent) 30%, transparent); box-shadow:inset 0 0 0 1px var(--accent); } #pback::-webkit-scrollbar-thumb { background:none; } /* #405 mirror's bar = width only */
 #slash { display:flex; flex-direction:column; max-height:280px; overflow:auto; margin:0 0 6px -6px; padding-bottom:6px; border-bottom:1px solid var(--line); }
 #slash[hidden] { display:none; }
 #slash button { display:flex; flex-wrap:wrap; gap:2px 8px; align-items:baseline; text-align:left; border:0; background:none; padding:6px 8px; border-radius:8px; cursor:pointer; font-size:13px; }
@@ -852,7 +853,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onmouseenter="readyMore(this)" onclick="if (!event.target.closest('button') &amp;&amp; readyMore(this)) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button><button id="readyx" title="Show the whole task" onclick="$('readytext').classList.toggle('full')"></button></div>
-    <div id="composer"><div id="cgrip" title="Drag to resize"></div>
+    <div id="composer"><div id="cgrip" title="Drag to resize, double-click to fit the text"></div>
       <div id="slash" hidden></div>
       <div id="attw"><button class="aarr" onclick="attScroll(-1)"><svg class="i" style="transform:scaleX(-1)"><use href="#i-chev"/></svg></button><div id="atts" onscroll="attArr()"></div><button class="aarr r" onclick="attScroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
       <div id="pwrap"><div id="pback" aria-hidden="true"></div><textarea id="prompt" rows="1" placeholder="Message Clauracle..."></textarea></div>
@@ -2221,7 +2222,7 @@ function rmAtt(i) { const n = stem(atts[cur].splice(i, 1)[0].name), p = $('promp
   if (!atts[cur].some(a => stem(a.name) === n)) { p.value = p.value.replace(new RegExp(`@\\[ ?${reEsc(n)}\\] ?`, 'g'), ''); grow(); } drawAtts(); }
 const refB = i => `<button class="aref" title="Refer to it in your message" onmousedown="event.preventDefault(); attRef(${i})">${icon('reply')}</button>`; // #237 image thumbs: bottom-right; file chips: top bar (too short for 2 rows)
 function drawAtts() {
-  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
+  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}" onmouseenter="markHov(${i})" onmouseleave="markHov(-1)">${a.url ? `<img src="${a.url}" style="cursor:zoom-in" onclick="viewAtt(${i})" onload="this.parentNode.style.width = Math.round(56 * this.naturalWidth / this.naturalHeight) + 'px'; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
     <span class="abtns">${a.url ? '' : refB(i)}<button title="Remove" onclick="rmAtt(${i})">${icon('trash')}</button></span>${a.url ? `<span class="abtns bot">${refB(i)}</span>` : ''}
     ${a.notes?.length ? `<button class="anote" title="${esc(a.notes.join('\n').slice(0, 160))}&#10;(click to edit the notes)" onclick="viewAtt(${i}); editImage()">${icon('doc')}</button>` : ''}</div>`).join('');
   attArr(); pbDraw(); if (cur) { drawChrome(); keepDraft(); }
@@ -2229,9 +2230,9 @@ function drawAtts() {
 // #217 [ref] pills: #pback mirrors the textarea text; refs naming an attachment get a <mark> behind them (a textarea can't style
 // its own text). Click inside one → highlight + scroll its thumb, image → viewer. Icon drawn over the "@[" chars (same text ∴ mirror stays aligned)
 const attAt = name => { name = name.trim().replace(/[   ]/g, ''); return (atts[cur] || []).findIndex(a => stem(a.name) === name || a.name === name); };
-function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.style.right = p.offsetWidth - p.clientWidth + 'px'; /* #231 scrollbar (max-height hit) narrows the textarea's lines → mirror must wrap the same or the caret drifts */
+function pbDraw() { const p = $('prompt'), b = $('pback'); if (!b) return; b.style.overflowY = p.offsetWidth > p.clientWidth ? 'scroll' : 'hidden'; /* #231/#405 textarea scrollbar narrows its lines → mirror gets the SAME scrollbar (thumb hidden): `right:Npx` was off by fractional px at DPR 2.19 (10px bar ≈ 10.06) → other wraps → caret mid-word */
   b.innerHTML = esc(p.value).replace(/@\[([^\]\n]+)\]/g, (m, n) => { const i = attAt(n.replace(/&amp;/g, '&')); if (i < 0) return m;
-    return `<mark><i class="fic">@[${icon(fIcon(atts[cur][i].name))}</i>${n}<i>]</i></mark>`; }) + '\n'; pbSync(); }
+    return `<mark data-i="${i}"><i class="fic">@[${icon(fIcon(atts[cur][i].name))}</i>${n}<i>]</i></mark>`; }) + '\n'; pbSync(); }
 // #258 sync now + next frame ∵ Chromium reveals the caret (scrolls) after the input event/keys, not always w/ a timely scroll event → text drifted till the user scrolled
 // #403 caret line kept out of the #381 top/bottom fades (18px): mirror text = value + '\n' ∴ caret offset → Range in #pback → rect → nudge scrollTop
 function caretClear() { const p = $('prompt'), b = $('pback'); if (document.activeElement !== p || p.scrollHeight <= p.clientHeight) return;
@@ -2245,6 +2246,7 @@ const pbSync = () => { const f = () => { $('pback').scrollTop = $('prompt').scro
 // #223 link cursor over a pill: hit-test the mirror's <mark> rects (#pback is pointer-events:none)
 // #341 + hovered pill → its thumb gets .hov (same look as .hl); mark text = "@[name]" (svg has no text)
 const attHov = i => [...$('atts').children].forEach((t, k) => t.classList.toggle('hov', k === i));
+const markHov = i => $('pback').querySelectorAll('mark').forEach(m => m.classList.toggle('hov', +m.dataset.i === i)); // #405 thumb hover → its refs light up
 $('prompt').addEventListener('mousemove', e => { const hit = [...$('pback').querySelectorAll('mark')].find(m => [...m.getClientRects()].some(r => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom));
   e.target.style.cursor = hit ? 'pointer' : ''; attHov(hit ? attAt(hit.textContent.slice(2, -1)) : -1); });
 $('prompt').addEventListener('mouseleave', () => attHov(-1));
@@ -2785,7 +2787,8 @@ let sbEl = null; document.addEventListener('mousemove', e => { const t = e.targe
 // #378 drag the composer's top edge: cap = 75% of #main − room for the ribbon (its pull-up never pushes the composer) − composer chrome; under 40px → auto (empty size); term view snaps to the 20px grid
 $('cgrip').onpointerdown = e => { const t = $('prompt'), y0 = e.clientY, h0 = t.offsetHeight;
   dragOn(e, m => { const r = $('ready'), cap = $('main').clientHeight * .75 - (r.hidden ? 0 : r.scrollHeight) - ($('composer').offsetHeight - t.offsetHeight);
-    let h = Math.min(cap, h0 + y0 - m.clientY); if (view !== 'chat') h = Math.round(h / LH) * LH; PH = h < 40 ? 0 : h; grow(); }); };
+    let h = Math.min(cap, h0 + y0 - m.clientY); if (view !== 'chat') h = Math.round(h / LH) * LH; PH = Math.max(h, parseFloat(getComputedStyle(t).minHeight) || 20); grow(); }); }; // #405 floor = empty composer height (text scrolls), never auto-fit mid-drag
+$('cgrip').ondblclick = () => { PH = 0; grow(); }; // back to auto-fit
 new ResizeObserver(() => pbDraw()).observe($('prompt')); // width/scrollbar changes w/o typing (window, side panels) → mirror re-measured
 let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
 // #325 term view: refs = the attachments (no chips) ∴ deleting its last @[name] drops the attachment; chat keeps it (chip stays)
