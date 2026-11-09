@@ -3407,7 +3407,8 @@ const teamTasks = pid => { if (!Array.isArray(team[pid]?.tasks)) return []; cons
 const isDoing = x => x.labels.some(l => l.name === 'in progress') || x.assignees.length;
 // what's next: HANDOVER.md's queue, else free team tasks
 // "All tasks done" presets: [button, prompt sent]
-const NEXT_IDEAS = [['Sweep', 'bug', 'Review the recent changes for bugs and over-engineering (what to delete or simplify), then fix what you find.'],
+// #346 Sweep = full code sweep; one prompt, the AI picks scope (helper agents for the reading)
+const NEXT_IDEAS = [['Sweep', 'bug', 'Full code sweep, then fix what you find: 1) bugs: unhandled edge cases, null risks, race conditions, latent logic flaws; 2) dead/stale code: unused variables, orphaned files, deprecated functions, outdated comments/docs; 3) de-slop: split overly complex functions, merge duplicated logic, simplify tangled code; 4) hygiene: formatting, linter/compiler warnings, stale dependencies, small performance bottlenecks. Verify with the build and tests, then summarize what changed.'],
   ['Tests', 'shield', 'Find the riskiest untested code and add one small check for it.'],
   ['Suggest', 'sparkle', 'Suggest the three most useful next improvements for this project, briefly, and ask which to do.']];
 const askNext = i => sendNow(cur, {text: NEXT_IDEAS[i][2], atts: []});
