@@ -352,12 +352,11 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock #readytext .btn::before { content:"["; } #log.term + #dock #readytext .btn::after { content:"]"; }
 #log.term + #dock #contBtn::before { content:"["; } #log.term + #dock #contBtn::after { content:"]"; } #log.term + #dock #ready :is(#contBtn, #readyx):hover { color:#fff; }
 #readyx::before { content:"^"; } #ready:has(#readytext.full) #readyx::before { content:"v"; }
-/* #312 composer popovers (menuAt from #dock in term view → .menu.tui) + viewer opened from the term view (.viewer.tui) */
+/* #312 composer popovers (menuAt from #dock in term view → .menu.tui) */
 .menu.tui { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; border-radius:0; background:var(--term); backdrop-filter:none; border:1px solid #3a3733; box-shadow:none; color:#d8d4cb; }
 .menu.tui :is(button, .mact, .mact.lab) { border-radius:0; } .menu.tui button:hover { background:color-mix(in srgb, var(--accent) 22%, transparent); } .menu.tui .mact.lab { border:0; } .menu.tui .mact.lab::before { content:"["; } .menu.tui .mact.lab::after { content:"]"; }
 .menu.tui hr { border-top-style:dashed; border-color:#3a3733; } .menu.tui .mcap { text-transform:none; letter-spacing:0; } .menu.tui svg { width:13px; height:13px; }
-#dlg:has(.viewer) { border-radius:0; } .viewer.tui { font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; background:var(--term); color:#d8d4cb; }
-.viewer.tui :is(.vbar, .vtools) { background:var(--term); border-color:#3a3733; } .viewer.tui :is(.btn, .ib, input, select) { border-radius:0 !important; box-shadow:none; }
+#dlg:has(.viewer) { border-radius:0; }
 
 /* composer */
 /* dock overlays the log's bottom: transparent at its top, fading into the page behind pills + composer */
@@ -521,7 +520,6 @@ pre.diff .ctx { color:var(--faint); }
 .viewer :not(.edcols input, .ednote.col) { border-radius:0 !important; } /* #324 viewer = square corners throughout (tools, thumb, canvas, pdf, notes); swatches + number dots stay round */
 .edtr { width:22px; height:22px; padding:0; border:2px solid var(--line); border-radius:6px; cursor:pointer; background:repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 8px 8px; }
 .edcols input::-webkit-color-swatch-wrapper { padding:0; } .edcols input::-webkit-color-swatch { border:0; border-radius:50%; }
-.viewer.tui .edpair { width:36px; height:36px; } .viewer.tui .edcols input, .viewer.tui .edcols input::-webkit-color-swatch { border-radius:0; } /* #328 term view: square swatches, tighter overlap */
 .edcols input.tr { background:repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 10px 10px; } .edcols input.tr::-webkit-color-swatch { opacity:0; } /* transparent = checkerboard */
 .tb { display:flex; align-items:center; gap:2px; margin-top:4px; }
 #send { width:32px; height:32px; border-radius:50%; border:0; background:var(--primary); color:var(--ink); display:grid; place-items:center; cursor:pointer; }
@@ -556,7 +554,7 @@ pre.diff .ctx { color:var(--faint); }
 .menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
 .menu .mand { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--faint); padding:2px 10px; } .menu .mand::before, .menu .mand::after { content:''; flex:1; border-top:1px solid var(--line); }
-.edsw { min-width:220px; padding:6px 8px 8px; } .edsw .edx { position:absolute; top:4px; right:4px; width:24px; height:24px; } .edsw input { width:100%; accent-color:var(--accent); } .edsw .mcap b { color:var(--text); font-variant-numeric:tabular-nums; } .edsw .edarr { display:flex; gap:4px; padding:2px 6px; } .edsw .edarr .ib { font-size:16px; } /* #293 */
+.edsw { min-width:220px; padding:6px 8px 8px; } .edsw .edx { position:absolute; top:4px; right:4px; width:24px; height:24px; } .edsw input { width:100%; accent-color:var(--accent); } .edsw .mcap b { color:var(--text); font-variant-numeric:tabular-nums; } .edsw .edarr { display:flex; gap:4px; padding:2px 6px; } .edsw .edarr .ib { width:32px; } /* #293 */
 .menu .mcap { font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; padding:6px 10px 2px; }
 .menu .mact { display:inline-grid; place-items:center; width:24px; height:22px; border-radius:6px; color:var(--dim); } .menu .mact:hover { background:var(--soft); color:var(--accent); } .menu .mact svg { width:14px; height:14px; }
 .menu .mact.lab { display:inline-flex; gap:4px; width:auto; min-width:92px; padding:0 6px; margin-left:4px; border:1px solid var(--line2); font-size:12px; } .menu .mact.lab svg:last-child { width:10px; height:10px; margin-left:auto; }
@@ -2146,7 +2144,6 @@ function vWin(head, act, tools, stage, fit, zoom) {
   dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${zoom ? `<span class="vzoom"><button class="ib" title="Zoom out (Ctrl −)" onclick="vZoom(1/1.25)">${icon('minus')}</button><input type="range" min="10" max="800" value="100" oninput="vZoom(this.value / 100 / VZ.s)" data-tip="Zoom: wheel, Ctrl + / −, Ctrl 0 = fit. Middle-drag pans"><button class="ib" title="Zoom in (Ctrl +)" onclick="vZoom(1.25)">${icon('plus')}</button><small class="faint" id="vzp">100%</small></span><span class="grow"></span>` : ''}${act}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="vtools">${tools}</div><div class="vstage">${stage}</div>`, 'viewer');
   const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
-  V.classList.toggle('tui', view !== 'chat'); // #312 opened from the Terminal view → TUI-themed viewer
   if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; } // #298 .viewer max-* (< dialog's UA max = 100% − 2em − 6px) clamps ∴ ✕ + resize corner never clipped, follows window shrink
   // #261 offsetWidth 0 = dlg closing (display:none) → don't keep, else reopens at min size
   new ResizeObserver(() => { if (!V.isConnected || !V.offsetWidth) return; if (V.style.width) { VBOX = [V.offsetWidth, V.offsetHeight]; try { localStorage.vbox = JSON.stringify(VBOX); } catch {} } fit?.(S); vClamp(); }).observe(V);
@@ -2258,7 +2255,7 @@ function edStrokeMenu(b) {
   const m = document.createElement('div'); m.className = 'menu glass edsw'; m.popover = 'manual';
   m.innerHTML = `<button class="ib edx" title="Close">${icon('x')}</button><div class="mcap">Width <b></b></div>
     <input type="range" min="1" max="250" value="${Math.round(edLW * 8)}"><div class="mcap">Line arrows</div>
-    <div class="edarr">${[0, 1].map(k => `<button class="ib${edArr[k] ? ' on' : ''}" title="Arrow at ${k ? 'end' : 'start'}">${k ? '→' : '←'}</button>`).join('')}</div>`;
+    <div class="edarr">${[0, 1].map(k => `<button class="ib${edArr[k] ? ' on' : ''}" title="Arrow at ${k ? 'end' : 'start'}">${icon(k ? 'go' : 'back')}</button>`).join('')}</div>`;
   const r = m.querySelector('input'), lab = m.querySelector('b'), show = () => lab.textContent = r.value;
   r.oninput = () => { show(); set('lw', r.value / 8); }; show();
   m.querySelector('.edx').onclick = closeMenu;
