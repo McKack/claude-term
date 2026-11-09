@@ -418,7 +418,7 @@ pre.diff .ctx { color:var(--faint); }
 #handpill, #workpill { align-self:flex-start; font-size:12.5px; color:var(--dim); padding:5px 14px; /* #276 = #jump size (was 9px 16px, overrode #dockpill > *) */ border-radius:99px; border:1px solid var(--line);
   background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; }
 /* #244 log note as a pill (Building…): same look as #workpill; shimmer stops once any note follows (Built!/failed) */
-.npill { display:inline-flex; gap:6px; align-items:center; font-size:12.5px; padding:5px 14px; border-radius:99px; border:1px solid var(--line); background:var(--side); } .npill .i { color:var(--accent); }
+.npill { display:inline-flex; gap:6px; align-items:center; font-size:12px; padding:2px 8px; line-height:20px; /* #365 = .btn.sm size (See report) */ border-radius:99px; border:1px solid var(--line); background:var(--side); } .npill .i { color:var(--accent); }
 .npill.on { background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%); background-size:200% 100%; animation:shimmer 1.8s linear infinite; } .msg.note:has(~ .msg.note) .npill.on { animation:none; background:var(--side); }
 @keyframes shimmer { from { background-position:150% 0; } to { background-position:-50% 0; } }
 /* #105 skeleton bar: text-line height (13.5px font) ∴ swap-in ≈ no jump */
