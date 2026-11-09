@@ -499,6 +499,7 @@ pre.diff .ctx { color:var(--faint); }
 .bbar.on { background-image:linear-gradient(90deg, transparent 25%, color-mix(in srgb, var(--accent) 55%, transparent) 50%, transparent 75%); background-size:200% 100%; animation:shimmer 1.4s linear infinite; }
 #ready.shine { background-image:linear-gradient(90deg, transparent 25%, color-mix(in srgb, var(--accent) 22%, transparent) 50%, transparent 75%); background-size:200% 100%; animation:shimmer 1.8s linear 2 forwards; }
 #composer { position:relative; z-index:1; }
+#cgrip { position:absolute; left:16px; right:16px; top:-5px; height:10px; cursor:ns-resize; z-index:2; } /* #378 top-edge resize grip */
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
 #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 60%, var(--line2)); }
 #composer.drop { border-color:var(--accent); border-style:dashed; }
@@ -821,7 +822,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
     <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onmouseenter="readyMore(this)" onclick="if (!event.target.closest('button') &amp;&amp; readyMore(this)) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button><button id="readyx" title="Show the whole task" onclick="$('readytext').classList.toggle('full')"></button></div>
-    <div id="composer">
+    <div id="composer"><div id="cgrip" title="Drag to resize"></div>
       <div id="slash" hidden></div>
       <div id="attw"><button class="aarr" onclick="attScroll(-1)"><svg class="i" style="transform:scaleX(-1)"><use href="#i-chev"/></svg></button><div id="atts" onscroll="attArr()"></div><button class="aarr r" onclick="attScroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
       <div id="pwrap"><div id="pback" aria-hidden="true"></div><textarea id="prompt" rows="1" placeholder="Message Clauracle..."></textarea></div>
@@ -2696,10 +2697,16 @@ $('prompt').addEventListener('keydown', e => {
   if (e.key === 'ArrowUp' && !hasInput() && queue[cur]?.length) { e.preventDefault(); editQueued(queue[cur].length - 1); }
 });
 // #249 measure w/o scrollbar (it narrowed the lines → over-tall + a stray 10px bar that later vanished → mirror wrapped wider/narrower → caret drift); bar only past max-height
-const grow = () => { const t = $('prompt'), st = t.scrollTop; t.style.overflowY = 'hidden'; t.style.height = 'auto'; const h = t.scrollHeight; t.style.height = h + 'px'; t.style.overflowY = h > parseFloat(getComputedStyle(t).maxHeight) ? 'auto' : 'hidden'; t.scrollTop = st; pbDraw(); }; // #258 height:auto reset scrollTop to 0 → restore the spot
+let PH = 0; // #378 dragged prompt height (0 = auto-grow to content, CSS max 260)
+const grow = () => { const t = $('prompt'), st = t.scrollTop; t.style.overflowY = 'hidden'; t.style.height = 'auto'; t.style.maxHeight = PH ? 'none' : ''; const h = t.scrollHeight; t.style.height = (PH || h) + 'px'; t.style.overflowY = h > (PH || parseFloat(getComputedStyle(t).maxHeight)) ? 'auto' : 'hidden'; t.scrollTop = st; pbDraw(); }; // #258 height:auto reset scrollTop to 0 → restore the spot
 // #326 arrow over scrollbars: hit = past clientWidth/Height (padding box minus bar); target = the scroller itself there
 let sbEl = null; document.addEventListener('mousemove', e => { const t = e.target, on = t instanceof Element && ((t.offsetWidth - t.clientWidth > 4 && e.offsetX >= t.clientWidth) || (t.offsetHeight - t.clientHeight > 4 && e.offsetY >= t.clientHeight));
   if (sbEl && (sbEl !== t || !on)) { sbEl.classList.remove('onsb'); sbEl = null; } if (on && !sbEl) (sbEl = t).classList.add('onsb'); }, { passive: true });
+// #378 drag the composer's top edge: cap = 75% of #main − room for the ribbon (its pull-up never pushes the composer) − composer chrome; under 40px → auto (empty size); term view snaps to the 20px grid
+$('cgrip').onpointerdown = e => { e.preventDefault(); const g = e.currentTarget, t = $('prompt'), y0 = e.clientY, h0 = t.offsetHeight; g.setPointerCapture(e.pointerId);
+  g.onpointermove = m => { const r = $('ready'), cap = $('main').clientHeight * .75 - (r.hidden ? 0 : r.scrollHeight) - ($('composer').offsetHeight - t.offsetHeight);
+    let h = Math.min(cap, h0 + y0 - m.clientY); if (view !== 'chat') h = Math.round(h / LH) * LH; PH = h < 40 ? 0 : h; grow(); };
+  g.onpointerup = () => g.onpointermove = g.onpointerup = null; };
 new ResizeObserver(() => pbDraw()).observe($('prompt')); // width/scrollbar changes w/o typing (window, side panels) → mirror re-measured
 let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
 // #325 term view: refs = the attachments (no chips) ∴ deleting its last @[name] drops the attachment; chat keeps it (chip stays)
