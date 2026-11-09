@@ -1828,7 +1828,29 @@ fn b64_decodes() {
     assert!(b64("a$").is_none());
 }
 
-/// gh issue actions: new (title) | claim | release | done (number).
+/// #309: body minus every `<details><summary>Original ask</summary>…</details>` block; None = nothing to strip.
+/// ponytail: unclosed block → cut to end (the quote always sits last).
+pub fn scrub_ask(b: &str) -> Option<String> {
+    const OPEN: &str = "<details><summary>Original ask</summary>";
+    if !b.contains(OPEN) { return None; }
+    let mut out = String::new();
+    let mut rest = b;
+    while let Some(i) = rest.find(OPEN) {
+        out += &rest[..i];
+        rest = rest[i..].find("</details>").map_or("", |j| &rest[i + j + "</details>".len()..]);
+    }
+    out += rest;
+    Some(out.trim_end().to_string())
+}
+
+#[test]
+fn scrub_ask_drops_quote() {
+    assert_eq!(scrub_ask("Do X.\n\n<details><summary>Original ask</summary>\n\nmy raw words\n</details>\n").unwrap(), "Do X.");
+    assert_eq!(scrub_ask("A <details><summary>Original ask</summary>q</details> B").unwrap(), "A  B");
+    assert!(scrub_ask("plain").is_none());
+}
+
+/// gh issue actions: new (title) | claim | release | done | scrub (number).
 pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<String, String> { // → gh stdout ("new": issue URL)
     let env = gh_env(user);
     let gh = |a: &[&str]| { let o = run("gh", a, Some(dir), &env); if o.ok { Ok(o.stdout.trim().to_string()) } else { Err(o.stderr.trim().to_string()) } };
@@ -1846,10 +1868,15 @@ pub fn task_do(dir: &str, user: &str, action: &str, arg: &str) -> Result<String,
             gh(&["issue", "edit", arg, "--add-assignee", "@me", "--add-label", DOING_LABEL])
         }
         "release" => gh(&["issue", "edit", arg, "--remove-assignee", "@me", "--remove-label", DOING_LABEL]),
-        "done" => gh(&["issue", "close", arg]),
+        "done" => { let _ = task_do(dir, user, "scrub", arg); gh(&["issue", "close", arg]) }
+        // #309 privacy: closed issue keeps no raw prompt (quoted "Original ask" block dropped); no block → no edit
+        "scrub" => {
+            let b = gh(&["issue", "view", arg, "--json", "body", "--jq", ".body"])?;
+            match scrub_ask(&b) { Some(nb) => gh(&["issue", "edit", arg, "--body", &nb]), None => Ok(String::new()) }
+        }
         "accept" => gh(&["issue", "edit", arg, "--remove-label", IDEA_LABEL]), // suggestion → queued task
         "unblock" => gh(&["issue", "edit", arg, "--remove-label", WAIT_LABEL]), // user did their part → back in the queue (old number ∴ near the front)
-        "dismiss" => gh(&["issue", "close", arg, "--reason", "not planned"]),
+        "dismiss" => { let _ = task_do(dir, user, "scrub", arg); gh(&["issue", "close", arg, "--reason", "not planned"]) }
         // #112 edit modal: view = issue fields; meta = repo labels + assignable people (page caches); edit = JSON diff
         "view" => gh(&["issue", "view", arg, "--json", "number,title,body,labels,assignees"]),
         "meta" => Ok(serde_json::json!({

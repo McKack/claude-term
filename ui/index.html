@@ -3219,13 +3219,15 @@ function issueGuess(pid, d) {
     const labels = ghArg(seg, /(?:--label|-l)\s+("([^"]*)"|'([^']*)'|(\S+))/g).flatMap(l => l.split(',')).map(name => ({name: name.trim(), color: '888'}));
     t.tasks.push({number: 0, title, url: '', labels, assignees: [], pending: d.id});
   }
-  for (const m of cmd.matchAll(/\bgh\s+issue\s+close\s+#?(\d+)/g)) { WDONE.add(+m[1]); t.tasks = t.tasks.filter(x => x.number !== +m[1]); }
+  for (const m of cmd.matchAll(/\bgh\s+issue\s+close\s+#?(\d+)/g)) { WDONE.add(+m[1]); t.tasks = t.tasks.filter(x => x.number !== +m[1]); (SCRUB[d.id] ||= []).push(m[1]); }
   for (const m of cmd.matchAll(/\bgh\s+issue\s+reopen\s+#?(\d+)/g)) WDONE.delete(+m[1]);
   issueRedraw(pid);
 }
-const ISSUE_TOOL = {}; // tool_use id → pid, so its result fills numbers + syncs
+const ISSUE_TOOL = {}, SCRUB = {}; // tool_use id → pid, so its result fills numbers + syncs; SCRUB: id → closed issue numbers
 function issueResult(d) {
   const pid = ISSUE_TOOL[d.result_of]; if (!pid) return; delete ISSUE_TOOL[d.result_of];
+  // #309: AI closed it → strip the quoted raw prompt (after the command ran ∵ its own edit could re-add it)
+  for (const n of SCRUB[d.result_of] || []) call('task_do', {pid, action: 'scrub', arg: n}).catch(() => {}); delete SCRUB[d.result_of];
   const nums = [...String(d.text).matchAll(/\/issues\/(\d+)/g)].map(m => +m[1]);
   (team[pid]?.tasks || []).filter(x => x.pending === d.result_of).forEach((x, i) => { if (nums[i]) x.number = nums[i]; });
   issueRedraw(pid);
