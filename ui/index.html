@@ -526,7 +526,7 @@ pre.diff .ctx { color:var(--faint); }
    Composer: #prompt scrolls, #pback mirror sits under it → mask #pwrap, timeline named on #prompt, scoped via #composer. */
 @property --ft { syntax:'<length>'; inherits:false; initial-value:0px; } @property --fb { syntax:'<length>'; inherits:false; initial-value:0px; }
 @keyframes sft { from { --ft:0px; } to { --ft:18px; } } @keyframes sfb { from { --fb:18px; } to { --fb:0px; } }
-:is(#files, #projects, .sbody, #slash, #rbody, .prefs .body, #readytext.full), #pwrap { mask-image:linear-gradient(transparent, #000 var(--ft), #000 calc(100% - var(--fb)), transparent); animation:sft linear both, sfb linear both; animation-timeline:scroll(self), scroll(self); animation-range:0 24px, calc(100% - 24px) 100%; }
+:is(#files, #projects, .sbody, #slash, #rbody, .prefs .body, #readytext.full, .small-dlg > .db), #pwrap { mask-image:linear-gradient(transparent, #000 var(--ft), #000 calc(100% - var(--fb)), transparent); animation:sft linear both, sfb linear both; animation-timeline:scroll(self), scroll(self); animation-range:0 24px, calc(100% - 24px) 100%; }
 #composer { timeline-scope:--pt; } #prompt { scroll-timeline:--pt; } #pwrap { animation-timeline:--pt, --pt; }
 #pwrap { position:relative; } #pback { position:absolute; inset:0; padding:4px 0; white-space:pre-wrap; overflow-wrap:break-word; color:var(--text); pointer-events:none; overflow:hidden; } #pback mark i { font-style:normal; color:transparent; }
 #pback mark { padding:.1em 0; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); border-radius:99px; box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); box-decoration-break:clone; -webkit-box-decoration-break:clone; } /* #225 real pill: hidden [ ] = its side padding */
@@ -728,6 +728,9 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 .plist button:hover { background:var(--hover); } .plist button.on { background:var(--soft); color:var(--text); }
 .plist button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .small-dlg { width:min(520px,92vw); padding:20px; }
+/* #408 modal shell (dlgShell): header + footer pinned, only .db scrolls; footer = .btns: extras · grow · Cancel/Close (ghost) · primary */
+.small-dlg:has(> .db) { display:flex; flex-direction:column; max-height:88vh; box-sizing:border-box; } .small-dlg > :is(.dh, .btns) { flex:none; }
+.small-dlg > .db { flex:0 1 auto; min-height:0; overflow:auto; margin:0 -20px; padding:0 20px; }
 .check { display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); } .check:last-child { border:0; }
 .box { border:1px solid var(--line); border-radius:12px; padding:4px 14px; margin:8px 0 14px; }
 .grid2 { display:grid; grid-template-columns:150px 1fr; gap:10px 14px; align-items:center; margin:8px 0 14px; }
@@ -1022,8 +1025,9 @@ let SURE = Promise.resolve(); // one at a time
 const sure = (...a) => (SURE = SURE.then(() => sure1(...a)));
 function sure1(text, ok = 'OK', cancel = 'Cancel', html) {
   const d = $('dlgc'), [head, ...rest] = String(text).split('\n\n'), body = html ?? (rest.length ? esc(rest.join('\n\n')) : '');
-  d.innerHTML = `<div class="small-dlg"><h2 style="margin:0 0 8px;font-size:17px;white-space:pre-wrap">${esc(head)}</h2>${body ? `<p class="dim" style="margin:0;font-size:13px;white-space:pre-wrap;max-height:50vh;overflow:auto">${body}</p>` : ''}
+  d.innerHTML = `<div class="small-dlg"><h2 style="margin:0 0 8px;font-size:17px;white-space:pre-wrap">${esc(head)}</h2>${body ? `<p class="dim" style="margin:0;font-size:13px;white-space:pre-wrap">${body}</p>` : ''}
     <div class="btns">${cancel ? `<button class="btn ghost" value="">${esc(cancel)}</button>` : ''}<button class="btn primary" value="1">${esc(ok)}</button></div></div>`;
+  dlgShell(d.firstElementChild);
   return new Promise(res => { d.onclose = () => res(d.returnValue === '1'); d.returnValue = '';
     d.querySelectorAll('button').forEach(b => b.onclick = () => d.close(b.value)); d.showModal(); d.querySelector('.primary').focus(); });
 }
@@ -2967,7 +2971,11 @@ async function addProject() {
 }
 
 // ---- dialogs ----
-function dlg(html, cls = 'small-dlg') { const d = $('dlg'); d.className = 'glass'; if (cls !== 'viewer') d.style.cssText = ''; /* #239 viewer's pinned spot */ d.innerHTML = `<div class="${cls}">${html}</div>`; if (!d.open) d.showModal();
+// #408 one modal shell for every .small-dlg: first child h2 (or a row holding one) = .dh header, last .btns = footer, rest → .db scroller
+function dlgShell(w) { if (!w?.classList.contains('small-dlg')) return; const k = [...w.children];
+  const h = k[0]?.matches('h2, :has(> h2)') ? k.shift() : null, f = k.at(-1)?.matches('.btns') ? k.pop() : null;
+  h?.classList.add('dh'); const b = document.createElement('div'); b.className = 'db'; b.append(...k); w.insertBefore(b, f); }
+function dlg(html, cls = 'small-dlg') { const d = $('dlg'); d.className = 'glass'; if (cls !== 'viewer') d.style.cssText = ''; /* #239 viewer's pinned spot */ d.innerHTML = `<div class="${cls}">${html}</div>`; dlgShell(d.firstElementChild); if (!d.open) d.showModal();
   if (!document.activeElement?.matches('input, textarea, select, [autofocus]')) document.activeElement?.blur(); } // #248 showModal focused the first button → ring on a random one
 const closeDlg = () => $('dlg').close();
 const sw = (on, change) => `<label class="sw"><input type="checkbox" ${on ? 'checked' : ''} onchange="${change}"><i></i></label>`;
@@ -3354,7 +3362,7 @@ async function relRelease(to, btn, sv) { // sv = staged version (#266): its copi
     if (sg) call('stage', {pid, action: 'done', v}).catch(() => {}); /* uploaded → copies go */ // gh release create prints the release URL
     addEntry(pid, {kind: 'note', text: 'Released: ' + url});
     const u = (String(url).match(/https?:\S+/) || [])[0];
-    dlg(`<h2 style="margin:0 0 6px;font-size:17px">${icon('rocket')}Released v${esc(v)}</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Published on GitHub as ${st}.</p><div style="display:flex;gap:8px;justify-content:flex-end">${u ? `<button class="btn primary" data-url="${esc(u)}" onclick="closeDlg()">Open release page</button>` : ''}<button class="btn" onclick="closeDlg()">Close</button></div>`);
+    dlg(`<h2 style="margin:0 0 6px;font-size:17px">${icon('rocket')}Released v${esc(v)}</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Published on GitHub as ${st}.</p><div class="btns"><button class="btn ghost" onclick="closeDlg()">Close</button>${u ? `<button class="btn primary" data-url="${esc(u)}" onclick="closeDlg()">Open release page</button>` : ''}</div>`);
     if (P(pid).stage !== SK[to]) await call('update_project', {pid: pid, changes: {stage: SK[to]}});
     if (P(pid).build.deploy) call('run_step', {pid: pid, step: 'deploy'}); // #34: deploy = part of Release (guessed by build_guess or set in the project)
     delete RELBUSY[pid]; delete RELTO[pid]; delete RELC[pid]; ghiStale(pid); await refresh(); pid === cur && drawRight(true); ciPoll(pid, 15e3); /* #123 tag → CI run */
@@ -3800,7 +3808,7 @@ async function editIssue(n) {
   dlg(`<h2 style="margin:0 0 10px;font-size:17px">Issue #${n}</h2>${skel(60, 'b100')}`);
   let x, meta;
   try { [x, meta] = await get; }
-  catch (e) { return dlg(`<h2 style="margin:0 0 10px;font-size:17px">Issue #${n}</h2><div class="warn">${esc(e)}</div><div class="btns"><button class="btn" onclick="closeDlg()">Close</button></div>`); }
+  catch (e) { return dlg(`<h2 style="margin:0 0 10px;font-size:17px">Issue #${n}</h2><div class="warn">${esc(e)}</div><div class="btns"><button class="btn ghost" onclick="closeDlg()">Close</button></div>`); }
   IMETA[pid] = {...meta, t: m?.t || Date.now()}; ivSet(k, x);
   if (!$('dlg').open) return; // closed while loading
   eiDraw(pid, n, x, IMETA[pid]);
@@ -5011,9 +5019,9 @@ const saveNotify = c => call('set_notify', {notify: {...S.notify, ...c}}).then(r
 let CS = {scope: 'user'};
 function csAcct(id) {
   const d = $('dlg2'), a = S.accounts.find(x => x.id === id);
-  d.innerHTML = `<div class="small-dlg" style="width:min(640px,92vw)"><h2 class="row" style="margin:0 0 12px;font-size:17px"><span class="grow">Advanced AI settings · ${esc(a.nick)}</span><button class="ib" title="Close" onclick="$('dlg2').close()">${icon('x')}</button></h2>
-    <div id="csBody" style="max-height:70vh;overflow:auto">${skel(40, 'b100', 'b100', 'b100', 'b100')}</div></div>`;
-  d.showModal(); CS = {scope: 'account:' + id, acct: id}; csLoad();
+  d.innerHTML = `<div class="small-dlg" style="width:min(640px,92vw)"><h2 style="margin:0 0 12px;font-size:17px">Advanced AI settings · ${esc(a.nick)}</h2>
+    <div id="csBody">${skel(40, 'b100', 'b100', 'b100', 'b100')}</div><div class="btns"><button class="btn ghost" onclick="$('dlg2').close()">Close</button></div></div>`;
+  dlgShell(d.firstElementChild); d.showModal(); CS = {scope: 'account:' + id, acct: id}; csLoad();
 }
 async function csLoad(scope = CS.scope) {
   if ((scope === 'project' || scope === 'local') && !cur) scope = 'account:' + CS.acct;
@@ -5062,7 +5070,7 @@ async function csRaw() {
 // Add account: a small window over Settings; sign in, or paste a setup-token
 function addAcctDlg() {
   const d = $('dlg2');
-  d.innerHTML = `<div class="small-dlg"><h2 class="row" style="margin:0 0 12px;font-size:17px"><span class="grow">Add an AI account</span><button class="ib" title="Close" onclick="$('dlg2').close()">${icon('x')}</button></h2>
+  d.innerHTML = `<div class="small-dlg"><h2 style="margin:0 0 12px;font-size:17px">Add an AI account</h2>
     <input id="nick" style="width:100%" placeholder="Name (optional), e.g. Work">
     <button class="btn primary" style="width:100%;justify-content:center;margin-top:10px" onclick="addClaude()">Sign in with Claude</button>
     <div class="ordiv">or</div>
@@ -5070,8 +5078,8 @@ function addAcctDlg() {
     <div class="ordiv">or a custom endpoint (proxy, gateway)</div>
     <input id="baseUrl" class="mono" style="width:100%" placeholder="Base URL, e.g. https://gateway.example.com">
     <div class="row" style="margin-top:6px"><input id="apiKey" type="password" class="grow mono" placeholder="API key"><button class="btn" onclick="pasteClaude(1)">Add</button></div>
-    <p id="loginMsg" class="dim" style="font-size:13px"></p></div>`;
-  d.showModal(); $('nick').focus(); // opened after Settings → the topmost modal, so it's the active one
+    <p id="loginMsg" class="dim" style="font-size:13px"></p><div class="btns"><button class="btn ghost" onclick="$('dlg2').close()">Cancel</button></div></div>`;
+  dlgShell(d.firstElementChild); d.showModal(); $('nick').focus(); // opened after Settings → the topmost modal, so it's the active one
 }
 async function addClaude() {
   $('loginMsg').textContent = 'Starting claude setup-token…';
@@ -5095,9 +5103,9 @@ async function rmGh(u) { if (await sure(`Log @${u} out of gh?`)) { await call('g
 async function cloneLogin(b) { b.disabled = true; b.textContent = 'Waiting for gh…'; if (await call('gh_login').catch(e => (toast(String(e), 'err'), false))) { SET = null; openClone(); } else b.disabled = false; }
 async function openClone() {
   SET ||= await call('settings'); ghUsers = SET.gh_users;
-  dlg(`<div class="row"><h2 class="grow">Clone from GitHub</h2><button class="ib" onclick="closeDlg()">${icon('x')}</button></div>${ghUsers.length ? `<div class="row"><select id="cloneUser">${ghUsers.map(u => `<option>${esc(u)}</option>`).join('')}</select>
+  dlg(`<h2 style="margin:0 0 10px;font-size:17px">Clone from GitHub</h2>${ghUsers.length ? `<div class="row"><select id="cloneUser">${ghUsers.map(u => `<option>${esc(u)}</option>`).join('')}</select>
     <input id="cloneFilter" class="grow" placeholder="Filter, or owner/repo"></div><small class="dim">Into <span class="mono">${esc(S.projects_dir)}/&lt;owner&gt;/&lt;repo&gt;</span></small><div id="repoList" class="dim" style="height:340px;overflow:auto;margin-top:8px">${skel(...Array(8).fill('b100'))}</div>`
-    : `<p class="dim">No GitHub account yet.</p><button class="btn primary block" onclick="cloneLogin(this)">${icon('gh')}Log in to GitHub</button>`}`);
+    : `<p class="dim">No GitHub account yet.</p><button class="btn primary block" onclick="cloneLogin(this)">${icon('gh')}Log in to GitHub</button>`}<div class="btns"><button class="btn ghost" onclick="closeDlg()">Cancel</button></div>`);
   if (!ghUsers.length) return;
   let repos = [];
   const draw = () => { const f = $('cloneFilter').value.trim(), fl = f.toLowerCase();
