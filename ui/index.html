@@ -142,7 +142,8 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 /* #250 = composer .att.img: 56px high, real aspect, 56..220px wide, 10px radius, gap 8 */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; max-width:100%; }
 .msg .thumbs .tcap { flex-basis:100%; font-size:12px; color:var(--dim); } .msg .thumbs.read img { height:40px; opacity:.8; } /* #333 Claude's own Reads: captioned, smaller */
-.msg .thumbs img { width:auto; height:56px; min-width:56px; max-width:min(220px, 100%); object-fit:cover; border-radius:10px; border:1px solid var(--line); background:var(--bg); display:block; }
+.msg .thumbs:not(.read) { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:thin; } /* #352 one row like composer: wide ones squeeze toward 1:1 (min-width), then scroll; .read keeps wrap ∵ caption row */
+.msg .thumbs img { flex:0 1 auto; width:auto; height:56px; min-width:56px; max-width:min(220px, 100%); object-fit:cover; border-radius:10px; border:1px solid var(--line); background:var(--bg); display:block; }
 .crow .cb, .msg.user { min-width:0; } #log { overflow-x:hidden; } #log::-webkit-scrollbar-track { margin:52px 0 20px; } /* thumb stops short of the top mask (52px) + #dock overlap (20px) */
 .crow { display:flex; gap:10px; align-items:flex-start; } .crow.user { flex-direction:row-reverse; }
 .crow > .av { border-color:var(--bg); } /* 26px = the name row's height: avatar sits in line with name + time */
