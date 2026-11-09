@@ -464,6 +464,7 @@ pre.diff .ctx { color:var(--faint); }
 .menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
 .menu .mand { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--faint); padding:2px 10px; } .menu .mand::before, .menu .mand::after { content:''; flex:1; border-top:1px solid var(--line); }
+.edsw { min-width:220px; padding:6px 8px 8px; } .edsw .edx { position:absolute; top:4px; right:4px; width:24px; height:24px; } .edsw input { width:100%; accent-color:var(--accent); } .edsw .mcap b { color:var(--text); font-variant-numeric:tabular-nums; } .edsw .edarr { display:flex; gap:4px; padding:2px 6px; } .edsw .edarr .ib { font-size:16px; } /* #293 */
 .menu .mcap { font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; padding:6px 10px 2px; }
 .menu .mact { display:inline-grid; place-items:center; width:24px; height:22px; border-radius:6px; color:var(--dim); } .menu .mact:hover { background:var(--soft); color:var(--accent); } .menu .mact svg { width:14px; height:14px; }
 .menu .mact.lab { display:inline-flex; gap:4px; width:auto; min-width:92px; padding:0 6px; margin-left:4px; border:1px solid var(--line2); font-size:12px; } .menu .mact.lab svg:last-child { width:10px; height:10px; margin-left:auto; }
@@ -2083,12 +2084,23 @@ function edNotes(focus) {
 }
 /* #248 global width (× base ED.w) + line arrows, remembered; menu also restyles the selection */
 let edLW = +(localStorage.penW || 1) || 1, edArr = (() => { try { return JSON.parse(localStorage.penArr || '[0,0]'); } catch { return [0, 0]; } })();
-const EDW = [[.5, 'Thin'], [1, 'Medium'], [2, 'Thick'], [3.5, 'Heavy']];
+/* #293 slider 1–250 = edLW × 8 (8 = old Medium = 1× ED.w, so saved o.lw multipliers keep working); arrows = 2 toggles; applies live,
+   stays open (× / outside mousedown / starting to draw closes it via closeMenu's `outside`); one undo snap per open */
 function edStrokeMenu(b) {
+  if (b === MENU_A && Date.now() - MENU_T < 400) return; closeMenu(); MENU_A = b; let snap = 0;
   const set = (k, v) => { if (k === 'lw') edLW = v; else edArr[k] = v; try { localStorage.penW = edLW; localStorage.penArr = JSON.stringify(edArr); } catch {}
-    if (ED?.sel.length) { edSnap(); ED.sel.forEach(o => { if (k === 'lw') o.lw = v; else if (o.t === 'line') o[k ? 'a1' : 'a0'] = v; }); edDraw(); } };
-  menuAt(b, [{title: 'Width'}, ...EDW.map(([v, l]) => ({label: l, check: edLW === v, run: () => set('lw', v)})), '-', {title: 'Line arrows'},
-    {label: 'Arrow at start', check: !!edArr[0], run: () => set(0, edArr[0] ? 0 : 1)}, {label: 'Arrow at end', check: !!edArr[1], run: () => set(1, edArr[1] ? 0 : 1)}]);
+    if (ED?.sel.length) { if (!snap++) edSnap(); ED.sel.forEach(o => { if (k === 'lw') o.lw = v; else if (o.t === 'line') o[k ? 'a1' : 'a0'] = v; }); edDraw(); } };
+  const m = document.createElement('div'); m.className = 'menu glass edsw'; m.popover = 'manual';
+  m.innerHTML = `<button class="ib edx" title="Close">${icon('x')}</button><div class="mcap">Width <b></b></div>
+    <input type="range" min="1" max="250" value="${Math.round(edLW * 8)}"><div class="mcap">Line arrows</div>
+    <div class="edarr">${[0, 1].map(k => `<button class="ib${edArr[k] ? ' on' : ''}" title="Arrow at ${k ? 'end' : 'start'}">${k ? '→' : '←'}</button>`).join('')}</div>`;
+  const r = m.querySelector('input'), lab = m.querySelector('b'), show = () => lab.textContent = r.value;
+  r.oninput = () => { show(); set('lw', r.value / 8); }; show();
+  m.querySelector('.edx').onclick = closeMenu;
+  m.querySelectorAll('.edarr button').forEach((x, k) => x.onclick = () => { set(k, edArr[k] ? 0 : 1); x.classList.toggle('on', !!edArr[k]); });
+  (document.querySelector('dialog:modal') || document.body).appendChild(m); m.showPopover();
+  const a = b.getBoundingClientRect(); m.style.left = Math.max(8, Math.min(a.left, innerWidth - m.offsetWidth - 8)) + 'px'; m.style.top = a.bottom + 6 + 'px';
+  setTimeout(() => document.addEventListener('mousedown', outside), 0);
 }
 // #248 cursor = the tool's icon (white halo for any background); hotspot = where the tool touches (user-marked)
 const EDHOT = {sel: [5, 3], pen: [4, 20], line: [5, 19], box: [3, 5], erase: [4, 20]}, EDCUR = {};
