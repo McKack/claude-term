@@ -1959,13 +1959,15 @@ function editImage() {
         edDraw(); edNotes(); return; }
       if (ED.tool === 'sel') { const h = edHandle(x, y); c.style.cursor = h >= 0 ? EDC[h] + '-resize' : edHit(x, y) || (ED.sel.length && edIn(x, y)) ? 'move' : EDCUR.sel; }
       const o = ED.cur; if (!o) return;
-      if (o.t === 'pen') { const [px, py] = o.pts.at(-1); if (Math.hypot(x - px, y - py) > ED.w / 2) o.pts.push([x, y]); } else if (o.t === 'line') { o.x2 = x; o.y2 = y; } else { o.w = x - o.x; o.h = y - o.y; } edDraw(); };
+      if (o.t === 'pen') { const m = o.sm ||= [...o.pts[0]], [px, py] = o.pts.at(-1); m[0] += (x - m[0]) * .35; m[1] += (y - m[1]) * .35; o.raw = [x, y]; if (Math.hypot(m[0] - px, m[1] - py) > ED.w / 2) o.pts.push([...m]); } // #292 EMA smoothing ∵ raw pointer jitters; ↑ factor = less lag, more jitter
+      else if (o.t === 'line') { let dx = x - o.x1, dy = y - o.y1; if (e.shiftKey) { const L = Math.hypot(dx, dy), a = Math.round(Math.atan2(dy, dx) / (Math.PI / 8)) * Math.PI / 8; dx = L * Math.cos(a); dy = L * Math.sin(a); } o.x2 = o.x1 + dx; o.y2 = o.y1 + dy; } /* #292 Shift = 22.5° steps */ else { o.w = x - o.x; o.h = y - o.y; } edDraw(); };
     c.onpointerup = () => { const D = ED.drag; ED.drag = null;
       if (D) { if (!D.mq && !D.moved) { ED.undo.pop(); if (D.o) ED.sel = [D.o]; } return edDraw(); } // plain click: no undo entry, picks just that shape
       const o = ED.cur; ED.cur = null; if (!o) return;
       if (o.t === 'box') { if (Math.abs(o.w) < 8 && Math.abs(o.h) < 8) o.w = o.h = 0; // #248 click = numbered point (note, no box)
         if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } edDraw(); return edNotes(o); }
       if (o.t === 'line' && Math.hypot(o.x2 - o.x1, o.y2 - o.y1) < 2) { ED.ops.pop(); ED.undo.pop(); }
+      if (o.t === 'pen') { if (o.raw) o.pts.push(o.raw); delete o.sm; delete o.raw; } // EMA lags → end exactly at the release point
       edDraw(); };
     c.onpointercancel = c.onpointerup; // #237 box numbered at pointerdown (was pointerup → 'undefined' tag when the up got lost)
   };
@@ -2073,8 +2075,9 @@ function edNotes(focus) {
     d.innerHTML = `<textarea rows="1" placeholder="${o.n}. Note (Ctrl+Enter folds)" title="Enter = new line · ✓ or Ctrl+Enter = done (folds it to an icon)"></textarea><button class="ib" title="Done">${icon('check')}</button>`;
     const t = d.querySelector('textarea'), fit = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }; // #232 grows on soft wraps too
     t.value = o.note; t.oninput = () => { o.note = t.value; fit(); edDirty(); };
-    t.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); o.col = true; edNotes(); } };
-    d.querySelector('button').onclick = () => { o.col = true; edNotes(); }; // ✓ = done → folds like Ctrl+Enter (#232: blur alone looked dead)
+    t.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); o.col = o.ok = true; edNotes(); }
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !t.value && !o.ok) { e.preventDefault(); ED.ops.splice(ED.ops.indexOf(o), 1); if (o.n === ED.nmax) ED.nmax--; ED.sel = ED.sel.filter(x => x !== o); edDraw(); edNotes(); } }; // #292 fresh (never confirmed) empty note → Ctrl+Z drops it
+    d.querySelector('button').onclick = () => { o.col = o.ok = true; edNotes(); }; // ✓ = done → folds like Ctrl+Enter (#232: blur alone looked dead)
     W.append(d); fit(); if (o === focus) setTimeout(() => t.focus());
   });
 }
