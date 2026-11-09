@@ -38,7 +38,7 @@ body { margin:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gr
 #empty, #empty *, #log button, #log button * { -webkit-user-select:none; user-select:none; }
 button, select, input, textarea { font:inherit; color:inherit; }
 svg.i { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none; }
-.btn { display:inline-flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line2); border-radius:99px; padding:6px 14px; cursor:pointer; transition:background .12s, border-color .12s; }
+.btn { display:inline-flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line2); border-radius:99px; padding:2px 12px; line-height:20px; /* #304 = Next step size (26px): standard max for regular buttons */ cursor:pointer; transition:background .12s, border-color .12s; }
 .btn:hover { background:var(--hover); } .btn:disabled { opacity:.45; cursor:default; }
 .btn.primary { background:var(--primary); border-color:var(--primary); color:var(--ink); } .btn.primary:hover { background:var(--primary2); }
 .btn.ghost { background:none; border-color:transparent; } .btn.ghost:hover { background:var(--hover); }
@@ -357,7 +357,7 @@ pre.diff .ctx { color:var(--faint); }
 .fl { display:flex; flex-direction:column; gap:4px; font-size:12.5px; color:var(--dim); } .fl > input, .fl > select, .fl > textarea { width:100%; color:var(--text); font-size:14px; }
 .btn.block { width:100%; justify-content:center; } .chk { display:flex; gap:8px; align-items:center; font-size:13.5px; }
 .empty { text-align:center; color:var(--faint); font-size:13px; margin:0; padding:4px 0; }
-.btnrow { display:grid; grid-template-columns:repeat(auto-fit, minmax(84px, 1fr)); gap:8px; } .btnrow .btn { justify-content:center; padding:6px 8px; }
+.btnrow { display:grid; grid-template-columns:repeat(auto-fit, minmax(84px, 1fr)); gap:8px; } .btnrow .btn { justify-content:center; padding:2px 8px; }
 .btnrow.col { grid-template-columns:1fr; } /* col = stacked */
 .keys > div { display:flex; justify-content:space-between; gap:8px; font:12.5px ui-monospace,Consolas,monospace; padding:2px 0; } .keys span:first-child { overflow:hidden; text-overflow:ellipsis; }
 .stepper { list-style:none; padding:0; margin:4px 0; counter-reset:st; font-size:13px; color:var(--dim); }
@@ -387,7 +387,7 @@ pre.diff .ctx { color:var(--faint); }
 /* first row (icon, text line, button) = 28px, top-aligned in every state → tucking only slides the card (margin), nothing
    inside moves; taller cards (wrapped/.full) peek the same first row */
 #ready { margin:0 2% -22px; padding:5px 6px 19px 14px; gap:10px; font-size:13.5px; align-items:flex-start; transition:margin-bottom .3s ease, opacity .3s; }
-#ready > svg { flex:none; margin-top:6px; } #ready #contBtn { flex:none; height:28px; padding:0 14px; font-size:13px; min-height:0; }
+#ready > svg { flex:none; margin-top:6px; } #ready #contBtn { flex:none; height:26px; padding:0 14px; font-size:13px; min-height:0; }
 #ready #readytext { line-height:28px; } #ready #readytext.full { line-height:1.5; padding:5px 0; }
 /* tucked: 25px showing (readyTuck --tk), faded + masked toward the composer (px stops ∵ card height varies) */
 #ready.tuck { margin-bottom:var(--tk, -35px); cursor:pointer; opacity:.7;
