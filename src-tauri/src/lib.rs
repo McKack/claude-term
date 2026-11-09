@@ -1435,7 +1435,9 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
         let files: Vec<(String, std::path::PathBuf)> = std::fs::read_dir(&root).into_iter().flatten().flatten().map(|e| (e.file_name().to_string_lossy().to_uppercase(), e.path())).collect();
         let has = |pre: &[&str]| files.iter().any(|(n, _)| pre.iter().any(|x| n.starts_with(x)));
         // #264 licence id guessed from the file text → preselect on Confirm. ponytail: first-match keywords, not SPDX matching
-        let lic_id = files.iter().find(|(n, _)| ["LICENSE", "LICENCE", "COPYING"].iter().any(|x| n.starts_with(x))).and_then(|(_, f)| std::fs::read_to_string(f).ok()).map_or("", |t| lic_guess(&t));
+        let lic_f = files.iter().find(|(n, _)| ["LICENSE", "LICENCE", "COPYING"].iter().any(|x| n.starts_with(x))).map(|(_, f)| f);
+        let lic_id = lic_f.and_then(|f| std::fs::read_to_string(f).ok()).map_or("", |t| lic_guess(&t));
+        let lic_file = lic_f.and_then(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()); // #363 row label = real name
         let readme = files.iter().find(|(n, _)| n.starts_with("README")).and_then(|(_, f)| std::fs::read_to_string(f).ok()).map_or(0, |t| t.lines().count());
         let ver = version_of(&root);
         let git = |a: &[&str]| store::run("git", a, Some(&p.path), &[]);
@@ -1476,7 +1478,7 @@ async fn release_check(st: St<'_>, pid: String) -> R<Value> {
         let tag_t = if tag.ok { ct(&["log", "-1", "--format=%ct", tag.stdout.trim()]) } else { 0 };
         let code_t = store::code_time(&p.path);
         let readme_old = tag_t > 0 && code_t > tag_t && ct(&["log", "-1", "--format=%ct", "--", "README*"]) < tag_t;
-        json!({"readme": readme, "readme_old": readme_old, "credits": has(&["CREDITS"]), "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "lic_id": lic_id, "changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
+        json!({"readme": readme, "readme_old": readme_old, "credits": has(&["CREDITS"]), "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "lic_id": lic_id, "lic_file": lic_file,"changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),
                "version": ver.as_ref().map(|v| &v.0), "vfile": ver.as_ref().map(|v| v.1), "tag": if tag.ok { tag.stdout.trim() } else { "" },
                "clean": git(&["status", "--porcelain"]).stdout.trim().is_empty(), "icon": icon.map(|i| i.0), "icon_px": icon.and_then(|i| i.1), "remote": remote, "code_t": code_t,
                "ci": ci, "sign": store::sign_env(&p.path).into_iter().map(|(k, _)| k).collect::<Vec<_>>()})

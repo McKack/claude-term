@@ -598,7 +598,7 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
                 smart = false;
                 line(app, pid, "note", "Smart build: no build/run step found; set one in the Build tab.");
             } else if smart {
-                line(app, pid, "note", &format!("Smart build: {why} → building."));
+                line(app, pid, "note", &format!("Smart build: {why}…"));
             }
         }
         if !was_handover && (smart || a.starts_with("build")) {

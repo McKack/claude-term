@@ -237,7 +237,7 @@ pre.diff .ctx { color:var(--faint); }
 .dscroll.wrap pre.diff { white-space:pre-wrap; overflow-wrap:anywhere; }
 .dscroll:not(.wrap) pre.diff:has(> .ctx, > .del, > .add) { display:grid; grid-template-columns:minmax(100%, max-content); } /* nowrap: rows = longest line wide ∴ bg spans the scroll width */
 .msg.tool::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--line2); flex:none; }
-.msg.note { color:var(--dim); font-size:13px; text-align:center; } .msg.note[data-ts]::before { content:attr(data-ts); display:block; font-size:11px; color:var(--faint); margin-bottom:2px; } .msg.note .i { width:13px; height:13px; vertical-align:-2px; }
+.msg.note { color:var(--dim); font-size:13px; text-align:center; } .col > .msg.note.nrun { margin-top:-10px; } /* #363 status-note run: stacked, one time range on its head */ .msg.note[data-ts]::before { content:attr(data-ts); display:block; font-size:11px; color:var(--faint); margin-bottom:2px; } .msg.note .i { width:13px; height:13px; vertical-align:-2px; }
 /* error: red rounded box, monospace; title = where it came from (the tool line before it) */
 .msg.err { color:var(--err); font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; align-self:stretch;
   background:color-mix(in srgb, var(--err) 9%, transparent); border:1px solid color-mix(in srgb, var(--err) 35%, transparent); border-radius:12px; padding:8px 12px; }
@@ -1743,6 +1743,12 @@ function put(box, e) {
   }
   if (e.old) el.classList.add('old');
   const qs = box.querySelector('.qs');
+  if (e.kind === 'note' && view === 'chat') { // #363 status notes in a row = one stack: head shows "first – last" time, See report moves to the bottom
+    const pv = qs ? qs.previousElementSibling : box.lastElementChild;
+    if (pv?.matches('.msg.note')) { const h = pv._head || pv; el._head = h; el.classList.add('nrun'); delete el.dataset.ts;
+      if (e.ts && h._t0) h.dataset.ts = h._t0 === tm(e.ts) ? h._t0 : `${h._t0} – ${tm(e.ts)}`;
+      const rb = pv.querySelector('.btn[onclick^="repOpen"]'); if (rb && !el.dataset.rid) { el.dataset.rid = pv.dataset.rid; el.append(' ', rb); } }
+    else el._t0 = el.dataset.ts; }
   qs ? box.insertBefore(el, qs) : box.appendChild(el);
   if (e.kind !== 'user' && !box._swap) hatch(box, el);
 }
@@ -1769,6 +1775,7 @@ function entry(e) {
   if (isProcess(e)) return null;
   if (e.kind === 'claude' && /^No response requested\.?$/.test(e.text.trim())) return null; // Claude's filler after a restart call
   if (view === 'chat' && (e.kind === 'out' || e.kind === 'think')) return null;
+  if (view === 'chat' && e.kind === 'note' && /^Queue is empty/.test(e.text)) return null; // #363 noise in the status stack; still in logs (stop reason, line ~3545)
   const d = document.createElement('div');
   d.className = 'msg ' + e.kind;
   if (e.kind === 'user' && e.images?.length) { // older entries: url strings; newer: {url, name}
@@ -1925,7 +1932,8 @@ function repDone(pid) {
   const segOut = segs.map((s, k) => { const c = s.l.filter(e => e.kind === 'tool').map(e => e.detail?.command || '').join('\n'), fs = new Set(s.l.map(e => e.detail?.file_path).filter(Boolean));
     return {ts: s.ts, end: segs[k + 1]?.ts || now, title: s.title, ms: workMs(s.l), n: s.l.filter(e => e.kind === 'tool' && !isProcess(e)).length, files: fs.size,
       closed: [...c.matchAll(/gh issue close (\d+)/g)].map(m => +m[1]), filed: [...s.l.filter(e => e.result_of && e.kind !== 'err').map(e => e.text).join('\n').matchAll(/\/issues\/(\d+)\s*$/gm)].map(m => +m[1])}; });
-  const rid = Date.now(), rep = {id: rid, project: P(pid)?.name, t0: sl.find(e => e.ts)?.ts || now, t1: now, ms: Math.max(workMs(sl), 60e3) /* dur() floors */, ops, segs: segOut};
+  const rid = Date.now(), rep = {id: rid, project: P(pid)?.name, t0: sl.find(e => e.ts)?.ts || now, t1: now, ms: Math.max(workMs(sl), 60e3) /* dur() floors */, ops, segs: segOut,
+    notes: sl.filter(e => e.kind === 'note' && e.ts).map(e => ({ts: e.ts, text: e.text}))}; // #363 status notes → timeline; later ones in the same run appended by addEntry
   REPS[rid] = rep; call('report_save', {pid, rep}).catch(() => {});
   addEntry(pid, {kind: 'note', text: `Done! Worked for ${dur(rep.ms)}.`, act: 'rep', rid, ts: now});
 }
@@ -1942,8 +1950,10 @@ async function repOpen(rid, tb = 'done') {
       ${Object.keys(files).length ? `<h3>Files touched</h3><div class="rfiles">${Object.entries(files).map(([f, x]) => `<button class="btn sm" data-rf="${esc(f)}">${icon(x.w ? 'file' : 'new')}${esc(f.split('/').pop())}${x.n > 1 ? ` <span class="pill">×${x.n}</span>` : ''}</button>`).join('')}</div><div id="rdiff"></div>` : ''}`
     : tb === 'fail' ? bad.map((o, k) => { const m = missOf(o.err); return `<div class="rfail">${icon('warn')}<div class="grow" style="min-width:0"><code>${esc((o.cmd || o.text).split('\n')[0])}</code>
         <pre class="diff errout">${esc(o.err.trim().split('\n').slice(-6).join('\n'))}</pre><div class="row" style="gap:6px;justify-content:flex-end;margin-top:10px">${m ? `<button class="btn sm primary" data-fix="${k}">${esc(m.label)}</button>` : ''}<button class="btn sm" data-ask="${k}">${icon('chat')}Ask Clauracle to fix</button></div></div></div>`; }).join('') || `<p class="dim">${icon('check')} Nothing failed.</p>`
-    : `<div class="rtl">${r.segs.map(s => `<div class="rstep"><small class="mono faint">${tm(s.ts)}</small><i></i><div class="grow" style="min-width:0"><b>${esc(s.title)}</b>
-        <div class="faint" style="font-size:12px">${s.n} steps · ${s.files} files${s.closed.map(n => ` · <span class="pill">closed #${n}</span>`).join('')}${s.filed.map(n => ` · <span class="pill">filed #${n}</span>`).join('')}</div></div><small>${dur(s.ms)}</small></div>`).join('')}
+    : `<div class="rtl">${[...r.segs.map(s => [s.ts, `<div class="rstep"><small class="mono faint">${tm(s.ts)}</small><i></i><div class="grow" style="min-width:0"><b>${esc(s.title)}</b>
+        <div class="faint" style="font-size:12px">${s.n} steps · ${s.files} files${s.closed.map(n => ` · <span class="pill">closed #${n}</span>`).join('')}${s.filed.map(n => ` · <span class="pill">filed #${n}</span>`).join('')}</div></div><small>${dur(s.ms)}</small></div>`]),
+        ...(r.notes || []).map(n => [n.ts, `<div class="rstep"><small class="mono faint">${tm(n.ts)}</small><i></i><span class="grow dim" style="font-size:12px">${esc(n.text)}</span></div>`])] /* #363 status notes */
+        .sort((a, b) => Date.parse(a[0]) - Date.parse(b[0])).map(x => x[1]).join('')}
         <div class="rstep tot"><small class="mono faint">${tm(r.t1)}</small><i></i><b class="grow">Done</b><b>${dur(r.ms)}</b></div></div>`;
   const tabs = [['done', 'check', 'Completed', ok.length], ['fail', 'warn', 'Failed', bad.length], ['tl', 'clock', 'Timeline', '']];
   dlg(`<div class="rhead"><h2 style="margin:0">Done! Worked for ${dur(r.ms)}</h2><small class="dim">${esc(r.project || '')} · ${tm(r.t0)} – ${tm(r.t1)}</small>
@@ -1977,6 +1987,8 @@ function addEntry(pid, e) {
   if (busy[pid] && (wrap ? !hand[pid] : e.kind === 'tool' && !isProcess(e) && hand[pid] === 'soft')) { hand[pid] = wrap ? 'soft' : false; if (pid === cur) drawChrome(); }
   e.ts ||= new Date().toISOString(); // all kinds: #214 report timeline/worked time
   (logs[pid] ||= []).push(e); saveLog(pid);
+  if (e.kind === 'note' && !e.act) { const l = logs[pid], i = l.findLastIndex(x => x.act === 'rep'), r = i >= 0 && REPS[l[i].rid]; // #363 notes right after Done (commit, stage…) = same work run → into its report
+    if (r && l.slice(i + 1).every(x => x.kind === 'note')) { (r.notes ||= []).push({ts: e.ts, text: e.text}); r.t1 = e.ts; call('report_save', {pid, rep: r}).catch(() => {}); } }
   if (e.kind === 'tool' && /^(Edit|MultiEdit|Write|NotebookEdit)\b/.test(toolName(e)) && (e.detail?.file_path || e.detail?.notebook_path)) {
     (EDITS[pid] ||= {})[relOf(pid, e.detail.file_path || e.detail.notebook_path)] = Date.now(); if (pid === cur) badgeFiles();
   }
@@ -2634,7 +2646,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if (d.step === 'run' && b.live !== (d.done == null)) { b.live = d.done == null; if (d.pid === cur && tab === 'build') drawRight(); }
     if (d.step === 'build' && b.busy && d.line && d.pid === cur && tab === 'build' && /\.(exe|msi|msix|dmg|pkg|appimage|deb|rpm|ipa|apk|aab)\b/i.test(d.line) && /Finished \d+ bundle/.test(b.out.slice(b.from || 0))) drawRight(); /* #174 an artifact landed → tick it */
     if (d.step === 'build' && 'local' in d) b.local = d.local; /* #361 every line: buildNow sets busy before the 1st event */
-    if (d.step === 'build' && !!b.busy !== (d.done == null)) { if (!b.busy) b.from = b.out.length - (d.line != null ? d.line.length + 1 : 0); b.busy = d.done == null; if (b.busy && !b.manual) addEntry(d.pid, {kind: 'note', text: 'Building…'}); /* after a task / resumed (#170/#175); Build button = manual */ if (d.pid === cur) tabDots(); if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
+    if (d.step === 'build' && !!b.busy !== (d.done == null)) { if (!b.busy) b.from = b.out.length - (d.line != null ? d.line.length + 1 : 0); b.busy = d.done == null; if (b.busy && !b.manual && !/^Smart build/.test(logs[d.pid]?.at(-1)?.text || '')) addEntry(d.pid, {kind: 'note', text: 'Building…'}); /* #363 smart note already says it */ /* after a task / resumed (#170/#175); Build button = manual */ if (d.pid === cur) tabDots(); if (d.pid === cur && tab === 'build' && b.busy) drawRight(); } /* #120: done → redraw below */
     if (d.step === 'build' && d.done) { BUILT[d.pid] = 1; if (d.pid === cur) tabDots(); } /* green dot till Build & Release is opened */
     if (d.step === 'build' && d.done != null) { b.ok = d.done; b.at = Date.now(); b.own = !!d.own; /* statusline right zone + card */
       if (!b.manual) addEntry(d.pid, d.done ? {kind: 'note', text: 'Built!', act: d.own ? 'restart' : P(d.pid)?.build.run ? 'run' : ''} : {kind: 'note', text: 'Build failed', act: 'out'});
@@ -3010,7 +3022,7 @@ function relItems(c, p) {
     {s: 0, id: 'readme', t: 'Markdown files written', ok: c.readme >= 10 && !c.readme_old && c.credits && licOk(c, p.license),
       h: [c.readme < 10 ? (c.readme ? `README.md: only ${c.readme} lines` : 'README.md: missing') : c.readme_old ? `README.md: not updated since ${c.tag}` : 'README.md',
         // #264 licence picked in Settings › Projects (p-lic); not picked → Choose / Confirm (file exists) → licPick; picked but file missing/other → Fix prompt
-        'LICENSE' + (p.license ? `: ${LICS[p.license] || p.license}` + (!c.license ? ', no file yet' : c.lic_id && c.lic_id !== p.license ? `, file says ${c.lic_id}` : '') : c.license ? `: not picked, file looks like ${c.lic_id || 'an unknown license'}` : ': not picked'),
+        (c.lic_file || 'LICENSE.md') + (p.license ? `: ${LICS[p.license] || p.license}` + (!c.license ? ', no file yet' : c.lic_id && c.lic_id !== p.license ? `, file says ${c.lic_id}` : '') : c.license ? `: not picked, file looks like ${c.lic_id || 'an unknown license'}` : ': not picked'),
         c.credits ? 'CREDITS.md' : 'CREDITS.md: missing'].map(t => `<span style="display:block">${esc(t)}</span>`).join(''),
       ...(p.license ? {} : {go: 'licPick()', gl: c.license ? 'Confirm license' : 'Choose license'})},
     {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` + (tv ? ` · last released ${c.tag}` : ' · first release') : 'not found'},
@@ -3154,9 +3166,11 @@ async function relStage(pid) {
   ghiSet(pid, g); c.staged = await call('stage', {pid, action: 'list'}).catch(() => []); RELC[pid] = {c, t: Date.now()};
   const v = (c.version || '').replace(/^v/, ''), files = relFilesFor(pid, v);
   if (!SEMV.test(v) || !files.length || tgtSplit(p, c, files).lack.length || files.some(f => f.mtime && f.mtime < (c.code_t || 0)) || c.staged.some(x => x.v === v)) return;
-  try { c.staged.push(await call('stage', {pid, action: 'add', v, files: files.map(f => f.path)})); addEntry(pid, {kind: 'note', text: `Staged v${v}: ${files.map(f => f.name).join(', ')} (Build & Release › Release ▾)`});
-    const nv = vnext(v, v), f = await call('version_set', {pid, v: nv}); c.version = nv; c.clean = false; addEntry(pid, {kind: 'note', text: `Version ${nv} set in ${f.join(', ')} (next build)`}); }
-  catch (e) { addEntry(pid, {kind: 'note', text: `Couldn't stage v${v}: ${e}`}); }
+  try { c.staged.push(await call('stage', {pid, action: 'add', v, files: files.map(f => f.path)})); }
+  catch (e) { return addEntry(pid, {kind: 'note', text: `Couldn't stage v${v}: ${e}`}); }
+  const nv = vnext(v, v); // #363 one short line (file list = Release ▾ menu)
+  try { await call('version_set', {pid, v: nv}); c.version = nv; c.clean = false; addEntry(pid, {kind: 'note', text: `Staged v${v} - next build set to v${nv}.`}); }
+  catch (e) { addEntry(pid, {kind: 'note', text: `Staged v${v}; couldn't set v${nv}: ${e}`}); }
 }
 // #351 staged releases = ▾ menu on the Release btn (was a list): pick = RELSV, Skip = act w/ confirm
 const RELSV = {};
