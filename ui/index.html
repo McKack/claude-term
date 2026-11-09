@@ -637,6 +637,7 @@ dialog { border-radius:20px; color:var(--text); padding:0; } dialog:focus, dialo
 ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-button { display:none; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-corner { background:transparent; }
 ::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--text) 18%, transparent); border-radius:99px; border:3px solid transparent; background-clip:content-box; }
 ::-webkit-scrollbar-thumb:hover { background-color:color-mix(in srgb, var(--text) 32%, transparent); }
+.onsb { cursor:default !important; } /* #326 pointer over an element's own scrollbar → arrow (Chromium ignores cursor on ::-webkit-scrollbar) */
 dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 /* settings: one window, icon tabs across the top (macOS System Settings style) */
 .prefs { width:min(920px,94vw); height:min(700px,88vh); display:grid; grid-template-rows:auto 1fr auto; }
@@ -2511,6 +2512,9 @@ $('prompt').addEventListener('keydown', e => {
 });
 // #249 measure w/o scrollbar (it narrowed the lines → over-tall + a stray 10px bar that later vanished → mirror wrapped wider/narrower → caret drift); bar only past max-height
 const grow = () => { const t = $('prompt'), st = t.scrollTop; t.style.overflowY = 'hidden'; t.style.height = 'auto'; const h = t.scrollHeight; t.style.height = h + 'px'; t.style.overflowY = h > parseFloat(getComputedStyle(t).maxHeight) ? 'auto' : 'hidden'; t.scrollTop = st; pbDraw(); }; // #258 height:auto reset scrollTop to 0 → restore the spot
+// #326 arrow over scrollbars: hit = past clientWidth/Height (padding box minus bar); target = the scroller itself there
+let sbEl = null; document.addEventListener('mousemove', e => { const t = e.target, on = t instanceof Element && ((t.offsetWidth - t.clientWidth > 4 && e.offsetX >= t.clientWidth) || (t.offsetHeight - t.clientHeight > 4 && e.offsetY >= t.clientHeight));
+  if (sbEl && (sbEl !== t || !on)) { sbEl.classList.remove('onsb'); sbEl = null; } if (on && !sbEl) (sbEl = t).classList.add('onsb'); }, { passive: true });
 new ResizeObserver(() => pbDraw()).observe($('prompt')); // width/scrollbar changes w/o typing (window, side panels) → mirror re-measured
 let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
 // #325 term view: refs = the attachments (no chips) ∴ deleting its last @[name] drops the attachment; chat keeps it (chip stays)
