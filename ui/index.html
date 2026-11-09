@@ -424,7 +424,7 @@ pre.diff .ctx { color:var(--faint); }
 #gbar { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:4px 14px; align-items:center; white-space:nowrap; overflow:hidden; font-size:12px; color:var(--faint); padding:2px 10px; border-top:1px solid var(--line); background:var(--side); min-height:24px; }
 #gbar button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:6px; align-items:center; padding:2px 6px; border-radius:6px; min-width:0; }
 #gbar button:hover { color:var(--text); background:var(--hover); } #gbar b { color:var(--dim); font-weight:500; } #gbar .i { width:14px; height:14px; } #gbar .bar { width:22px; height:3px; }
-#gbar > button > span, #gbar .stats > span { display:inline-flex; gap:4px; align-items:center; } #gbar .stats { gap:10px; } #gbar .gt { display:block; overflow:hidden; text-overflow:ellipsis; max-width:30vw; } #gbar .gz { display:flex; min-width:0; } #gbar .gz.r { justify-content:flex-end; } #gbar .ok { color:var(--ok, #3fbf7f); } #gbar .bad { color:var(--err, #e5534b); }
+#gbar > button > span, #gbar .stats > span { display:inline-flex; gap:4px; align-items:center; } #gbar .stats { gap:10px; } #gbar .gt { display:block; overflow:hidden; text-overflow:ellipsis; max-width:30vw; } #gbar .gz { display:flex; min-width:0; } #gbar .gz.r { justify-content:flex-end; align-items:center; gap:6px; } #gbar .ok { color:var(--ok, #3fbf7f); } #gbar .bad { color:var(--err, #e5534b); }
 .acard .gact { display:flex; gap:6px; margin:2px 0 8px 13px; } /* statusline card quick actions */
 /* #200 AI card Usage: full-width bars under their label; context bar carries the hand-over slider (range over it, thumb only) */
 .acard .ubar { position:relative; display:flex; height:6px; border-radius:3px; background:var(--line2); margin-top:4px; } .acard .ubar i { display:block; height:100%; background:var(--accent); border-radius:3px; }
@@ -1018,7 +1018,12 @@ setInterval(() => { for (const [id, w] of Object.entries(S.resets || {})) for (c
 } }, 30000);
 // #39 kind → [icon, colour]: info | ok | warn | err
 const TOASTK = {info: ['info', 'var(--accent)'], ok: ['check', 'var(--ok)'], warn: ['warn', '#d9a21b'], err: ['x', 'var(--err)']};
+// #284 notification center: every toast → NOTES (newest first, ≤50, localStorage.notes; act fn kept this run only) → bell in #gbar
+let NOTES = []; try { NOTES = JSON.parse(localStorage.notes || '[]'); } catch {}
+let NUNREAD = NOTES.filter(n => !n.seen).length;
+const notesSave = () => { try { localStorage.notes = JSON.stringify(NOTES.map(({act, ...n}) => n)); } catch {} };
 function toast(text, kind = 'info', act) { // act = [label, fn] → button; such toasts stay 20s
+  NOTES.unshift({text, kind, ts: Date.now(), act}); NOTES.length = Math.min(NOTES.length, 50); NUNREAD++; notesSave(); try { drawGbar(); } catch {} /* toast before S loaded */
   const [ic, c] = TOASTK[kind] || TOASTK.info, t = Object.assign(document.createElement('div'), {className: 'toast glass', popover: 'manual'});
   t.innerHTML = `<div class="row" style="gap:10px;align-items:flex-start"><span style="color:${c};flex:none;display:inline-flex;padding-top:1px">${icon(ic)}</span><span class="grow">${esc(text)}</span>${act ? `<button class="btn sm primary">${esc(act[0])}</button>` : ''}</div>`;
   document.body.append(t); t.showPopover(); setTimeout(() => t.remove(), act ? 20000 : 8000); t.onclick = () => t.remove();
@@ -1134,7 +1139,9 @@ function drawGbar() {
   const bl = bd.length ? `<button onclick="gCard(this, 'build')" title="Builds in progress"><span class="spin"></span><span class="gt">Building ${bd.length > 1 ? bd.length + ' projects' : `<b>${esc(bd[0].name)}</b>`}</span></button>`
     : last ? `<button onclick="gCard(this, 'build')" title="Last build"><span class="${last.b.ok ? 'ok' : 'bad'}">${icon(last.b.ok ? 'check' : 'x')}</span><span class="gt">${last.b.ok ? 'Built' : 'Build failed'} <b>${esc(last.p.name)}</b> · ${gago(last.b.at)}</span></button>`
     : `<button onclick="gCard(this, 'build')" title="Builds">${icon('hammer')}<span class="gt">No builds</span></button>`;
-  const h = `<div class="gz">${ai}</div><div class="gz r">${bl}</div>`;
+  const bell = `<button onclick="gCard(this, 'notes')" title="Notifications${NUNREAD ? ': ' + NUNREAD + ' new' : ''}" style="position:relative">${icon('bell')}${NUNREAD ? '<i class="gdot" style="position:absolute;top:2px;right:3px;width:6px;height:6px;animation:none"></i>' : ''}</button>`;
+  const clock = `<span title="${new Date().toLocaleDateString([], {weekday: 'long', day: 'numeric', month: 'long'})}">${new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}</span>`; // locale picks 24h / AM-PM
+  const h = `<div class="gz">${ai}</div><div class="gz r">${bl}${clock}${bell}</div>`;
   if (el._h !== h) { el._h = h; el.innerHTML = h; }
   drawTimes();
 }
@@ -1161,6 +1168,13 @@ function gCard(btn, kind) {
           + ag.map(a => `<div class="dim" style="font-size:12px;margin:0 0 2px 13px">${icon('bot')} ${esc(a.type)}: ${esc(a.desc)}${a.last ? ' · ' + esc(a.last) : ''}</div>`).join(''); }).join('') || '<p class="dim">Nothing running</p>'; };
     card.innerHTML = `<h5>Activity</h5><div id="gacts">${acts()}</div>` + (cur ? statsHtml(P()) : '');
     const ga = card.querySelector('#gacts'), iv = setInterval(() => { if (!card.isConnected) return clearInterval(iv); const h = acts(); if (ga._h !== h) ga.innerHTML = ga._h = h; }, 1000); ga._h = acts();
+  } else if (kind === 'notes') {
+    NUNREAD = 0; NOTES.forEach(n => n.seen = 1); window.NSNAP = NOTES.slice(); /* indices stable while card open */ notesSave(); drawGbar();
+    card.innerHTML = `<div class="row"><h5 class="grow">Notifications</h5>${NOTES.length ? act('Clear all', `NOTES = []; notesSave(); drawGbar(); ${close}`, 'ghost') : ''}</div>`
+      + (NOTES.map((n, i) => { const [ic, c] = TOASTK[n.kind] || TOASTK.info;
+        return `<div class="row" style="gap:8px;align-items:flex-start;font-size:12px"><span style="color:${c};flex:none;display:inline-flex">${icon(ic)}</span><span class="grow sel">${esc(n.text)}</span><span class="dim" style="white-space:nowrap">${gago(n.ts)}</span></div>`
+          + (n.act ? `<div class="gact">${act(esc(n.act[0]), `NSNAP[${i}].act[1](); ${close}`, 'primary')}</div>` : ''); }).join('') || '<p class="dim">No notifications yet: toasts (builds, limits, errors…) land here.</p>');
+    card.style.maxHeight = '60vh'; card.style.overflowY = 'auto';
   } else {
     // #262 busy row: output file names (last build's, GHI cache) + last 3 output lines, live (1s); Output → Build tab log, flashed
     const ell = 'font-size:12px;margin:0 0 2px 20px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';

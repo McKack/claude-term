@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Notification center: a bell bottom right keeps the history of notifications, with the current time next to it.
 - Start menu: click your account (bottom left) for one menu with search (files, secret names, tasks, settings), every tab as a tile, and Settings / Restart / Shut down.
 - Appearance: new Font setting (Sans-serif, Serif, Monospace), saved with presets. Classic Claude uses Serif, The Matrix uses Monospace.
 - Type `/model` to pick from every model your Claude Code offers (including specific versions), then its effort level, with mouse or keyboard. The account menu uses the same live list.
