@@ -3812,9 +3812,9 @@ function badgeFiles() {
 }
 let envAt = null;
 function previewFile(rel, side) { // side: Ctrl+click in Edit view → Code tab as split view (#369)
-  if (/^\.env(\.|$)/.test(rel.split('/').pop())) { envAt = rel; expandRight('svc'); return; }
   if (/\.pdf$/i.test(rel)) return openPdf(P().path.replace(/[\\/]+$/, '') + '/' + rel); // #247 File viewer
-  if (view === 'edit' && !side) return evOpen(rel); // #285 Edit view: files open as editor tabs
+  if (view === 'edit') { if (!side) return evOpen(rel); } // #285/#376 Edit view: plain click = editor tab (.env too), Ctrl = Code tab
+  else if (/^\.env(\.|$)/.test(rel.split('/').pop())) { envAt = rel; expandRight('svc'); return; } // outside Edit: secrets panel
   codeAt[cur] = {file: rel}; expandRight('code'); drawFiles();
 }
 /* #248 syntax colour, regex per line (no parser, no dep): block comments carry across lines; # comments only in hash langs.
