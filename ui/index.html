@@ -503,8 +503,8 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ti .tt { flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; } .ti.open .tt { display:block; }
 .ti .tt:has(> .lbls) { display:block; } .tt .tc { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; } .ti.open .tt .tc { display:block; } .ti.completed .tc { -webkit-line-clamp:1; }
 .tt .lbls { display:flex; flex-wrap:wrap; gap:4px; margin-top:3px; }
-.ti .tt:has(> .ldots) { display:block; } .tt .tc[data-n] { -webkit-line-clamp:1; } .ti:has(.tc[data-n]) { cursor:pointer; } .ti .inum { font-weight:700; font-size:.88em; }
-.tt .ldots { display:flex; gap:4px; margin-top:4px; width:max-content; } .ldots i { width:7px; height:7px; border-radius:50%; background:var(--lc); }
+.ti .tt:has(> .ldots) { display:flex; align-items:flex-start; gap:6px; } .tt:has(> .ldots) > .tc { flex:1; min-width:0; } /* #287 dots after the title, title truncates for them */ .tt .tc[data-n] { -webkit-line-clamp:1; } .ti:has(.tc[data-n]) { cursor:pointer; } .ti .inum { font-weight:700; font-size:.88em; }
+.tt .ldots { flex:none; display:flex; gap:4px; margin-top:calc((1lh - 7px) / 2); } .ldots i { width:7px; height:7px; border-radius:50%; background:var(--lc); }
 .ti.in_progress .tt { color:var(--accent); } .ti.completed .tt { color:var(--faint); text-decoration:line-through; -webkit-line-clamp:1; }
 .msg .tlist .ti { font-size:inherit; } .msg .ti > input[type=checkbox] { margin-top:calc((1lh - 13px) / 2); } /* beats .msg.claude :first-child { margin-top:0 } */
 .sugs { margin:6px 0; } .sugs .ti { align-items:center; } .sugs .ti.completed { opacity:.55; } .sugs .ti > .btn { flex:none; }
@@ -4647,7 +4647,7 @@ function drawAtp() {
   const w = workOf(cur), closing = busy[cur] && w && !iq.some(x => x.number === w); // #41 closed but turn still verifying
   if (w && iq?.some(x => x.number === w)) WSEEN.add(w); // #56: seen open → its absence = closed; never seen = just filed, list not refreshed
   const L = a => `<div class="tlist">${a.join('')}</div>`;
-  const qRows = L([...(closing ? [tli(WSEEN.has(w) ? `Finishing up #${w}…` : `Working on #${w}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
+  const qRows = L([...(closing ? [tli(`<span class="inum">#${w}</span> ${WSEEN.has(w) ? 'Finishing up' : 'Working on'}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
           ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => tli(iq ? issueHtml(iq[i]) : esc(x), {on: `planCheck(${i}, this)`, cls: busy[cur] && (iq ? iq[i].number === w : !i) ? 'working' : '',
             end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if Clauracle is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'} · right-click: Move to top/bottom"></button></span>`}))]).replace('class="tlist"', 'class="tlist" id="qlist"');
   const wt = iq ? teamTasks(cur).filter(isIdea).map(x => `#${x.number} ${x.title}`) : S.waits?.[cur] || [];
