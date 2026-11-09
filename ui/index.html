@@ -682,13 +682,13 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 /* edited-lately badge: count pill (folder, < 1 min) or dot; opacity set in badgeFiles, eased between its 5s ticks */
 .tree .eb { margin-left:auto; flex:none; min-width:8px; height:8px; border-radius:99px; background:var(--accent); transition:opacity 5s linear; }
 .tree .eb:not(:empty) { min-width:18px; height:16px; padding:0 5px; color:var(--ink); font-size:10.5px; font-weight:700; line-height:16px; text-align:center; }
-.code { font:12.5px/1.5 ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); counter-reset:l; }
-.code pre { margin:0; padding:8px 12px 8px 0; white-space:pre; min-width:max-content; } .code.wrap pre { white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; }
+.code { --lw:calc(4ch + 30px); font:12.5px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:calc(100vh - 170px); counter-reset:l; }
+.code pre { font:inherit; margin:0; padding:8px 12px 8px 0; white-space:pre; min-width:max-content; } .code.wrap pre { white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; }
 .code i { font-style:normal; } .code .hb { font-weight:700; } .code.plain i { color:inherit; font-style:normal; font-weight:inherit; } .code .hk { color:#c678dd; } .code .hs { color:#98c379; } .code .hc { color:var(--faint); font-style:italic; } .code .hn { color:#d19a66; } .code .ht { color:#61afef; }
 :root:not([data-theme=dark]) .code .hk { color:#a626a4; } :root:not([data-theme=dark]) .code .hs { color:#50a14f; } :root:not([data-theme=dark]) .code .hn { color:#986801; } :root:not([data-theme=dark]) .code .ht { color:#4078f2; }
 .tree small { overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .code pre > div { display:grid; grid-template-columns:var(--lw) 1fr; } .code pre > div > span { min-width:0; } /* #286 line text = ONE grid item; bare tokens each took a cell → spilled into the gutter */ /* #231 one row per line: line no. = ::before (not copied), wrapped lines indent under the text */
-.code pre > div::before { counter-increment:l; content:counter(l); color:var(--faint); text-align:right; padding-right:8px; margin-right:12px; border-right:1px solid var(--line); white-space:nowrap; overflow-wrap:normal; /* #392 '10' wrapped to 1/0 under .wrap (overflow-wrap:anywhere) */ -webkit-user-select:none; user-select:none; }
+.code pre > div::before { counter-increment:l; content:counter(l); color:var(--faint); text-align:right; padding-right:6px; margin-right:8px; border-right:1px solid var(--line); white-space:nowrap; overflow-wrap:normal; /* #392 '10' wrapped to 1/0 under .wrap (overflow-wrap:anywhere) */ -webkit-user-select:none; user-select:none; }
 #web { width:100%; height:calc(100vh - 175px); border:1px solid var(--line); border-radius:10px; background:#fff; }
 /* phone preview: a 390×844 viewport (iPhone-ish) in a bezel, shrunk with zoom to fit the panel */
 /* bezel = padding on a dark box (not a border: the screen's own rounded clip avoids light AA seams at the corners) */
@@ -1731,7 +1731,7 @@ function evDraw(re) { if (view !== 'edit' || !cur) return;
   if (evFm(t)) { let h; try { h = evPv(t) === 'md' ? `<div class="mdoc">${mdDoc(t.text)}</div>` : codeHtml(JSON.stringify(JSON.parse(t.text), null, 2), 'json', !!UI.ew).replace('class="code', 'class="code' + (hlOn() ? '' : ' plain')); } catch (e) { h = `<div class="dim">${esc(String(e))}</div>`; }
     b.innerHTML = `<div class="epv">${h}</div>`; return; } /* #372 read-only preview; edits = View › Preview off */
   // #329 Code-tab look: highlighted .code pre (codeHtml) under a transparent textarea, both sized by the pre ∴ one scroller, no scroll sync
-  const ext = (t.rel || t.name).split('.').pop().toLowerCase(), hi = () => { b.querySelector('pre')?.remove(); b.querySelector('.ew').insertAdjacentHTML('afterbegin', codeHtml(t.text, ext).replace(/^<div[^>]*>|<\/div>$/g, '')); const w = b.querySelector('.ew'); w.style.setProperty('--lw', w.firstChild.style.getPropertyValue('--lw')); evMarks(t, 0); }; /* --lw on .ew ∴ textarea pads past the gutter */
+  const ext = (t.rel || t.name).split('.').pop().toLowerCase(), hi = () => { b.querySelector('pre')?.remove(); b.querySelector('.ew').insertAdjacentHTML('afterbegin', codeHtml(t.text, ext).replace(/^<div[^>]*>|<\/div>$/g, '')); evMarks(t, 0); }; /* --lw on .code (CSS) ∴ textarea pads past the gutter */
   b.innerHTML = '<div class="code ecode' + (UI.ew ? ' wrap' : '') + (hlOn() ? '' : ' plain') + '"><div class="ew"><textarea spellcheck="false" autocomplete="off"></textarea></div></div>'; b._t = t;
   const a = b.querySelector('textarea'); a.value = t.text; hi();
   let raf = 0; // ponytail: whole-file re-highlight per frame; fine ≤ ~5k lines, incremental per line if big files lag
@@ -3981,8 +3981,8 @@ const fmtOn = f => { const k = fmtKind(f); return !!k && localStorage[k + 'Raw']
 const fmtFlip = f => { try { localStorage[fmtKind(f) + 'Raw'] = fmtOn(f) ? '1' : '0'; } catch {} };
 const docHtml = (text, file, wrap) => { if (fmtOn(file)) { if (isMd(file)) return `<div class="mdoc" style="padding:2px 4px">${mdDoc(text)}</div>`; try { text = JSON.stringify(JSON.parse(text), null, 2); } catch {} }
   return codeHtml(text, file.split('.').pop().toLowerCase(), wrap); };
-// #392 --lw = digits + 20px pad/margin + 1px border + 16px lint icon room, always ∴ gutter never jumps when lint toggles
-const codeHtml = (text, ext, wrap) => { const h = hiCode(text, ext); return `<div class="code${wrap ? ' wrap' : ''}${hlOn() ? '' : ' plain'}"><pre class="sel" style="--lw:calc(${String(h.length).length}ch + 37px)">${h.map(l => `<div><span>${l}</span></div>`).join('')}</pre></div>`; };
+// #410 --lw = fixed CSS on .code: 4ch digits (≤9999 lines) + 14px pad/margin + 1px border + 15px lint icon ∴ gutter never jumps (lint, formatted toggle, file length)
+const codeHtml = (text, ext, wrap) => { const h = hiCode(text, ext); return `<div class="code${wrap ? ' wrap' : ''}${hlOn() ? '' : ' plain'}"><pre class="sel">${h.map(l => `<div><span>${l}</span></div>`).join('')}</pre></div>`; };
 // #248 recent files: newest first from this project's chat log (tool file_path) then git heat; ≤ 8, inside the project only
 function recentFiles() {
   const out = [], add = f => { if (!f) return; const r = relOf(cur, f); if (r && !/^[a-z]:|^\//i.test(r) && !out.includes(r)) out.push(r); };
