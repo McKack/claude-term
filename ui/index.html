@@ -44,11 +44,12 @@ svg.i { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.
 .btn.ghost { background:none; border-color:transparent; } .btn.ghost:hover { background:var(--hover); }
 .ib { display:inline-grid; place-items:center; width:30px; height:30px; border-radius:8px; border:0; background:none; color:var(--dim); cursor:pointer; transition:background .12s, color .12s; }
 .ib:hover { background:var(--hover); color:var(--text); } .ib.on { color:var(--accent); background:var(--soft); } .ib:disabled, .menu button:disabled { opacity:.35; cursor:default; pointer-events:none; }
-input, select, textarea { background:var(--card); border:1px solid var(--line2); border-radius:10px; padding:6px 10px; outline:none; }
+input, select, textarea, .selbtn { background:var(--card); border:1px solid var(--line2); border-radius:10px; padding:6px 10px; outline:none; }
 textarea { resize:none; field-sizing:content; min-height:4.5em; max-height:60vh; } /* #234 auto-grow ≠ ugly native corner */ @supports not (field-sizing:content) { textarea { resize:vertical; } } /* WKWebView w/o field-sizing → keep a handle */
 /* own chevron: the native one hugs the edge; this one sits 10px in, same as the text on the left */
-select { appearance:none; -webkit-appearance:none; padding-right:32px; cursor:pointer; background-repeat:no-repeat; background-position:right 11px center; background-size:12px;
+select, .selbtn { appearance:none; -webkit-appearance:none; padding-right:32px; cursor:pointer; background-repeat:no-repeat; background-position:right 11px center; background-size:12px;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%238e8e96' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+/* #415 .selbtn = menu button that looks like a select (font/colour/chevron/size) */ .selbtn { font:inherit; font-size:13px; font-weight:400; letter-spacing:normal; text-transform:none; color:var(--dim); white-space:nowrap; }
 input:focus, select:focus, textarea:focus { border-color:var(--accent); }
 input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .dim { color:var(--dim); } .faint { color:var(--faint); } .err { color:var(--err); } .ok { color:var(--ok); } small { font-size:12px; }
@@ -3553,7 +3554,7 @@ async function buildHtml(p, has, live, force) {
 const aft = a => { a = a === 'smart' ? 'smart_run' : a || ''; return {b: a.startsWith('smart') ? 'smart' : a ? 'build' : '', t: ['run', 'deploy'].filter(x => a.includes(x)).join('_')}; };
 const THEN = {run: 'Run', run_deploy: 'Run + Deploy', deploy: 'Deploy'};
 const thenLbl = a => { const {b, t} = aft(a); return b ? (b === 'smart' ? 'Smart build' : 'Build') + (t ? ' + ' + THEN[t] : '') : 'Nothing'; };
-const thenBtn = (p, w) => `<button class="btn sm" style="white-space:nowrap" onclick="thenMenu(this, '${w}')">${esc(thenLbl(p.build.after))}${icon('down')}</button>`;
+const thenBtn = (p, w) => `<button class="selbtn" onclick="thenMenu(this, '${w}')">${esc(thenLbl(p.build.after))}</button>`;
 function thenMenu(el, w) { // w: 'm' = Settings project (mp), else the open project; click the picked one again = off
   const p = w === 'm' ? P(mp) : P(), {b, t} = aft(p.build.after);
   const put = (b, t) => { const v = !b ? '' : b === 'smart' && !t ? 'smart_build' : b + (t ? '_' + t : '');
