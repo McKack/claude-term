@@ -1530,25 +1530,32 @@ function turnHead() {
 }
 // tooltips: native ones look bad and sit under dialogs; [title] moves to data-tip, shown in the top layer (popover) after a hover pause
 const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
-let tipEl = null, tipT;
+let tipEl = null, tipT, tipX = 0, tipY = 0, tipOver = null;
 const hideTip = () => { clearTimeout(tipT); tipEl = null; if (tip.matches(':popover-open')) tip.hidePopover(); };
-document.addEventListener('mouseover', e => {
-  // #248 every ancestor's title → data-tip ∵ an outer [title] left behind showed the OS tooltip too (after a long hover)
-  for (let a = e.target; a?.removeAttribute; a = a.parentElement) if (a.hasAttribute('title')) { a.dataset.tip ||= a.title; a.removeAttribute('title'); }
-  const el = e.target.closest?.('[data-tip]');
-  if (el === tipEl) return;
-  hideTip();
-  if (!el) return;
-  if (!el.dataset.tip) return;
-  tipEl = el; const mx = e.clientX, my = e.clientY;
+const tipFor = el => { hideTip(); if (!el?.dataset.tip) return;
+  tipEl = el;
   tipT = setTimeout(() => {
     if (!el.isConnected) return;
+    const mx = tipX, my = tipY;
     tip.textContent = el.dataset.tip; tip.showPopover(); // shown last = above an open dialog/menu
     const b = el.getBoundingClientRect(), r = b.height > 160 ? {top: my - 10, bottom: my + 18, left: b.left, width: b.width} : b, w = tip.offsetWidth, h = tip.offsetHeight, x = r.width > 160 ? mx : r.left + r.width / 2; // wide rows: at the pointer
     tip.style.left = Math.max(6, Math.min(x - w / 2, innerWidth - w - 6)) + 'px';
     tip.style.top = (r.top - h - 6 >= 6 ? r.top - h - 6 : r.bottom + 6) + 'px'; // above (the pointer covers below), else below; #347 tall els (grips) = at the pointer, not their far edge
-  }, 450);
+  }, 450); };
+document.addEventListener('mousemove', e => { tipX = e.clientX; tipY = e.clientY; }, {passive: true});
+document.addEventListener('mouseover', e => {
+  // #248 every ancestor's title → data-tip ∵ an outer [title] left behind showed the OS tooltip too (after a long hover)
+  for (let a = e.target; a?.removeAttribute; a = a.parentElement) if (a.hasAttribute('title')) { a.dataset.tip ||= a.title; a.removeAttribute('title'); }
+  tipOver = e.target; tipX = e.clientX; tipY = e.clientY;
+  const el = e.target.closest?.('[data-tip]');
+  if (el === tipEl) return;
+  tipFor(el);
 });
+// #389 title set later (readyMore, lint hover, drawChrome…) = native tip beside ours ∴ convert every title write at once; tip change on the hovered el → re-show
+new MutationObserver(ms => { for (const {target: n, attributeName: k} of ms) {
+  if (k === 'title') { if (n.hasAttribute('title')) { n.dataset.tip = n.title; n.removeAttribute('title'); } continue; }
+  if (n === tipEl || (n.dataset.tip && tipOver?.isConnected && tipOver.closest('[data-tip]') === n)) tipFor(n);
+} }).observe(document.documentElement, {subtree: true, attributes: true, attributeFilter: ['title', 'data-tip']});
 ['mousedown', 'wheel', 'keydown'].forEach(t => document.addEventListener(t, hideTip, true));
 // accounts; each row has two labelled click dropdowns: model (sparkle), effort (brain); picking one also picks that account.
 // model/effort are project-level (kept on account switch) → every row shows the project's current values
@@ -1693,7 +1700,7 @@ function evDraw(re) { if (view !== 'edit' || !cur) return;
   a.oninput = () => { t.text = a.value; $('etabs').querySelector('.et.on')?.classList.toggle('dirty', evDirty(t)); cancelAnimationFrame(raf); raf = requestAnimationFrame(hi); clearTimeout(t.ltm); t.ltm = setTimeout(() => evLint(t), 700); };
   a.onmousemove = e => { let tip = ''; const rows = b.querySelector('pre')?.children; /* pre = pointer-events:none ∴ hover tip via row rects */
     for (const x of UI.nl ? [] : t.lint || []) { const r = rows?.[x.l - 1]?.getBoundingClientRect(); if (r && e.clientY >= r.top && e.clientY < r.bottom) tip += (tip ? '\n' : '') + (x.s === 'e' ? 'Error: ' : 'Warning: ') + x.m; }
-    if (a.title !== tip) a.title = tip; };
+    if ((a.dataset.tip || '') !== tip) a.dataset.tip = tip; };
   evLint(t);
   a.onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); evSave(t); }
     else if (e.key === 'Tab' && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); document.execCommand('insertText', false, '\t'); } }; /* execCommand keeps native undo */
