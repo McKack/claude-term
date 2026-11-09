@@ -162,6 +162,7 @@ pub struct You {
 pub struct Notify {
     pub desktop: bool,
     pub ntfy: String, // ntfy.sh topic for phone pushes; "" = off
+    pub snooze: u64,  // #402 unix secs: no toast popup/desktop/phone before this; ∞ = 9999999999 (JS-safe, ≠ u64::MAX), 0 = off
 }
 
 /// #147 Network Mac: builds macOS over SSH. Auth = ~/.ssh/config + agent/keys only (BatchMode) ∴ no password ever stored.
@@ -462,7 +463,7 @@ pub fn load() -> Config {
             Config::default()
         }),
         Err(_) => {
-            let mut c = Config { notify: Notify { desktop: true, ntfy: String::new() }, ..Default::default() };
+            let mut c = Config { notify: Notify { desktop: true, ntfy: String::new(), snooze: 0 }, ..Default::default() };
             import_claude_term(&mut c);
             c
         }

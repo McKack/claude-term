@@ -777,6 +777,9 @@ pub fn relay_switched(app: &AppHandle, st: &State, pid: &str, from: &str, to: &s
 
 pub fn notify(app: &AppHandle, st: &State, title: &str, body: &str) {
     let n = st.cfg.lock().unwrap().notify.clone();
+    if (store::now() as u64) < n.snooze {
+        return;
+    }
     if n.desktop {
         use tauri_plugin_notification::NotificationExt;
         let _ = app.notification().builder().title(title).body(body).show();

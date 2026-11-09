@@ -1223,9 +1223,13 @@ const TOASTK = {info: ['info', 'var(--accent)'], ok: ['check', 'var(--ok)'], war
 // #284 notification center: every toast → NOTES (newest first, ≤50, localStorage.notes; act fn kept this run only) → bell in #gbar
 let NOTES = []; try { NOTES = JSON.parse(localStorage.notes || '[]'); } catch {}
 let NUNREAD = NOTES.filter(n => !n.seen).length;
+// #402 snooze = S.notify.snooze unix secs (Rust notify() skips desktop/phone too); ∞ = 9999999999
+const snoozed = () => Date.now() / 1000 < (S.notify?.snooze || 0);
+const snooze = s => saveNotify({snooze: s && (s > 1e9 ? s : Math.floor(Date.now() / 1000) + s)});
 const notesSave = () => { try { localStorage.notes = JSON.stringify(NOTES.map(({act, ...n}) => n)); } catch {} };
 function toast(text, kind = 'info', act) { // act = [label, fn] → button; such toasts stay 20s
   NOTES.unshift({text, kind, ts: Date.now(), act}); NOTES.length = Math.min(NOTES.length, 50); NUNREAD++; notesSave(); try { drawGbar(); } catch {} /* toast before S loaded */
+  if (snoozed()) return; /* #402 still logged in the bell list, no popup */
   const [ic, c] = TOASTK[kind] || TOASTK.info, t = Object.assign(document.createElement('div'), {className: 'toast glass', popover: 'manual'});
   t.innerHTML = `<div class="row" style="gap:10px;align-items:flex-start"><span style="color:${c};flex:none;display:inline-flex;padding-top:1px">${icon(ic)}</span><span class="grow">${esc(text)}</span>${act ? `<button class="btn sm primary">${esc(act[0])}</button>` : ''}</div>`;
   document.body.append(t); t.showPopover(); setTimeout(() => t.remove(), act ? 20000 : 8000); t.onclick = () => t.remove();
@@ -1374,7 +1378,9 @@ function gCard(btn, kind) {
     const ga = card.querySelector('#gacts'), iv = setInterval(() => { if (!card.isConnected) return clearInterval(iv); const h = acts(); if (ga._h !== h) ga.innerHTML = ga._h = h; }, 1000); ga._h = acts();
   } else if (kind === 'notes') {
     NUNREAD = 0; NOTES.forEach(n => n.seen = 1); window.NSNAP = NOTES.slice(); /* indices stable while card open */ notesSave(); drawGbar();
-    card.innerHTML = `<div class="row"><h5 class="grow">Notifications</h5>${NOTES.length ? act('Clear all', `NOTES = []; notesSave(); drawGbar(); ${close}`, 'ghost') : ''}</div>`
+    card.innerHTML = `<div class="row"><h5 class="grow">Notifications${snoozed() ? ` <span class="dim" style="font-weight:400">· snoozed${S.notify.snooze < 9e9 ? ' until ' + new Date(S.notify.snooze * 1000).toLocaleString([], {weekday: 'short', hour: '2-digit', minute: '2-digit'}) : ''}</span>` : ''}</h5>`
+      + (snoozed() ? act('Unsnooze', `snooze(0); ${close}`, 'ghost') : act('Snooze 24h', `snooze(86400); ${close}`, 'ghost') + act('Snooze ∞', `snooze(9999999999); ${close}`, 'ghost'))
+      + `${NOTES.length ? act('Clear all', `NOTES = []; notesSave(); drawGbar(); ${close}`, 'ghost') : ''}</div>`
       + (NOTES.map((n, i) => { const [ic, c] = TOASTK[n.kind] || TOASTK.info;
         return `<div class="row" style="gap:8px;align-items:flex-start;font-size:12px"><span style="color:${c};flex:none;display:inline-flex">${icon(ic)}</span><span class="grow sel">${esc(n.text)}</span><span class="dim" style="white-space:nowrap">${gago(n.ts)}</span></div>`
           + (n.act ? `<div class="gact">${act(esc(n.act[0]), `NSNAP[${i}].act[1](); ${close}`, 'primary')}</div>` : ''); }).join('') || '<p class="dim">No notifications yet: toasts (builds, limits, errors…) land here.</p>');
