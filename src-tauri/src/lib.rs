@@ -351,12 +351,14 @@ fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
     // #220: open question = runner paused in every mode (auto_answer holds them by design) ∵ next task went on unanswered
     if !p.questions.is_empty() && p.cont != "auto_answer" {
         claude::line(&app, &pid, "note", "Paused: a question needs you. Answering it carries on.");
+        emit(&app, "status", json!({"pid": pid, "busy": false})); // #302 ends the UI's "Reading handover…" pill (no turn starts)
         emit(&app, "questions", json!({"pid": pid, "questions": p.questions}));
         return;
     }
     // #87: no open task + no user text → no fresh turn (was: old PLAN.md "continue" → AI found nothing, stopped)
     let Some(msg) = claude::cont_text(&p).or_else(|| (!p.answers.is_empty()).then(|| claude::CONTINUE_BARE.into())) else {
         claude::line(&app, &pid, "note", "No open tasks: nothing to continue. Send a new request to start again.");
+        emit(&app, "status", json!({"pid": pid, "busy": false})); // #302 same
         return;
     };
     if live.continuing.swap(true, SeqCst) { return; } // double click / Continue racing an answer: one fresh session, not two
