@@ -2979,10 +2979,11 @@ const useGuess = () => call('update_project', {pid: cur, changes: {build: {...P(
 const STAGES = {alpha: 'Alpha', beta: 'Beta', rc: 'Release candidate', published: 'Published'}, SK = Object.keys(STAGES);
 const RELC = {}, RELTO = {}, RELBUSY = {}; // pid → {c, t} check cache · pid → target stage while moving up
 const RELAI = { // fix prompts: Claude writes/judges, never template
-  // #350 one row = README (exists, ≥10 lines, touched since the last tag) + CREDITS.md; LICENSE has its own row
-  get readme() { const c = RELC[cur]?.c || {}; return [
+  // #357 one row = README (≥10 lines, touched since the last tag) + LICENSE (picked, present, id matches) + CREDITS.md
+  get readme() { const c = RELC[cur]?.c || {}, l = P().license; return [
     c.readme < 10 ? 'Write README.md by hand-feel: plain voice of this project, what it does and for whom, how to install and run it. No template headings, badge walls or emoji; short beats complete. Read the code first.'
       : c.readme_old ? `README.md wasn't touched since ${c.tag}: bring it up to date with what changed since (git log ${c.tag}..HEAD), keep its voice, change only what's out of date.` : '',
+    l && !licOk(c, l) ? RELAI.license : '',
     c.credits ? '' : 'Write CREDITS.md: who made it (git authors / repo owner) and the third-party libraries, fonts, icons and assets it ships, each with its licence (read the dependency manifests and asset folders). Plain list, no filler.',
   ].filter(Boolean).join(' '); },
   version: 'Give the project a version (0.1.0) in its main config (package.json / Cargo.toml / tauri.conf.json), consistent across files.',
@@ -2997,6 +2998,7 @@ const RELAI = { // fix prompts: Claude writes/judges, never template
   get site_legal() { return sitePrompt(); },
   store: 'Store/compliance check for publishing: privacy policy, data collection disclosure, licences of bundled deps, store listing text/screenshots, age rating. List what\'s missing, plan only.',
 };
+const licOk = (c, l) => !!l && c.license && (!c.lic_id || c.lic_id === l);
 function relItems(c, p) {
   const v = (c.version || '').replace(/^v/, ''), tv = (c.tag || '').replace(/^v/, ''), ci = c.ci;
   // #129: CI off → local build signs from .env (c.sign = APPLE_*/AZURE_* keys there, passed to build steps)
@@ -3004,16 +3006,16 @@ function relItems(c, p) {
   const stale = files.filter(f => f.mtime && f.mtime < (c.code_t || 0)); // #92: built before the newest code commit → rebuild before release
   // array order = display order (filter keeps it) → Build stays last whatever the stage
   return [
-    {s: 0, id: 'readme', t: 'Markdown files written', ok: c.readme >= 10 && !c.readme_old && c.credits,
-      d: [c.readme < 10 ? (c.readme ? `README ${c.readme} lines` : 'no README') : c.readme_old ? `README not updated since ${c.tag}` : 'README', c.credits ? 'CREDITS' : 'no CREDITS.md'].join(' · ')},
+    {s: 0, id: 'readme', t: 'Markdown files written', ok: c.readme >= 10 && !c.readme_old && c.credits && licOk(c, p.license),
+      h: [c.readme < 10 ? (c.readme ? `README.md: only ${c.readme} lines` : 'README.md: missing') : c.readme_old ? `README.md: not updated since ${c.tag}` : 'README.md',
+        // #264 licence picked in Settings › Projects (p-lic); not picked → Choose / Confirm (file exists) → licPick; picked but file missing/other → Fix prompt
+        'LICENSE' + (p.license ? `: ${LICS[p.license] || p.license}` + (!c.license ? ', no file yet' : c.lic_id && c.lic_id !== p.license ? `, file says ${c.lic_id}` : '') : c.license ? `: not picked, file looks like ${c.lic_id || 'an unknown license'}` : ': not picked'),
+        c.credits ? 'CREDITS.md' : 'CREDITS.md: missing'].map(t => `<span style="display:block">${esc(t)}</span>`).join(''),
+      ...(p.license ? {} : {go: 'licPick()', gl: c.license ? 'Confirm license' : 'Choose license'})},
     {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` + (tv ? ` · last released ${c.tag}` : ' · first release') : 'not found'},
     // #121: semver ≤ last tag → auto-bumped in relWizard; row stays only when that can't happen (non-semver) → AI fix
     ...(tv && !(v && vcmp(v, tv) > 0) ? [{s: 0, id: 'bump', t: 'Version newer than the last release', ok: false, d: `last released ${c.tag}`}] : []),
     {s: 0, id: 'clean', t: 'All changes saved to Git', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
-    // #264 picked in Settings › Projects (p-lic); never picked → Choose / Confirm (a file exists) → licPick; picked but file missing/other → AI writes it
-    {s: 0, id: 'license', t: 'License', ok: !!p.license && c.license && (!c.lic_id || c.lic_id === p.license),
-      d: p.license ? LICS[p.license] + (!c.license ? ' · no LICENSE file yet' : c.lic_id && c.lic_id !== p.license ? ` · file says ${c.lic_id}` : '') : c.license ? `not picked · file looks like ${c.lic_id || 'an unknown license'}` : 'not picked',
-      ...(p.license ? {} : {go: 'licPick()', gl: c.license ? 'Confirm' : 'Choose'})},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
     ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'Online build passed', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no online builds yet',
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.bill || ci?.url}] : []),
