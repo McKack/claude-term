@@ -130,7 +130,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .seg { display:inline-flex; background:var(--side); border:1px solid var(--line); border-radius:9px; padding:2px; }
 .seg button { border:0; background:none; padding:3px 10px; border-radius:7px; cursor:pointer; color:var(--dim); display:inline-flex; gap:5px; align-items:center; font-size:13px; }
 .seg button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow); }
-.vsw button { padding:4px 7px; } /* #330 header view switcher icon-only */
+.vsw.c2 button:not(:first-child), .vsw.c1 button { padding:4px 7px; } .vsw.c2 button:not(:first-child) .vl, .vsw.c1 .vl { display:none; } /* #331 labels collapse when #head is tight: c2 = all but Chat, c1 = all (vswFit) */
 #log { flex:1; overflow:auto; padding:8px 24px 24px; margin-top:-54px; padding-top:62px; mask-image:linear-gradient(to bottom, transparent 36px, #000 52px); } /* under #head: 16px fade, lower part of the header */
 .col { max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
 .msg { max-width:100%; }
@@ -772,7 +772,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="head" hidden>
     <button class="ib" title="Sidebar: projects and files" onclick="toggleLeft()"><svg class="i"><use href="#i-panelL"/></svg></button>
     <span class="title" id="pname"></span><span id="branch" hidden title="Branches: switch, new, push" onclick="branchMenu(this)"></span><span class="grow"></span>
-    <span class="seg vsw"><button data-v="chat" onclick="setView('chat')" title="Chat" aria-label="Chat"><svg class="i"><use href="#i-chat"/></svg></button><button data-v="term" onclick="setView('term')" title="Terminal" aria-label="Terminal"><svg class="i"><use href="#i-term"/></svg></button><button data-v="edit" onclick="setView('edit')" title="Edit: file tabs + Terminal/Shell panel" aria-label="Edit"><svg class="i"><use href="#i-pen"/></svg></button></span>
+    <span class="seg vsw"><button data-v="chat" onclick="setView('chat')" title="Chat" aria-label="Chat"><svg class="i"><use href="#i-chat"/></svg><span class="vl">Chat</span></button><button data-v="term" onclick="setView('term')" title="Terminal" aria-label="Terminal"><svg class="i"><use href="#i-term"/></svg><span class="vl">Terminal</span></button><button data-v="edit" onclick="setView('edit')" title="Edit: file tabs + Terminal/Shell panel" aria-label="Edit"><svg class="i"><use href="#i-pen"/></svg><span class="vl">Edit</span></button></span>
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
   <div id="edv"><div id="etabs"></div><div id="ebody"></div></div>
@@ -1620,6 +1620,9 @@ async function shellShow() { const pid = cur;
 async function shellStart(pid) { const s = SH[pid]; s.dead = false;
   try { await call('shell_open', {pid, cols: s.term.cols, rows: s.term.rows}); } catch (e) { s.dead = true; s.term.write('\r\n\x1b[31m' + e + '\x1b[0m\r\n'); } }
 // #317 DH = last visible dock height (hidden in Shell → keep the old one) → --dh pads #shellbox to Terminal's log+dock size
+// #331 vswFit: full labels → c2 (only Chat labelled) → c1 (icons); tight = title truncated or head overflows
+function vswFit() { const h = $('head'), v = h.querySelector('.vsw'), t = $('pname'), tight = () => t.scrollWidth > t.clientWidth || h.scrollWidth > h.clientWidth; v.classList.remove('c1', 'c2'); if (tight()) v.classList.add('c2'); if (tight()) v.classList.replace('c2', 'c1'); }
+{ const ro = new ResizeObserver(() => vswFit()); ro.observe($('head')); new MutationObserver(vswFit).observe($('pname'), { childList: true, characterData: true, subtree: true }); }
 let DH = 0; new ResizeObserver(() => { const h = $('dock').offsetHeight; if (h) { DH = h; $('main').style.setProperty('--dh', h + 'px'); } }).observe($('dock'));
 new ResizeObserver(() => { const s = SH[cur]; if (s?.term.element && $('shellbox').offsetHeight) s.fit.fit(); }).observe($('shellbox'));
 // panel grip: drag = height (snaps shut under 60px, like the side rails), double-click = collapse
