@@ -1415,6 +1415,16 @@ fn toml_version(t: &str) -> Option<String> {
     t.lines().find_map(|l| l.trim().strip_prefix("version")?.trim_start().strip_prefix('=')?.trim().strip_prefix('"')?.split('"').next().map(String::from))
 }
 
+/// #360 checklist Fix/Run = headless `claude -p` in the project (no chat turn) → its final text. Edits auto-accepted;
+/// shell limited to git/gh/npm/cargo (CI prompts push). ponytail: no live progress, UI spins till it returns.
+#[tauri::command(async)]
+fn rel_fix(st: St, pid: String, prompt: String) -> R<String> {
+    let p = st.project(&pid).ok_or("project removed")?;
+    let env: Vec<(String, String)> = store::gh_env(&p.gh).into_iter().chain(store::gcloud_env(&p.gaccount, &p.gcp)).collect();
+    claude_p(&st, &p, &["--permission-mode", "acceptEdits", "--allowedTools", "Read,Write,Edit,Glob,Grep,Bash(git:*),Bash(gh:*),Bash(npm:*),Bash(npx:*),Bash(cargo:*)"],
+        std::path::Path::new(&p.path), env, &prompt)
+}
+
 /// Release wizard facts, plain checks, no AI: files present, version vs last tag, git clean, last CI run, Mac secrets.
 #[tauri::command]
 async fn release_check(st: St<'_>, pid: String) -> R<Value> {
@@ -1821,13 +1831,18 @@ fn report_get(pid: String, id: u64) -> R<Value> {
 
 /// One-shot `claude -p` on Sonnet with the project's AI account → trimmed stdout. cwd = a dir with no CLAUDE.md/hooks ∴ cheap; no tools.
 fn sonnet(st: &State, p: &store::Project, effort: &str, cwd: &std::path::Path, prompt: &str) -> R<String> {
+    claude_p(st, p, &["--model", "sonnet", "--effort", effort], cwd, vec![], prompt)
+}
+
+/// `claude -p` (text out, prompt on stdin) with the project's AI account + `args`/`env` extra.
+fn claude_p(st: &State, p: &store::Project, args: &[&str], cwd: &std::path::Path, env: Vec<(String, String)>, prompt: &str) -> R<String> {
     use std::io::Write;
     let claude = store::which("claude").ok_or("Claude Code isn't installed")?;
     let base = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).map(|a| a.base_url.clone()).unwrap_or_default();
     let mut c = store::command(&claude);
     for k in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"] { c.env_remove(k); }
-    for (k, _) in std::env::vars() { if k.starts_with("CLAUDE") { c.env_remove(k); } } // inherited session vars (Clauracle started from a CLI)
-    c.args(["-p", "--model", "sonnet", "--effort", effort, "--output-format", "text"]).envs(store::account_env(&p.account, &base))
+    for (k, _) in std::env::vars() { if k.starts_with("CLAUDE") || k == "NO_COLOR" { c.env_remove(k); } } // inherited session vars (Clauracle started from a CLI)
+    c.arg("-p").args(args).args(["--output-format", "text"]).envs(store::account_env(&p.account, &base)).envs(env)
         .current_dir(cwd).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     let mut ch = c.spawn().map_err(|e| e.to_string())?;
     track(ch.id());
@@ -2205,7 +2220,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(tauri::generate_handler![rel_fix, 
             fullscreen, state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
             continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,

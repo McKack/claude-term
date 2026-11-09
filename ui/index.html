@@ -2612,7 +2612,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
   status: () => { if ('busy' in d) { if (d.busy) readAll(d.pid); if (busy[d.pid] && !d.busy) lastBusy[d.pid] = Date.now(); if (d.busy && !busy[d.pid]) { setDoing(d.pid, 'Thinking'); TURN0[d.pid] = Date.now(); if (lastBusy[d.pid]) delete WORK[d.pid]; /* #226 new turn (seen idle this run): recompute, never carry an old turn's #N */ } const flip = !busy[d.pid] !== !d.busy; busy[d.pid] = d.busy; workOf(d.pid); if (!cur) drawHome(); else if (flip && d.pid === cur) { drawAtp(); tabDots(); if (!$('ready').hidden) drawChrome(); /* Continue ↔ Queue label */ } /* Plan row 0 Working look on/off */ }
-    if (d.busy === false) { if (RELFIX[d.pid]) { delete RELFIX[d.pid]; if (RELC[d.pid]) RELC[d.pid].t = 0; if (d.pid === cur && tab === 'build') drawRight(); } repDone(d.pid); if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; delete PEND[d.pid]; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
+    if (d.busy === false) { repDone(d.pid); if (reading[d.pid] && !d.connected) readNote(d.pid, false); /* connected = new session up, Continue msg not sent yet → keep the pill */ live[d.pid] = ''; delete PEND[d.pid]; const tri = triaging[d.pid] || contQ[d.pid], cq = contQ[d.pid]; delete triaging[d.pid]; delete contQ[d.pid];
       Promise.all([refresh(), d.pid === cur && pollTeam()]).then(() => { /* pollTeam: issue mode's Queue may have changed */ if (d.pid === cur) drawChrome(); if (tri && !queue[d.pid]?.length) { const r = cq && P(d.pid).ready, t = nextUp(d.pid)[0]; contGo(d.pid); if (r) contNote(d.pid, t); } else { if (cq) contQ[d.pid] = true; /* Continue clicked + msgs queued: msgs first, Continue after (was dropped) */ flushQueue(d.pid); } }); } /* after refresh: ready/idle bar + new Next known; sent during triage → triaged again first */ // refresh: HANDOVER/CHANGES may have changed (Tasks tab)
     if ('context' in d) { ctx[d.pid] = d.context; const t = tk(d.pid); if (d.tokens != null) t.now = d.tokens; t.saved += t.drop; saveCtx(); }
     if ('busy' in d) hand[d.pid] = d.busy && !!d.handover;
@@ -2977,7 +2977,7 @@ const useGuess = () => call('update_project', {pid: cur, changes: {build: {...P(
    target stage (stricter going up). Facts from release_check (plain code, cached 60s/project); Claude only writes/judges
    via a Fix prompt. Same stage = light update (tag + publish in GitHub tab); Move up = target's full list first. */
 const STAGES = {alpha: 'Alpha', beta: 'Beta', rc: 'Release candidate', published: 'Published'}, SK = Object.keys(STAGES);
-const RELC = {}, RELTO = {}, RELBUSY = {}, RELFIX = {}; // RELFIX pid → Set of row ids whose Fix/Run turn is out (#359: spin till turn end → recheck) // pid → {c, t} check cache · pid → target stage while moving up
+const RELC = {}, RELTO = {}, RELBUSY = {}, RELFIX = {}; // RELFIX pid → Set of row ids whose background Fix/Run (#360 rel_fix) is out // pid → {c, t} check cache · pid → target stage while moving up
 const RELAI = { // fix prompts: Claude writes/judges, never template
   // #357 one row = README (≥10 lines, touched since the last tag) + LICENSE (picked, present, id matches) + CREDITS.md
   get readme() { const c = RELC[cur]?.c || {}, l = P().license; return [
@@ -3079,7 +3079,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
     if (macOn(p, pid) && c.remote && !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
   }
   const c = RELC[pid].c, re = `<button class="ib" title="Check again" onclick="relRefresh()">${icon('loop')}</button>`;
-  const ask = `<button class="btn${k < 0 ? ' primary' : ''}" onclick="relAsk('summary')">${icon('sparkle')}What's missing for ${relNext(p)}?</button>`;
+  const ask = `<button class="btn${k < 0 ? ' primary' : ''}" ${RELFIX[pid]?.has('summary') ? 'disabled><i class="spin"></i>' : `onclick="relAsk('summary')">${icon('sparkle')}`}What's missing for ${relNext(p)}?</button>`;
   if (c.err) return stHead('Release', re) + (`<p class="err">${esc(c.err)}</p>`);
   if (k < 0 && RELTO[pid] == null) return stHead('Release', re) + (`<p class="dim" style="margin:0 0 8px">Walk this project to a release: alpha → beta → release candidate → published. Each stage has its own checklist, stricter going up.</p>
     <div class="btnrow col">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`);
@@ -3114,12 +3114,20 @@ const ciPoll = (pid, ms) => { if (CIPOLL[pid]) return; CIPOLL[pid] = setTimeout(
 // #211 next stage after the current one: 'Beta' at Alpha…; none yet → first release; published → next release
 const relNext = p => { const k = p.stage ? SK.indexOf(p.stage) : -1; return k < 0 ? 'a first release' : k + 1 < SK.length ? STAGES[SK[k + 1]] : 'the next release'; };
 const relRefresh = () => { TABREF.build(); drawRight(); };
+// #360 one-click AI fixes = headless claude -p (lib rel_fix), never a chat prompt; reply → log note + Claude row, toast
+async function bgAI(pid, label, text) {
+  try { const r = await call('rel_fix', {pid, prompt: text}); addEntry(pid, {kind: 'note', text: `${label}: done in the background`, ts: Date.now()}); addEntry(pid, {kind: 'claude', text: r, ts: Date.now()}); toast(`${label}: done`, 'ok'); }
+  catch (e) { toast(`${label}: ${e}`, 'err'); }
+}
 async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
   const text = id === 'summary' ? `Release prep: in a few lines, what this project is and does, then what's missing for ${relNext(P())} (that stage's checklist; open checks: ${open || 'none'}). Plan only, don't change files.` : RELAI[id];
-  if (!await sure(`Ask Clauracle?\n\n${text}\n${estTok()}`)) return;
-  if (id !== 'summary') { (RELFIX[cur] ||= new Set()).add(id); drawRight(); } // ponytail: cleared on the next turn end, even when the ask waits queued behind a running turn
-  sendNow(cur, {text, atts: []});
+  if (!await sure(`Run in the background?\n\n${text}\n${estTok()}`, 'Run')) return;
+  // #360 headless claude -p (lib rel_fix), no chat turn: row spins till it returns → its reply lands in the log, checklist rechecks
+  const pid = cur, row = relItems(c, P()).find(x => x.id === id)?.t || `What's missing for ${relNext(P())}`;
+  (RELFIX[pid] ||= new Set()).add(id); drawRight();
+  await bgAI(pid, row, text);
+  RELFIX[pid].delete(id); if (RELC[pid]) RELC[pid].t = 0; if (pid === cur && tab === 'build') drawRight();
 }
 async function relRelease(to, btn, sv) { // sv = staged version (#266): its copies + commit
   const sg = sv && RELC[cur]?.c?.staged?.find(x => x.v === sv), v = sg ? sv : (RELC[cur]?.c?.version || '').replace(/^v/, ''), files = sg ? sg.files.map(f => ({path: f, name: f.split(/[\\/]/).pop()})) : relFilesFor(cur, v), st = STAGES[SK[to]];
@@ -3828,7 +3836,7 @@ async function drawWeb() {
     // only reachable from the phone if the dev server listens on all interfaces → offer Claude the fix
     const pu = new URL(purl), off = local && !await call('reach', {host: pu.hostname, port: +pu.port || 80}).catch(() => true);
     const fix = off ? `<div class="row" style="margin-bottom:8px"><small class="dim grow">Not reachable from the phone: the dev server only listens on localhost.</small>
-      <button class="btn" onclick="putPrompt('Make the dev server listen on all interfaces (0.0.0.0, e.g. vite --host) so a phone on the same Wi-Fi can open ${esc(purl)}')">Fix with Clauracle</button></div>` : '';
+      <button class="btn" onclick="this.disabled=true; this.innerHTML='&lt;i class=&quot;spin&quot;&gt;&lt;/i&gt;Fixing…'; bgAI(cur, 'Phone access', 'Make the dev server listen on all interfaces (0.0.0.0, e.g. vite --host) so a phone on the same Wi-Fi can open ${esc(purl)}').then(() => drawRight())">Fix</button></div>` : '';
     // QR: 2 screen px per module; click → fills the panel width for scanning, click again → back
     phone = `<div class="qrbox"><div class="qr" title="Click to enlarge for scanning" onclick="this.classList.toggle('big')">${QRS.get(purl)}</div><div class="grow" style="min-width:0"><small class="dim">Scan on your phone${local ? ' (same Wi-Fi)' : ''}</small>
       <a class="mono" data-url="${esc(purl)}" style="display:block;overflow-wrap:anywhere;color:var(--accent);cursor:pointer">${esc(purl)}</a></div></div>${fix}`;
