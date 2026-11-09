@@ -458,7 +458,7 @@ pre.diff .ctx { color:var(--faint); }
 .bsep { border:0; border-top:1px solid var(--line); margin:4px 0; } /* #237 desktop ─ mobile builds */
 .nextstep { margin-top:14px; padding:14px; border-radius:14px; background:var(--soft); text-align:center; } .nextstep p { margin:0 0 10px; font-size:13px; color:var(--dim); } /* #232 same as the GitHub tab one (inside .stepper) */
 .newpill { position:sticky; bottom:8px; display:flex; align-items:center; gap:4px; margin:10px auto 0; border:0; border-radius:99px; padding:6px 12px 6px 8px; background:var(--accent); color:#fff; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:var(--shadow); } .newpill[hidden] { display:none; }
-.ghsteps { margin-top:10px; } .ghsteps .sn { cursor:default; } .ghsteps .sn:hover { outline:0; } .qbox { max-height:320px; overflow-y:auto; margin:4px 0 8px; } .runm { grid-template-columns:repeat(2, 1fr); }
+.ghsteps { margin-top:10px; } .ghsteps .sn { cursor:default; } .ghsteps .sn:hover { outline:0; } .qbox { max-height:320px; overflow-y:auto; margin:4px 0 8px; }
 .stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
 .stepper b { color:var(--text); font-weight:600; } .stepper .btnrow { margin-top:8px; align-items:center; } .stepper .keys { margin-top:8px; }
 /* stepper buttons never squeeze: nowrap + wrap row; a button alone on its line grows full width; non-buttons go below */
@@ -3536,7 +3536,7 @@ function runStep(p, n) {
     : !n ? 'Nothing queued' : p.cont === 'off' ? 'Tasks run only when you ask' : `Next: #${n}`;
   const act = q && !busy[cur] ? `<button class="btn sm" onclick="hiddenQs[cur] = false; qsOpen[cur] = true; drawLog()">Answer</button>`
     : '';
-  return `<div class="btnrow runm">${Object.entries(MODES).map(([k, [l, h]]) => `<button class="btn sm${p.cont === k ? ' primary' : ''}" title="${esc(h)}" onclick="setP({cont: '${k}'})">${l}</button>`).join('')}</div>
+  return `<select title="${esc(MODES[p.cont]?.[1] || '')}" onchange="setP({cont: this.value})">${Object.entries(MODES).map(([k, [l, h]]) => `<option value="${k}" title="${esc(h)}"${p.cont === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
     <div class="row" style="gap:8px;margin-top:8px;align-items:center"><span class="grow faint" style="font-size:12.5px">${why}</span>${act}</div>`;
 }
 const issuesRest = (then = '') => { const x = issueParts();
