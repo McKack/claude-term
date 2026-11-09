@@ -327,6 +327,24 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock .tb > :is(.ib, #send)::before { content:"["; } #log.term + #dock .tb > :is(.ib, #send)::after { content:"]"; }
 #log.term + #dock .tb > :is(.ib.on, #send) { color:var(--accent); } #log.term + #dock .tb > :is(.ib, #send):hover { color:#fff; } #log.term + #dock .tb .i { width:14px; height:14px; }
 #log.term + #dock #jump { font:12.5px ui-monospace,Consolas,monospace; border-radius:0; }
+/* #312 text-mode only: tool calls/output clamp to 2 lines + "…" (click = .open toggles, like the CLI); jump pill = [↓ text]; image refs = accent [tag]s */
+#log.term :is(.msg.out, .msg.tool):not(.open) { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; max-height:none; cursor:pointer; }
+#log.term .msg.out.open { max-height:none; } #log.term .msg.tool.open, #log.term .msg.out.open { cursor:pointer; }
+#log.term .itag { color:var(--accent); cursor:pointer; } #log.term .itag:hover { text-decoration:underline; }
+#log.term + #dock #jump { border:0; background:var(--term); box-shadow:none; padding:0 1ch; height:auto; color:var(--accent); animation:none; gap:1ch; } #log.term + #dock #jump svg { display:none; }
+#log.term + #dock #jump::before { content:"[↓"; } #log.term + #dock #jump::after { content:"]"; } #log.term + #dock #jump:hover { color:#fff; }
+/* #312 Continue ribbon = static text bar above the composer (no tuck/peek), ^ (#readyx) expands the full task */
+#readyx { display:none; } #log.term + #dock #ready { margin:0 0 2px; padding:0 0 0 2ch; border:0; border-top:1px solid #3a3733; border-radius:0; background:none; opacity:1; -webkit-mask-image:none; mask-image:none; transition:none; animation:none; align-items:flex-start; gap:1ch; }
+#log.term + #dock #ready > * { pointer-events:auto; } #log.term + #dock #ready > svg { width:14px; height:14px; margin-top:4px; } #log.term + #dock #readytext { line-height:1.55; color:#c9a86a; } #log.term + #dock #readytext.full { padding:0; }
+#log.term + #dock #ready :is(#contBtn, #readyx) { display:inline; font:inherit; height:auto; padding:0 .3ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); font-weight:600; cursor:pointer; }
+#log.term + #dock #contBtn::before { content:"["; } #log.term + #dock #contBtn::after { content:"]"; } #log.term + #dock #ready :is(#contBtn, #readyx):hover { color:#fff; }
+#readyx::before { content:"^"; } #ready:has(#readytext.full) #readyx::before { content:"v"; }
+/* #312 composer popovers (menuAt from #dock in term view → .menu.tui) + viewer opened from the term view (.viewer.tui) */
+.menu.tui { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; border-radius:0; background:var(--term); backdrop-filter:none; border:1px solid #3a3733; box-shadow:none; color:#d8d4cb; }
+.menu.tui :is(button, .mact, .mact.lab) { border-radius:0; } .menu.tui button:hover { background:color-mix(in srgb, var(--accent) 22%, transparent); } .menu.tui .mact.lab { border:0; } .menu.tui .mact.lab::before { content:"["; } .menu.tui .mact.lab::after { content:"]"; }
+.menu.tui hr { border-top-style:dashed; border-color:#3a3733; } .menu.tui .mcap { text-transform:none; letter-spacing:0; } .menu.tui svg { width:13px; height:13px; }
+#dlg:has(.viewer.tui) { border-radius:0; } .viewer.tui { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; background:var(--term); color:#d8d4cb; }
+.viewer.tui :is(.vbar, .vtools) { background:var(--term); border-color:#3a3733; } .viewer.tui :is(.btn, .ib, input, select) { border-radius:0 !important; box-shadow:none; }
 
 /* composer */
 /* dock overlays the log's bottom: transparent at its top, fading into the page behind pills + composer */
@@ -745,7 +763,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="dock" hidden><button class="npill" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
     <div id="queue" hidden><div id="qrow"></div><button class="ib qnav l" title="Scroll left" onclick="qscroll(-1)"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="qscroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
     <div id="suggest" hidden></div>
-    <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onmouseenter="readyMore(this)" onclick="if (!event.target.closest('button') &amp;&amp; readyMore(this)) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button></div>
+    <div id="ready" hidden><svg class="i ok"><use href="#i-loop"/></svg><span class="grow" id="readytext" onmouseenter="readyMore(this)" onclick="if (!event.target.closest('button') &amp;&amp; readyMore(this)) this.classList.toggle('full')"></span><button class="btn primary" id="contBtn" onclick="contClick(cur)">Continue</button><button id="readyx" title="Show the whole task" onclick="$('readytext').classList.toggle('full')"></button></div>
     <div id="composer">
       <div id="slash" hidden></div>
       <div id="attw"><button class="aarr" onclick="attScroll(-1)"><svg class="i" style="transform:scaleX(-1)"><use href="#i-chev"/></svg></button><div id="atts" onscroll="attArr()"></div><button class="aarr r" onclick="attScroll(1)"><svg class="i"><use href="#i-chev"/></svg></button></div>
@@ -893,10 +911,10 @@ const say = text => sure(String(text), 'OK', '');
 document.addEventListener('click', e => { const u = e.target.closest('[data-url]')?.dataset.url; if (u) { e.preventDefault(); T.opener.openUrl(u); } });
 
 // ---- popover menus ----
-let MENU_A = null, MENU_T = 0; // #218 anchor of the open menu: clicking it again closes (outside mousedown already did) instead of reopening
+let MENU_A = null, MENU_T = 0, MENU_TUI = false; // #218 anchor of the open menu: clicking it again closes (outside mousedown already did) instead of reopening
 function menuAt(anchor, items) {
   if (anchor === MENU_A && Date.now() - MENU_T < 400) return;
-  closeMenu(); MENU_A = anchor;
+  closeMenu(); MENU_A = anchor; MENU_TUI = !!anchor.closest?.('#dock') && $('log').classList.contains('term'); // #312 composer popovers in term view = text-mode
   buildMenu(items, anchor.getBoundingClientRect(), false);
   setTimeout(() => document.addEventListener('mousedown', outside), 0);
 }
@@ -904,7 +922,7 @@ function menuAt(anchor, items) {
 function buildMenu(items, r, side, level = 0) {
   document.querySelectorAll('.menu').forEach(x => +x.dataset.level >= level && x.remove());
   const m = document.createElement('div');
-  m.className = 'menu glass'; m.dataset.level = level; m.popover = 'manual'; // top layer, opened last → over Settings/dialogs
+  m.className = MENU_TUI ? 'menu tui' : 'menu glass'; m.dataset.level = level; m.popover = 'manual'; // top layer, opened last → over Settings/dialogs
   m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.and ? `<div class="mand">${esc(it.and)}</div>` : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? icon('check') : ''}</span>` : it.icon ? icon(it.icon) : ''}
     <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact${a.label ? ' lab' : ''}" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}${a.label ? `${esc(a.label)}${icon('down')}` : ''}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
   (document.querySelector('dialog:modal') || document.body).appendChild(m); m.showPopover(); // inside a modal: else inert
@@ -1689,10 +1707,16 @@ function entry(e) {
   d.className = 'msg ' + e.kind;
   if (e.kind === 'user' && e.images?.length) { // older entries: url strings; newer: {url, name}
     const imgs = e.images.map((x, k) => typeof x === 'string' ? {url: x, name: `image ${k + 1}`} : x);
+    if (view !== 'chat') { // #312 term: no thumbs; image refs = accent [stem] tags (click → viewer), unreferenced images listed first
+      const st = imgs.map(x => stem(x.name)), used = new Set(), tag = k => `<span class="itag" data-k="${k}">[${esc(st[k])}]</span>`;
+      const body = esc(e.text).replace(/@?\[([^\]\n]+)\]/g, (m, n) => { const k = st.indexOf(n.replace(/&amp;/g, '&')); if (k < 0) return m; used.add(k); return tag(k); });
+      d.innerHTML = imgs.map((x, k) => used.has(k) ? '' : tag(k) + ' ').join('') + body;
+      d.querySelectorAll('.itag').forEach(t => t.onclick = () => openViewer(imgs, +t.dataset.k, null));
+    } else {
     d.innerHTML = `<div class="thumbs">${imgs.map(x => `<img src="${x.url}" title="${esc(x.name)}">`).join('')}</div>`;
     d.querySelectorAll('.thumbs img').forEach((im, k) => im.onclick = () => openViewer(imgs, k, null));
     d.insertAdjacentHTML('beforeend', refPills(bare(e.text), [...imgs.map(x => x.name), ...fnames(e.text)]));
-  }
+  } }
   else if (view !== 'chat') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')'
     // tool output: drop reminder blocks + blank-line runs (else a one-liner renders as a tall empty box)
     : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
@@ -1706,6 +1730,7 @@ function entry(e) {
   if (e.rid) d.dataset.rid = e.rid;
   if (view === 'chat' && e.act === 'pdf') { d.insertAdjacentHTML('beforeend', ` <button class="btn sm">${icon('pdf')}${esc(e.file.split(/[\\/]/).pop())}</button>`); d.lastElementChild.onclick = () => openPdf(e.file); }
   if (view === 'chat' && e.kind === 'note' && NOTEACT[e.act]) d.insertAdjacentHTML('beforeend', ` <button class="btn sm" onclick="${NOTEACT[e.act][1]}">${NOTEACT[e.act][0]}</button>`);
+  if (view !== 'chat' && (e.kind === 'out' || e.kind === 'tool')) d.onclick = () => getSelection().isCollapsed && d.classList.toggle('open'); // #312 2-line clamp ⇄ full (selecting text ≠ toggle)
   if (view !== 'chat' && (e.kind === 'user' || e.kind === 'claude')) return ircRow(e, d);
   if (view !== 'chat' || (e.kind !== 'user' && e.kind !== 'claude')) return d;
   const row = chatRow(e.kind, d, e.ts); if (e.kind === 'user' && e.st) row.querySelector('.cm').insertAdjacentHTML('beforeend', tickHtml(e));
@@ -2051,6 +2076,7 @@ function vWin(head, act, tools, stage, fit, zoom) {
   dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${zoom ? `<span class="vzoom"><button class="ib" title="Zoom out (Ctrl −)" onclick="vZoom(1/1.25)">${icon('minus')}</button><input type="range" min="10" max="800" value="100" oninput="vZoom(this.value / 100 / VZ.s)" data-tip="Zoom: wheel, Ctrl + / −, Ctrl 0 = fit. Middle-drag pans"><button class="ib" title="Zoom in (Ctrl +)" onclick="vZoom(1.25)">${icon('plus')}</button><small class="faint" id="vzp">100%</small></span><span class="grow"></span>` : ''}${act}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="vtools">${tools}</div><div class="vstage">${stage}</div>`, 'viewer');
   const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
+  V.classList.toggle('tui', view !== 'chat'); // #312 opened from the Terminal view → TUI-themed viewer
   if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; } // #298 .viewer max-* (< dialog's UA max = 100% − 2em − 6px) clamps ∴ ✕ + resize corner never clipped, follows window shrink
   // #261 offsetWidth 0 = dlg closing (display:none) → don't keep, else reopens at min size
   new ResizeObserver(() => { if (!V.isConnected || !V.offsetWidth) return; if (V.style.width) { VBOX = [V.offsetWidth, V.offsetHeight]; try { localStorage.vbox = JSON.stringify(VBOX); } catch {} } fit?.(S); vClamp(); }).observe(V);
@@ -2336,7 +2362,7 @@ const triaging = {}; // pid → plan-only turn running; Continue follows it
    4s off it or 8s on it without moving. Tucked = children pointer-events:none (CSS) → a click only reveals.
    --tk from live height ∵ text/wrap changes it; tucking also folds .full (a kept .full once blocked tucking for good) */
 let readyT = 0, readyHold = false; const readyWas = {}; // pid → p.ready at last draw (#63 pop-up edge)
-function readyTuck(r = $('ready')) { clearTimeout(readyT); readyHold = false; if (r.hidden) return r.classList.add('tuck'); /* height 0 → bad --tk */ $('readytext').classList.remove('full'); r.style.setProperty('--tk', `${17 - r.offsetHeight}px`) /* 25px showing: -(h - 25) - 8px gap; h same tucked or not ∴ same depth from any trigger */; r.classList.add('tuck'); }
+function readyTuck(r = $('ready')) { clearTimeout(readyT); readyHold = false; if ($('log').classList.contains('term')) return; /* #312 term = static bar, ^ toggles .full */ if (r.hidden) return r.classList.add('tuck'); /* height 0 → bad --tk */ $('readytext').classList.remove('full'); r.style.setProperty('--tk', `${17 - r.offsetHeight}px`) /* 25px showing: -(h - 25) - 8px gap; h same tucked or not ∴ same depth from any trigger */; r.classList.add('tuck'); }
 const readyLater = ms => { clearTimeout(readyT); readyT = setTimeout(() => !$('ready').hidden && readyTuck(), ms); };
 // #95: anything to expand? (nowrap ellipsis cut it, or already .full) → pointer + title; else click = no-op (no jump)
 function readyMore(t) { const m = t.classList.contains('full') || t.scrollWidth > t.clientWidth + 1; t.classList.toggle('more', m); t.title = m ? (t.classList.contains('full') ? 'Click to collapse' : 'Click to show the whole task') : ''; return m; }
