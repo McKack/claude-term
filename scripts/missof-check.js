@@ -9,4 +9,6 @@ A.equal(missOf("/usr/bin/bash: line 1: jq: command not found").pkg,'jqlang.jq');
 A.equal(missOf("'node' is not recognized as an internal or external command").n,'node');
 A.equal(missOf("The term 'gh.exe' is not recognized as the name").n,'gh');
 A.equal(missOf("foo: command not found"),null);
+A.equal(missOf("if ((m = /Cannot find module '([^'.\\/][^']*)'|Can't resolve '([^'.\\/][^']*)'/.exec(t)))"),null); // #295 grep of own source
+A.equal(missOf("Module not found: Can't resolve 'lodash/fp'").n,'lodash');
 console.log('missOf ok');

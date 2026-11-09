@@ -1059,7 +1059,8 @@ const TOOLPKG = {node: ['OpenJS.NodeJS.LTS', 'node'], npm: ['OpenJS.NodeJS.LTS',
 function missOf(t) {
   let m = /gated behind the `([\w-]+)` feature/.exec(t), c = m && (/(?:for (?:struct|enum|trait|type) |unresolved import )`([a-z_]\w*)::/.exec(t) || /[\/\\]([a-z][\w-]*?)-\d+\.\d+\.\d+[\/\\]src[\/\\]/.exec(t));
   if (m && c) return {k: 'cargo', n: c[1].replace(/_/g, '-'), f: m[1], label: `Enable the ${m[1]} feature of ${c[1]}`};
-  if ((m = /Cannot find module '([^'.\/][^']*)'|Can't resolve '([^'.\/][^']*)'/.exec(t))) { const n = (m[1] || m[2]).match(/^(@[^/]+\/)?[^/]+/)[0]; return {k: 'npm', n, label: `npm install ${n}`}; }
+  // #295: name must be package-shaped (@scope/pkg/sub) ∵ grep output of this very regex matched "([^"
+  if ((m = /Cannot find module '(@?[\w-][\w.\/@-]*)'|Can't resolve '(@?[\w-][\w.\/@-]*)'/.exec(t))) { const n = (m[1] || m[2]).match(/^(@[^/]+\/)?[^/]+/)[0]; return {k: 'npm', n, label: `npm install ${n}`}; }
   if ((m = /No module named '([\w-]+)/.exec(t))) return {k: 'pip', n: m[1], label: `pip install ${m[1]}`};
   m = /(?:^|\n)(?:\S*: )?(?:line \d+: )?([\w.-]+): (?:command )?not found|'([\w.-]+)' is not recognized as an internal|The term '([\w.-]+)' is not recognized/.exec(t);
   const n = m && (m[1] || m[2] || m[3]).replace(/\.(exe|cmd)$/, '');
