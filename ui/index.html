@@ -287,10 +287,9 @@ pre.diff .ctx { color:var(--faint); }
 #log.term { background:var(--term); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
 #log.term .col { max-width:none; gap:4px; font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
 #log.term .msg { white-space:pre-wrap; align-self:stretch; background:none; border:0; padding:0; border-radius:0; max-width:none; }
-/* #311 IRC rows: [HH:MM] <nick> text; nick col right-aligned (--nk) ∴ all text starts at --irc; every other row (tools, notes, cards) indents to it */
-#log.term .col { --nk:14ch; --irc:calc(7ch + var(--nk) + 2ch); } #log.term .col > :not(.irc, #empty, #dockpill) { margin-left:var(--irc); }
-#log.term .irc { display:grid; grid-template-columns:7ch var(--nk) minmax(0, 1fr); column-gap:1ch; margin-top:2px; }
-#log.term .irc .its { color:#6f6a62; font-variant-numeric:tabular-nums; } #log.term .irc .nk { text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+/* #316 message = header line `[HH:MM] <@nick>:` + text below (full width, no column); faded dashed rule between messages (first one none) */
+#log.term .irc { margin-top:6px; } #log.term .irc ~ .irc { padding-top:6px; border-top:1px dashed color-mix(in srgb, #3a3733 70%, transparent); }
+#log.term .irc .ih { display:flex; gap:1ch; } #log.term .irc .its { color:#6f6a62; font-variant-numeric:tabular-nums; } #log.term .irc .nk { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
 #log.term .irc.user .nk { color:var(--accent); } #log.term .irc.claude .nk { color:#7fc49a; } #log.term .msg.user { color:inherit; }
 #log.term .msg.tool { white-space:pre-wrap; color:#93c0e6; display:block; } #log.term .msg.tool::before { content:"● "; width:auto; height:auto; background:none; }
 #log.term .msg.out { color:#9f9a90; padding-left:2ch; border-left:2px solid #2f2d2a; max-height:320px; overflow:auto; }
@@ -311,7 +310,7 @@ pre.diff .ctx { color:var(--faint); }
 #log.term .card .btns { margin-top:6px; } #log.term .card .btn { font:inherit; border:0; border-radius:0; background:none; box-shadow:none; color:inherit; padding:0 .5ch; height:auto; }
 #log.term .card .btn::before { content:"["; } #log.term .card .btn::after { content:"]"; } #log.term .card .btn.primary { color:var(--accent); font-weight:600; } #log.term .card .btn:hover { color:#fff; }
 /* #311 working line: ASCII spinner (CSS content keyframes, steps(1) = hard frame flips), left in the text column */
-#log.term #dockpill { justify-content:flex-start; margin-left:var(--irc); } #log.term #skel { margin-top:4px; }
+#log.term #dockpill { justify-content:flex-start; } #log.term #skel { margin-top:4px; }
 #log.term #dockpill > :is(#workpill, #handpill) { font:inherit; border:0; border-radius:0; background:none; animation:none; padding:0; color:var(--accent) !important; gap:1ch; }
 #log.term #workpill .i { display:none; } #log.term #dockpill > *::before { content:"|"; width:1ch; flex:none; order:-2; animation:tspin .5s steps(1) infinite; } #log.term #worktext { overflow:hidden; text-overflow:ellipsis; min-width:0; }
 #log.term #workpill::after { content:none; } /* #315 bar dropped: its frames shifted the text; spinner only (1ch, flex:none = fixed slot) */
@@ -1741,11 +1740,11 @@ const NOTEACT = {run: [icon('play') + 'Run', "call('run_step', {pid: cur, step: 
 const tm = ts => { const d = ts ? new Date(ts) : null; if (!d || isNaN(d)) return '';
   const t = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
   return d.toDateString() === new Date().toDateString() ? t : d.toLocaleDateString([], {day: 'numeric', month: 'short'}) + ', ' + t; };
-// #311 terminal view = IRC line: [HH:MM] <@you>/<Clauracle> text (grid in CSS; @ = you're the channel admin)
+// #316 terminal view: header line [HH:MM] <@you>:/<Clauracle>: then the text below (@ = you're the channel admin)
 function ircRow(e, d) {
   const w = document.createElement('div'), t = e.ts && new Date(e.ts), u = e.kind === 'user';
   w.className = 'irc ' + e.kind;
-  w.innerHTML = `<span class="its">${t && !isNaN(t) ? '[' + t.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false}) + ']' : ''}</span><span class="nk">&lt;${u ? '@' + esc(S.you?.nick || P()?.gh || 'You') : 'Clauracle'}&gt;</span>`;
+  w.innerHTML = `<div class="ih">${t && !isNaN(t) ? '<span class="its">[' + t.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false}) + ']</span>' : ''}<span class="nk">&lt;${u ? '@' + esc(S.you?.nick || P()?.gh || 'You') : 'Clauracle'}&gt;:</span></div>`;
   w.append(d); return w;
 }
 function chatRow(kind, inner, ts) {
