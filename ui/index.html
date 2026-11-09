@@ -310,13 +310,11 @@ pre.diff .ctx { color:var(--faint); }
 #log.term .card :is(input.other, input.note) { font:inherit; color:inherit; background:none; border:0; border-bottom:1px dashed #3a3733; border-radius:0; box-shadow:none; margin-left:3ch; width:calc(100% - 3ch); }
 #log.term .card .btns { margin-top:6px; } #log.term .card .btn { font:inherit; border:0; border-radius:0; background:none; box-shadow:none; color:inherit; padding:0 .5ch; height:auto; }
 #log.term .card .btn::before { content:"["; } #log.term .card .btn::after { content:"]"; } #log.term .card .btn.primary { color:var(--accent); font-weight:600; } #log.term .card .btn:hover { color:#fff; }
-/* #311 working line: ASCII spinner + bouncing bar (CSS content keyframes, steps(1) = hard frame flips), left in the text column */
+/* #311 working line: ASCII spinner (CSS content keyframes, steps(1) = hard frame flips), left in the text column */
 #log.term #dockpill { justify-content:flex-start; margin-left:var(--irc); } #log.term #skel { margin-top:4px; }
 #log.term #dockpill > :is(#workpill, #handpill) { font:inherit; border:0; border-radius:0; background:none; animation:none; padding:0; color:var(--accent) !important; gap:1ch; }
-#log.term #workpill .i { display:none; } #log.term #dockpill > *::before { content:"|"; width:1ch; order:-2; animation:tspin .5s steps(1) infinite; } #log.term #worktext { overflow:hidden; text-overflow:ellipsis; min-width:0; }
-#log.term #workpill::after { content:"[=     ]"; order:-1; color:#6f6a62; animation:tbar 1.2s steps(1) infinite; } /* spinner, bar, then text (text may ellipsis; frames never cut) */
-@keyframes tspin { 0% { content:"|"; } 25% { content:"/"; } 50% { content:"-"; } 75% { content:"\\"; } }
-@keyframes tbar { 0% { content:"[=     ]"; } 10% { content:"[==    ]"; } 20% { content:"[ ==   ]"; } 30% { content:"[  ==  ]"; } 40% { content:"[   == ]"; } 50% { content:"[    ==]"; } 60% { content:"[     =]"; } 70% { content:"[    ==]"; } 80% { content:"[   == ]"; } 90% { content:"[ ==   ]"; } }
+#log.term #workpill .i { display:none; } #log.term #dockpill > *::before { content:"|"; width:1ch; flex:none; order:-2; animation:tspin .5s steps(1) infinite; } #log.term #worktext { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+#log.term #workpill::after { content:none; } /* #315 bar dropped: its frames shifted the text; spinner only (1ch, flex:none = fixed slot) */
 /* #311 TUI composer: same elements, text-mode look (› prompt, rules instead of a box, [icon] buttons) */
 #log.term + #dock, #log.term + #dock :is(#prompt, #pback, #status, .qp, #slash button, #ready) { font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
 #log.term + #dock #composer { background:none; border:0; border-block:1px solid #3a3733; border-radius:0 !important; box-shadow:none; padding:2px 0 2px 2ch; }
