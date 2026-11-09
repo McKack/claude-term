@@ -266,6 +266,23 @@ pre.diff .ctx { color:var(--faint); }
    header fade (log mask) and dock fade land on the same colour */
 :root { --term:color-mix(in srgb, var(--tint, #000) var(--tintm, 0%), #151412); } :root[data-theme=dark] { --term:color-mix(in srgb, var(--bg) 78%, #000); }
 #main:has(> #log.term) { background:var(--term); }
+/* #285 Edit view: #edv (file tabs) above, docked panel below = #ptabs + (#log.term + #dock | #shellbox); --ph = panel height */
+#edv, #ptabs, #shellbox { display:none; } #main.edit:has(> #edv) { background:var(--bg); }
+#main.edit #edv { display:flex; flex-direction:column; flex:1 1 0; min-height:80px; }
+#main.edit #ptabs { display:flex; align-items:center; gap:2px; padding:2px 8px; border-top:1px solid var(--line); position:relative; background:var(--side); }
+#ptabs > button:not(.ib) { border:0; background:none; color:var(--dim); padding:5px 10px; display:inline-flex; gap:5px; align-items:center; font-size:12.5px; cursor:pointer; border-radius:6px; }
+#ptabs > button.on { color:var(--text); background:var(--hover); } #ptabs .ib { width:24px; height:24px; } #pcol .i { rotate:90deg; } #main.pc #pcol .i { rotate:-90deg; }
+#pgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } #pgrip:hover, body.dragging #pgrip { background:color-mix(in srgb, var(--accent) 30%, transparent); }
+#main.edit #log { flex:0 0 var(--ph); margin-top:0; padding-top:8px; mask-image:none; }
+#main.edit.shell #log, #main.edit.shell #dock, #main.edit.pc #log, #main.edit.pc #dock { display:none; }
+#main.edit.shell:not(.pc) #shellbox { display:block; flex:0 0 var(--ph); background:var(--term); padding:6px 0 0 10px; overflow:hidden; } #shellbox > div { height:100%; }
+#etabs { display:flex; align-items:stretch; border-bottom:1px solid var(--line); background:var(--side); overflow-x:auto; scrollbar-width:none; min-height:34px; }
+#etabs .et { display:flex; align-items:center; gap:6px; padding:0 6px 0 12px; font-size:12.5px; color:var(--dim); border-right:1px solid var(--line); cursor:pointer; white-space:nowrap; }
+#etabs .et.on { background:var(--bg); color:var(--text); box-shadow:inset 0 2px var(--accent); } #etabs .et .ib { width:20px; height:20px; opacity:0; } #etabs .et:hover .ib, #etabs .et.on .ib { opacity:1; }
+#etabs .et.dirty .x::before { content:"●"; font-size:11px; } #etabs .et.dirty .x:not(:hover) .i { display:none; } #etabs .add { width:30px; height:auto; border-radius:0; }
+#ebody { flex:1; min-height:0; display:flex; position:relative; }
+#ebody textarea { flex:1; border:0; border-radius:0; resize:none; outline:0; padding:10px 14px; font:13px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; tab-size:4; background:var(--bg); color:var(--text); white-space:pre; }
+#ebody .eimg { margin:auto; max-width:100%; max-height:100%; object-fit:contain; } #ebody .empty { margin:auto; text-align:center; }
 #log.term { background:var(--term); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
 #log.term .col { max-width:none; gap:4px; font:12.5px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; }
 #log.term .msg { white-space:pre-wrap; align-self:stretch; background:none; border:0; padding:0; border-radius:0; max-width:none; }
@@ -680,9 +697,11 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="head" hidden>
     <button class="ib" title="Sidebar: projects and files" onclick="toggleLeft()"><svg class="i"><use href="#i-panelL"/></svg></button>
     <span class="title" id="pname"></span><span id="branch" hidden title="Branches: switch, new, push" onclick="branchMenu(this)"></span><span class="grow"></span>
-    <span class="seg"><button data-v="chat" onclick="setView('chat')"><svg class="i"><use href="#i-chat"/></svg>Chat</button><button data-v="term" onclick="setView('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button></span>
+    <span class="seg"><button data-v="chat" onclick="setView('chat')"><svg class="i"><use href="#i-chat"/></svg>Chat</button><button data-v="term" onclick="setView('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button><button data-v="edit" onclick="setView('edit')" title="Edit: file tabs + Terminal/Shell panel"><svg class="i"><use href="#i-pen"/></svg>Edit</button></span>
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
+  <div id="edv"><div id="etabs"></div><div id="ebody"></div></div>
+  <div id="ptabs"><div id="pgrip" title="Drag to resize, double-click to collapse"></div><button data-k="term" onclick="panelTab('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button><button data-k="shell" onclick="panelTab('shell')"><svg class="i"><use href="#i-code"/></svg>Shell</button><span class="grow"></span><button class="ib" id="pcol" title="Collapse / expand the panel" onclick="UI.pc = !UI.pc; applyView()"><svg class="i"><use href="#i-chev"/></svg></button></div>
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
     <div class="col" id="skel" hidden><div class="crow claude"><span id="skelav"><svg class="av"><use href="#i-logo"/></svg></span><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div></div></div><div id="dockpill"><div id="handpill" hidden>Preparing handover…</div><div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div>
   <div id="dock" hidden><button class="npill" id="jump" hidden onclick="toEnd(true)" title="Jump to the newest"><svg class="i" style="transform:rotate(180deg)"><use href="#i-up"/></svg><span></span></button><div class="col">
@@ -705,6 +724,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
       </div>
     </div>
   </div></div>
+  <div id="shellbox"></div>
 </main>
 
 <aside id="right" hidden>
@@ -1402,7 +1422,7 @@ async function openProject(pid) {
   if (info.busy) busy[pid] = true; // never → false here: Rust busy is false during armed build steps while the UI must stay busy (status events own that)
   if (pid !== cur) return; // switched again while loading
   $('branch').hidden = !info.branch; $('branch').textContent = info.branch;
-  drawLog(); drawChrome(); drawRight(); $('prompt').focus();
+  drawLog(); drawChrome(); drawRight(); $('prompt').focus(); if (view === 'edit') applyView();
   suggest(pid); pollTeam(); drawSide(); askLegacy(pid);
 }
 // the repo's owner decides (by code): its gh account and the AI account tied to it, if they're set up here
@@ -1452,7 +1472,81 @@ function makeBranch() {
 // ---- the log: chat or terminal ----
 let view = (() => { try { return localStorage.view || 'chat'; } catch { return 'chat'; } })();
 function setView(v) { view = v; try { localStorage.view = v; } catch {} applyView(); if (cur) drawLog(); }
-function applyView() { $('log').classList.toggle('term', view === 'term'); document.querySelectorAll('#head .seg button').forEach(b => b.classList.toggle('on', b.dataset.v === view)); }
+function applyView() { $('log').classList.toggle('term', view !== 'chat'); document.querySelectorAll('#head .seg button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
+  panelLay(); if (view === 'edit') { evDraw(); if (UI.pt === 'shell' && !UI.pc && cur) shellShow(); } }
+/* #285 Edit view. Tabs per project: ETABS[pid] = {tabs: [{rel|null, name, text, orig, img, err}], on}; open rels persist (localStorage etabs:<pid>).
+   ponytail: plain textarea (no highlight/line numbers); Untitled tabs not persisted. Panel: UI.ph px, UI.pc collapsed, UI.pt term|shell */
+function panelLay() { const m = $('main'), ed = view === 'edit' && !!cur;
+  m.classList.toggle('edit', ed); m.classList.toggle('shell', ed && UI.pt === 'shell'); m.classList.toggle('pc', ed && !!UI.pc);
+  m.style.setProperty('--ph', (UI.ph || 260) + 'px');
+  document.querySelectorAll('#ptabs > button[data-k]').forEach(b => b.classList.toggle('on', b.dataset.k === (UI.pt || 'term') && !UI.pc));
+  try { localStorage.ui = JSON.stringify(UI); } catch {} }
+function panelTab(k) { UI.pc = false; UI.pt = k; applyView(); }
+const ETABS = {};
+function etabs(pid = cur) { if (!ETABS[pid]) { let o = {}; try { o = JSON.parse(localStorage['etabs:' + pid] || '{}'); } catch {}
+  const tabs = (o.rels || []).map(rel => ({rel, name: rel.split('/').pop()})); ETABS[pid] = {tabs, on: Math.max(0, tabs.findIndex(t => t.rel === o.on))}; } return ETABS[pid]; }
+function evKeep(pid = cur) { const E = ETABS[pid]; if (E) try { localStorage['etabs:' + pid] = JSON.stringify({rels: E.tabs.filter(t => t.rel).map(t => t.rel), on: E.tabs[E.on]?.rel}); } catch {} }
+const evDirty = t => t.text !== undefined && t.text !== t.orig;
+function evOpen(rel) { const E = etabs(); let i = E.tabs.findIndex(t => t.rel === rel); if (i < 0) i = E.tabs.push({rel, name: rel.split('/').pop()}) - 1; E.on = i; evKeep(); evDraw(); }
+function evNew() { const E = etabs(), n = Math.max(0, ...E.tabs.map(t => +(t.name.match(/^Untitled-(\d+)$/)?.[1] || 0))) + 1;
+  E.on = E.tabs.push({rel: null, name: 'Untitled-' + n, text: '', orig: ''}) - 1; evDraw(); }
+function evPick(i) { etabs().on = i; evKeep(); evDraw(); }
+async function evClose(i) { const E = etabs(), t = E.tabs[i]; if (!t) return;
+  if (evDirty(t) && !await sure(`Close ${t.name} without saving?`, 'Close')) return;
+  E.tabs.splice(i, 1); if (E.on >= i && E.on > 0) E.on--; if ($('ebody')._t === t) $('ebody')._t = null; evKeep(); evDraw(); }
+async function evLoad(t, pid) { const abs = P(pid).path.replace(/[\\/]+$/, '') + '/' + t.rel;
+  try { if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(t.rel)) t.img = URL.createObjectURL(new Blob([await call('read_image', {path: abs})]));
+    else t.text = t.orig = await call('read_file', {pid, rel: t.rel}); } catch (e) { t.err = String(e); }
+  if (pid === cur) evDraw(); }
+async function evSave(t) { if (!t) return;
+  try { if (t.rel) await call('write_file', {pid: cur, rel: t.rel, text: t.text});
+    else { const to = await T.dialog.save({defaultPath: P().path.replace(/[\\/]+$/, '') + '/' + t.name + '.txt'}); if (!to) return;
+      await call('save_as', {to, from: null, text: t.text}); const base = P().path.replace(/\\/g, '/').replace(/\/$/, '') + '/', f = to.replace(/\\/g, '/');
+      t.name = f.split('/').pop(); if (f.toLowerCase().startsWith(base.toLowerCase())) { t.rel = f.slice(base.length); evKeep(); } }
+    t.orig = t.text; evDraw(); toast('Saved ' + t.name, 'ok'); } catch (e) { toast(String(e), 'err'); } }
+function evDraw() { if (view !== 'edit' || !cur) return;
+  const E = etabs(), t = E.tabs[E.on], b = $('ebody');
+  $('etabs').innerHTML = E.tabs.map((x, i) => `<div class="et${i === E.on ? ' on' : ''}${evDirty(x) ? ' dirty' : ''}" title="${esc(x.rel || x.name)}" onclick="evPick(${i})" onauxclick="if (event.button === 1) evClose(${i})">${icon(/\.(png|jpe?g|gif|webp|bmp)$/i.test(x.rel || '') ? 'image' : 'file')}${esc(x.name)}<button class="ib x" title="Close" onclick="event.stopPropagation(); evClose(${i})">${icon('x')}</button></div>`).join('')
+    + `<button class="ib add" title="New tab" onclick="evNew()">${icon('plus')}</button>`;
+  const ta = b.querySelector('textarea'); if (ta && b._t) Object.assign(b._t, {ss: ta.selectionStart, se: ta.selectionEnd, sy: ta.scrollTop}); // caret + scroll survive tab switches
+  if (ta && b._t === t) return;
+  b._t = null;
+  if (!t) { b.innerHTML = `<div class="empty dim"><p>No files open</p><button class="btn" onclick="evNew()">${icon('plus')}New file</button> <button class="btn ghost" onclick="UI.lc = false; setSide('files')">${icon('folder')}Open from Files</button></div>`; return; }
+  if (t.err) { b.innerHTML = `<div class="empty dim">${esc(t.err)}</div>`; return; }
+  if (t.img) { b.innerHTML = `<img class="eimg" src="${t.img}">`; return; }
+  if (t.text === undefined) { b.innerHTML = `<div style="flex:1;padding:14px">${skel(60)}</div>`; if (!t.loading) { t.loading = 1; evLoad(t, cur); } return; }
+  b.innerHTML = '<textarea spellcheck="false" autocomplete="off"></textarea>'; b._t = t;
+  const a = b.firstChild; a.value = t.text;
+  a.oninput = () => { t.text = a.value; $('etabs').querySelector('.et.on')?.classList.toggle('dirty', evDirty(t)); };
+  a.onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); evSave(t); }
+    else if (e.key === 'Tab' && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); document.execCommand('insertText', false, '\t'); } }; /* execCommand keeps native undo */
+  if (t.ss != null) { a.setSelectionRange(t.ss, t.se); a.scrollTop = t.sy; } a.focus(); }
+// Shell tab: xterm.js (vendored in ui/xterm, MIT) loaded on first use; SH[pid] = {el, term, fit, dead}; one pty per project (lib shell_open)
+let XT; const SH = {};
+const xtLoad = () => XT ||= new Promise((ok, no) => { const add = (tag, k, v, then) => { const x = document.createElement(tag); x[k] = v; if (tag === 'link') x.rel = 'stylesheet'; x.onload = then; x.onerror = no; document.head.append(x); };
+  add('link', 'href', 'xterm/xterm.css'); add('script', 'src', 'xterm/xterm.js', () => add('script', 'src', 'xterm/addon-fit.js', ok)); });
+async function shellShow() { const pid = cur;
+  try { await xtLoad(); } catch { XT = null; return toast('Could not load the terminal', 'err'); }
+  if (pid !== cur || view !== 'edit') return;
+  let s = SH[pid];
+  if (!s) { const el = document.createElement('div'), bg = getComputedStyle($('shellbox')).backgroundColor;
+    const term = new Terminal({fontFamily: 'ui-monospace,"Cascadia Code",Consolas,monospace', fontSize: 13, cursorBlink: true, theme: {background: bg}}), fit = new FitAddon.FitAddon();
+    term.loadAddon(fit); s = SH[pid] = {el, term, fit, dead: true};
+    term.onData(d => s.dead ? shellStart(pid) : call('shell_write', {pid, d}).catch(() => {}));
+    term.onResize(({cols, rows}) => s.dead || call('shell_resize', {pid, cols, rows})); }
+  const box = $('shellbox'); if (s.el.parentNode !== box) box.replaceChildren(s.el);
+  if (!s.term.element) s.term.open(s.el);
+  s.fit.fit(); if (s.dead) shellStart(pid); s.term.focus(); }
+async function shellStart(pid) { const s = SH[pid]; s.dead = false;
+  try { await call('shell_open', {pid, cols: s.term.cols, rows: s.term.rows}); } catch (e) { s.dead = true; s.term.write('\r\n\x1b[31m' + e + '\x1b[0m\r\n'); } }
+new ResizeObserver(() => { const s = SH[cur]; if (s?.term.element && $('shellbox').offsetHeight) s.fit.fit(); }).observe($('shellbox'));
+// panel grip: drag = height (snaps shut under 60px, like the side rails), double-click = collapse
+$('pgrip').ondblclick = () => { UI.pc = !UI.pc; applyView(); };
+$('pgrip').onmousedown = e => { e.preventDefault(); document.body.classList.add('dragging');
+  const m = $('main'), move = e => { const r = m.getBoundingClientRect(), h = r.bottom - e.clientY - $('ptabs').offsetHeight - (UI.pt === 'shell' ? 0 : $('dock').offsetHeight);
+    const was = UI.pc; UI.pc = h < 60; if (!UI.pc) UI.ph = Math.round(Math.max(80, Math.min(h, r.height - 220))); panelLay(); if (was && !UI.pc && UI.pt === 'shell') shellShow(); };
+  const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('dragging'); };
+  document.addEventListener('mousemove', move); document.addEventListener('mouseup', up); };
 function drawLog() {
   const box = document.createElement('div'), l = logs[cur] || [];
   box.className = 'col';
@@ -1559,7 +1653,7 @@ function entry(e) {
     d.querySelectorAll('.thumbs img').forEach((im, k) => im.onclick = () => openViewer(imgs, k, null));
     d.insertAdjacentHTML('beforeend', refPills(bare(e.text), [...imgs.map(x => x.name), ...fnames(e.text)]));
   }
-  else if (view === 'term') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')'
+  else if (view !== 'chat') d.textContent = e.kind === 'tool' && e.detail ? e.text.split('  ')[0] + '(' + JSON.stringify(e.detail, null, 2) + ')'
     // tool output: drop reminder blocks + blank-line runs (else a one-liner renders as a tall empty box)
     : e.kind === 'out' ? e.text.replace(/<system-reminder>[\s\S]*?(<\/system-reminder>|$)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : e.text;
   else if (e.kind === 'claude') d.innerHTML = md(e.text);
@@ -2297,6 +2391,7 @@ function cont_(extra) { call('continue_now', {pid: cur, extra: extra || null}); 
 
 // ---- events from Rust ----
 T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
+  shell: () => { const s = SH[d.pid]; if (!s) return; if (d.exit) { s.dead = true; s.term.write('\r\n\x1b[2m[shell ended: press a key for a new one]\x1b[0m\r\n'); } else s.term.write(d.d); },
   line: () => { if (d.kind === 'claude') live[d.pid] = '';
     if (d.kind === 'tool') issueGuess(d.pid, d); else if (d.result_of) { issueResult(d); missCheck(d.pid, d.text); }
     if (d.kind === 'tool' && d.id) (PEND[d.pid] ||= new Map()).set(d.id, Date.now()); else if (d.result_of) PEND[d.pid]?.delete(d.result_of);
@@ -3334,6 +3429,7 @@ let envAt = null;
 function previewFile(rel) {
   if (/^\.env(\.|$)/.test(rel.split('/').pop())) { envAt = rel; expandRight('svc'); return; }
   if (/\.pdf$/i.test(rel)) return openPdf(P().path.replace(/[\\/]+$/, '') + '/' + rel); // #247 File viewer
+  if (view === 'edit') return evOpen(rel); // #285 Edit view: files open as editor tabs
   codeAt[cur] = {file: rel}; expandRight('code'); drawFiles();
 }
 /* #248 syntax colour, regex per line (no parser, no dep): block comments carry across lines; # comments only in hash langs.

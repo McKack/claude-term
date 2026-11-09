@@ -1609,6 +1609,77 @@ fn read_file(st: St, pid: String, rel: String) -> R<String> {
     Ok(String::from_utf8_lossy(&bytes).into())
 }
 
+/// #285 Edit view: save a tab back to its (existing, in-project) file. New files → save_as.
+#[tauri::command(async)]
+fn write_file(st: St, pid: String, rel: String, text: String) -> R<()> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    std::fs::write(inside(&p.path, &rel)?, text).map_err(|e| e.to_string())
+}
+
+// ---- #285 Shell tab: the OS shell in a pty, one per project; bytes → event `shell` {pid, d} / {pid, exit} ----
+struct Shell { master: Box<dyn portable_pty::MasterPty + Send>, w: Box<dyn std::io::Write + Send>, child: Box<dyn portable_pty::Child + Send + Sync> }
+static SHELLS: std::sync::LazyLock<Mutex<std::collections::HashMap<String, Shell>>> = std::sync::LazyLock::new(Default::default);
+
+/// Starts it if not running (false = was running already). async ∵ gh_env spawns gh.
+#[tauri::command(async)]
+fn shell_open(app: AppHandle, st: St, pid: String, cols: u16, rows: u16) -> R<bool> {
+    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+    if SHELLS.lock().unwrap().contains_key(&pid) { return Ok(false); }
+    let p = st.project(&pid).ok_or("no such project")?;
+    let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
+    let pair = native_pty_system().openpty(size).map_err(|e| e.to_string())?;
+    let sh = if cfg!(windows) { store::which("pwsh").map(|p| p.to_string_lossy().into_owned()).unwrap_or("powershell.exe".into()) }
+             else { std::env::var("SHELL").unwrap_or("/bin/sh".into()) };
+    let mut cmd = CommandBuilder::new(sh);
+    cmd.cwd(&p.path);
+    // dogfooding: app may run under Claude Code → its CLAUDE*/NO_COLOR vars would leak into `claude` typed here
+    for (k, _) in std::env::vars() { if k.starts_with("CLAUDE") || k == "NO_COLOR" { cmd.env_remove(k); } }
+    cmd.env("TERM", "xterm-256color");
+    for (k, v) in store::gh_env(&p.gh).into_iter().chain(store::gcloud_env(&p.gaccount, &p.gcp)) { cmd.env(k, v); }
+    let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+    drop(pair.slave);
+    if let Some(id) = child.process_id() { track(id); } // exit cleanup + orphan check
+    let mut r = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+    let w = pair.master.take_writer().map_err(|e| e.to_string())?;
+    SHELLS.lock().unwrap().insert(pid.clone(), Shell { master: pair.master, w, child });
+    std::thread::spawn(move || {
+        use std::io::Read;
+        let (mut buf, mut rest) = ([0u8; 8192], Vec::new());
+        while let Ok(n) = r.read(&mut buf) {
+            if n == 0 { break; }
+            rest.extend_from_slice(&buf[..n]);
+            // keep a UTF-8 char split across reads for the next chunk
+            let ok = match std::str::from_utf8(&rest) { Ok(_) => rest.len(), Err(e) if e.error_len().is_none() => e.valid_up_to(), Err(_) => rest.len() };
+            let d = String::from_utf8_lossy(&rest[..ok]).into_owned();
+            rest.drain(..ok);
+            emit(&app, "shell", json!({"pid": pid, "d": d}));
+        }
+        SHELLS.lock().unwrap().remove(&pid);
+        emit(&app, "shell", json!({"pid": pid, "exit": true}));
+    });
+    Ok(true)
+}
+
+#[tauri::command]
+fn shell_write(pid: String, d: String) -> R<()> {
+    use std::io::Write;
+    let mut m = SHELLS.lock().unwrap();
+    let s = m.get_mut(&pid).ok_or("shell not running")?;
+    s.w.write_all(d.as_bytes()).and_then(|_| s.w.flush()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn shell_resize(pid: String, cols: u16, rows: u16) {
+    if let Some(s) = SHELLS.lock().unwrap().get(&pid) {
+        let _ = s.master.resize(portable_pty::PtySize { rows, cols, pixel_width: 0, pixel_height: 0 });
+    }
+}
+
+#[tauri::command]
+fn shell_kill(pid: String) {
+    if let Some(mut s) = SHELLS.lock().unwrap().remove(&pid) { let _ = s.child.kill(); }
+}
+
 /// Images Claude read (screenshots) → chat thumbnails. Any path ∵ screenshots live in temp/scratchpad, not the project;
 /// ∴ image extensions only, ≤ 20 MB. Raw bytes (no base64 dep) → page gets an ArrayBuffer.
 #[tauri::command]
@@ -2052,7 +2123,7 @@ pub fn run() {
             continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

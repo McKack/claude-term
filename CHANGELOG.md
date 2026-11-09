@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Edit view: a third option next to Chat and Terminal. Files open as tabs you can edit and save (Ctrl+S), with a resizable panel below holding the Terminal view and a real Shell in the project folder.
 - Notification center: a bell bottom right keeps the history of notifications, with the current time next to it.
 - Start menu: click your account (bottom left) for one menu with search (files, secret names, tasks, settings), every tab as a tile, and Settings / Restart / Shut down.
 - Appearance: new Font setting (Sans-serif, Serif, Monospace), saved with presets. Classic Claude uses Serif, The Matrix uses Monospace.
