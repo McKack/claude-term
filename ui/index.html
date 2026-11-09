@@ -546,7 +546,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .code i { font-style:normal; } .code .hk { color:#c678dd; } .code .hs { color:#98c379; } .code .hc { color:var(--faint); font-style:italic; } .code .hn { color:#d19a66; } .code .ht { color:#61afef; }
 :root:not([data-theme=dark]) .code .hk { color:#a626a4; } :root:not([data-theme=dark]) .code .hs { color:#50a14f; } :root:not([data-theme=dark]) .code .hn { color:#986801; } :root:not([data-theme=dark]) .code .ht { color:#4078f2; }
 .tree small { overflow:hidden; text-overflow:ellipsis; min-width:0; }
-.code pre > div { display:grid; grid-template-columns:var(--lw) 1fr; } /* #231 one row per line: line no. = ::before (not copied), wrapped lines indent under the text */
+.code pre > div { display:grid; grid-template-columns:var(--lw) 1fr; } .code pre > div > span { min-width:0; } /* #286 line text = ONE grid item; bare tokens each took a cell → spilled into the gutter */ /* #231 one row per line: line no. = ::before (not copied), wrapped lines indent under the text */
 .code pre > div::before { counter-increment:l; content:counter(l); color:var(--faint); text-align:right; padding-right:8px; margin-right:12px; border-right:1px solid var(--line); -webkit-user-select:none; user-select:none; }
 #web { width:100%; height:calc(100vh - 175px); border:1px solid var(--line); border-radius:10px; background:#fff; }
 /* phone preview: a 390×844 viewport (iPhone-ish) in a bezel, shrunk with zoom to fit the panel */
@@ -567,7 +567,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 dialog { border-radius:20px; color:var(--text); padding:0; } dialog:focus, dialog:focus-visible { outline:none; }
 :focus:not(:focus-visible) { outline:none; } :is(button, a, [tabindex]):focus-visible { outline:2px solid var(--accent); outline-offset:1px; } /* #248 no black UA ring */
 /* thin rounded scrollbars instead of the classic Windows ones with arrows */
-::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-button { display:none; } ::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-button { display:none; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-corner { background:transparent; }
 ::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--text) 18%, transparent); border-radius:99px; border:3px solid transparent; background-clip:content-box; }
 ::-webkit-scrollbar-thumb:hover { background-color:color-mix(in srgb, var(--text) 32%, transparent); }
 dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
@@ -3449,7 +3449,7 @@ function hiCode(text, ext) {
       o += c ? `<i class="${c}">${esc(t)}</i>` : esc(t); i = re.lastIndex; if (!t) re.lastIndex++; }
     return o + esc(l.slice(i)); });
 }
-const codeHtml = (text, ext, wrap) => { const h = hiCode(text, ext); return `<div class="code${wrap ? ' wrap' : ''}"><pre class="sel" style="--lw:calc(${String(h.length).length}ch + 20px)">${h.map(l => `<div>${l}</div>`).join('')}</pre></div>`; };
+const codeHtml = (text, ext, wrap) => { const h = hiCode(text, ext); return `<div class="code${wrap ? ' wrap' : ''}"><pre class="sel" style="--lw:calc(${String(h.length).length}ch + 20px)">${h.map(l => `<div><span>${l}</span></div>`).join('')}</pre></div>`; };
 // #248 recent files: newest first from this project's chat log (tool file_path) then git heat; ≤ 8, inside the project only
 function recentFiles() {
   const out = [], add = f => { if (!f) return; const r = relOf(cur, f); if (r && !/^[a-z]:|^\//i.test(r) && !out.includes(r)) out.push(r); };
