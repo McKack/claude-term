@@ -191,7 +191,7 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .vtools { display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 8px; border-right:1px solid var(--line); overflow:auto; }
 .vtools .seg { flex-direction:column; } .vtools .seg button { padding:7px; }
 .vstage { position:relative; display:grid; place-items:center; padding:14px; min-height:0; overflow:hidden; }
-.vzoom { display:flex; align-items:center; gap:2px; } .vzoom input { width:120px; padding:0; border:0; accent-color:var(--accent); } .vzoom .ib { width:24px; height:24px; } .vzoom small { width:40px; text-align:right; font-variant-numeric:tabular-nums; }
+.zctl { display:inline-flex; align-items:center; gap:0; } .zctl .ib { width:22px !important; height:22px !important; padding:0; } .zctl .zp { min-width:38px; text-align:center; font-size:11.5px; color:var(--dim); cursor:ew-resize; user-select:none; font-variant-numeric:tabular-nums; } .zctl .zp:hover { color:var(--text); } /* #393 */
 .vstage > .vdoc, .vstage > .vtext { place-self:stretch; width:100%; height:100%; } .vdoc { border:0; border-radius:6px; background:#fff; } .vtext { max-height:none; margin:0; padding:0; align-content:start; } /* #247 File viewer: pdf / text */
 .vstage > img, #edC { max-width:100%; object-fit:contain; border-radius:6px; display:block; }
 #edWrap { position:relative; } #edC { cursor:crosshair; touch-action:none; }
@@ -1743,7 +1743,13 @@ function evGo(l) { const a = evTa(); if (!a) return; const p = a.value.split('\n
 const evProbs = (btn, t) => menuAt(btn, t.lint.map(x => ({label: `${x.l}: ${x.m}`.slice(0, 140), icon: x.s === 'e' ? 'x' : 'warn', run: () => evGo(x.l)})));
 function evCmd(c, v) { const a = evTa(); if (!a) return; a.focus(); document.execCommand(c, false, v); } /* execCommand keeps native undo */
 function evSet(k, v, re = true) { if (k) UI[k] = v; try { localStorage.ui = JSON.stringify(UI); } catch {} evDraw(re); if (re && tab === 'code') drawRight(); } // re = rebuild body (wrap/preview); zoom only restyles. #392 Code tab shares fmt/lint/wrap ∴ redrawn too
-const evZoom = d => evSet('ez', d ? Math.min(3, Math.max(.5, Math.round(((UI.ez || 1) + d) * 10) / 10)) : 1, false);
+const evZp = p => evSet('ez', Math.min(300, Math.max(50, p)) / 100, false), evZoom = d => evZp(d ? zStep(Math.round((UI.ez || 1) * 100), d) : 100);
+/* #393 one zoom control [−] N% [+]: ± snap to next multiple of 10 (66 → 70 → 80), drag on % = 1%/px, dblclick = 100%. get/set = JS exprs (set gets p = absolute %) ∵ bars re-render mid-drag */
+const zStep = (p, d) => d > 0 ? Math.floor(p / 10 + 1e-6) * 10 + 10 : Math.ceil(p / 10 - 1e-6) * 10 - 10;
+const zoomCtl = (get, set, tip = '') => `<span class="zctl"><button class="ib" title="Zoom out" onclick="(p => ${set})(zStep(${get}, -1))">${icon('minus')}</button><span class="zp" data-tip="Drag left/right to zoom${tip} · double-click: 100%" onpointerdown="zDrag(event, () => ${get}, p => ${set})" ondblclick="(p => ${set})(100)">${(0, eval)(get)}%</span><button class="ib" title="Zoom in" onclick="(p => ${set})(zStep(${get}, 1))">${icon('plus')}</button></span>`;
+function zDrag(e, get, set) { if (e.button) return; e.preventDefault(); const x0 = e.clientX, p0 = get();
+  const mv = ev => set(p0 + Math.round(ev.clientX - x0)), up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
+  addEventListener('pointermove', mv); addEventListener('pointerup', up); }
 function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.text !== undefined, ed = tx && !evFm(t), pv = evPv(t);
   const M = {
     file: [{label: 'New file', icon: 'plus', run: evNew}, {label: 'Open from Files', icon: 'folder', run: () => { UI.lc = false; setSide('files'); }}, '-',
@@ -1767,7 +1773,7 @@ function evBar(t) { const pv = evPv(t), tx = t?.text !== undefined;
     + (tx && !evFm(t) && !UI.nl && t.lint?.length ? `<button class="ib ez" title="Problems: click to jump" onclick="evProbs(this, etabs().tabs[etabs().on])">${['e', 'w'].map(s => { const n = t.lint.filter(x => x.s === s).length; return n ? `<span style="color:${s === 'e' ? 'var(--err)' : '#d9a21b'}">${icon(s === 'e' ? 'x' : 'warn')}${n}</span>` : ''; }).join(' ')}</button>` : '')
     + (tx ? `<button class="ib${UI.nl ? '' : ' on'}" title="Lint: errors/warnings in the gutter (JS/HTML scripts via node or the project's eslint, Python, Rust on save, JSON)" onclick="evSet('nl', !UI.nl)">${icon('bug')}</button>` : '')
     + (tx ? `<button class="ib${UI.ew ? ' on' : ''}" title="Word wrap" onclick="evSet('ew', !UI.ew)">${icon('wrap')}</button>` : '')
-    + `<button class="ib ez" title="Zoom (Ctrl+wheel) · click: reset" onclick="evZoom(0)">${Math.round((UI.ez || 1) * 100)}%</button>`; }
+    + zoomCtl('Math.round((UI.ez || 1) * 100)', 'evZp(p)', ', Ctrl+wheel'); }
 $('ebody').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); evZoom(e.deltaY < 0 ? .1 : -.1); } }, {passive: false});
 // Shell tab: xterm.js (vendored in ui/xterm, MIT) loaded on first use; SH[pid] = {el, term, fit, dead}; one pty per project (lib shell_open)
 let XT; const SH = {};
@@ -2303,7 +2309,7 @@ let VBOX = (() => { try { return JSON.parse(localStorage.vbox || 'null'); } catc
    tools = left toolbar (contextual per file type), stage = content; fit(stage) on every resize */
 function vWin(head, act, tools, stage, fit, zoom, ctx = '') {
   VZ = zoom ? {k: zoom, s: 1, x: 0, y: 0} : null; // #248 zoom: 'img' = transform (pan too) | 'text' = CSS zoom; pdf = its own viewer's zoom
-  dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${zoom ? `<span class="vzoom"><button class="ib" title="Zoom out (Ctrl −)" onclick="vZoom(1/1.25)">${icon('minus')}</button><input type="range" min="10" max="800" value="100" oninput="vZoom(this.value / 100 / VZ.s)" data-tip="Zoom: wheel, Ctrl + / −, Ctrl 0 = fit. Middle-drag pans"><button class="ib" title="Zoom in (Ctrl +)" onclick="vZoom(1.25)">${icon('plus')}</button><small class="faint" id="vzp">100%</small></span><span class="grow"></span>` : ''}${act}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
+  dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${zoom ? `${zoomCtl('Math.round(VZ.s * 100)', 'vZp(p)', zoom === 'img' ? ', wheel, Ctrl + / −. Middle-drag pans' : ', Ctrl+wheel, Ctrl + / −')}<span class="grow"></span>` : ''}${act}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="vctx" id="vctx">${ctx}</div><div class="vtools">${tools}</div><div class="vstage">${stage}</div>`, 'viewer');
   const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
   if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; } // #298 .viewer max-* (< dialog's UA max = 100% − 2em − 6px) clamps ∴ ✕ + resize corner never clipped, follows window shrink
@@ -2311,12 +2317,12 @@ function vWin(head, act, tools, stage, fit, zoom, ctx = '') {
   new ResizeObserver(() => { if (!V.isConnected || !V.offsetWidth) return; if (V.style.width) { VBOX = [V.offsetWidth, V.offsetHeight]; try { localStorage.vbox = JSON.stringify(VBOX); } catch {} } fit?.(S); vClamp(); }).observe(V);
   const d = $('dlg'); if (!d.style.left) { const r = d.getBoundingClientRect(); Object.assign(d.style, {margin: '0', right: 'auto', bottom: 'auto', left: r.left + 'px', top: r.top + 'px'}); } // pinned where it opened ∴ resize corner tracks the mouse (centred = grows both ways)
   if (!zoom) return;
-  S.onwheel = e => { if (zoom === 'text' && !e.ctrlKey) return; e.preventDefault(); vZoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, e); }; // text: plain wheel scrolls
+  S.onwheel = e => { if (zoom === 'text' && !e.ctrlKey) return; e.preventDefault(); vZp(zStep(Math.round(VZ.s * 100), e.deltaY < 0 ? 1 : -1), e); }; // text: plain wheel scrolls. #393 10% snap steps
   S.onmousedown = e => { if (e.button !== 1 || zoom !== 'img') return; e.preventDefault(); let px = e.clientX, py = e.clientY; // middle-drag pan (preventDefault = no autoscroll)
     const mv = ev => { VZ.x += ev.clientX - px; VZ.y += ev.clientY - py; px = ev.clientX; py = ev.clientY; vZoom(1); }, up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); };
     addEventListener('mousemove', mv); addEventListener('mouseup', up); };
 }
-let VZ = null;
+let VZ = null; const vZp = (p, e) => VZ && vZoom(Math.min(800, Math.max(10, p)) / 100 / VZ.s, e);
 // f = factor; e = pointer → that point stays put (transform-origin 0 0: screen = layout + t + s·u ∴ t' = P − O − s'/s·(P − O − t))
 function vZoom(f, e) {
   if (!VZ) return; const S = $('dlg').querySelector('.vstage'), el = S?.firstElementChild; if (!el) return;
@@ -2326,7 +2332,7 @@ function vZoom(f, e) {
     VZ.x = px - ox - s2 / VZ.s * (px - ox - VZ.x); VZ.y = py - oy - s2 / VZ.s * (py - oy - VZ.y); }
   VZ.s = s2;
   if (VZ.k === 'img') { el.style.transformOrigin = '0 0'; el.style.transform = `translate(${VZ.x}px, ${VZ.y}px) scale(${VZ.s})`; } else el.style.zoom = VZ.s;
-  const r = $('dlg').querySelector('.vzoom input'); if (r) r.value = Math.round(VZ.s * 100); if ($('vzp')) $('vzp').textContent = Math.round(VZ.s * 100) + '%';
+  const z = $('dlg').querySelector('.zctl .zp'); if (z) z.textContent = Math.round(VZ.s * 100) + '%';
 }
 // read-only files → "Save as…" (editable ones = images → Save in editImage). f = {name, path?(copied as is), text?(saved), url?(pdf blob), html?(text view)}
 function fileView(f) {
@@ -2439,7 +2445,7 @@ function edDone() {
 }
 document.addEventListener('keydown', e => {
   if (e.key === 'F11') { e.preventDefault(); return call('fullscreen'); }
-  if ($('dlg').open && VZ && (e.ctrlKey || e.metaKey) && ['+', '=', '-', '0'].includes(e.key)) { e.preventDefault(); return vZoom(e.key === '0' ? 0 : e.key === '-' ? 1 / 1.25 : 1.25); }
+  if ($('dlg').open && VZ && (e.ctrlKey || e.metaKey) && ['+', '=', '-', '0'].includes(e.key)) { e.preventDefault(); return e.key === '0' ? vZoom(0) : vZp(zStep(Math.round(VZ.s * 100), e.key === '-' ? -1 : 1)); }
   if (!$('dlg').open || !VW) return;
   const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
   if (ED && (e.ctrlKey || e.metaKey) && e.key === 'z' && !typing) { e.preventDefault(); edUndo(); }
