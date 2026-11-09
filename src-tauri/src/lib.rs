@@ -958,11 +958,29 @@ async fn disk_clean(st: St<'_>, pid: String, dirs: Vec<String>) -> R<u64> {
     tauri::async_runtime::spawn_blocking(move || store::clean(&p.path, &dirs)).await.map_err(|e| e.to_string())
 }
 
-fn neutral_prompt(ask: &str) -> String {
-    format!("Rewrite this request to a software assistant as a GitHub issue. It goes on a shared repo, so write it neutrally: \
+// #336 triage: line 1 = class word; QUESTION/REMARK → never filed. Unparsable line 1 → TASK (doubt → file, #212)
+fn triage(s: &str) -> (&'static str, &str) {
+    let (h, rest) = s.split_once('\n').unwrap_or((s, ""));
+    match h.trim().trim_matches(|c: char| !c.is_alphabetic()).to_ascii_uppercase().as_str() {
+        "QUESTION" => ("question", ""), "REMARK" => ("remark", ""), "TASK" => ("task", rest.trim()), _ => ("task", s.trim()),
+    }
+}
+#[test]
+fn triage_works() {
+    assert_eq!(triage("REMARK"), ("remark", ""));
+    assert_eq!(triage("**Question**\n"), ("question", ""));
+    assert_eq!(triage("TASK\nFix X\n\n- a"), ("task", "Fix X\n\n- a"));
+    assert_eq!(triage("Fix X\n\n- a"), ("task", "Fix X\n\n- a"));
+}
+
+fn neutral_prompt(ask: &str, chat: bool) -> String { // chat=false (accepted card) → always TASK
+    let pick = if chat { "" } else { " It was accepted as a task: line 1 = TASK." };
+    format!("Triage this chat message to a software assistant.{pick} Line 1 = exactly one word: TASK (asks for a change/fix/feature/work), \
+        QUESTION (only asks for information/an answer) or REMARK (comment, feedback, thanks, opinion, small talk: asks for nothing). \
+        Not TASK → output only that word, nothing else. TASK → after line 1: rewrite this request to a software assistant as a GitHub issue. It goes on a shared repo, so write it neutrally: \
         no quotes of the request, no personal remarks, names, emotions or private details; keep every technical fact, file path and \
         requirement. If it doesn't name which screen/element it means (vague \"buttons\", \"this\"), never guess: end the summary with \
-        \"Target unclear: confirm which UI element with the user (screenshot) before changing anything.\" Output ONLY plain text: line 1 = imperative title (≤ 80 chars), blank line, then a short task summary (bullets ok). \
+        \"Target unclear: confirm which UI element with the user (screenshot) before changing anything.\" Output ONLY plain text: line 1 = TASK, line 2 = imperative title (≤ 80 chars), blank line, then a short task summary (bullets ok). \
         No preamble, no code fences.\n\nRequest:\n{ask}")
 }
 
@@ -970,12 +988,16 @@ fn neutral_prompt(ask: &str) -> String {
 async fn task_do(st: St<'_>, pid: String, action: String, mut arg: String, images: Option<Vec<Value>>) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
     let mut err = String::new(); // "new": Sonnet failure → 3rd line of the reply → UI toast
+    let chat = action == "ask"; // #336 "ask" = chat message → triaged first, then filed as "new"
+    let action = if chat { "new".to_string() } else { action };
     if action == "new" { // #309 privacy: raw ask never reaches GitHub (edit history keeps first bodies) → Sonnet's neutral rewrite filed
         let tags: String = store::hash_tags(&arg).iter().map(|t| format!(" #{t}")).collect(); // raw #Tags → labels still
         let (st2, p2, raw) = (st.inner().clone(), p.clone(), arg.clone());
         let dir = store::home(); // = ~/.clauracle (≠ join again → missing dir → os error 267)
-        let r = tauri::async_runtime::spawn_blocking(move || sonnet(&st2, &p2, "low", &dir, &neutral_prompt(&raw))).await.map_err(|e| e.to_string())?
+        let r = tauri::async_runtime::spawn_blocking(move || sonnet(&st2, &p2, "low", &dir, &neutral_prompt(&raw, chat))).await.map_err(|e| e.to_string())?
             .map(|s| s.trim_matches('`').trim().to_string()).and_then(|s| if s.is_empty() { Err("empty reply".into()) } else { Ok(s) });
+        // #336 not a task → nothing filed; UI gets "triage:<class>" (Sonnet down → filed anyway: lost ask costs more)
+        let r = match r { Ok(s) => match triage(&s) { ("task", b) if !b.is_empty() => Ok(b.to_string()), ("task", _) => Err("empty reply".to_string()), (c, _) if chat => return Ok(format!("triage:{c}")), _ => Err("not a task".to_string()) }, e => e };
         // ponytail: Sonnet down → placeholder title, the session working it writes the summary (never the raw text); err → UI toast
         if let Err(e) = &r { err = format!("\nNeutral rewrite failed ({}): placeholder title filed", e.lines().last().unwrap_or("no output")); }
         arg = r.unwrap_or_else(|_| "New task from Clauracle (summary pending)".into()) + &tags;

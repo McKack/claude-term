@@ -2309,11 +2309,13 @@ function send() {
     if (file && !busy[pid] && !RESTARTING && !contWaiting(pid) && !ed && !a.length && (URGENT_RE.test(t) || !issueQ(pid)?.some(x => x.number))) {
       sendNow(pid, {text: t + FASTNOTE, atts: a, work: 0}, opt?.log && opt);
       const n = await fileAsk(pid, t, a); if (!n) return;
+      if (typeof n === 'string') return call('send_mid', {pid, text: n === 'remark' ? RNOTE.trim() : QNOTE.trim(), work: null}).catch(() => {}); // #336 triage: not a task → told mid-turn, nothing filed
       fileNow(pid, t, n); P(pid).work = n; call('update_project', {pid, changes: {work: n}}).catch(() => {});
       call('send_mid', {pid, text: `(Clauracle filed the ask you're on as issue #${n}. ${NEUT(n)} Close it with \`gh issue close ${n} -c <one-line summary>\` when done.${SPLIT(n)})`, work: n}).catch(() => {});
       return;
     }
-    const n = file ? await fileAsk(pid, t, a) : 0, now = n && fileNow(pid, t, n), text = isQ ? t + QNOTE : isS ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
+    const f = file ? await fileAsk(pid, t, a) : 0, cls = typeof f === 'string' ? f : '', n = cls ? 0 : f; // #336 cls = Sonnet triage: question/remark → never filed
+    const now = n && fileNow(pid, t, n), text = isQ || cls === 'question' ? t + QNOTE : cls === 'remark' ? t + RNOTE : isS ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
     const q = queue[pid] ||= [];
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
     if (opt && contWaiting(pid) && !a.length) unEntry(pid, opt); // a Continue came up while filing → triage shows its own
@@ -2330,7 +2332,7 @@ function send() {
   }).finally(() => { FILING[pid] = (FILING[pid] || []).filter(x => x !== fm); keepDraft(pid, true); });
 }
 const FILING = {}; // pid → messages between send() and their place in queue/session (saved in the draft)
-const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A (question|status update), not a task \(Clauracle\)/,
+const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A (question|status update|remark), not a task \(Clauracle\)/,
   STATUS_RE = /^\s*(ok(ay)?[,.!]?\s+)?(i('ve| have)|it'?s|it is|(the )?\w+ is) (now )?(turned|booted|started|switched|plugged|logged|installed|granted|fixed|enabled|added|set up|paid|connected|on|up|running|online|ready|back|done|fixed|awake)\b|^\s*(done|ready|fixed|try again|retry|go ahead|it works now|works now)\b/i;
 // #212 change/bug wording → a task even when it ends with "?" (misfiled before: "…Fix it. …?", "wasn't X supposed to…?", "not showing…?")
 const ASK_RE = /\b(fix|make|add|change|remove|rename|move|replace|show|hide|style|should|supposed|instead|broken|bug|wrong|missing|still|not (showing|working)|(does|is|was|wo|ca|did)n'?t|please|let'?s|how about|is it possible|(can|could|would|will|shall) (you|we|it|i))\b/i;
@@ -2338,7 +2340,7 @@ const FASTNOTE = '\n\n(Clauracle is filing this as an issue right now; its numbe
 const SNOTE = '\n\n(A status update, not a task (Clauracle): context for the task you are on or the one labelled `needs-user`: retry what was blocked; if it unblocks a needs-user issue, `gh issue edit N --remove-label needs-user` and resume it. File nothing.)';
 // #98: the appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
 // #100: notes = one line each → strip per note (triage batch keeps later bullets); triage preamble hidden too
-const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A (question|status update), not a task \(Clauracle\)|Clauracle is filing this as an issue right now)[^\n]*/g, '');
+const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A (question|status update|remark), not a task \(Clauracle\)|Clauracle is filing this as an issue right now)[^\n]*/g, '');
 const QNOTE = '\n\n(A question, not a task (Clauracle): answer it briefly; change no files, start no work. If it actually asks for a change, it is a task: file it (`gh issue create --label clauracle --label task`) and say so. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
 /* user's rule: outstanding tasks first, a new ask goes to the END of the queue unless it says urgent (→ front of P.order, worked now).
    Ask into an empty queue = worked now too. now → send({work}) pins it in Rust (p.work) ∴ a handover/crash resumes it, not the queue head */
@@ -2356,14 +2358,18 @@ const SPLIT = n => ` Several separate asks in it (a wall of text) → split: kee
 const filedNote = (n, now, urgent) => now
   ? `\n\n(Filed as issue #${n} by Clauracle${urgent ? ', marked urgent: it goes before the other open tasks' : ''}. Work on it now: ${NEUT(n)} Close it with a one-line summary when done.${SPLIT(n)} Not a task after all (a question, a status/unblock reply, already done) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`
   : `\n\n(Filed as issue #${n} by Clauracle at the END of the task queue: open tasks come first (the user's rule), so don't start it now. ${NEUT(n)} Say it's queued in one line, then carry on with the task you're on.${SPLIT(n)} It only adds to that task → fold it in and close #${n} as a duplicate. Not a task (a question, a status/unblock reply) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`;
-// → issue number, 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
+// #336 remark = comment/feedback/thanks (Sonnet triage in task_do "ask"): acknowledged, never filed
+const RNOTE = '\n\n(A remark, not a task (Clauracle): acknowledge it in a line; change no files, start no work, file nothing. If it actually asks for a change, file it (`gh issue create --label clauracle --label task`) and say so.)';
+// → issue number, 'question'/'remark' when triage says it's no task (nothing filed), 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
   // #220: images → Rust saves them + lists their paths in the body (was names only → the session on the issue never saw them)
   const fs = a.filter(x => x.path), body = t + noteTxt(a) + (fs.length ? `\n\nAttached files:\n${fs.map(x => '- ' + x.path).join('\n')}` : '');
   // #309 local draft: row in the task list at once (gray "local" dot) while Sonnet writes the neutral issue text, then gh files it
   const loc = {number: 0, local: true, title: t.split('\n')[0].slice(0, 90), url: '', labels: [{name: 'local (being filed)', color: '9aa0a6'}], assignees: [], t: Date.now()};
   (FRESH[pid] ||= []).push(loc); issueRedraw(pid);
-  try { const [url = '', title, warn] = String(await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data, name: x.name}))})).trim().split('\n'); if (warn) toast(warn, 'warn'); const n = +(url.match(/\/issues\/(\d+)/)?.[1] || 0);
+  try { const [url = '', title, warn] = String(await call('task_do', {pid, action: 'ask', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data, name: x.name}))})).trim().split('\n'); if (warn) toast(warn, 'warn');
+    const cls = url.match(/^triage:(\w+)/)?.[1]; if (cls) { toast(`Not filed: Clauracle reads it as a ${cls}`, 'info'); return cls; }
+    const n = +(url.match(/\/issues\/(\d+)/)?.[1] || 0);
     if (n) FRESH[pid].push({number: n, title: title || loc.title, url, labels: [{name: 'clauracle'}, {name: 'task', color: '888'}], assignees: [], t: Date.now()});
     pollTeam(); return n; }
   catch (e) { toast(`Couldn't file it as an issue: ${e}`, 'warn'); return 0; }
