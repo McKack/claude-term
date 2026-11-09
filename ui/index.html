@@ -3058,13 +3058,13 @@ async function removeProject() {
 }
 
 // ---- right panel: GitHub · Build · .env · Code · Browser ----
-function toggleRight() { UI.rc = !UI.rc; layout(); drawRight(); }
+function toggleRight() { UI.rc = !UI.rc; layout('r'); drawRight(); }
 /* #30 tab dots (tabs + collapsed rail, by data-t): gh = a turn is working (issue/task in progress); build = a build
    finished OK and Build & Release not opened since (BUILT); svc = a service step/key still open (SVCDOT, from env_list once) */
 const BUILT = {}, SVCDOT = {};
 function tabDots() {
   const p = cur && P(); if (!p) return;
-  if (tab === 'build' && !$('right').hidden && !UI.rc) delete BUILT[cur];
+  if (tab === 'build' && !$('right').hidden && !RC()) delete BUILT[cur];
   if (SVCDOT[cur] === undefined && svcOf(p).length) { SVCDOT[cur] = false; const pid = cur;
     call('env_list', {pid}).then(files => { if (pid !== cur) return delete SVCDOT[pid];
       envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))}; SVCDOT[pid] = svcOf(p).some(id => !svcDone(id)); tabDots(); }).catch(() => {}); }
@@ -3452,7 +3452,7 @@ function thenMenu(el, w) { // w: 'm' = Settings project (mp), else the open proj
 const thenRow = p => `<div class="label row" style="gap:8px;align-items:center" title="Runs in plain code when Clauracle finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}"><span class="grow">Then</span>${thenBtn(p)}</div>`; // #192 under the NEXT list, styled as its label
 async function drawRight(force) {
   if ($('right').hidden || !cur) return;
-  if (UI.rc) { drawRRail(); return tabDots(); }
+  if (RC()) { drawRRail(); return tabDots(); }
   document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
   tabDots();
   const box = $('rbody'), p = P();
@@ -3464,7 +3464,7 @@ async function drawRight(force) {
   if (tab === 'build') {
     /* 2 passes like GHI: cached-only render at once (stale ok, missing → "Checking…"), then fetch what's stale
        (build_guess/ships_mac/release_check 60s/gh_info 30s) + re-render, keeping inputs the user changed meanwhile */
-    const has = p.build.build || p.build.run || p.build.deploy, pid0 = cur, ok = () => cur === pid0 && tab === 'build' && !$('right').hidden && !UI.rc;
+    const has = p.build.build || p.build.run || p.build.deploy, pid0 = cur, ok = () => cur === pid0 && tab === 'build' && !$('right').hidden && !RC();
     const old = (o, ms) => !o || Date.now() - o.t > ms;
     const stale = force === true || (!has && !GUESS[pid0]) || MAC[pid0] === undefined || old(RELC[pid0], 60e3) || old(GHI[pid0], 30e3);
     box.innerHTML = await buildHtml(p, has, false);
@@ -3484,7 +3484,7 @@ async function drawRight(force) {
   if (!stale) return;
   const before = c && formVals(box), g = await call('gh_info', {pid}).catch(e => c?.g || {err: String(e)});
   if (!g.err) ghiSet(pid, g);
-  if (pid !== cur || tab !== 'gh' || $('right').hidden || UI.rc || qDragging) return; // mid-drag re-render would drop the row; GHI already fresh
+  if (pid !== cur || tab !== 'gh' || $('right').hidden || RC() || qDragging) return; // mid-drag re-render would drop the row; GHI already fresh
   const mine = before && formVals(box), focus = document.activeElement?.id;
   drawGh(g, false);
   if (mine) for (const [k, v] of Object.entries(mine)) if (v !== before[k]) { const el = formEl(box, k); if (el) el.type === 'checkbox' ? el.checked = v : el.value = v; }
@@ -3912,8 +3912,8 @@ async function drawCode() {
 // #248 Code tab file → File viewer (same colouring; Save as… copies the file)
 function codeView() { const c = codeAt[cur]; if (!c?.text) return;
   fileView({name: c.file.split('/').pop(), path: P().path.replace(/[\/]+$/, '') + '/' + c.file, text: c.text, html: docHtml(c.text, c.file, localStorage.codeWrap !== '0')}); }
-function setSide(t) { UI.st = t; layout(); drawSide(); }
-function toggleLeft() { UI.lc = !UI.lc; layout(); }
+function setSide(t) { UI.st = t; layout('l'); drawSide(); }
+function toggleLeft() { UI.lc = !UI.lc; layout('l'); }
 function drawSide() {
   const t = ['files', 'notes'].includes(UI.st) ? UI.st : 'projects'; // old saved 'tasks'/'graph' tab (removed; #370 Hot → GitHub tab fold) → projects
   document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', b.dataset.s === t));
@@ -5030,7 +5030,8 @@ async function clone(repo) {
 }
 
 // ---- panels: drag to resize (no minimum); under SNAP px a panel collapses to a rail ----
-const RAIL = 52, SNAP = 140;
+const RC = () => $('right').classList.contains('rail'), LC = () => $('side').classList.contains('rail'); // #387 shown state (layout may rail a panel the user left open)
+const RAIL = 52, SNAP = 140, MAINW = 480; // ponytail: fixed guess of the header's need; measure #head if it drifts
 // a panel's narrowest: its tab bar with the longest label open, so it never jumps between tabs; cached, MINW reset
 // when the Tasks tab shows/hides. Probe = clone keeping ids (styles hit it; $ still finds the original, it comes first)
 const MINW = {};
@@ -5050,12 +5051,22 @@ try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
 UI.ew ??= true; // #386 Edit view word wrap on by default
 if (UI.tab) tab = {tasks: 'gh', env: 'svc'}[UI.tab] || UI.tab; // old Plan tab → GitHub, old .env tab → Services & Secrets
 applyLook();
-function layout() {
+let KEEP = 'r'; // #387 panel the user opened last: the other one rails first
+function layout(keep) {
+  if (keep) KEEP = keep;
   try { localStorage.ui = JSON.stringify(UI); } catch {}
-  $('side').classList.toggle('rail', UI.lc); $('side').style.width = (UI.lc ? RAIL : Math.max(UI.lw, lMin())) + 'px';
-  $('right').classList.toggle('rail', UI.rc); $('right').style.width = (UI.rc ? RAIL : Math.max(UI.rw, rMin())) + 'px';
-  drawRails();
+  // #387 main keeps MAINW (header: switcher + branch + Edit menu bar): shrink panels to their mins → rail the not-KEEP one → the other; display only ∴ UI.lw/rw/lc/rc untouched, widening restores
+  let lc = UI.lc, rc = UI.rc, lw = lc ? RAIL : Math.max(UI.lw, lMin()), rw = rc ? RAIL : Math.max(UI.rw, rMin());
+  const room = () => innerWidth - MAINW - lw - rw;
+  if (room() < 0 && !rc) rw = Math.max(rMin(), rw + room());
+  if (room() < 0 && !lc) lw = Math.max(lMin(), lw + room());
+  for (const s of KEEP === 'r' ? 'lr' : 'rl') if (room() < 0) s === 'r' ? (rc || (rc = true, rw = RAIL)) : (lc || (lc = true, lw = RAIL));
+  const fold = $('right').classList.contains('rail') !== rc;
+  $('side').classList.toggle('rail', lc); $('side').style.width = lw + 'px';
+  $('right').classList.toggle('rail', rc); $('right').style.width = rw + 'px';
+  drawRails(); if (fold) drawRight();
 }
+addEventListener('resize', () => layout());
 document.querySelectorAll('.grip').forEach(g => {
   const left = g.dataset.side === 'l';
   g.ondblclick = () => { left ? UI.lc = !UI.lc : UI.rc = !UI.rc; layout(); drawRight(); };
@@ -5066,7 +5077,7 @@ document.querySelectorAll('.grip').forEach(g => {
       const w = left ? e.clientX : innerWidth - e.clientX, rail = w < SNAP;
       if (left) { UI.lc = rail; if (!rail) UI.lw = Math.max(lMin(), Math.min(w, innerWidth * .5)); }
       else { const was = UI.rc; UI.rc = rail; if (!rail) UI.rw = Math.max(rMin(), Math.min(w, innerWidth * .75)); if (was !== rail) drawRight(); }
-      layout();
+      layout(left ? 'l' : 'r');
     };
     const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('dragging'); };
     document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
@@ -5233,7 +5244,7 @@ async function queueToTeam(btn) {
 }
 function drawRails() {
   drawAtp();
-  if (UI.lc) {
+  if (LC()) {
     const p = P(), pid = cur;
     if (p && !HEAT[pid]) { HEAT[pid] = {t: 0, d: {files: []}}; call('file_heat', {pid}).then(d => { HEAT[pid] = {t: Date.now(), d}; pid === cur && drawRails(); }, () => {}); } // git heat fills the rail past the chat log; t:0 → Graph still rescans
     $('lrail').innerHTML = `<button class="ib" title="Home" onclick="goHome()" style="width:36px;height:36px"><svg style="width:22px;height:22px"><use href="#i-logo"/></svg></button>
@@ -5246,14 +5257,14 @@ function drawRails() {
           ${x.questions.length ? '<span class="pill" style="position:absolute;top:-6px;right:-8px;padding:0 4px;font-size:10px">' + x.questions.length + '</span>' : ''}</div>`).join('')
       + `<span class="grow"></span><button class="ib racct" title="Clauracle menu: search, tabs, settings" onclick="startMenu($('acctBtn'))">${(() => { const a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0]; return p?.gh ? avGh(p.gh) : a ? avAI(a) : icon('user'); })()}<span class="sdot">${icon('search')}</span></button>`; /* #305 profile pic (project's GitHub, else AI account = drawAcct's pick) + search dot */
   }
-  if (UI.rc && cur && !$('right').hidden) drawRRail();
+  if (RC() && cur && !$('right').hidden) drawRRail();
 }
 // #291 rail = the tab bar as icons (same data-t → tabDots, same divider); stats live in the statusbar
 function drawRRail() {
   $('rrail').innerHTML = [...$('rtabs').children].map(b => b.dataset.t ? `<button class="ib${b.dataset.t === tab ? ' on' : ''}" data-t="${b.dataset.t}" title="${esc(b.title)}" onclick="expandRight('${b.dataset.t}')">${b.querySelector('svg').outerHTML}</button>` : '<hr>').join('');
   tabDots();
 }
-function expandRight(t) { tab = t; UI.rc = false; layout(); drawRight(); }
+function expandRight(t) { tab = t; UI.rc = false; layout('r'); drawRight(); }
 function openFile(abs) {
   const base = P().path.replace(/\\/g, '/').replace(/\/$/, ''), f = abs.replace(/\\/g, '/');
   if (!f.toLowerCase().startsWith(base.toLowerCase() + '/')) return;
