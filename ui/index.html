@@ -1608,7 +1608,7 @@ async function evSave(t) { if (!t) return;
     t.orig = t.text; evDraw(); toast('Saved ' + t.name, 'ok'); } catch (e) { toast(String(e), 'err'); } }
 function evDraw() { if (view !== 'edit' || !cur) return;
   const E = etabs(), t = E.tabs[E.on], b = $('ebody');
-  $('etabs').innerHTML = E.tabs.map((x, i) => `<div class="et${i === E.on ? ' on' : ''}${evDirty(x) ? ' dirty' : ''}" title="${esc(x.rel || x.name)}" onclick="evPick(${i})" onauxclick="if (event.button === 1) evClose(${i})">${icon(/\.(png|jpe?g|gif|webp|bmp)$/i.test(x.rel || '') ? 'image' : 'file')}${esc(x.name)}<button class="ib x" title="Close" onclick="event.stopPropagation(); evClose(${i})">${icon('x')}</button></div>`).join('')
+  $('etabs').innerHTML = E.tabs.map((x, i) => `<div class="et${i === E.on ? ' on' : ''}${evDirty(x) ? ' dirty' : ''}" title="${esc(x.rel || x.name)}${x.rel ? ' · Ctrl+click: also open in the side Code tab' : ''}" onclick="(event.ctrlKey || event.metaKey) && ${!!x.rel} ? previewFile(${esc(JSON.stringify(x.rel || ''))}, true) : evPick(${i})" onauxclick="if (event.button === 1) evClose(${i})">${icon(/\.(png|jpe?g|gif|webp|bmp)$/i.test(x.rel || '') ? 'image' : 'file')}${esc(x.name)}<button class="ib x" title="Close" onclick="event.stopPropagation(); evClose(${i})">${icon('x')}</button></div>`).join('')
     + `<button class="ib add" title="New tab" onclick="evNew()">${icon('plus')}</button>`;
   const ta = b.querySelector('textarea'); if (ta && b._t) Object.assign(b._t, {ss: ta.selectionStart, se: ta.selectionEnd, sy: b.firstChild.scrollTop}); // caret + scroll survive tab switches
   if (ta && b._t === t) return;
@@ -3686,7 +3686,7 @@ async function drawFiles(rel = filesAt[cur] ?? '') {
       <div class="crumbs mono"><a data-p="" onclick="filesGo(this.dataset.p)">${esc(P().name)}</a>${parts.map((x, i) =>
       `<span class="faint">/</span><a data-p="${esc(parts.slice(0, i + 1).join('/'))}" onclick="filesGo(this.dataset.p)">${esc(x)}</a>`).join('')}</div></div>
     <div class="tree">${items.map(i => { const path = (rel ? rel + '/' : '') + i.name;
-      return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p)">${i.dir ? icon('folder') : ftIcon(i.name)}${esc(i.name)}</div>`; }).join('')
+      return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p, event.ctrlKey || event.metaKey)"${i.dir || view !== 'edit' ? '' : ' title="Ctrl+click: open in the Code tab on the side"'}>${i.dir ? icon('folder') : ftIcon(i.name)}${esc(i.name)}</div>`; }).join('')
       || '<p class="dim" style="padding:0 8px">Empty.</p>'}</div>`;
   const c = box.querySelector('.pathbar .crumbs'); c.scrollLeft = c.scrollWidth;
   badgeFiles();
@@ -3711,10 +3711,10 @@ function badgeFiles() {
   if (live) badgeFiles.t = setTimeout(badgeFiles, 5000);
 }
 let envAt = null;
-function previewFile(rel) {
+function previewFile(rel, side) { // side: Ctrl+click in Edit view → Code tab as split view (#369)
   if (/^\.env(\.|$)/.test(rel.split('/').pop())) { envAt = rel; expandRight('svc'); return; }
   if (/\.pdf$/i.test(rel)) return openPdf(P().path.replace(/[\\/]+$/, '') + '/' + rel); // #247 File viewer
-  if (view === 'edit') return evOpen(rel); // #285 Edit view: files open as editor tabs
+  if (view === 'edit' && !side) return evOpen(rel); // #285 Edit view: files open as editor tabs
   codeAt[cur] = {file: rel}; expandRight('code'); drawFiles();
 }
 /* #248 syntax colour, regex per line (no parser, no dep): block comments carry across lines; # comments only in hash langs.
@@ -3756,8 +3756,8 @@ function recentFiles() {
 async function drawCode() {
   const file = codeAt[cur]?.file, box = $('rbody');
   if (!file) { const r = recentFiles();
-    box.innerHTML = r.length ? `<p class="faint" style="margin:0 0 6px 8px;font-size:12px">Recently worked on</p><div class="tree">${r.map(f => `<div data-p="${esc(f)}" title="${esc(f)}" onclick="previewFile(this.dataset.p)">${ftIcon(f)}${esc(f.split('/').pop())}<small class="faint">${esc(f.split('/').slice(0, -1).join('/'))}</small></div>`).join('')}</div>`
-      : '<p class="dim">Pick a file on the left.</p>';
+    box.innerHTML = r.length ? `<p class="faint" style="margin:0 0 6px 8px;font-size:12px">Recently worked on</p><div class="tree">${r.map(f => `<div data-p="${esc(f)}" title="${esc(f)}" onclick="previewFile(this.dataset.p, true)">${ftIcon(f)}${esc(f.split('/').pop())}<small class="faint">${esc(f.split('/').slice(0, -1).join('/'))}</small></div>`).join('')}</div>`
+      : `<p class="dim">${view === 'edit' ? 'Ctrl+click a file on the left to open it here, next to the editor.' : 'Pick a file on the left.'}</p>`;
     if (UI.lc || UI.st !== 'files') { UI.lc = false; setSide('files'); } return; }
   const wrap = localStorage.codeWrap !== '0'; // #231 wrap ON by default, choice remembered (like the diff dialog)
   const head = `<div class="row" style="align-items:center;margin-bottom:10px;gap:4px"><a class="crumbs mono" style="overflow-wrap:anywhere;margin:0;cursor:pointer" title="Open in the File viewer" onclick="codeView()">${esc(file)}</a>
