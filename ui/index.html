@@ -2537,7 +2537,13 @@ const modelMatches = () => { const m = /^\/model(?:\s+(\S*))?(?:\s+(\S*))?$/.exe
   const q = (m[1] || '').toLowerCase();
   return ls.filter(x => (x[0] + ' ' + x[1]).toLowerCase().includes(q)).map(x => ({opt: 1, label: x[1], sub: x[2] || x[0], check: (P().model || '') === x[0],
     run: () => { if (!x[3]) return modelSet({model: x[0]}); $('prompt').value = `/model ${x[0] || 'default'} `; slashSel = Math.max(0, effOf(x[0]).indexOf(P().effort || '')); drawSlash(); grow(); }})); };
-const menuXs = () => { const o = modelMatches(); if (o.length || /^\/model\s/.test($('prompt').value)) return o; const s = slashMatches(); return s.length ? s : atMatches(); }; // commands = objects, files = strings, options = {opt}
+// #345 "/build [q]" → same picker: local copy (this OS + run) | every target | one target (picked targets, else all; HOST first)
+const buildMatches = () => { const m = /^\/build(?:\s+(\S*))?$/i.exec($('prompt').value); if (!m || !cur) return []; const q = (m[1] || '').toLowerCase();
+  const go = tg => () => { $('prompt').value = ''; slashSel = 0; drawSlash(); grow(); keepDraft(); buildLocal(cur, tg); }, pt = P().targets || [];
+  const ts = TGT.flatMap(g => g[2]).filter(x => !pt.length || pt.includes(x[0])).sort((a, b) => (b[0] === HOST) - (a[0] === HOST));
+  return [{opt: 1, k: 'local', label: 'Local copy', sub: `Build for ${tgtName(HOST)} and run it`, run: go('')}, {opt: 1, k: 'all', label: 'All targets', sub: 'Every target, no run', run: go('all')},
+    ...ts.map(x => ({opt: 1, k: x[0], label: x[2], sub: `${x[3]}, no run`, run: go(x[0])}))].filter(o => (o.k + ' ' + o.label).toLowerCase().includes(q)); };
+const menuXs = () => { const v = $('prompt').value; let o = modelMatches(); if (o.length || /^\/model\s/.test(v)) return o; o = buildMatches(); if (o.length || /^\/build\s/i.test(v)) return o; const s = slashMatches(); return s.length ? s : atMatches(); }; // commands = objects, files = strings, options = {opt}
 function drawSlash() {
   const xs = menuXs(), el = $('slash');
   slashSel = Math.min(slashSel, Math.max(xs.length - 1, 0));
