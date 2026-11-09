@@ -3095,9 +3095,9 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const seg = `<span class="seg">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, '');
   // #265 build in flight → say so (was an enabled-looking button under "Ready to build!")
-  // #266 staged builds (lowest first) = what Release ships; build/clean/bump rows don't block them (own commit + copies)
-  const stg = (c.staged || []).filter(x => !tv || vcmp(x.v, tv) > 0).sort((a, b) => vcmp(a.v, b.v)), sl = items.filter(x => !x.ai && !x.ok && !['build', 'clean', 'bump'].includes(x.id)).length;
-  const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : stg.length ? (sl ? `${sl} check${sl > 1 ? 's' : ''} open` : '') : left ? `${left} check${left > 1 ? 's' : ''} open` : bBusy(pid) ? 'Building… Release unlocks when it finishes' : '';
+  // #266 staged builds (lowest first) = what Release ships; #354 checklist = working copy (newer version) ∴ never gates a staged one (own commit + copies)
+  const stg = (c.staged || []).filter(x => !tv || vcmp(x.v, tv) > 0).sort((a, b) => vcmp(a.v, b.v));
+  const why = !gi?.remote ? 'Not on GitHub yet (GitHub tab › publish)' : stg.length ? '' : left ? `${left} check${left > 1 ? 's' : ''} open` : bBusy(pid) ? 'Building… Release unlocks when it finishes' : '';
   const sv = (stg.find(x => x.v === RELSV[pid]) || stg[0])?.v, rv = sv || v; // #351 picked staged version (▾ menu), default lowest
   // Release = publish v<version> (that version's build files) on GitHub + set the stage; grayed out till every check is green
   const rel = RELBUSY[pid] ? `<button class="btn sm primary block" disabled><i class="spin"></i>Publishing…</button>` : `<button class="btn sm primary block" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this${sv ? `, '${esc(sv)}'` : ''})">${icon('rocket')}Release v${esc(rv)} as ${STAGES[SK[to]]}</button>`; /* #122 RELBUSY survives redraws */
