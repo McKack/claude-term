@@ -407,7 +407,7 @@ pub struct Config {
     pub off: Vec<String>, // switched off everywhere
     pub you: You,
     pub lessons: Vec<String>, // never-again rules (mcp lesson tool / Settings › Accounts), in every session's prompt
-    pub win: Option<[i32; 5]>, // main window at last close/restart: x, y, w, h (physical px), maximized 0|1
+    pub win: Option<[i32; 5]>, // main window at last close/restart: x, y, w, h (physical px), mode 0 windowed|1 maximized|2 fullscreen
     pub notify: Notify,
     pub ci_builds: bool, // #126: GitHub Actions builds non-local targets; off (default) = local builds only ∵ CI minutes cost money
     pub mac: NetMac, // #147 Network Mac (SSH)

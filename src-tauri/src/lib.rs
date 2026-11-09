@@ -1919,35 +1919,61 @@ fn homepage(exe: String, profile: String) -> String {
         .filter(|u| u.starts_with("http")).unwrap_or_default()
 }
 
-/// Start `exe` (detached, it outlives us) and quit; the new instance resumes cut-off turns (claude::resume_interrupted).
-/// Main window geometry → config (close, quit, restart). Maximized keeps the last normal rect ∵ restore needs it.
+/// Main window geometry → config (close, quit, restart): [x, y, w, h, mode] physical px, mode 0 windowed | 1 maximized | 2 fullscreen.
+/// Max/fullscreen keep the last normal rect ∵ restore needs it, moved onto the CURRENT monitor if it sits elsewhere
+/// (window dragged to another screen then maximized) → restore maximizes on the right monitor.
 fn save_win(app: &AppHandle) {
     let (Some(w), Some(st)) = (app.get_window("main"), app.try_state::<Arc<State>>()) else { return };
     if w.is_minimized().unwrap_or(false) { return; }
-    let max = w.is_maximized().unwrap_or(false);
+    let mode = if w.is_fullscreen().unwrap_or(false) { 2 } else { w.is_maximized().unwrap_or(false) as i32 };
     let mut cfg = st.cfg.lock().unwrap();
-    let r = match (max, cfg.win, w.outer_position(), w.inner_size()) {
-        (true, Some(o), ..) => [o[0], o[1], o[2], o[3], 1],
-        (_, _, Ok(p), Ok(s)) => [p.x, p.y, s.width as i32, s.height as i32, max as i32],
+    let r = match (mode, cfg.win, w.outer_position(), w.inner_size()) {
+        (1 | 2, Some(o), ..) => {
+            let mut o = [o[0], o[1], o[2], o[3], mode];
+            if let Ok(Some(m)) = w.current_monitor() {
+                let (p, s) = (m.position(), m.size());
+                if !in_mon(p.x, p.y, s.width, s.height, o[0], o[1]) {
+                    o[2] = o[2].min(s.width as i32 - 80);
+                    o[3] = o[3].min(s.height as i32 - 80);
+                    o[0] = p.x + 40;
+                    o[1] = p.y + 40;
+                }
+            }
+            o
+        }
+        (_, _, Ok(p), Ok(s)) => [p.x, p.y, s.width as i32, s.height as i32, mode],
         _ => return,
     };
     if cfg.win != Some(r) { cfg.win = Some(r); store::save(&cfg); }
 }
 
-/// Saved geometry back, unless its top-left is on no monitor any more (unplugged screen).
+/// Is the window's top-left (+40,+10 grab margin) on the monitor at (mx, my) of size w×h?
+fn in_mon(mx: i32, my: i32, w: u32, h: u32, x: i32, y: i32) -> bool {
+    (mx..mx + w as i32).contains(&(x + 40)) && (my..my + h as i32).contains(&(y + 10))
+}
+
+/// Saved geometry back, unless its top-left is on no monitor any more (unplugged screen); then max/fullscreen
+/// (Windows applies both on the monitor the window sits on).
 fn restore_win(app: &tauri::App, r: [i32; 5]) {
     let Some(w) = app.get_window("main") else { return };
     let on = w.available_monitors().unwrap_or_default().iter().any(|m| {
         let (p, s) = (m.position(), m.size());
-        (p.x..p.x + s.width as i32).contains(&(r[0] + 40)) && (p.y..p.y + s.height as i32).contains(&(r[1] + 10))
+        in_mon(p.x, p.y, s.width, s.height, r[0], r[1])
     });
     if on {
         let _ = w.set_position(tauri::PhysicalPosition::new(r[0], r[1]));
     }
     let _ = w.set_size(tauri::PhysicalSize::new(r[2].max(900) as u32, r[3].max(560) as u32));
-    if r[4] == 1 { let _ = w.maximize(); }
+    match r[4] { 1 => { let _ = w.maximize(); } 2 => { let _ = w.set_fullscreen(true); } _ => {} }
 }
 
+/// F11: fullscreen on/off (saved by save_win as mode 2).
+#[tauri::command]
+fn fullscreen(app: AppHandle) {
+    if let Some(w) = app.get_window("main") { let _ = w.set_fullscreen(!w.is_fullscreen().unwrap_or(false)); }
+}
+
+/// Start `exe` (detached, it outlives us) and quit; the new instance resumes cut-off turns (claude::resume_interrupted).
 pub fn relaunch(app: &AppHandle, exe: std::path::PathBuf, args: &[String]) {
     save_win(app);
     kill_children(); // sessions end before the new instance resumes them
@@ -2119,7 +2145,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
+            fullscreen, state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
             continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,

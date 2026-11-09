@@ -2106,6 +2106,7 @@ function edDone() {
   ED = null; closeDlg(); drawAtts(); grow(); $('prompt').focus();
 }
 document.addEventListener('keydown', e => {
+  if (e.key === 'F11') { e.preventDefault(); return call('fullscreen'); }
   if ($('dlg').open && VZ && (e.ctrlKey || e.metaKey) && ['+', '=', '-', '0'].includes(e.key)) { e.preventDefault(); return vZoom(e.key === '0' ? 0 : e.key === '-' ? 1 / 1.25 : 1.25); }
   if (!$('dlg').open || !VW) return;
   const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
