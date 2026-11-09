@@ -1053,7 +1053,8 @@ function buildMenu(items, r, side, level = 0) {
   return m;
 }
 const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
-function closeMenu() { if (document.querySelector('.menu')) MENU_T = Date.now(); document.querySelectorAll('.menu').forEach(x => x.remove()); document.removeEventListener('mousedown', outside); }
+let CTXP = null, CTXD = false; // #390 pending editable right-click / Rust holds a spelling deferral (closed w/o pick → release it)
+function closeMenu() { if (CTXD) setTimeout(() => CTXD && (CTXD = false, call('ctx_pick', {id: -1}))); if (document.querySelector('.menu')) MENU_T = Date.now(); document.querySelectorAll('.menu').forEach(x => x.remove()); document.removeEventListener('mousedown', outside); }
 // right-click: own menu on chat msgs, tool rows, Files tree, projects; WebView default only in inputs / over a selection
 const copy = t => navigator.clipboard.writeText(t);
 const absOf = rel => { const b = P().path.replace(/[\\/]+$/, ''), s = b.includes('\\') ? '\\' : '/'; return b + s + rel.replace(/\//g, s); };
@@ -1067,10 +1068,15 @@ document.addEventListener('contextmenu', e => {
     let s = 0, en = 0; try { s = ed.selectionStart; en = ed.selectionEnd; } catch {} // number/email inputs throw
     const rg = ce && getSelection().rangeCount ? getSelection().getRangeAt(0).cloneRange() : null;
     const txt = ce ? sel : (ed.value || '').slice(s, en), back = () => { ed.focus(); if (rg) { getSelection().removeAllRanges(); getSelection().addRange(rg); } else try { ed.setSelectionRange(s, en); } catch {} };
-    return at([txt && !ro && !pw && {icon: 'x', label: 'Cut', run: () => { copy(txt); back(); document.execCommand('delete'); }},
+    const its = [txt && !ro && !pw && {icon: 'x', label: 'Cut', run: () => { copy(txt); back(); document.execCommand('delete'); }},
       txt && !pw && {icon: 'copy', label: 'Copy', run: () => copy(txt)},
       !ro && {icon: 'clip', label: 'Paste', run: () => navigator.clipboard.readText().then(v => { back(); document.execCommand('insertText', false, v); }).catch(err => toast('Paste blocked: ' + err, 'err'))},
-      {icon: 'list', label: 'Select all', run: () => { ed.focus(); ce ? document.execCommand('selectAll') : ed.select(); }}].filter(Boolean));
+      {icon: 'list', label: 'Select all', run: () => { ed.focus(); ce ? document.execCommand('selectAll') : ed.select(); }}].filter(Boolean);
+    if (HOST !== 'windows' || ro || pw) return at(its);
+    // #390 Windows: let WebView2 see it → Rust ctxmenu event brings spelling items (shown on top); ≤300ms or our plain menu
+    clearTimeout(CTXP?.t); const p = CTXP = {show: sp => { CTXP = null; at(sp.length ? [...sp.map(s => ({icon: /dictionar/i.test(s.l) ? 'plus' : 'check', label: s.l,
+      run: () => { CTXD = 0; back(); call('ctx_pick', {id: s.id}); }})), '-', ...its] : its); CTXD = sp.length > 0; }};
+    p.t = setTimeout(() => CTXP === p && p.show([]), 300); return;
   }
   const a = t.closest('a[href], [data-url]'), url = a && (a.dataset.url || a.href), img = t.closest('img');
   const media = [url && !/^(javascript|#)/.test(a.getAttribute('href') || '') && {icon: 'globe', label: 'Open link', run: () => T.opener.openUrl(url)}, url && {icon: 'copy', label: 'Copy link', run: () => copy(url)},
@@ -2774,6 +2780,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   project: () => { if (!d) return; const o = P(d.id); S.projects = S.projects.map(p => p.id === d.id ? d : p); drawProjects(); if (d.id === cur) { if (d.keep) $('suggest').hidden = true; drawChrome(); drawLog(); if (o?.build?.after !== d.build?.after) drawRight(); /* #227 Then picker follows any change (answer applied by AI, Settings) at once */ } },
   queued: () => refresh(),
   mac_setup: () => macLine(d.line),
+  ctxmenu: () => CTXP ? (clearTimeout(CTXP.t), CTXP.show(d.sp)) : d.sp.length && call('ctx_pick', {id: -1}), // #390 late → release deferral
   janitor: () => toast(`Storage Janitor freed ${mb(d.freed)} (old caches, Claude Code versions)`, 'ok'),
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),

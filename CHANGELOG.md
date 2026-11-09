@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Right-click on a misspelled word in a text field now offers spelling suggestions (Windows).
 - Clauracle is now licensed under GPL-3.0 (was MIT); CREDITS.md lists who made it and the libraries, font and icons it ships.
 - Smart build and builds after a task now do a fast local debug build (no installers). Turn on "Release builds after tasks" in Settings › Projects › Build for the full build, or set your own Local build command. Releases and deploys still use the full build.
 - Edit view: a third option next to Chat and Terminal. Files open as tabs you can edit and save (Ctrl+S), with a resizable panel below holding the Terminal view and a real Shell in the project folder.

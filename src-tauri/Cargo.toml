@@ -29,6 +29,8 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] } # Br
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_Storage_FileSystem"] } # already in the tree via tauri: kill-on-close job for children
+webview2-com = "0.39" # #390 ContextMenuRequested (spelling items); same version as tauri's wry
+windows-core = "0.62"
 
 [profile.release]
 opt-level = "s"

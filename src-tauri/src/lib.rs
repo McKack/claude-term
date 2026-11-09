@@ -2147,6 +2147,54 @@ fn restore_win(app: &tauri::App, r: [i32; 5]) {
     match r[4] { 1 => { let _ = w.maximize(); } 2 => { let _ = w.set_fullscreen(true); } _ => {} }
 }
 
+// #390 spelling in our own right-click menu (Windows/WebView2 only; JS gets no suggestions). Page doesn't preventDefault
+// in editable fields → WebView2 ContextMenuRequested: always Handled (never the native menu); editable target → emit
+// `ctxmenu` {sp:[{l,id}]} = leading group of Name "other" items (= suggestions + Add to dictionary) before the 1st separator.
+// Suggestions → deferral kept in CTXD till JS ctx_pick(id) (-1 = dismissed); id runs Chromium's own replace/add.
+#[cfg(windows)]
+mod ctxm {
+    use webview2_com::{take_pwstr, ContextMenuRequestedEventHandler, Microsoft::Web::WebView2::Win32::*};
+    use windows_core::{Interface, BOOL, PWSTR};
+    thread_local! { pub static CTXD: std::cell::RefCell<Option<(ICoreWebView2ContextMenuRequestedEventArgs, ICoreWebView2Deferral)>> = Default::default(); }
+    pub fn pick(id: i32) {
+        if let Some((a, d)) = CTXD.with(|c| c.borrow_mut().take()) { unsafe { if id >= 0 { let _ = a.SetSelectedCommandId(id); } let _ = d.Complete(); } }
+    }
+    pub fn hook(wv: &tauri::Webview, app: tauri::AppHandle) {
+        let _ = wv.with_webview(move |pw| unsafe {
+            let Ok(core) = pw.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_11>()) else { return };
+            let h = ContextMenuRequestedEventHandler::create(Box::new(move |_, args| {
+                let Some(a) = args else { return Ok(()) };
+                a.SetHandled(true)?;
+                let mut ed = BOOL(0);
+                a.ContextMenuTarget()?.IsEditable(&mut ed)?;
+                if !ed.as_bool() { return Ok(()); }
+                let items = a.MenuItems()?;
+                let mut n = 0u32;
+                items.Count(&mut n)?;
+                let mut sp = vec![];
+                for i in 0..n {
+                    let it = items.GetValueAtIndex(i)?;
+                    let mut k = COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND::default();
+                    it.Kind(&mut k)?;
+                    if k == COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SEPARATOR { break; }
+                    let (mut nm, mut lb, mut id) = (PWSTR::null(), PWSTR::null(), 0i32);
+                    it.Name(&mut nm)?; it.Label(&mut lb)?; it.CommandId(&mut id)?;
+                    if take_pwstr(nm) != "other" || k != COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND { continue; }
+                    sp.push(serde_json::json!({"l": take_pwstr(lb).replace('&', ""), "id": id}));
+                }
+                if !sp.is_empty() { pick(-1); let d = a.GetDeferral()?; CTXD.with(|c| *c.borrow_mut() = Some((a, d))); }
+                crate::claude::emit(&app, "ctxmenu", serde_json::json!({"sp": sp}));
+                Ok(())
+            }));
+            let mut tok = 0i64;
+            let _ = core.add_ContextMenuRequested(&h, &mut tok);
+        });
+    }
+}
+/// #390: spelling item picked (id) or our menu closed (-1). Sync = main thread, where CTXD lives.
+#[tauri::command]
+fn ctx_pick(id: i32) { #[cfg(windows)] ctxm::pick(id); #[cfg(not(windows))] let _ = id; }
+
 /// F11: fullscreen on/off (saved by save_win as mode 2).
 #[tauri::command]
 fn fullscreen(app: AppHandle) {
@@ -2281,6 +2329,7 @@ pub fn run() {
             let st = app.state::<Arc<State>>().inner().clone();
             *ORPHANS.lock().unwrap() = find_orphans(); // before resume spawns (track overwrites the file)
             if let Some(r) = st.cfg.lock().unwrap().win { restore_win(app, r); }
+            #[cfg(windows)] if let Some(w) = app.get_webview("main") { ctxm::hook(&w, app.handle().clone()); }
             claude::resume_interrupted(app.handle(), &st);
             claude::resume_builds(app.handle(), &st);
             // warm the slow lookups so Settings opens instantly: gh accounts, and the catalog on a first run
@@ -2324,7 +2373,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![rel_fix, 
+        .invoke_handler(tauri::generate_handler![rel_fix, ctx_pick, 
             fullscreen, state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
             continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
