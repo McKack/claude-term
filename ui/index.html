@@ -290,7 +290,7 @@ pre.diff .ctx { color:var(--faint); }
 :is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button).on { color:var(--text); background:var(--tabbg, var(--bg)); border-color:var(--line); box-shadow:inset 0 2px var(--accent); }
 :root.c-round :is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button) { border-radius:14px 14px 0 0 !important; }
 #ptabs .ib { width:24px; height:24px; padding:0; } #pcol .i { rotate:90deg; } #main.pc #pcol .i { rotate:-90deg; }
-#pgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } #pgrip:hover, body.dragging #pgrip { background:color-mix(in srgb, var(--accent) 30%, transparent); }
+#pgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } #pgrip:hover, #pgrip.on { background:color-mix(in srgb, var(--accent) 30%, transparent); }
 #main.edit #log { flex:0 1 var(--ph); min-height:0; /* #344 shrinks before overflowing the window; #edv keeps its 80px */ margin-top:0; padding-top:8px; mask-image:none; }
 #main.edit.shell #log, #main.edit.shell #dock, #main.edit.pc #log, #main.edit.pc #dock { display:none; }
 #main.edit.shell:not(.pc) #shellbox { display:block; flex:0 1 calc(var(--ph) + var(--dh, 0px)); min-height:0; /* #317 + last dock height ∴ Terminal ⇄ Shell keeps the panel size */ background:var(--term); padding:6px 0 0 10px; overflow:hidden; } #shellbox > div { height:100%; }
@@ -514,7 +514,7 @@ pre.diff .ctx { color:var(--faint); }
 .bbar.on { background-image:linear-gradient(90deg, transparent 25%, color-mix(in srgb, var(--accent) 55%, transparent) 50%, transparent 75%); background-size:200% 100%; animation:shimmer 1.4s linear infinite; }
 #ready.shine { background-image:linear-gradient(90deg, transparent 25%, color-mix(in srgb, var(--accent) 22%, transparent) 50%, transparent 75%); background-size:200% 100%; animation:shimmer 1.8s linear 2 forwards; }
 #composer { position:relative; z-index:1; }
-#cgrip { position:absolute; left:16px; right:16px; top:-5px; height:10px; cursor:ns-resize; z-index:2; } /* #378 top-edge resize grip */
+#cgrip { position:absolute; left:16px; right:16px; top:-5px; height:10px; cursor:ns-resize; z-index:2; border-radius:5px; } /* #378 top-edge resize grip */ #cgrip:hover, #cgrip.on { background:color-mix(in srgb, var(--accent) 30%, transparent); } /* #399 same hover as panel grips */
 #composer { background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:10px 10px 8px 14px; transition:border-color .12s; }
 #composer:focus-within { border-color:color-mix(in srgb, var(--accent) 60%, var(--line2)); }
 #composer.drop { border-color:var(--accent); border-style:dashed; }
@@ -601,8 +601,8 @@ pre.diff .ctx { color:var(--faint); }
 /* resizable panels; dragged under SNAP they collapse to a rail of context icons */
 #side, #right { position:relative; min-width:0; }
 .grip { position:absolute; top:0; bottom:0; width:7px; cursor:col-resize; z-index:5; } #side .grip { right:-4px; } #right .grip { left:-4px; }
-.grip:hover, body.dragging .grip { background:color-mix(in srgb, var(--accent) 30%, transparent); }
-body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { pointer-events:none; }
+.grip:hover, .grip.on { background:color-mix(in srgb, var(--accent) 30%, transparent); }
+body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { pointer-events:none; } body.dragging * { cursor:inherit !important; } /* #399 handle cursor over everything mid-drag */
 #side.rail > :not(#lrail):not(.grip), #right.rail > :not(#rrail):not(.grip) { display:none !important; }
 #side:not(.rail) #lrail, #right:not(.rail) #rrail { display:none !important; }
 .railbox { display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 0; height:100%; overflow:hidden auto; }
@@ -1549,7 +1549,7 @@ function turnHead() {
 const tip = Object.assign(document.createElement('div'), {id: 'tip', popover: 'manual'}); document.body.append(tip);
 let tipEl = null, tipT, tipX = 0, tipY = 0, tipOver = null;
 const hideTip = () => { clearTimeout(tipT); tipEl = null; if (tip.matches(':popover-open')) tip.hidePopover(); };
-const tipFor = el => { hideTip(); if (!el?.dataset.tip) return;
+const tipFor = el => { hideTip(); if (!el?.dataset.tip || document.body.classList.contains('dragging')) return; /* #399 no tip mid-drag (stayed behind the moving composer) */
   tipEl = el;
   tipT = setTimeout(() => {
     if (!el.isConnected) return;
@@ -1757,9 +1757,18 @@ const evZp = p => evSet('ez', Math.min(300, Math.max(50, p)) / 100, false), evZo
 /* #393 one zoom control [−] N% [+]: ± snap to next multiple of 10 (66 → 70 → 80), drag on % = 1%/px, dblclick = 100%. get/set = JS exprs (set gets p = absolute %) ∵ bars re-render mid-drag */
 const zStep = (p, d) => d > 0 ? Math.floor(p / 10 + 1e-6) * 10 + 10 : Math.ceil(p / 10 - 1e-6) * 10 - 10;
 const zoomCtl = (get, set, tip = '') => `<span class="zctl"><button class="ib" title="Zoom out" onclick="(p => ${set})(zStep(${get}, -1))">${icon('minus')}</button><span class="zp" data-tip="Drag left/right to zoom${tip} · double-click: 100%" onpointerdown="zDrag(event, () => ${get}, p => ${set})" ondblclick="(p => ${set})(100)">${(0, eval)(get)}%</span><button class="ib" title="Zoom in" onclick="(p => ${set})(zStep(${get}, 1))">${icon('plus')}</button></span>`;
-function zDrag(e, get, set) { if (e.button) return; e.preventDefault(); const x0 = e.clientX, p0 = get();
-  const mv = ev => set(p0 + Math.round(ev.clientX - x0)), up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
-  addEventListener('pointermove', mv); addEventListener('pointerup', up); }
+/* #399 ONE drag model for every divider/handle: press → move(ev) follows pointer x/y wherever it is (window listeners + capture)
+   → stops on release/cancel/lost capture/buttons 0/window blur/pointer outside the window. cap false = handle re-renders mid-drag (capture would drop).
+   Handle gets .on (hover-style highlight) + body.dragging (cursor = handle's, no text select, iframes inert); tooltip hidden for the drag */
+function dragOn(e, move, end, cap = true) { if (e.button) return; e.preventDefault(); hideTip(); const g = e.currentTarget, cur = getComputedStyle(g).cursor; let done = false;
+  if (cap) try { g.setPointerCapture(e.pointerId); } catch {}
+  const out = ev => ev.clientX < 0 || ev.clientY < 0 || ev.clientX >= innerWidth || ev.clientY >= innerHeight;
+  const mv = ev => !ev.buttons || out(ev) ? stop() : move(ev), K = ['pointerup', 'pointercancel', 'blur'];
+  const stop = () => { if (done) return; done = true; removeEventListener('pointermove', mv); K.forEach(k => removeEventListener(k, stop)); g.removeEventListener('lostpointercapture', stop);
+    g.classList.remove('on'); document.body.classList.remove('dragging'); document.body.style.cursor = ''; end?.(); };
+  addEventListener('pointermove', mv); K.forEach(k => addEventListener(k, stop)); if (cap) g.addEventListener('lostpointercapture', stop);
+  g.classList.add('on'); document.body.classList.add('dragging'); document.body.style.cursor = cur; }
+function zDrag(e, get, set) { const x0 = e.clientX, p0 = get(); dragOn(e, ev => set(p0 + Math.round(ev.clientX - x0)), null, false); }
 function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.text !== undefined, ed = tx && !evFm(t), pv = evPv(t);
   const M = {
     file: [{label: 'New file', icon: 'plus', run: evNew}, {label: 'Open from Files', icon: 'folder', run: () => { UI.lc = false; setSide('files'); }}, '-',
@@ -1815,15 +1824,13 @@ new ResizeObserver(() => { const s = SH[cur]; if (s?.term.element && $('shellbox
 $('pgrip').ondblclick = () => { UI.pc = !UI.pc; applyView(); };
 // #380 pointer capture (mouseup was lost when the panel collapsed under the cursor → stuck drag) + buttons==0 guard;
 // total panel = log + composer: log shrinks to 0 first, then the composer (PH, term grid), collapse only when the whole panel < 60px
-$('pgrip').onpointerdown = e => { e.preventDefault(); const g = e.currentTarget, m = $('main'), d0 = DH, t0 = $('prompt').offsetHeight, ph0 = PH; g.setPointerCapture(e.pointerId); document.body.classList.add('dragging');
-  const up = () => { g.onpointermove = g.onpointerup = g.onlostpointercapture = null; document.body.classList.remove('dragging'); };
-  g.onpointermove = e => { if (!e.buttons) return up(); const r = m.getBoundingClientRect(), tabs = $('ptabs').offsetHeight, total = r.bottom - e.clientY - tabs;
+$('pgrip').onpointerdown = e => { const m = $('main'), d0 = DH, t0 = $('prompt').offsetHeight, ph0 = PH;
+  dragOn(e, e => { const r = m.getBoundingClientRect(), tabs = $('ptabs').offsetHeight, total = r.bottom - e.clientY - tabs;
     const was = UI.pc; UI.pc = total < 60;
     if (!UI.pc) { const max = r.bottom - $('edv').getBoundingClientRect().top - 80 - tabs - d0, h = Math.min(total - d0, max); /* #344 max = editor keeps 80px */
       UI.ph = Math.max(0, Math.round(h));
       if (UI.pt !== 'shell') { const np = h < 0 ? Math.round((t0 + h) / LH) * LH : 0; PH = h < 0 ? (np < 40 ? 0 : np) : ph0; grow(); } }
-    panelLay(); if (was && !UI.pc && UI.pt === 'shell') shellShow(); };
-  g.onpointerup = g.onlostpointercapture = up; };
+    panelLay(); if (was && !UI.pc && UI.pt === 'shell') shellShow(); }); };
 function drawLog() {
   const box = document.createElement('div'), l = logs[cur] || [];
   box.className = 'col';
@@ -2365,9 +2372,8 @@ async function openPdf(path) {
 // #239 window may hang ≤50% past the left/right/bottom app edges; top ≥ 0 ∴ the header (drag handle) stays reachable
 function vClamp(dx = 0, dy = 0) { const d = $('dlg'); if (!d.style.left) return; const r = d.getBoundingClientRect();
   d.style.left = Math.max(-r.width / 2, Math.min(innerWidth - r.width / 2, r.left + dx)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - r.height / 2, r.top + dy)) + 'px'; }
-function vDrag(e) { if (e.button || e.target.closest('button, input')) return; e.preventDefault(); let px = e.clientX, py = e.clientY;
-  const mv = ev => { vClamp(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY; }, up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
-  addEventListener('pointermove', mv); addEventListener('pointerup', up); }
+function vDrag(e) { if (e.target.closest('button, input')) return; let px = e.clientX, py = e.clientY;
+  dragOn(e, ev => { vClamp(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY; }); }
 const edDirty = () => { const b = $('edSave'); if (b) { b.disabled = false; b.removeAttribute('title'); } }; // #232 Save greyed till a change
 const edSnap = () => { edDirty(); ED.undo.push(JSON.stringify([ED.ops, ED.nmax])); ED.undo.splice(0, ED.undo.length - 50); };
 const edMove = (o, dx, dy) => { if (o.t === 'pen') o.pts = o.pts.map(([x, y]) => [x + dx, y + dy]); else if (o.t === 'line') { o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; } else { o.x += dx; o.y += dy; } };
@@ -2754,10 +2760,9 @@ const grow = () => { const t = $('prompt'), st = t.scrollTop; t.style.overflowY 
 let sbEl = null; document.addEventListener('mousemove', e => { const t = e.target, on = t instanceof Element && ((t.offsetWidth - t.clientWidth > 4 && e.offsetX >= t.clientWidth) || (t.offsetHeight - t.clientHeight > 4 && e.offsetY >= t.clientHeight));
   if (sbEl && (sbEl !== t || !on)) { sbEl.classList.remove('onsb'); sbEl = null; } if (on && !sbEl) (sbEl = t).classList.add('onsb'); }, { passive: true });
 // #378 drag the composer's top edge: cap = 75% of #main − room for the ribbon (its pull-up never pushes the composer) − composer chrome; under 40px → auto (empty size); term view snaps to the 20px grid
-$('cgrip').onpointerdown = e => { e.preventDefault(); const g = e.currentTarget, t = $('prompt'), y0 = e.clientY, h0 = t.offsetHeight; g.setPointerCapture(e.pointerId);
-  g.onpointermove = m => { const r = $('ready'), cap = $('main').clientHeight * .75 - (r.hidden ? 0 : r.scrollHeight) - ($('composer').offsetHeight - t.offsetHeight);
-    let h = Math.min(cap, h0 + y0 - m.clientY); if (view !== 'chat') h = Math.round(h / LH) * LH; PH = h < 40 ? 0 : h; grow(); };
-  g.onpointerup = () => g.onpointermove = g.onpointerup = null; };
+$('cgrip').onpointerdown = e => { const t = $('prompt'), y0 = e.clientY, h0 = t.offsetHeight;
+  dragOn(e, m => { const r = $('ready'), cap = $('main').clientHeight * .75 - (r.hidden ? 0 : r.scrollHeight) - ($('composer').offsetHeight - t.offsetHeight);
+    let h = Math.min(cap, h0 + y0 - m.clientY); if (view !== 'chat') h = Math.round(h / LH) * LH; PH = h < 40 ? 0 : h; grow(); }); };
 new ResizeObserver(() => pbDraw()).observe($('prompt')); // width/scrollbar changes w/o typing (window, side panels) → mirror re-measured
 let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
 // #325 term view: refs = the attachments (no chips) ∴ deleting its last @[name] drops the attachment; chat keeps it (chip stays)
@@ -5122,18 +5127,12 @@ addEventListener('resize', () => layout());
 document.querySelectorAll('.grip').forEach(g => {
   const left = g.dataset.side === 'l';
   g.ondblclick = () => { left ? UI.lc = !UI.lc : UI.rc = !UI.rc; layout(); drawRight(); };
-  g.onmousedown = e => {
-    e.preventDefault();
-    document.body.classList.add('dragging');
-    const move = e => {
-      const w = left ? e.clientX : innerWidth - e.clientX, rail = w < SNAP;
-      if (left) { UI.lc = rail; if (!rail) UI.lw = Math.max(lMin(), Math.min(w, innerWidth * .5)); }
-      else { const was = UI.rc; UI.rc = rail; if (!rail) UI.rw = Math.max(rMin(), Math.min(w, innerWidth * .75)); if (was !== rail) drawRight(); }
-      layout(left ? 'l' : 'r');
-    };
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('dragging'); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
-  };
+  g.onpointerdown = e => dragOn(e, e => {
+    const w = left ? e.clientX : innerWidth - e.clientX, rail = w < SNAP;
+    if (left) { UI.lc = rail; if (!rail) UI.lw = Math.max(lMin(), Math.min(w, innerWidth * .5)); }
+    else { const was = UI.rc; UI.rc = rail; if (!rail) UI.rw = Math.max(rMin(), Math.min(w, innerWidth * .75)); if (was !== rail) drawRight(); }
+    layout(left ? 'l' : 'r');
+  });
 });
 const initials = n => esc(n.split(/[\s_.-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?');
 const dotOf = p => busy[p.id] ? 'busy' : p.ready ? 'ready' : '';
