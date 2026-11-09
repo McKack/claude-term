@@ -1627,7 +1627,7 @@ function applyView() { $('log').classList.toggle('term', view !== 'chat'); reque
    ponytail: plain textarea (no highlight/line numbers); Untitled tabs not persisted. Panel: UI.ph px, UI.pc collapsed, UI.pt term|shell */
 function panelLay() { const m = $('main'), ed = view === 'edit' && !!cur;
   m.classList.toggle('edit', ed); m.classList.toggle('shell', ed && UI.pt === 'shell'); m.classList.toggle('pc', ed && !!UI.pc);
-  m.style.setProperty('--ph', (UI.ph || 260) + 'px');
+  m.style.setProperty('--ph', (UI.ph ?? 260) + 'px');
   document.querySelectorAll('#ptabs > button[data-k]').forEach(b => b.classList.toggle('on', b.dataset.k === (UI.pt || 'term') && !UI.pc));
   try { localStorage.ui = JSON.stringify(UI); } catch {} }
 function panelTab(k) { UI.pc = false; UI.pt = k; applyView(); }
@@ -1759,11 +1759,17 @@ let DH = 0; new ResizeObserver(() => { const h = $('dock').offsetHeight; if (h) 
 new ResizeObserver(() => { const s = SH[cur]; if (s?.term.element && $('shellbox').offsetHeight) s.fit.fit(); }).observe($('shellbox'));
 // panel grip: drag = height (snaps shut under 60px, like the side rails), double-click = collapse
 $('pgrip').ondblclick = () => { UI.pc = !UI.pc; applyView(); };
-$('pgrip').onmousedown = e => { e.preventDefault(); document.body.classList.add('dragging');
-  const m = $('main'), move = e => { const r = m.getBoundingClientRect(), h = r.bottom - e.clientY - $('ptabs').offsetHeight - DH;
-    const was = UI.pc; UI.pc = h < 60; if (!UI.pc) UI.ph = Math.round(Math.max(80, Math.min(h, r.bottom - $('edv').getBoundingClientRect().top - 80 - $('ptabs').offsetHeight - DH))); /* #344 max = editor keeps 80px */ panelLay(); if (was && !UI.pc && UI.pt === 'shell') shellShow(); };
-  const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('dragging'); };
-  document.addEventListener('mousemove', move); document.addEventListener('mouseup', up); };
+// #380 pointer capture (mouseup was lost when the panel collapsed under the cursor → stuck drag) + buttons==0 guard;
+// total panel = log + composer: log shrinks to 0 first, then the composer (PH, term grid), collapse only when the whole panel < 60px
+$('pgrip').onpointerdown = e => { e.preventDefault(); const g = e.currentTarget, m = $('main'), d0 = DH, t0 = $('prompt').offsetHeight, ph0 = PH; g.setPointerCapture(e.pointerId); document.body.classList.add('dragging');
+  const up = () => { g.onpointermove = g.onpointerup = g.onlostpointercapture = null; document.body.classList.remove('dragging'); };
+  g.onpointermove = e => { if (!e.buttons) return up(); const r = m.getBoundingClientRect(), tabs = $('ptabs').offsetHeight, total = r.bottom - e.clientY - tabs;
+    const was = UI.pc; UI.pc = total < 60;
+    if (!UI.pc) { const max = r.bottom - $('edv').getBoundingClientRect().top - 80 - tabs - d0, h = Math.min(total - d0, max); /* #344 max = editor keeps 80px */
+      UI.ph = Math.max(0, Math.round(h));
+      if (UI.pt !== 'shell') { const np = h < 0 ? Math.round((t0 + h) / LH) * LH : 0; PH = h < 0 ? (np < 40 ? 0 : np) : ph0; grow(); } }
+    panelLay(); if (was && !UI.pc && UI.pt === 'shell') shellShow(); };
+  g.onpointerup = g.onlostpointercapture = up; };
 function drawLog() {
   const box = document.createElement('div'), l = logs[cur] || [];
   box.className = 'col';
