@@ -93,7 +93,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #graph .tm div.on { outline:2px solid #fff; outline-offset:-2px; z-index:1; } #graph .gdet { max-height:45%; overflow:auto; padding:6px 10px; border-top:1px solid #ffffff1a; line-height:1.5; }
 #graph .gdet .row { display:flex; gap:8px; } #graph .gdet .row > a { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #graph .gdet a { color:#8ab4ff; cursor:pointer; } #graph .dim { opacity:.6; }
 .tree div.on { background:var(--soft); color:var(--text); }
-#projects { flex:1; overflow:auto; padding:8px; } .ptop { display:flex; justify-content:flex-end; gap:2px; margin:-4px 0 4px; } #projects > .btn.block { margin-top:8px; } /* #401 + / … inside the tab */
+#projects { flex:1; overflow:auto; padding:8px; } .ptop { display:flex; justify-content:flex-end; gap:2px; margin:-4px 0 4px; } #projects > .btn.block { margin-top:8px; } #rbody > .ptop { margin:-6px -4px 4px 0; } /* #401 + / … inside the tab */
 .proj { display:flex; gap:10px; align-items:center; padding:7px 9px; border-radius:9px; cursor:pointer; transition:background .12s; }
 .proj:hover { background:var(--hover); } .proj.on { background:var(--card); box-shadow:var(--shadow); }
 .proj .name { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -875,7 +875,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="right" hidden>
   <div id="rtabw"><div id="rtabs">
     <button data-t="gh" onclick="rightTab('gh')" title="GitHub: plan, tasks, repo"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
-    <button data-t="svc" onclick="rightTab('svc')" title="Services &amp; Secrets"><svg class="i"><use href="#i-layers"/></svg><span>Services &amp; Secrets</span></button>
+    <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
     <button data-t="build" onclick="rightTab('build')" title="Build &amp; Release"><svg class="i"><use href="#i-hammer"/></svg><span>Build &amp; Release</span></button>
     <i class="rsep"></i><!-- workspace group (Agents, Code, Browser) always behind this line -->
     <button data-t="agents" onclick="rightTab('agents')" title="Agents"><svg class="i"><use href="#i-bot"/></svg><span>Agents</span></button>
@@ -3040,7 +3040,7 @@ function projectsPage() {
       ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
       ${(p.allow || []).length ? /* 3 rows: title / tags / description (#53) ∵ side-by-side squeezed the text */ `<div class="opt-row" style="display:block"><div>Always allowed</div><span class="row wrap" style="gap:4px;margin:6px 0">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ${icon('x')}</span>`).join('')}</span><small class="dim">Tools this project runs without asking</small></div>` : ''}
       ${optRow('Credit Claude in commits', 'Off: no Co-Authored-By or "Generated with" lines; Claude never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
-      ${optRow('Keep .env away from Clauracle', 'Clauracle can\'t read or edit .env files; manage them in Services &amp; Secrets › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
+      ${optRow('Keep .env away from Clauracle', 'Clauracle can\'t read or edit .env files; manage them in Services › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on', '', false)}
     ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
       <span>Local build</span><input class="mono" value="${esc(p.build.local || '')}" placeholder="Auto: fast debug build (e.g. tauri build --debug --no-bundle)" title="Used by builds after a task and /build on this machine. Release / deploy keep the full Build command." onchange="setBuild('local', this.value)">
@@ -3452,7 +3452,7 @@ const tgtHtml = p => { const t = p.targets || [];
     + TGT.map(([gi, g, xs]) => `<div class="row tgtrow" style="gap:8px;margin-bottom:6px"><span class="dim" data-tip="${g}">${icon(gi)}</span><span class="seg">${xs.map(([id, ic, n, d]) => { const w = tgtWhy(p, id), on = t.includes(id);
       return `<button class="${on ? 'on' : ''}" ${w ? 'style="opacity:.4"' : ''} data-tip="${esc(w ? w[0] + (on ? ' · click to unpick' : ' · click to fix') : d)}" onclick="${w && !on ? esc(w[1]) : `tgtFlip('${id}')`}">${icon(ic)}${n}</button>`; }).join('')}</span></div>`).join('')
     + (t.some(id => !tgtReady(p, id)) ? `<p style="margin:4px 0 6px;font-size:13px">${icon('info')} Not ready, Release is blocked till fixed or unpicked: ${t.filter(id => !tgtReady(p, id)).map(tgtName).join(', ')} (hover for why)</p>` : '')
-    + '<small class="dim">* optional for Alpha and Beta; Release candidate and up need it (Services &amp; Secrets)</small>');
+    + '<small class="dim">* optional for Alpha and Beta; Release candidate and up need it (Services)</small>');
 };
 /* #128 Actions minutes this month (owner's billing report, 10-min cache). No `user` scope → one-click re-login adding it.
    Limit reached = last CI run's annotation (#123) says billing/spending limit → red + budgets link. */
@@ -3682,7 +3682,7 @@ const NEXT_IDEAS = [['Sweep', 'bug', 'Full code sweep, then fix what you find: 1
   ['Suggest', 'sparkle', 'Suggest the three most useful next improvements for this project, briefly, and ask which to do.']];
 const askNext = i => sendNow(cur, {text: NEXT_IDEAS[i][2], atts: []});
 /* #37 done bar's first button = the next dev→release step, from cached state only (no calls): open services →
-   Services & Secrets; no build command → set it up; release checks open → Build & Release; else build */
+   Services; no build command → set it up; release checks open → Build & Release; else build */
 function nextStep(p) {
   if (SVCDOT[cur]) return ['Finish services', 'layers', `rightTab('svc')`];
   if (!p.build?.build) return ['Set up build', 'hammer', `rightTab('build')`];
@@ -3747,7 +3747,7 @@ function ghSteps(iq, qRows, t, open, fin, dn) {
   const nw = teamTasks(cur).filter(isWait).length, ns = teamTasks(cur).filter(isIdea).length;
   return `<ol class="stepper ghsteps">
     <li><span class="sn">1</span><div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>${iq.length ? `<span class="pill">${iq.length}</span>` : ''}${iq.length > 1 ? `<button class="ib" title="Clean up: Clauracle merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}</div>
-      ${iq.length || busy[cur] ? `<div class="qbox">${qRows}</div>` : `<div class="nextstep" style="margin:4px 0 8px"><p>No tasks! Set up Services and Secrets?</p><button class="btn sm primary block" onclick="rightTab('svc')">Next step: Services &amp; Secrets ${icon('go')}</button></div>`}${x.add}</li>
+      ${iq.length || busy[cur] ? `<div class="qbox">${qRows}</div>` : `<div class="nextstep" style="margin:4px 0 8px"><p>No tasks! Set up Services?</p><button class="btn sm primary block" onclick="rightTab('svc')">Next step: Services ${icon('go')}</button></div>`}${x.add}</li>
     ${iq.length || busy[cur] ? `<li><span class="sn">2</span><div class="label">Run the task list</div>${runStep(p, n)}</li>
     <li><span class="sn">3</span>${thenRow(p)}</li>` : ''}</ol>`
     + (nw ? fold('w-wait', `Waiting on you${infoI(WAIT_TIP)}`, L(x.wait), nw) : '')
@@ -4297,6 +4297,7 @@ async function svcWire() {
   await setP({wired: [...new Set([...(p.wired || []), ...ids])]}); rightTab('gh');
   sendNow(cur, {text: `These services were added to the project but may not be integrated into the app yet: ${n.join(', ')}. For each, check whether the app's code already uses it where users see it (e.g. Sign in with Apple → a login screen/button that calls it; Stripe → a checkout; Resend → emails sent; Sentry → SDK init). Don't change code now. For each one not wired in and no open issue covers: \`gh issue create --label clauracle --label feature\`, title "Integrate <service> into the app", body = what's missing + the plan (where it shows, the flow; keys are already in .env). Then reply with one line per service: used (where) or filed #N.`, atts: []});
 }
+const svcItems = () => [{icon: 'key', label: 'Secrets (.env)', run: () => jumpTo('[data-f=svc-secrets]')}, '-', ...tabItems('svc')];
 function svcMenu(el) {
   const left = id => SERVICES[id] && !svcOf(P()).includes(id), it = id => ({label: SERVICES[id].name, hint: SERVICES[id].note, run: () => svcAdd(id)});
   const seen = new Set(Object.values(SVCTYPE).flatMap(t => Object.values(t).flat()));
@@ -4317,14 +4318,15 @@ async function drawServices() {
   envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))};
   if ((ids.includes('macsign') || ids.includes('appstore') || ids.includes('website')) && !(cur in BUNDLE)) BUNDLE[cur] = await call('bundle_id', {pid: cur}).catch(() => null);
   if (tab !== 'svc') return;
-  const add = `<button class="ib" title="Add a service" onclick="svcMenu(this)">${icon('plus')}</button>`;
+  // #406 + / … row like Projects (.ptop); … = tab menu + jump to Secrets
+  const top = `<div class="ptop"><button class="ib" title="Add a service" onclick="svcMenu(this)">${icon('plus')}</button><button class="ib" title="More: Secrets, refresh" onclick="menuAt(this, svcItems())">${icon('more')}</button></div>`;
   if (!ids.length) {
-    box.innerHTML = sec('Services', `<p class="dim">What this project signs in with, takes payments through or ships to. Each one keeps its links, steps and keys together, and fills .env for you.</p>
-      <button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`, add) + secretsFold(files);
+    box.innerHTML = top + sec('Services', `<p class="dim">What this project signs in with, takes payments through or ships to. Each one keeps its links, steps and keys together, and fills .env for you.</p>
+      <button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`) + secretsFold(files);
     SVCDOT[cur] = false; tabDots();
     return envJump(files);
   }
-  box.innerHTML = ids.map(id => { const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k));
+  box.innerHTML = top + ids.map(id => { const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k));
     return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px">' + skel(60, 'b100') + '</div>' : '')
       + (id === 'website' ? siteHtml() : '')
       + (x.steps ? stepper(id, x.steps) : '')
@@ -4522,7 +4524,7 @@ const PRESETS = {
   'Database': ['DATABASE_URL'],
 };
 const shown = {};
-// #31: .env lives in Services & Secrets as the "Secrets" fold (closed by default); redraw = the whole Services tab
+// #31: .env lives in Services as the "Secrets" fold (closed by default); redraw = the whole Services tab
 const drawEnv = () => drawServices();
 const secretsFold = files => fold('svc-secrets', 'Secrets', envHtml(files), 0,
   `<span class="pill dim">${files.length} file${files.length === 1 ? '' : 's'}</span>`);
@@ -5133,7 +5135,7 @@ const rMin = () => 240, lMin = () => Math.max(180, barMin('shead'));
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
 UI.ew ??= true; // #386 Edit view word wrap on by default
-if (UI.tab) tab = {tasks: 'gh', env: 'svc'}[UI.tab] || UI.tab; // old Plan tab → GitHub, old .env tab → Services & Secrets
+if (UI.tab) tab = {tasks: 'gh', env: 'svc'}[UI.tab] || UI.tab; // old Plan tab → GitHub, old .env tab → Services
 applyLook();
 let KEEP = 'r'; // #387 panel the user opened last: the other one rails first
 function layout(keep) {

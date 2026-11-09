@@ -16,7 +16,7 @@ Nothing else to install: if `claude` or `gh` is missing, Clauracle offers to ins
   Questions come as a numbered card with notes and an *Other* answer; in auto mode they push to desktop and phone (ntfy).
 - **Token savers:** Ponytail (simplest code that works), dense comments, helper **agents** on cheaper models
   (Settings › Agents), `.env` hidden from Claude, build/run/deploy after each task done by code, not by the AI.
-- **Side panel:** GitHub · Services & Secrets (`.env` with masked values, OAuth presets) · Build & Release · Agents · Code
+- **Side panel:** GitHub · Services (`.env` with masked values, OAuth presets) · Build & Release · Agents · Code
   (with Hot: files coloured by recent change) · Browser (open in a real browser profile).
 - **Chat / Terminal / Edit** views: Edit opens files as tabs with a Terminal and a real Shell below. Attach files or paste
   images into the message box; `/model` and `/build` pick a model or a build target.
