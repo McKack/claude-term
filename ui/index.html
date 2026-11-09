@@ -297,6 +297,8 @@ pre.diff .ctx { color:var(--faint); }
 #ebody textarea { flex:1; border:0; border-radius:0; resize:none; outline:0; padding:10px 14px; font:13px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; tab-size:4; background:var(--bg); color:var(--text); white-space:pre; }
 #ebody .ecode { flex:1; max-height:none; border:0; border-radius:0; background:var(--bg); tab-size:4; } #ebody .ew { position:relative; min-width:max-content; min-height:100%; } /* #329 */
 #ebody .ecode pre { font:inherit; pointer-events:none; -webkit-user-select:none; user-select:none; tab-size:4; } #ebody .ecode textarea { position:absolute; inset:0; width:100%; height:100%; max-height:none; min-height:0; field-sizing:fixed; overflow:hidden; padding:8px 12px 8px var(--lw); font:inherit; background:none; color:transparent; caret-color:var(--text); }
+#emenu { display:flex; align-items:center; gap:2px; padding:2px 6px; background:var(--side); border-bottom:1px solid var(--line); font-size:12.5px; } #emenu .mb { background:none; border:0; padding:3px 9px; border-radius:6px; color:var(--dim); font:inherit; cursor:pointer; } #emenu .mb:hover { background:var(--hover); color:var(--text); } #emenu .ib { width:26px; height:24px; padding:0; } #emenu .ez { width:auto; padding:0 6px; font-size:11.5px; color:var(--dim); } /* #372 */
+#ebody .ecode.wrap .ew { min-width:0; } #ebody .ecode.wrap textarea { white-space:pre-wrap; overflow-wrap:anywhere; } #ebody .epv { flex:1; overflow:auto; padding:14px 22px; background:var(--bg); }
 #ebody .eimg { margin:auto; max-width:100%; max-height:100%; object-fit:contain; } #ebody .empty { margin:auto; text-align:center; }
 #log.term { background:var(--term); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
 #log.term { padding-top:60px; } /* #327 3 rows; rows sit at 60+20k */
@@ -803,7 +805,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <span class="seg vsw"><button data-v="chat" onclick="setView('chat')" title="Chat" aria-label="Chat"><svg class="i"><use href="#i-chat"/></svg></button><button data-v="term" onclick="setView('term')" title="Terminal" aria-label="Terminal"><svg class="i"><use href="#i-term"/></svg></button><button data-v="edit" onclick="setView('edit')" title="Edit: file tabs + Terminal/Shell panel" aria-label="Edit"><svg class="i"><use href="#i-pen"/></svg></button></span>
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
-  <div id="edv"><div id="etabs"></div><div id="ebody"></div></div>
+  <div id="edv"><div id="emenu"></div><div id="etabs"></div><div id="ebody"></div></div>
   <div id="ptabs"><div id="pgrip" title="Drag to resize, double-click to collapse"></div><button data-k="term" onclick="panelTab('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button><button data-k="shell" onclick="panelTab('shell')"><svg class="i"><use href="#i-code"/></svg>Shell</button><span class="grow"></span><button class="ib" id="pcol" title="Collapse / expand the panel" onclick="UI.pc = !UI.pc; applyView()"><svg class="i"><use href="#i-chev"/></svg></button></div>
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
     <div class="col" id="skel" hidden><div class="crow claude"><span id="skelav"><svg class="av"><use href="#i-logo"/></svg></span><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div></div></div><div id="dockpill"><div id="handpill" hidden>Preparing handover…</div><div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div>
@@ -1643,26 +1645,56 @@ async function evSave(t) { if (!t) return;
       await call('save_as', {to, from: null, text: t.text}); const base = P().path.replace(/\\/g, '/').replace(/\/$/, '') + '/', f = to.replace(/\\/g, '/');
       t.name = f.split('/').pop(); if (f.toLowerCase().startsWith(base.toLowerCase())) { t.rel = f.slice(base.length); evKeep(); } }
     t.orig = t.text; evDraw(); toast('Saved ' + t.name, 'ok'); } catch (e) { toast(String(e), 'err'); } }
-function evDraw() { if (view !== 'edit' || !cur) return;
+function evDraw(re) { if (view !== 'edit' || !cur) return;
   const E = etabs(), t = E.tabs[E.on], b = $('ebody');
   $('etabs').innerHTML = E.tabs.map((x, i) => `<div class="et${i === E.on ? ' on' : ''}${evDirty(x) ? ' dirty' : ''}" title="${esc(x.rel || x.name)}${x.rel ? ' · Ctrl+click: also open in the side Code tab' : ''}" onclick="(event.ctrlKey || event.metaKey) && ${!!x.rel} ? previewFile(${esc(JSON.stringify(x.rel || ''))}, true) : evPick(${i})" onauxclick="if (event.button === 1) evClose(${i})">${icon(/\.(png|jpe?g|gif|webp|bmp)$/i.test(x.rel || '') ? 'image' : 'file')}${esc(x.name)}<button class="ib x" title="Close" onclick="event.stopPropagation(); evClose(${i})">${icon('x')}</button></div>`).join('')
     + `<button class="ib add" title="New tab" onclick="evNew()">${icon('plus')}</button>`;
+  evBar(t); b.style.zoom = UI.ez || 1;
   const ta = b.querySelector('textarea'); if (ta && b._t) Object.assign(b._t, {ss: ta.selectionStart, se: ta.selectionEnd, sy: b.firstChild.scrollTop}); // caret + scroll survive tab switches
-  if (ta && b._t === t) return;
+  if (ta && b._t === t && !re) return;
   b._t = null;
   if (!t) { b.innerHTML = `<div class="empty dim"><p>No files open</p><button class="btn" onclick="evNew()">${icon('plus')}New file</button> <button class="btn ghost" onclick="UI.lc = false; setSide('files')">${icon('folder')}Open from Files</button></div>`; return; }
   if (t.err) { b.innerHTML = `<div class="empty dim">${esc(t.err)}</div>`; return; }
   if (t.img) { b.innerHTML = `<img class="eimg" src="${t.img}">`; return; }
   if (t.text === undefined) { b.innerHTML = `<div style="flex:1;padding:14px">${skel(60)}</div>`; if (!t.loading) { t.loading = 1; evLoad(t, cur); } return; }
+  if (t.pv && evPv(t)) { let h; try { h = evPv(t) === 'md' ? `<div class="mdoc">${mdDoc(t.text)}</div>` : codeHtml(JSON.stringify(JSON.parse(t.text), null, 2), 'json', !!UI.ew); } catch (e) { h = `<div class="dim">${esc(String(e))}</div>`; }
+    b.innerHTML = `<div class="epv">${h}</div>`; return; } /* #372 read-only preview; edits = View › Preview off */
   // #329 Code-tab look: highlighted .code pre (codeHtml) under a transparent textarea, both sized by the pre ∴ one scroller, no scroll sync
   const ext = (t.rel || t.name).split('.').pop().toLowerCase(), hi = () => { b.querySelector('pre')?.remove(); b.querySelector('.ew').insertAdjacentHTML('afterbegin', codeHtml(t.text, ext).replace(/^<div[^>]*>|<\/div>$/g, '')); const w = b.querySelector('.ew'); w.style.setProperty('--lw', w.firstChild.style.getPropertyValue('--lw')); }; /* --lw on .ew ∴ textarea pads past the gutter */
-  b.innerHTML = '<div class="code ecode"><div class="ew"><textarea spellcheck="false" autocomplete="off"></textarea></div></div>'; b._t = t;
+  b.innerHTML = '<div class="code ecode' + (UI.ew ? ' wrap' : '') + '"><div class="ew"><textarea spellcheck="false" autocomplete="off"></textarea></div></div>'; b._t = t;
   const a = b.querySelector('textarea'); a.value = t.text; hi();
   let raf = 0; // ponytail: whole-file re-highlight per frame; fine ≤ ~5k lines, incremental per line if big files lag
   a.oninput = () => { t.text = a.value; $('etabs').querySelector('.et.on')?.classList.toggle('dirty', evDirty(t)); cancelAnimationFrame(raf); raf = requestAnimationFrame(hi); };
   a.onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); evSave(t); }
     else if (e.key === 'Tab' && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); document.execCommand('insertText', false, '\t'); } }; /* execCommand keeps native undo */
   if (t.ss != null) { a.setSelectionRange(t.ss, t.se); b.firstChild.scrollTop = t.sy; } a.focus(); }
+// #372 menu bar over the tabs: File/Edit/View dropdowns (menuAt) + quick toggles; items depend on the tab (text | md/json preview | image). UI.ew wrap, UI.ez zoom (CSS zoom on #ebody)
+const evPv = t => t?.text !== undefined && (isMd(t.rel || t.name) ? 'md' : /\.json$/i.test(t.rel || t.name) ? 'json' : ''); // preview kind or ''
+const evTa = () => $('ebody').querySelector('textarea');
+function evCmd(c, v) { const a = evTa(); if (!a) return; a.focus(); document.execCommand(c, false, v); } /* execCommand keeps native undo */
+function evSet(k, v, re = true) { if (k) UI[k] = v; try { localStorage.ui = JSON.stringify(UI); } catch {} evDraw(re); } // re = rebuild body (wrap/preview); zoom only restyles
+const evZoom = d => evSet('ez', d ? Math.min(3, Math.max(.5, Math.round(((UI.ez || 1) + d) * 10) / 10)) : 1, false);
+function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.text !== undefined, ed = tx && !t.pv, pv = evPv(t);
+  const M = {
+    file: [{label: 'New file', icon: 'plus', run: evNew}, {label: 'Open from Files', icon: 'folder', run: () => { UI.lc = false; setSide('files'); }}, '-',
+      ...(tx ? [{label: 'Save', hint: 'Ctrl+S', run: () => evSave(t)}] : []), ...(t?.rel ? [{label: 'Open in side Code tab', icon: 'code', run: () => previewFile(t.rel, true)}] : []),
+      ...(t ? ['-', {label: 'Close tab', icon: 'x', run: () => evClose(E.on)}] : [])],
+    edit: ed ? [{label: 'Undo', hint: 'Ctrl+Z', run: () => evCmd('undo')}, {label: 'Redo', hint: 'Ctrl+Y', run: () => evCmd('redo')}, '-',
+      {label: 'Cut', hint: 'Ctrl+X', run: () => evCmd('cut')}, {label: 'Copy', icon: 'copy', hint: 'Ctrl+C', run: () => evCmd('copy')},
+      {label: 'Paste', hint: 'Ctrl+V', run: () => navigator.clipboard.readText().then(v => evCmd('insertText', v), () => toast('Clipboard blocked: use Ctrl+V', 'warn'))},
+      {label: 'Select all', hint: 'Ctrl+A', run: () => { evTa()?.focus(); evTa()?.select(); }},
+      ...(pv === 'json' ? ['-', {label: 'Format JSON', icon: 'braces', run: () => { try { const v = JSON.stringify(JSON.parse(t.text), null, 2); evTa().select(); evCmd('insertText', v); } catch (e) { toast(String(e), 'err'); } }}] : [])]
+      : [{title: t?.pv ? 'Preview: switch it off in View to edit' : 'Nothing to edit'}],
+    view: [...(tx ? [{label: 'Word wrap', check: !!UI.ew, run: () => evSet('ew', !UI.ew)}] : []),
+      ...(pv ? [{label: pv === 'md' ? 'Rendered Markdown' : 'Formatted JSON (read-only)', check: !!t.pv, run: () => { t.pv = !t.pv; evSet(); }}] : []), ...(tx || pv ? ['-'] : []),
+      {label: 'Zoom in', icon: 'plus', run: () => evZoom(.1)}, {label: 'Zoom out', icon: 'minus', run: () => evZoom(-.1)}, {label: 'Reset zoom', hint: Math.round((UI.ez || 1) * 100) + '%', run: () => evZoom(0)}]};
+  menuAt(btn, M[k]); }
+function evBar(t) { const pv = evPv(t), tx = t?.text !== undefined;
+  $('emenu').innerHTML = ['File', 'Edit', 'View'].map(k => `<button class="mb" onclick="evMenu('${k.toLowerCase()}', this)">${k}</button>`).join('') + '<span class="grow"></span>'
+    + (pv ? `<button class="ib${t.pv ? ' on' : ''}" title="${pv === 'md' ? 'Rendered Markdown' : 'Formatted JSON'}" onclick="etabs().tabs[etabs().on].pv ^= 1; evSet()">${icon(pv === 'md' ? 'doc' : 'braces')}</button>` : '')
+    + (tx ? `<button class="ib${UI.ew ? ' on' : ''}" title="Word wrap" onclick="evSet('ew', !UI.ew)">${icon('wrap')}</button>` : '')
+    + `<button class="ib ez" title="Zoom (Ctrl+wheel) · click: reset" onclick="evZoom(0)">${Math.round((UI.ez || 1) * 100)}%</button>`; }
+$('ebody').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); evZoom(e.deltaY < 0 ? .1 : -.1); } }, {passive: false});
 // Shell tab: xterm.js (vendored in ui/xterm, MIT) loaded on first use; SH[pid] = {el, term, fit, dead}; one pty per project (lib shell_open)
 let XT; const SH = {};
 const xtLoad = () => XT ||= new Promise((ok, no) => { const add = (tag, k, v, then) => { const x = document.createElement(tag); x[k] = v; if (tag === 'link') x.rel = 'stylesheet'; x.onload = then; x.onerror = no; document.head.append(x); };
