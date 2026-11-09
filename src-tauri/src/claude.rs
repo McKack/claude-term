@@ -1040,8 +1040,13 @@ pub fn resume_interrupted(app: &AppHandle, st: &Arc<State>) {
 }
 
 /// The exe a build of Clauracle's own repo makes (tauri build → target/release).
+/// #303 newest of release/debug exe ∵ after-task build = fast debug twin (#288) → release went stale, restart swapped into old code
 pub fn own_exe(dir: &str) -> String {
-    std::path::Path::new(dir).join("src-tauri/target/release").join(if cfg!(windows) { "clauracle.exe" } else { "clauracle" }).to_string_lossy().into()
+    let n = if cfg!(windows) { "clauracle.exe" } else { "clauracle" };
+    let t = std::path::Path::new(dir).join("src-tauri/target");
+    let age = |p: &std::path::Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let (r, d) = (t.join("release").join(n), t.join("debug").join(n));
+    if age(&d) > age(&r) { d } else { r }.to_string_lossy().into()
 }
 
 fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value) -> Value {
