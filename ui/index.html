@@ -91,7 +91,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 #graph .tm div.on { outline:2px solid #fff; outline-offset:-2px; z-index:1; } #graph .gdet { max-height:45%; overflow:auto; padding:6px 10px; border-top:1px solid #ffffff1a; line-height:1.5; }
 #graph .gdet .row { display:flex; gap:8px; } #graph .gdet .row > a { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #graph .gdet a { color:#8ab4ff; cursor:pointer; } #graph .dim { opacity:.6; }
 .tree div.on { background:var(--soft); color:var(--text); }
-#projects { flex:1; overflow:auto; padding:2px 8px; }
+#projects { flex:1; overflow:auto; padding:8px; } .ptop { display:flex; justify-content:flex-end; gap:2px; margin:-4px 0 4px; } #projects > .btn.block { margin-top:8px; } /* #401 + / … inside the tab */
 .proj { display:flex; gap:10px; align-items:center; padding:7px 9px; border-radius:9px; cursor:pointer; transition:background .12s; }
 .proj:hover { background:var(--hover); } .proj.on { background:var(--card); box-shadow:var(--shadow); }
 .proj .name { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -826,9 +826,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 <aside id="side">
   <div id="brand"><svg class="logo" onclick="goHome()" style="cursor:pointer" title="Home"><use href="#i-logo"/></svg><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b><small id="appver"></small>
 </div>
-  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="notes" onclick="setSide('notes')" title="Notes: NOTES.md, only on this computer (git-ignored)"><svg class="i"><use href="#i-notepad"/></svg><span>Notes</span></button></span>
-    <button class="ib" title="Add a project" onclick="menuAt(this, addItems())"><svg class="i"><use href="#i-plus"/></svg></button>
-    <button class="ib" title="More: Project manager, sort and view of Files" onclick="sideMenu(this)"><svg class="i"><use href="#i-more"/></svg></button></div>
+  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="notes" onclick="setSide('notes')" title="Notes: NOTES.md, only on this computer (git-ignored)"><svg class="i"><use href="#i-notepad"/></svg><span>Notes</span></button></span></div>
   <div id="projects"></div>
   <div id="files" hidden></div>
   <div id="notes" hidden></div>
@@ -1425,8 +1423,11 @@ async function checkUpdate(asked) { // asked = Settings › Check now: says so w
 // yours first; repos owned by someone else (collaborations) in their own group
 function drawProjects() {
   const mine = S.projects.filter(p => !p.shared), shared = S.projects.filter(p => p.shared);
-  $('projects').innerHTML = (mine.map(projRow).join('') || (shared.length ? '' : empty('No projects yet', startProj)))
-    + (shared.length ? `<div class="side-sub" title="GitHub repos owned by someone else that you can push to">Collaborations</div>${shared.map(projRow).join('')}` : '');
+  const row = p => projRow(p).replace(`onclick="openProject('${p.id}')"`, `onclick="openProject('${p.id}');setSide('files')"`); // #401 pick → Files tab
+  $('projects').innerHTML = `<div class="ptop"><button class="ib" title="Add a project" onclick="menuAt(this, addItems())">${icon('plus')}</button><button class="ib" title="More: Project manager, sort and view of Files" onclick="sideMenu(this)">${icon('more')}</button></div>`
+    + (mine.map(row).join('') || (shared.length ? '' : empty('No projects yet', startProj)))
+    + (shared.length ? `<div class="side-sub" title="GitHub repos owned by someone else that you can push to">Collaborations</div>${shared.map(row).join('')}` : '')
+    + (S.projects.length ? `<button class="btn ghost block" onclick="menuAt(this, addItems())">${icon('plus')}Add a project</button>` : '');
   drawAcct();
 }
 
@@ -3851,16 +3852,17 @@ const codeAt = {}, filesAt = {};
 // path bar: back (history per project) + home, then the crumbs in a field that keeps its right end in view
 const filesHist = {};
 const filesGo = rel => { if (rel !== (filesAt[cur] ?? '')) (filesHist[cur] ||= []).push(filesAt[cur] ?? ''); drawFiles(rel); };
-const filesBack = () => { const h = filesHist[cur]; if (h?.length) drawFiles(h.pop()); };
+const filesBack = () => { const h = filesHist[cur]; if (h?.length) drawFiles(h.pop()); else if (!filesAt[cur]) setSide('projects'); }; // #401 Back at home → Projects tab
 async function drawFiles(rel = filesAt[cur] ?? '') {
   const box = $('files');
   if (!cur) { box.innerHTML = '<p class="faint" style="padding:4px 10px;font-size:13px">Open a project to see its files.</p>'; return; }
   filesAt[cur] = rel;
   const parts = rel ? rel.split('/') : [], items = fsort(await call('list_dir', {pid: cur, rel}).catch(() => []));
-  box.innerHTML = `<div class="pathbar"><button class="ib" title="Back" ${filesHist[cur]?.length ? '' : 'disabled'} onclick="filesBack()">${icon('back')}</button>
+  box.innerHTML = `<div class="pathbar"><button class="ib" title="${filesHist[cur]?.length || rel ? 'Back' : 'Back to Projects'}" ${filesHist[cur]?.length || !rel ? '' : 'disabled'} onclick="filesBack()">${icon('back')}</button>
       <button class="ib" title="Project root" onclick="filesGo('')">${icon('home')}</button>
       <div class="crumbs mono"><a data-p="" onclick="filesGo(this.dataset.p)">${esc(P().name)}</a>${parts.map((x, i) =>
-      `<span class="faint">/</span><a data-p="${esc(parts.slice(0, i + 1).join('/'))}" onclick="filesGo(this.dataset.p)">${esc(x)}</a>`).join('')}</div></div>
+      `<span class="faint">/</span><a data-p="${esc(parts.slice(0, i + 1).join('/'))}" onclick="filesGo(this.dataset.p)">${esc(x)}</a>`).join('')}</div>
+      <button class="ib" title="Sort and view" onclick="sideMenu(this)">${icon('more')}</button></div>
     <div class="tree${UI.fv === 'icons' ? ' icons' : ''}">${items.map(i => { const path = (rel ? rel + '/' : '') + i.name;
       return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p, event.ctrlKey || event.metaKey)" title="${esc(fTip(i))}">${i.dir ? icon('folder') : ftIcon(i.name)}<span class="fn">${esc(i.name)}</span>${fDet(i)}</div>`; }).join('')
       || '<p class="dim" style="padding:0 8px">Empty.</p>'}</div>`;
