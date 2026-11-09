@@ -276,7 +276,7 @@ pre.diff .ctx { color:var(--faint); }
 #pgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } #pgrip:hover, body.dragging #pgrip { background:color-mix(in srgb, var(--accent) 30%, transparent); }
 #main.edit #log { flex:0 0 var(--ph); margin-top:0; padding-top:8px; mask-image:none; }
 #main.edit.shell #log, #main.edit.shell #dock, #main.edit.pc #log, #main.edit.pc #dock { display:none; }
-#main.edit.shell:not(.pc) #shellbox { display:block; flex:0 0 var(--ph); background:var(--term); padding:6px 0 0 10px; overflow:hidden; } #shellbox > div { height:100%; }
+#main.edit.shell:not(.pc) #shellbox { display:block; flex:0 0 calc(var(--ph) + var(--dh, 0px)); /* #317 + last dock height ∴ Terminal ⇄ Shell keeps the panel size */ background:var(--term); padding:6px 0 0 10px; overflow:hidden; } #shellbox > div { height:100%; }
 #etabs { display:flex; align-items:stretch; border-bottom:1px solid var(--line); background:var(--side); overflow-x:auto; scrollbar-width:none; min-height:34px; }
 #etabs .et { display:flex; align-items:center; gap:6px; padding:0 6px 0 12px; font-size:12.5px; color:var(--dim); border-right:1px solid var(--line); cursor:pointer; white-space:nowrap; }
 #etabs .et.on { background:var(--bg); color:var(--text); box-shadow:inset 0 2px var(--accent); } #etabs .et .ib { width:20px; height:20px; opacity:0; } #etabs .et:hover .ib, #etabs .et.on .ib { opacity:1; }
@@ -1595,11 +1595,13 @@ async function shellShow() { const pid = cur;
   s.fit.fit(); if (s.dead) shellStart(pid); s.term.focus(); }
 async function shellStart(pid) { const s = SH[pid]; s.dead = false;
   try { await call('shell_open', {pid, cols: s.term.cols, rows: s.term.rows}); } catch (e) { s.dead = true; s.term.write('\r\n\x1b[31m' + e + '\x1b[0m\r\n'); } }
+// #317 DH = last visible dock height (hidden in Shell → keep the old one) → --dh pads #shellbox to Terminal's log+dock size
+let DH = 0; new ResizeObserver(() => { const h = $('dock').offsetHeight; if (h) { DH = h; $('main').style.setProperty('--dh', h + 'px'); } }).observe($('dock'));
 new ResizeObserver(() => { const s = SH[cur]; if (s?.term.element && $('shellbox').offsetHeight) s.fit.fit(); }).observe($('shellbox'));
 // panel grip: drag = height (snaps shut under 60px, like the side rails), double-click = collapse
 $('pgrip').ondblclick = () => { UI.pc = !UI.pc; applyView(); };
 $('pgrip').onmousedown = e => { e.preventDefault(); document.body.classList.add('dragging');
-  const m = $('main'), move = e => { const r = m.getBoundingClientRect(), h = r.bottom - e.clientY - $('ptabs').offsetHeight - (UI.pt === 'shell' ? 0 : $('dock').offsetHeight);
+  const m = $('main'), move = e => { const r = m.getBoundingClientRect(), h = r.bottom - e.clientY - $('ptabs').offsetHeight - DH;
     const was = UI.pc; UI.pc = h < 60; if (!UI.pc) UI.ph = Math.round(Math.max(80, Math.min(h, r.height - 220))); panelLay(); if (was && !UI.pc && UI.pt === 'shell') shellShow(); };
   const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.classList.remove('dragging'); };
   document.addEventListener('mousemove', move); document.addEventListener('mouseup', up); };
