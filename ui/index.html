@@ -784,7 +784,7 @@ const EFF_S = {low: 'L', medium: 'M', high: 'H', xhigh: 'XH', max: 'Max'};
 const PERMS = {plan: 'Plan only', default: 'Ask first', acceptEdits: 'Accept edits', auto: 'Auto (classifier)', bypassPermissions: 'Bypass'};
 const permN = m => Object.keys(PERMS).indexOf(m) + 1 || '?';
 const PERM_S = {plan: 'Plan', default: 'Ask', acceptEdits: 'Edits', auto: 'Auto', bypassPermissions: 'Bypass'}; // #116 status label; number when narrow (.lb hidden)
-const MODE_S = {off: '', manual: 'M', auto: 'A', auto_answer: 'A+'};
+const MODE_S = {off: 'C', manual: 'O', auto: 'K', auto_answer: 'K+'}; // #299 = first letters of MODES names
 
 // ponytail: tiny markdown (fences, inline code, bold, headings, lists, links); a library when tables matter
 function md(src) {
@@ -1285,7 +1285,7 @@ function drawChrome() {
   workTick();
   $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(mName(p.model))}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(mName(p.model))}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${icon('shield')}<span class="lb">${PERM_S[p.mode] || p.mode}</span><span class="ab">${permN(p.mode)}</span></button>`
-    + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${p.cont === 'off' ? '' : `<span class="lb">${MODES[p.cont]?.[0] || p.cont}</span><span class="ab">${MODE_S[p.cont] || ''}</span>`}</button>` /* #188 full names when wide; short (.ab) when narrow; perms stay short */
+    + `<button onclick="menuAt(this, contItems())" title="Clear & continue: ${esc(MODES[p.cont][0])}"${p.cont === 'off' ? '' : ' style="color:var(--accent)"'}>${icon('loop')}${p.cont === 'off' ? '' : `<span class="lb">${MODES[p.cont]?.[0] || p.cont}</span>`}<span class="ab">${MODE_S[p.cont] || ''}</span></button>` /* #188 full names when wide; short (.ab) when narrow; perms stay short */
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
   drawGbar();
   const sendBtn = $('send');
