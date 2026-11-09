@@ -611,7 +611,9 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
   background:var(--card); border:1px solid var(--line); cursor:pointer; flex:none; }
 .tile:hover { border-color:var(--line2); } .tile.on { border-color:var(--accent); color:var(--accent); }
 .tile .dot { position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border:2px solid var(--side); }
-#rtabs { display:flex; align-items:flex-end; gap:2px; padding:10px 10px 0; box-shadow:inset 0 -1px var(--line); }
+#rtabw { display:flex; align-items:flex-end; box-shadow:inset 0 -1px var(--line); } /* #400 tab bar scrolls; ‹ › only when it overflows */
+#rtabs { display:flex; align-items:flex-end; gap:2px; padding:10px 10px 0; flex:1; min-width:0; overflow:auto hidden; scrollbar-width:none; }
+#rtabw .qnav { display:none; width:22px; height:24px; flex:none; margin-bottom:3px; } #rtabw.over .qnav { display:grid; } #rtabw.over .qnav:last-child { margin-right:6px; } #rtabw .qnav.l svg { rotate:180deg; }
 [data-dot] { position:relative; } [data-dot]::after { content:''; position:absolute; top:3px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--dotc, var(--accent)); box-shadow:0 0 0 2px var(--side); } [data-dot=pulse]::after { animation:pulse .8s ease-in-out infinite alternate; } /* #177 build running */
 .rsep { flex:none; width:1px; margin:4px 4px; background:var(--line2); }
 #rtabs button, #stabs button { padding:5px 9px; display:inline-flex; gap:6px; align-items:center; font-size:13px; }
@@ -870,7 +872,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 </main>
 
 <aside id="right" hidden>
-  <div id="rtabs">
+  <div id="rtabw"><div id="rtabs">
     <button data-t="gh" onclick="rightTab('gh')" title="GitHub: plan, tasks, repo"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
     <button data-t="svc" onclick="rightTab('svc')" title="Services &amp; Secrets"><svg class="i"><use href="#i-layers"/></svg><span>Services &amp; Secrets</span></button>
     <button data-t="build" onclick="rightTab('build')" title="Build &amp; Release"><svg class="i"><use href="#i-hammer"/></svg><span>Build &amp; Release</span></button>
@@ -878,7 +880,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <button data-t="agents" onclick="rightTab('agents')" title="Agents"><svg class="i"><use href="#i-bot"/></svg><span>Agents</span></button>
     <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
     <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
-  </div>
+  </div><button class="ib qnav l" title="Scroll left" onclick="rtabs.scrollBy({left:-120, behavior:'smooth'})"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="rtabs.scrollBy({left:120, behavior:'smooth'})"><svg class="i"><use href="#i-chev"/></svg></button></div>
   <div id="rbody"></div>
   <div id="rrail" class="railbox"></div><div class="grip" data-side="r" title="Drag to resize, double-click to collapse"></div>
 </aside>
@@ -1818,6 +1820,8 @@ function icoFit(bs, tight) { bs.forEach(b => b.classList.remove('ic')); for (con
 // #332 What next? presets: one line, labels drop from the last preset back, primary (Build) last; term view = [text] buttons, no icons ∴ skipped
 function readyFit() { const r = $('readytext'); if (!r.querySelector('.btn') || $('log').classList.contains('term') || r.classList.contains('full')) return; const t = () => r.scrollWidth > r.clientWidth; r.classList.remove('wrap'); icoFit([...r.querySelectorAll('.btn')].reverse(), t); r.classList.toggle('wrap', t()); } // icons still too wide → wrap
 { new ResizeObserver(() => readyFit()).observe($('readytext')); }
+const rtOver = () => $('rtabw').classList.toggle('over', rtabs.scrollWidth > rtabs.clientWidth + 1);
+{ const t = $('rtabs'); new ResizeObserver(rtOver).observe(t); t.onwheel = e => { if (!e.deltaX) { t.scrollLeft += e.deltaY; e.preventDefault(); } }; } // #400
 let DH = 0; new ResizeObserver(() => { const h = $('dock').offsetHeight; if (h) { DH = h; $('main').style.setProperty('--dh', h + 'px'); } }).observe($('dock'));
 new ResizeObserver(() => { const s = SH[cur]; if (s?.term.element && $('shellbox').offsetHeight) s.fit.fit(); }).observe($('shellbox'));
 // panel grip: drag = height (snaps shut under 60px, like the side rails), double-click = collapse
@@ -3496,7 +3500,7 @@ const thenRow = p => `<div class="label row" style="gap:8px;align-items:center" 
 async function drawRight(force) {
   if ($('right').hidden || !cur) return;
   if (RC()) { drawRRail(); return tabDots(); }
-  document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+  document.querySelectorAll('#rtabs button').forEach(b => { b.classList.toggle('on', b.dataset.t === tab); if (b.dataset.t === tab) b.scrollIntoView({block: 'nearest', inline: 'nearest'}); }); rtOver();
   tabDots();
   const box = $('rbody'), p = P();
   if (box.dataset.t !== tab + cur) { box.dataset.t = tab + cur; if (['code', 'web', 'svc'].includes(tab)) box.innerHTML = sec('', skel(60, 'b100', 90, 75, 'b100')); } // #105: async tabs paint a skeleton on switch
@@ -5102,7 +5106,7 @@ function barMin(id) {
   c.remove();
   return MINW[id];
 }
-const rMin = () => barMin('rtabs'), lMin = () => Math.max(180, barMin('shead'));
+const rMin = () => 240, lMin = () => Math.max(180, barMin('shead'));
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
 UI.ew ??= true; // #386 Edit view word wrap on by default
