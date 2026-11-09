@@ -334,6 +334,9 @@ pre.diff .ctx { color:var(--faint); }
 #readyx { display:none; } #log.term + #dock #ready { margin:0 0 2px; padding:0 0 0 2ch; border:0; border-top:1px solid #3a3733; border-radius:0; background:none; opacity:1; -webkit-mask-image:none; mask-image:none; transition:none; animation:none; align-items:flex-start; gap:1ch; }
 #log.term + #dock #ready > * { pointer-events:auto; } #log.term + #dock #ready > svg { width:14px; height:14px; margin-top:4px; } #log.term + #dock #readytext { line-height:1.55; color:#c9a86a; } #log.term + #dock #readytext.full { padding:0; }
 #log.term + #dock #ready :is(#contBtn, #readyx) { display:inline; font:inherit; height:auto; padding:0 .3ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); font-weight:600; cursor:pointer; }
+#log.term + #dock #readytext:has(.btn) { line-height:1.55; } #log.term + #dock #readytext .btn { display:inline; font:inherit; height:auto; margin:0 0 0 .5ch; padding:0 .3ch; border:0; border-radius:0; background:none; box-shadow:none; color:var(--accent); } /* #319 What next? presets = [Build] [Sweep]… */
+#log.term + #dock #readytext .btn .i { display:none; } #log.term + #dock #readytext .btn.primary { font-weight:600; } #log.term + #dock #readytext .btn:hover:not(:disabled) { color:#fff; } #log.term + #dock #readytext .btn:disabled { opacity:.5; }
+#log.term + #dock #readytext .btn::before { content:"["; } #log.term + #dock #readytext .btn::after { content:"]"; }
 #log.term + #dock #contBtn::before { content:"["; } #log.term + #dock #contBtn::after { content:"]"; } #log.term + #dock #ready :is(#contBtn, #readyx):hover { color:#fff; }
 #readyx::before { content:"^"; } #ready:has(#readytext.full) #readyx::before { content:"v"; }
 /* #312 composer popovers (menuAt from #dock in term view → .menu.tui) + viewer opened from the term view (.viewer.tui) */
