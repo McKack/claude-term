@@ -1231,6 +1231,7 @@ const glast = () => S.projects.map(p => ({p, b: builds[p.id]})).filter(x => x.b?
 const gago = t => { const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + 'm ago' : Math.round(s / 3600) + 'h ago'; };
 function gCard(btn, kind) {
   if (reopen(kind)) return;
+  const r = btn.getBoundingClientRect(); // before notes' drawGbar() re-renders btn (detached → 0,0 = top-left, #314)
   const card = Object.assign(document.createElement('div'), {className: 'acard glass', popover: 'auto'});
   const go = (pid, t) => `openProject('${pid}').then(() => ${t ? `rightTab('${t}')` : '0'}); this.closest('[popover]').hidePopover()`;
   const act = (label, js, cls = '') => `<button class="btn sm ${cls}" onclick="event.stopPropagation(); ${js}">${label}</button>`;
@@ -1275,7 +1276,6 @@ function gCard(btn, kind) {
     q('scLim').onchange = e => { q('scLimV').textContent = ''; setP({context_limit: Math.max(0, Math.min(95, +e.target.value || 0))}).then(refresh); };
     q('scReset').onclick = () => { TIMES[cur] = {start: Date.now(), you: 0, ai: 0, any: 0}; drawTimes(); };
     q('scAcct').onclick = e => { const b = e.currentTarget.getBoundingClientRect(); card.hidePopover(); menuAt({getBoundingClientRect: () => b}, acctItems()); }; }
-  const r = btn.getBoundingClientRect();
   card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
 }
 // ---- update check: Clauracle's latest GitHub release vs this build; a toast offers it ----
