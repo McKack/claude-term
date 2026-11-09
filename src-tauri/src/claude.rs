@@ -297,7 +297,9 @@ fn args(st: &State, p: &Project) -> Vec<String> {
     // #255 voice: name = Accounts › You nickname (#256) > the chat-bubble name (UI chatRow: p.gh)
     let who = [&cfg.you.nick, &p.gh].into_iter().find(|n| !n.is_empty()).cloned().unwrap_or_else(|| "the user".into());
     append += &format!("\n# Voice\nThe user sees you as Clauracle. Reply like a natural conversation with {who}, using \
-        the name now and then (\"Yes, {who}, …\", \"I wouldn't recommend that, {who}\"), not in every message.\n");
+        the name now and then (\"Yes, {who}, …\", \"I wouldn't recommend that, {who}\"), not in every message. \
+        \"You\" = Clauracle: answer as Clauracle (the app and the assistant in it), never as Claude/the underlying model. \
+        Asked to do something in the app (open a tab, change a setting, add a service…) → do it with the clauracle `ui` tool.\n");
     if !p.ai_credit {
         append += "\n# Attribution\nNo AI credit in this repo: no Co-Authored-By trailers, no \"Generated with\" lines, never add \
             yourself as contributor/collaborator/author in commits, PRs, or files.\n";
@@ -812,7 +814,7 @@ async fn control(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, 
     let resp = match req["subtype"].as_str() {
         Some("can_use_tool") => Ok(permission(app, st, pid, req).await),
         // ui = async (waits on the page's reply) → handled here, not in sync mcp()
-        Some("mcp_message") if req["message"]["params"]["name"] == "ui" && own_repo(st, pid) => {
+        Some("mcp_message") if req["message"]["params"]["name"] == "ui" => {
             let m = &req["message"];
             let t = ui_tool(app, &m["params"]["arguments"]).await;
             Ok(json!({"mcp_response": {"jsonrpc": "2.0", "id": m["id"], "result": {"content": [{"type": "text", "text": t}]}}}))
@@ -977,7 +979,7 @@ try {
 } catch (e) { out.push('Error: ' + e); }
 call('ui_reply', {id: ID, text: out.join('\n')}); })()"#;
 
-fn tool_list(own: bool) -> Value {
+fn tool_list() -> Value {
     let q = json!({"type": "object", "required": ["questions"], "properties": {"questions": {"type": "array", "items": {
         "type": "object", "required": ["question", "options"], "properties": {
             "question": {"type": "string", "description": "the question only; Clauracle numbers them"},
@@ -986,7 +988,7 @@ fn tool_list(own: bool) -> Value {
                 "recommended": {"type": "boolean", "description": "your suggestion; at most one per question"}}}},
             "multi": {"type": "boolean", "description": "more than one option may be picked"},
             "blocking": {"type": "boolean", "description": "true only if work truly can't go on without the user"}}}}}});
-    let mut t = json!({"tools": [
+    json!({"tools": [
         {"name": "ready", "description": "Call as the LAST action of a turn once the task is done (or paused) and \
           the task list and HANDOVER.md are updated. When the turn ends Clauracle clears the context and a fresh session continues \
           (or waits for the user's Continue).", "inputSchema": {"type": "object", "properties": {}}},
@@ -999,19 +1001,20 @@ fn tool_list(own: bool) -> Value {
         {"name": "restart", "description": "Restart Clauracle itself, e.g. to try a new build of it. Nothing is lost: \
           every session resumes, this turn continues after the restart, unsent input stays. `exe`: a newly built \
           Clauracle executable: it replaces the running app's exe in place (same path), then starts.",
-         "inputSchema": {"type": "object", "properties": {"exe": {"type": "string"}}}}]});
-    if own {
-        t["tools"].as_array_mut().unwrap().push(json!({"name": "ui", "description": "Self-test Clauracle's own window \
-          (inside the page, not the OS mouse). Pick ONE target: `sel` (CSS selector), `text` (visible text/tooltip of a \
+         "inputSchema": {"type": "object", "properties": {"exe": {"type": "string"}}}},
+        // #414 every project ∵ "do X in the app" = anything the user can click (tabs, settings, services, notifications,
+        // start menu, permission level, links…); question/permission cards stay the user's
+        {"name": "ui", "description": "Act in Clauracle's own window like the user would, when they ask you to do \
+          something in the app (open a tab/page/menu/the start menu, change a setting or the permission level, add a \
+          service, check notifications, open a link…), or to self-test it. Inside the page, not the OS mouse. Look first \
+          (`show`, or `js` reading the DOM) when unsure what to click. Pick ONE target: `sel` (CSS selector), `text` (visible text/tooltip of a \
           clickable, case-insensitive substring) or `x`,`y` (CSS px). Default = click; `type` = set an input's value; \
           `right` = right-click. `js` = expression evaluated after (await-ed; page globals like S, cur, P() visible). \
           Returns what was hit + the open dialog/popover text after `wait` ms (400); `show` = CSS selector whose text \
           to return instead (e.g. \"#right\"). \
           Permission/question cards are refused.", "inputSchema": {"type": "object", "properties": {
             "sel": {"type": "string"}, "text": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"},
-            "type": {"type": "string"}, "right": {"type": "boolean"}, "js": {"type": "string"}, "wait": {"type": "number"}, "show": {"type": "string"}}}}));
-    }
-    t
+            "type": {"type": "string"}, "right": {"type": "boolean"}, "js": {"type": "string"}, "wait": {"type": "number"}, "show": {"type": "string"}}}}]})
 }
 
 /// What to start: this exe, or a new build as its own swap helper (`--swap-into` this exe's path), so the app's
@@ -1072,7 +1075,7 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
     match m["method"].as_str() {
         Some("initialize") => ok(json!({"protocolVersion": m["params"]["protocolVersion"].as_str().unwrap_or("2025-06-18"),
             "capabilities": {"tools": {}}, "serverInfo": {"name": "clauracle", "version": "1.0.0"}})),
-        Some("tools/list") => ok(tool_list(own_repo(st, pid))),
+        Some("tools/list") => ok(tool_list()),
         Some("tools/call") => match m["params"]["name"].as_str() {
             Some("ready") => {
                 let p = st.project(pid).unwrap();
