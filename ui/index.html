@@ -499,6 +499,7 @@ pre.diff .ctx { color:var(--faint); }
 .viewer :not(.edcols input, .ednote.col) { border-radius:0 !important; } /* #324 viewer = square corners throughout (tools, thumb, canvas, pdf, notes); swatches + number dots stay round */
 .edtr { width:22px; height:22px; padding:0; border:2px solid var(--line); border-radius:6px; cursor:pointer; background:repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 8px 8px; }
 .edcols input::-webkit-color-swatch-wrapper { padding:0; } .edcols input::-webkit-color-swatch { border:0; border-radius:50%; }
+.viewer.tui .edpair { width:36px; height:36px; } .viewer.tui .edcols input, .viewer.tui .edcols input::-webkit-color-swatch { border-radius:0; } /* #328 term view: square swatches, tighter overlap */
 .edcols input.tr { background:repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 10px 10px; } .edcols input.tr::-webkit-color-swatch { opacity:0; } /* transparent = checkerboard */
 .tb { display:flex; align-items:center; gap:2px; margin-top:4px; }
 #send { width:32px; height:32px; border-radius:50%; border:0; background:var(--primary); color:var(--ink); display:grid; place-items:center; cursor:pointer; }
