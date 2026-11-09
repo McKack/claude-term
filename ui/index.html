@@ -663,6 +663,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
   white-space:nowrap; overflow-x:auto; scrollbar-width:none; display:flex; gap:4px; font-size:12px; } .pathbar .crumbs a { color:var(--dim); } .pathbar .crumbs a:hover { color:var(--accent); }
 .tree div { padding:3px 8px; border-radius:6px; cursor:pointer; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; gap:6px; align-items:center; }
 .tree .fn { overflow:hidden; text-overflow:ellipsis; }
+.tree .fd { margin-left:auto; flex:none; padding-left:8px; font-size:11.5px; color:var(--faint); } .tree .fd ~ .eb { margin-left:0; }
 /* #377 Icons view: dense grid like the start menu */
 .tree.icons { display:grid; grid-template-columns:repeat(auto-fill, minmax(66px, 1fr)); gap:2px; }
 .tree.icons div { position:relative; flex-direction:column; justify-content:flex-start; gap:4px; height:66px; padding:8px 2px 0; white-space:normal; font-size:11.5px; text-align:center; }
@@ -3850,7 +3851,7 @@ async function drawFiles(rel = filesAt[cur] ?? '') {
       <div class="crumbs mono"><a data-p="" onclick="filesGo(this.dataset.p)">${esc(P().name)}</a>${parts.map((x, i) =>
       `<span class="faint">/</span><a data-p="${esc(parts.slice(0, i + 1).join('/'))}" onclick="filesGo(this.dataset.p)">${esc(x)}</a>`).join('')}</div></div>
     <div class="tree${UI.fv === 'icons' ? ' icons' : ''}">${items.map(i => { const path = (rel ? rel + '/' : '') + i.name;
-      return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p, event.ctrlKey || event.metaKey)"${i.dir || view !== 'edit' ? '' : ' title="Ctrl+click: open in the Code tab on the side"'}>${i.dir ? icon('folder') : ftIcon(i.name)}<span class="fn">${esc(i.name)}</span></div>`; }).join('')
+      return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p, event.ctrlKey || event.metaKey)" title="${esc(fTip(i))}">${i.dir ? icon('folder') : ftIcon(i.name)}<span class="fn">${esc(i.name)}</span>${fDet(i)}</div>`; }).join('')
       || '<p class="dim" style="padding:0 8px">Empty.</p>'}</div>`;
   const c = box.querySelector('.pathbar .crumbs'); c.scrollLeft = c.scrollWidth;
   badgeFiles();
@@ -3860,6 +3861,12 @@ async function drawFiles(rel = filesAt[cur] ?? '') {
 const FSORT = [['name', 'Name'], ['type', 'Type'], ['date', 'Date modified'], ['size', 'Size']];
 const fsort = xs => { const k = UI.fs, ext = n => n.includes('.') ? n.split('.').pop().toLowerCase() : '';
   return k && k !== 'name' ? [...xs].sort((a, b) => b.dir - a.dir || (k === 'type' ? ext(a.name).localeCompare(ext(b.name)) : k === 'date' ? b.t - a.t : b.size - a.size)) : xs; }; // stable ∴ ties keep name order
+// #396 row tooltip = size + mtime; faint right detail follows the sort (name → none)
+const fDate = t => t ? new Date(t * 1000).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}) : '';
+const fTip = i => [i.name, i.dir ? '' : mb(i.size || 0), i.t ? 'Modified ' + fDate(i.t) : '', i.dir || view !== 'edit' ? '' : 'Ctrl+click: open in the Code tab on the side'].filter(Boolean).join('\n');
+const fDet = i => { const k = UI.fs, n = i.name, d = k === 'type' ? (i.dir ? 'folder' : n.lastIndexOf('.') >= 0 ? n.slice(n.lastIndexOf('.')).toLowerCase() : 'file')
+  : k === 'size' ? (i.dir ? '' : mb(i.size || 0)) : k === 'date' && i.t ? new Date(i.t * 1000).toLocaleDateString() : '';
+  return d && UI.fv !== 'icons' ? `<span class="fd">${esc(d)}</span>` : ''; };
 const fset = (k, v) => { UI[k] = v; layout(); if (UI.st === 'files') drawFiles(); };
 const sideMenu = b => menuAt(b, [{icon: 'folder', label: 'Project manager…', run: () => openManager()}, '-', {title: 'Sort Files by'},
   ...FSORT.map(([k, l]) => ({label: l, check: (UI.fs || 'name') === k, run: () => fset('fs', k)})), '-', {title: 'View'},
