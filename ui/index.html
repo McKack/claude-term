@@ -1725,8 +1725,9 @@ function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.tex
       {label: 'Select all', hint: 'Ctrl+A', run: () => { evTa()?.focus(); evTa()?.select(); }},
       ...(pv === 'json' ? ['-', {label: 'Format JSON', icon: 'braces', run: () => { try { const v = JSON.stringify(JSON.parse(t.text), null, 2); evTa().select(); evCmd('insertText', v); } catch (e) { toast(String(e), 'err'); } }}] : [])]
       : [{title: t?.pv ? 'Preview: switch it off in View to edit' : 'Nothing to edit'}],
-    view: [...(tx ? [{label: 'Word wrap', check: !!UI.ew, run: () => evSet('ew', !UI.ew)}, {label: 'Lint (errors and warnings)', check: !UI.nl, run: () => evSet('nl', !UI.nl)},{label: 'Syntax highlighting', check: hlOn(), run: () => { try { localStorage.codeHl = hlOn() ? '0' : '1'; } catch {} evSet(); }}] : []),
-      ...(pv ? [{label: pv === 'md' ? 'Rendered Markdown' : 'Formatted JSON (read-only)', check: !!t.pv, run: () => { t.pv = !t.pv; evSet(); }}] : []), ...(tx || pv ? ['-'] : []),
+    /* #382: order = evBar icon order (preview, highlight, lint, wrap) */
+    view: [...(pv ? [{label: pv === 'md' ? 'Rendered Markdown' : 'Formatted JSON (read-only)', check: !!t.pv, run: () => { t.pv = !t.pv; evSet(); }}] : []),
+      ...(tx ? [{label: 'Syntax highlighting', check: hlOn(), run: () => { try { localStorage.codeHl = hlOn() ? '0' : '1'; } catch {} evSet(); }}, {label: 'Lint (errors and warnings)', check: !UI.nl, run: () => evSet('nl', !UI.nl)}, {label: 'Word wrap', check: !!UI.ew, run: () => evSet('ew', !UI.ew)}] : []), ...(tx || pv ? ['-'] : []),
       {label: 'Zoom in', icon: 'plus', run: () => evZoom(.1)}, {label: 'Zoom out', icon: 'minus', run: () => evZoom(-.1)}, {label: 'Reset zoom', hint: Math.round((UI.ez || 1) * 100) + '%', run: () => evZoom(0)}]};
   menuAt(btn, M[k]); }
 function evBar(t) { const pv = evPv(t), tx = t?.text !== undefined;
