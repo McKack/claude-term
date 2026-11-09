@@ -2204,7 +2204,7 @@ function send() {
       sendNow(pid, {text: t + FASTNOTE, atts: a, work: 0}, opt?.log && opt);
       const n = await fileAsk(pid, t, a); if (!n) return;
       fileNow(pid, t, n); P(pid).work = n; call('update_project', {pid, changes: {work: n}}).catch(() => {});
-      call('send_mid', {pid, text: `(Clauracle filed the ask you're on as issue #${n}. Retitle it + write a task summary, the prompt quoted at the end inside \`<details><summary>Original ask</summary> … </details>\` (one \`gh issue edit ${n} -t … -F …\`); close it with \`gh issue close ${n} -c <one-line summary>\` when done.${SPLIT(n)})`, work: n}).catch(() => {});
+      call('send_mid', {pid, text: `(Clauracle filed the ask you're on as issue #${n}. ${NEUT(n)} Close it with \`gh issue close ${n} -c <one-line summary>\` when done.${SPLIT(n)})`, work: n}).catch(() => {});
       return;
     }
     const n = file ? await fileAsk(pid, t, a) : 0, now = n && fileNow(pid, t, n), text = isQ ? t + QNOTE : isS ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
@@ -2242,20 +2242,26 @@ function fileNow(pid, t, n) {
   if (urgent) { const order = [n, ...(P(pid).order || []).filter(x => x !== n)]; P(pid).order = order; call('update_project', {pid, changes: {order}}).catch(() => {}); }
   return urgent || !iq /* not loaded → old behaviour */ || !iq.some(x => x.number && x.number !== n); // in-progress work is in iq too
 }
+// #309 privacy: issue text = Sonnet's neutral rewrite (Rust task_do new); raw ask never goes to GitHub (edit history keeps it)
+const NEUT = n => `Its title + summary are Clauracle's neutral rewrite of the ask: fix them (\`gh issue edit ${n}\`) only if wrong; never put the user's raw words on GitHub.`;
 // #252: one ask, several separate tasks → split like other AIs (related asks stay together); one line ∵ notes are one line each
-const SPLIT = n => ` Several separate asks in it (a wall of text) → split: keep the first (+ closely related ones) in #${n}, file each other separate one right after it (\`gh issue create --label clauracle --label task\`, own summary + its part of the ask quoted), say which numbers in one line.`;
+const SPLIT = n => ` Several separate asks in it (a wall of text) → split: keep the first (+ closely related ones) in #${n}, file each other separate one right after it (\`gh issue create --label clauracle --label task\`, own neutral summary, never the user's raw words), say which numbers in one line.`;
 // one line each (bare() strips it for display; FILED_RE reads the number)
 const filedNote = (n, now, urgent) => now
-  ? `\n\n(Filed as issue #${n} by Clauracle${urgent ? ', marked urgent: it goes before the other open tasks' : ''}. Work on it now: first retitle it + write a task summary, the prompt quoted at the end inside \`<details><summary>Original ask</summary> … </details>\` (one \`gh issue edit ${n} -t … -F …\`); close it with a one-line summary when done.${SPLIT(n)} Not a task after all (a question, a status/unblock reply, already done) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`
-  : `\n\n(Filed as issue #${n} by Clauracle at the END of the task queue: open tasks come first (the user's rule), so don't start it now. Retitle it + write a task summary, the prompt quoted at the end inside \`<details><summary>Original ask</summary> … </details>\` (one \`gh issue edit ${n} -t … -F …\`), say so in one line, then carry on with the task you're on.${SPLIT(n)} It only adds to that task → fold it in and close #${n} as a duplicate. Not a task (a question, a status/unblock reply) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`;
+  ? `\n\n(Filed as issue #${n} by Clauracle${urgent ? ', marked urgent: it goes before the other open tasks' : ''}. Work on it now: ${NEUT(n)} Close it with a one-line summary when done.${SPLIT(n)} Not a task after all (a question, a status/unblock reply, already done) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`
+  : `\n\n(Filed as issue #${n} by Clauracle at the END of the task queue: open tasks come first (the user's rule), so don't start it now. ${NEUT(n)} Say it's queued in one line, then carry on with the task you're on.${SPLIT(n)} It only adds to that task → fold it in and close #${n} as a duplicate. Not a task (a question, a status/unblock reply) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`;
 // → issue number, 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
   // #220: images → Rust saves them + lists their paths in the body (was names only → the session on the issue never saw them)
   const fs = a.filter(x => x.path), body = t + noteTxt(a) + (fs.length ? `\n\nAttached files:\n${fs.map(x => '- ' + x.path).join('\n')}` : '');
-  try { const url = await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data, name: x.name}))}); const n = +(String(url).match(/\/issues\/(\d+)/)?.[1] || 0);
-    if (n) { (FRESH[pid] ||= []).push({number: n, title: t.split('\n')[0].slice(0, 90), url: String(url).trim(), labels: [{name: 'clauracle'}, {name: 'task', color: '888'}], assignees: [], t: Date.now()}); issueRedraw(pid); }
+  // #309 local draft: row in the task list at once (gray "local" dot) while Sonnet writes the neutral issue text, then gh files it
+  const loc = {number: 0, local: true, title: t.split('\n')[0].slice(0, 90), url: '', labels: [{name: 'local (being filed)', color: '9aa0a6'}], assignees: [], t: Date.now()};
+  (FRESH[pid] ||= []).push(loc); issueRedraw(pid);
+  try { const [url = '', title] = String(await call('task_do', {pid, action: 'new', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data, name: x.name}))})).trim().split('\n'); const n = +(url.match(/\/issues\/(\d+)/)?.[1] || 0);
+    if (n) FRESH[pid].push({number: n, title: title || loc.title, url, labels: [{name: 'clauracle'}, {name: 'task', color: '888'}], assignees: [], t: Date.now()});
     pollTeam(); return n; }
   catch (e) { toast(`Couldn't file it as an issue: ${e}`, 'warn'); return 0; }
+  finally { FRESH[pid] = FRESH[pid].filter(x => x !== loc); issueRedraw(pid); }
 }
 // a queued message being edited holds the queue (nothing auto-sends) until it's sent or the edit is cancelled
 const editing = {}; // pid → {i: its place, m: the original, prev: what the composer held before}
@@ -3237,7 +3243,7 @@ const issueRedraw = pid => { if (pid !== cur) return; drawAtp(); if ($('tasksBox
 // #226 just-filed issues: gh issue list lags ~30s after create → shown from FRESH until listed (≤3 min); was: ask "not in the list"
 const FRESH = {};
 const teamTasks = pid => { if (!Array.isArray(team[pid]?.tasks)) return []; const t = team[pid].tasks;
-  FRESH[pid] = (FRESH[pid] || []).filter(x => Date.now() - x.t < 180e3 && !t.some(y => y.number === x.number));
+  FRESH[pid] = (FRESH[pid] || []).filter(x => x.local || Date.now() - x.t < 180e3 && !t.some(y => y.number === x.number)); // local = until fileAsk ends
   return [...t, ...FRESH[pid]].filter(x => !WDONE.has(x.number)); }; // #80 closed here → gone now, gh list lags
 const isDoing = x => x.labels.some(l => l.name === 'in progress') || x.assignees.length;
 // what's next: HANDOVER.md's queue, else free team tasks

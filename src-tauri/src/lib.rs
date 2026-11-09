@@ -958,15 +958,33 @@ async fn disk_clean(st: St<'_>, pid: String, dirs: Vec<String>) -> R<u64> {
     tauri::async_runtime::spawn_blocking(move || store::clean(&p.path, &dirs)).await.map_err(|e| e.to_string())
 }
 
+fn neutral_prompt(ask: &str) -> String {
+    format!("Rewrite this request to a software assistant as a GitHub issue. It goes on a shared repo, so write it neutrally: \
+        no quotes of the request, no personal remarks, names, emotions or private details; keep every technical fact, file path and \
+        requirement. Output ONLY plain text: line 1 = imperative title (≤ 80 chars), blank line, then a short task summary (bullets ok). \
+        No preamble, no code fences.\n\nRequest:\n{ask}")
+}
+
 #[tauri::command]
 async fn task_do(st: St<'_>, pid: String, action: String, mut arg: String, images: Option<Vec<Value>>) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
+    if action == "new" { // #309 privacy: raw ask never reaches GitHub (edit history keeps first bodies) → Sonnet's neutral rewrite filed
+        let tags: String = store::hash_tags(&arg).iter().map(|t| format!(" #{t}")).collect(); // raw #Tags → labels still
+        let (st2, p2, raw) = (st.inner().clone(), p.clone(), arg.clone());
+        let dir = store::home().join(".clauracle");
+        arg = tauri::async_runtime::spawn_blocking(move || sonnet(&st2, &p2, "low", &dir, &neutral_prompt(&raw))).await.map_err(|e| e.to_string())?
+            .map(|s| s.trim_matches('`').trim().to_string()).ok().filter(|s| !s.is_empty())
+            // ponytail: Sonnet down → placeholder title, the session working it writes the summary (never the raw text)
+            .unwrap_or_else(|| "New task from Clauracle (summary pending)".into()) + &tags;
+    }
     // #220: "new" + ask images → saved locally, paths in the body ∴ the session that works the issue sees them
     let saved = store::att_save(&p.path, images.as_deref().unwrap_or_default());
     if !saved.is_empty() {
         arg += &format!("\n\nScreenshots (local to the project folder, not on GitHub; open them with the Read tool from the repo root):\n{}", saved.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n"));
     }
-    tauri::async_runtime::spawn_blocking(move || store::task_do(&p.path, &p.gh, &action, &arg)).await.map_err(|e| e.to_string())?
+    // "new" → "URL\nfiled title" (UI's row shows the neutral title, not the raw ask)
+    tauri::async_runtime::spawn_blocking(move || store::task_do(&p.path, &p.gh, &action, &arg)
+        .map(|u| if action == "new" { format!("{u}\n{}", store::split_task(&arg).0) } else { u })).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1767,11 +1785,28 @@ fn report_get(pid: String, id: u64) -> R<Value> {
     serde_json::from_str(&t).map_err(|e| e.to_string())
 }
 
+/// One-shot `claude -p` on Sonnet with the project's AI account → trimmed stdout. cwd = a dir with no CLAUDE.md/hooks ∴ cheap; no tools.
+fn sonnet(st: &State, p: &store::Project, effort: &str, cwd: &std::path::Path, prompt: &str) -> R<String> {
+    use std::io::Write;
+    let claude = store::which("claude").ok_or("Claude Code isn't installed")?;
+    let base = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).map(|a| a.base_url.clone()).unwrap_or_default();
+    let mut c = store::command(&claude);
+    for k in ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDECODE"] { c.env_remove(k); }
+    c.args(["-p", "--model", "sonnet", "--effort", effort, "--output-format", "text"]).envs(store::account_env(&p.account, &base))
+        .current_dir(cwd).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    let mut ch = c.spawn().map_err(|e| e.to_string())?;
+    track(ch.id());
+    ch.stdin.take().unwrap().write_all(prompt.as_bytes()).map_err(|e| e.to_string())?;
+    let o = ch.wait_with_output().map_err(|e| e.to_string())?;
+    let out = String::from_utf8_lossy(&o.stdout).trim().to_string();
+    if !o.status.success() || out.is_empty() { return Err(String::from_utf8_lossy(&o.stderr).trim().to_string()); }
+    Ok(out)
+}
+
 /// rep = one task's report, None = the 7-day report. Sonnet (medium effort) writes the prose as an HTML fragment, a
 /// headless Chromium (Edge/Chrome) prints it → PDF in ~/.clauracle/reports/<pid>/pdf, opened. ponytail: no browser → Err.
 #[tauri::command(async)]
 fn report_pdf(st: St, pid: String, rep: Option<Value>) -> R<String> {
-    use std::io::Write;
     let p = st.project(&pid).ok_or("project removed")?;
     let week = rep.is_none();
     let reps = match rep { Some(r) => vec![r], None => rep_list(&pid)? };
@@ -1783,21 +1818,10 @@ fn report_pdf(st: St, pid: String, rep: Option<Value>) -> R<String> {
         Output ONLY an HTML fragment (no <html>/<head>/<body>, no markdown, no code fences). Sections as <h2>: Summary (2-3 sentences), \
         What was done (<ul>), Problems spotted (failed commands, missing tools; skip if none), Time (a small <table> of tasks and durations), \
         Suggestions (2-4 concrete next steps). Plain business tone, no filler. Data:\n{data}", p.name);
-    let claude = store::which("claude").ok_or("Claude Code isn't installed")?;
-    let base = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).map(|a| a.base_url.clone()).unwrap_or_default();
     let d = rep_dir(&pid)?.join("pdf");
     std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
-    let mut c = store::command(&claude);
-    for k in ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDECODE"] { c.env_remove(k); }
-    // cwd = report dir: no project CLAUDE.md/hooks loaded ∴ cheap; no tools needed
-    c.args(["-p", "--model", "sonnet", "--effort", "medium", "--output-format", "text"]).envs(store::account_env(&p.account, &base))
-        .current_dir(&d).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    let mut ch = c.spawn().map_err(|e| e.to_string())?;
-    track(ch.id());
-    ch.stdin.take().unwrap().write_all(prompt.as_bytes()).map_err(|e| e.to_string())?;
-    let o = ch.wait_with_output().map_err(|e| e.to_string())?;
-    let body = String::from_utf8_lossy(&o.stdout).trim().trim_start_matches("```html").trim_matches('`').trim().to_string();
-    if !o.status.success() || body.is_empty() { return Err(format!("Report writer failed: {}", String::from_utf8_lossy(&o.stderr).trim())); }
+    let body = sonnet(&st, &p, "medium", &d, &prompt).map_err(|e| format!("Report writer failed: {e}"))?;
+    let body = body.trim_start_matches("```html").trim_matches('`').trim().to_string();
     let logo = include_str!("../../assets/icon.svg");
     let logo = &logo[logo.find("<svg").unwrap_or(0)..];
     let date = chrono_ish();
