@@ -77,8 +77,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 @font-face { font-family:'Fredoka'; font-weight:600; font-display:swap; src:url(fredoka-600.woff2) format('woff2'); }
 #brand b, .brandname { font-family:'Fredoka',system-ui,sans-serif; font-weight:600; font-size:19px; letter-spacing:.01em; }
 .side-head { display:flex; align-items:center; gap:2px; padding:8px 8px 6px 10px; }
-#shead { align-items:flex-end; padding-bottom:0; box-shadow:inset 0 -1px var(--line); } #shead > :not(#stabs) { align-self:center; margin-bottom:4px; }
-#stabs { display:flex; align-items:flex-end; gap:2px; min-width:0; } #brand .ib { margin-left:auto; }
+#brand .ib { margin-left:auto; }
 #files { flex:1; overflow:auto; padding:2px 8px; }
 #notes { flex:1; display:flex; flex-direction:column; min-height:0; padding:2px 8px 8px; } #notes .nbar { display:flex; align-items:center; gap:4px; padding:2px 0 6px; } #notes .nbar .ib { width:26px; height:26px; padding:0; }
 #notes textarea { flex:1; resize:none; font:12.5px/1.5 ui-monospace,Consolas,monospace; max-height:none; } #notes .mdoc { flex:1; overflow:auto; }
@@ -290,10 +289,10 @@ pre.diff .ctx { color:var(--faint); }
 #main.edit #ptabs { display:flex; align-items:stretch; gap:2px; padding:4px 8px 0; border-top:1px solid var(--line); position:relative; background:var(--side); box-shadow:inset 0 -1px var(--line); --tabbg:var(--term); }
 #ptabs > button:not(.ib) { padding:5px 10px; display:inline-flex; gap:5px; align-items:center; font-size:12.5px; } #main.edit #ptabs > button:not(.ib).on { color:#d8d4cb; } #ptabs .ib { align-self:center; }
 /* #385 ONE tab style (Edit/File viewer/Terminal-Shell/right panel/sidebar): folder tab, rounded top (8px; c-square/c-round override), .on = content bg (--tabbg) + borders, no bottom line ∵ bar line = inset box-shadow, painted under the tab */
-:is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button) { border:1px solid transparent; border-bottom:0; border-radius:8px 8px 0 0; background:none; color:var(--dim); cursor:pointer; flex:none; }
-:is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button):hover { color:var(--text); background:var(--hover); }
-:is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button).on { color:var(--text); background:var(--tabbg, var(--bg)); border-color:var(--line); box-shadow:inset 0 2px var(--accent); }
-:root.c-round :is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib), #rtabs button, #stabs button) { border-radius:14px 14px 0 0 !important; }
+:is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib)) { border:1px solid transparent; border-bottom:0; border-radius:8px 8px 0 0; background:none; color:var(--dim); cursor:pointer; flex:none; }
+:is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib)):hover { color:var(--text); background:var(--hover); }
+:is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib)).on { color:var(--text); background:var(--tabbg, var(--bg)); border-color:var(--line); box-shadow:inset 0 2px var(--accent); }
+:root.c-round :is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib)) { border-radius:14px 14px 0 0 !important; }
 #ptabs .ib { width:24px; height:24px; padding:0; } #pcol .i { rotate:90deg; } #main.pc #pcol .i { rotate:-90deg; }
 #pgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } #pgrip:hover, #pgrip.on { background:color-mix(in srgb, var(--accent) 30%, transparent); }
 #main.edit #log { flex:0 1 var(--ph); min-height:0; /* #344 shrinks before overflowing the window; #edv keeps its 80px */ margin-top:0; padding-top:8px; mask-image:none; }
@@ -611,22 +610,24 @@ pre.diff .ctx { color:var(--faint); }
 .grip { position:absolute; top:0; bottom:0; width:7px; cursor:col-resize; z-index:5; } #side .grip { right:-4px; } #right .grip { left:-4px; }
 .grip:hover, .grip.on { background:color-mix(in srgb, var(--accent) 30%, transparent); }
 body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { pointer-events:none; } body.dragging * { cursor:inherit !important; } /* #399 handle cursor over everything mid-drag */
-#side.rail > :not(#lrail):not(.grip), #right.rail > :not(#rrail):not(.grip) { display:none !important; }
-#side:not(.rail) #lrail, #right:not(.rail) #rrail { display:none !important; }
-.railbox { display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 0; height:100%; overflow:hidden auto; }
-.railbox hr { width:60%; border:0; border-top:1px solid var(--line); margin:4px 0; }
+/* #421 fixed vertical icon bars (VS Code style) at the outer edge; same spot open or collapsed; panel width includes the bar (RAIL) */
+:root { --rail:52px; } #side { padding-left:calc(var(--rail) - 1px); } #right { padding-right:calc(var(--rail) - 1px); }
+#side.rail > :not(#lbar):not(.grip), #right.rail > :not(#rbar):not(.grip) { display:none !important; }
+#side:not(.rail) #lrail { display:none !important; }
+.vbar { position:absolute; top:0; bottom:0; width:calc(var(--rail) - 1px); display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 0; overflow:hidden auto; scrollbar-width:none; background:var(--side); z-index:4; }
+#lbar { left:0; } #rbar { right:0; } #side:not(.rail) #lbar { border-right:1px solid var(--line); } #right:not(.rail) #rbar { border-left:1px solid var(--line); }
+.vbar hr { width:60%; border:0; border-top:1px solid var(--line); margin:4px 0; flex:none; }
+:is(#stabs, #rtabs, #lrail) { display:flex; flex-direction:column; align-items:center; gap:6px; } #lrail { flex:1; width:100%; }
+:is(#stabs, #rtabs) button { position:relative; width:36px; height:36px; padding:0; display:grid; place-items:center; flex:none; border:0; border-radius:10px; background:none; color:var(--dim); cursor:pointer; }
+:is(#stabs, #rtabs) button:hover { color:var(--text); background:var(--hover); } :is(#stabs, #rtabs) button.on { color:var(--accent); background:var(--soft); }
+:is(#stabs, #rtabs) button.on::before { content:''; position:absolute; top:8px; bottom:8px; width:2px; border-radius:2px; background:var(--accent); } #stabs button.on::before { left:-8px; } #rtabs button.on::before { right:-8px; }
+:is(#stabs, #rtabs) button span { display:none; } .vhome { width:36px; height:36px; padding:0; flex:none; } .vhome svg { width:22px; height:22px; }
 .tile { position:relative; width:34px; height:34px; border-radius:10px; display:grid; place-items:center; font-weight:600; font-size:12.5px;
   background:var(--card); border:1px solid var(--line); cursor:pointer; flex:none; }
 .tile:hover { border-color:var(--line2); } .tile.on { border-color:var(--accent); color:var(--accent); }
 .tile .dot { position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border:2px solid var(--side); }
-#rtabw { display:flex; align-items:flex-end; box-shadow:inset 0 -1px var(--line); } /* #400 tab bar scrolls; ‹ › only when it overflows */
-#rtabs { display:flex; align-items:flex-end; gap:2px; padding:10px 10px 0; flex:1; min-width:0; overflow:auto hidden; scrollbar-width:none; }
-#rtabw .qnav { display:none; width:22px; height:24px; flex:none; margin-bottom:3px; } #rtabw.over .qnav { display:grid; } #rtabw.over .qnav:last-child { margin-right:6px; } #rtabw .qnav.l svg { rotate:180deg; }
 [data-dot] { position:relative; } [data-dot]::after { content:''; position:absolute; top:3px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--dotc, var(--accent)); box-shadow:0 0 0 2px var(--side); } [data-dot=pulse]::after { animation:pulse .8s ease-in-out infinite alternate; } /* #177 build running */
-.rsep { flex:none; width:1px; margin:4px 4px; background:var(--line2); }
-#rtabs button, #stabs button { padding:5px 9px; display:inline-flex; gap:6px; align-items:center; font-size:13px; }
-#rtabs button span, #stabs button span { display:none; } #rtabs button.on span, #stabs button.on span { display:inline; }
-#rtabs, #shead { --tabbg:var(--side); } #rtabs .rsep { align-self:center; }
+.rsep { flex:none; width:60%; height:1px; margin:4px 0; background:var(--line); }
 #rbody { flex:1; overflow:auto; padding:12px 14px; }
 #atp { display:flex; flex-direction:column; gap:5px; } #atp:empty { display:none; } #atp .label { margin:6px 0 0; } #atp .sh .label { margin:0; } /* #269: fold titles in GitHub tab sank 6px */
 .atrow { display:flex; gap:8px; align-items:baseline; font-size:13px; } .atrow small { display:block; color:var(--faint); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .atrow small.am { display:inline; } /* #274 model after the name, wraps under it when narrow */
@@ -835,14 +836,14 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 </svg>
 
 <aside id="side">
-  <div id="brand"><svg class="logo" onclick="goHome()" style="cursor:pointer" title="Home"><use href="#i-logo"/></svg><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b><small id="appver"></small>
+  <nav id="lbar" class="vbar"><button class="ib vhome" title="Home" onclick="goHome()"><svg><use href="#i-logo"/></svg></button><hr><span id="stabs"><button data-s="projects" onclick="barL('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="barL('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="notes" onclick="barL('notes')" title="Notes: NOTES.md, only on this computer (git-ignored)"><svg class="i"><use href="#i-notepad"/></svg><span>Notes</span></button></span><div id="lrail"></div></nav>
+  <div id="brand"><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b><small id="appver"></small>
 </div>
-  <div class="side-head" id="shead"><span class="grow" id="stabs"><button data-s="projects" onclick="setSide('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="setSide('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="notes" onclick="setSide('notes')" title="Notes: NOTES.md, only on this computer (git-ignored)"><svg class="i"><use href="#i-notepad"/></svg><span>Notes</span></button></span></div>
   <div id="projects"></div>
   <div id="files" hidden></div>
   <div id="notes" hidden></div>
   <div id="graph" hidden></div>
-  <div id="lrail" class="railbox"></div><div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
+  <div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
   <div class="side-foot"><button class="btn ghost grow" id="acctBtn" onclick="startMenu(this)" title="Clauracle menu: search, tabs, settings, restart"></button></div>
 </aside>
 
@@ -881,17 +882,17 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 </main>
 
 <aside id="right" hidden>
-  <div id="rtabw"><div id="rtabs">
-    <button data-t="gh" onclick="rightTab('gh')" title="GitHub: plan, tasks, repo"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
-    <button data-t="svc" onclick="rightTab('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
-    <button data-t="build" onclick="rightTab('build')" title="Build &amp; Release"><svg class="i"><use href="#i-hammer"/></svg><span>Build &amp; Release</span></button>
+  <nav id="rbar" class="vbar"><div id="rtabs">
+    <button data-t="gh" onclick="barR('gh')" title="GitHub: plan, tasks, repo"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
+    <button data-t="svc" onclick="barR('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
+    <button data-t="build" onclick="barR('build')" title="Build &amp; Release"><svg class="i"><use href="#i-hammer"/></svg><span>Build &amp; Release</span></button>
     <i class="rsep"></i><!-- workspace group (Agents, Code, Browser) always behind this line -->
-    <button data-t="agents" onclick="rightTab('agents')" title="Agents"><svg class="i"><use href="#i-bot"/></svg><span>Agents</span></button>
-    <button data-t="code" onclick="rightTab('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
-    <button data-t="web" onclick="rightTab('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
-  </div><button class="ib qnav l" title="Scroll left" onclick="rtabs.scrollBy({left:-120, behavior:'smooth'})"><svg class="i"><use href="#i-chev"/></svg></button><button class="ib qnav" title="Scroll right" onclick="rtabs.scrollBy({left:120, behavior:'smooth'})"><svg class="i"><use href="#i-chev"/></svg></button></div>
+    <button data-t="agents" onclick="barR('agents')" title="Agents"><svg class="i"><use href="#i-bot"/></svg><span>Agents</span></button>
+    <button data-t="code" onclick="barR('code')" title="Code"><svg class="i"><use href="#i-code"/></svg><span>Code</span></button>
+    <button data-t="web" onclick="barR('web')" title="Browser"><svg class="i"><use href="#i-globe"/></svg><span>Browser</span></button>
+  </div></nav>
   <div id="rbody"></div>
-  <div id="rrail" class="railbox"></div><div class="grip" data-side="r" title="Drag to resize, double-click to collapse"></div>
+  <div class="grip" data-side="r" title="Drag to resize, double-click to collapse"></div>
 </aside>
 
 <footer id="gbar"></footer><!-- #179 global statusline: usage, AI working, builds -->
@@ -1842,8 +1843,6 @@ function icoFit(bs, tight) { bs.forEach(b => b.classList.remove('ic')); for (con
 // #332 What next? presets: one line, labels drop from the last preset back, primary (Build) last; term view = [text] buttons, no icons ∴ skipped
 function readyFit() { const r = $('readytext'); if (!r.querySelector('.btn') || $('log').classList.contains('term') || r.classList.contains('full')) return; const t = () => r.scrollWidth > r.clientWidth; r.classList.remove('wrap'); icoFit([...r.querySelectorAll('.btn')].reverse(), t); r.classList.toggle('wrap', t()); } // icons still too wide → wrap
 { new ResizeObserver(() => readyFit()).observe($('readytext')); }
-const rtOver = () => $('rtabw').classList.toggle('over', rtabs.scrollWidth > rtabs.clientWidth + 1);
-{ const t = $('rtabs'); new ResizeObserver(rtOver).observe(t); t.onwheel = e => { if (!e.deltaX) { t.scrollLeft += e.deltaY; e.preventDefault(); } }; } // #400
 let DH = 0; new ResizeObserver(() => { const h = $('dock').offsetHeight; if (h) { DH = h; $('main').style.setProperty('--dh', h + 'px'); } }).observe($('dock'));
 new ResizeObserver(() => { const s = SH[cur]; if (s?.term.element && $('shellbox').offsetHeight) s.fit.fit(); }).observe($('shellbox'));
 // panel grip: drag = height (snaps shut under 60px, like the side rails), double-click = collapse
@@ -3170,7 +3169,7 @@ function tabDots() {
     call('env_list', {pid}).then(files => { if (pid !== cur) return delete SVCDOT[pid];
       envKeys = {files, have: new Set(files.flatMap(f => f.keys.filter(([, v]) => v).map(([k]) => k)))}; SVCDOT[pid] = svcOf(p).some(id => !svcDone(id)); tabDots(); }).catch(() => {}); }
   const dot = {gh: busy[cur] && 'var(--accent)', build: builds[cur]?.busy ? 'var(--accent)' : BUILT[cur] && 'var(--ok)', svc: SVCDOT[cur] && 'var(--err)'};
-  document.querySelectorAll('#rtabs button[data-t], #rrail button[data-t]').forEach(b => { const c = dot[b.dataset.t];
+  document.querySelectorAll('#rtabs button[data-t]').forEach(b => { const c = dot[b.dataset.t];
     if (c) { b.dataset.dot = b.dataset.t === 'build' && builds[cur]?.busy ? 'pulse' : ''; b.style.setProperty('--dotc', c); } else delete b.dataset.dot; });
 }
 function rightTab(t) { tab = UI.tab = t; try { localStorage.ui = JSON.stringify(UI); } catch {} drawRight(); } // restored at start (UI.tab)
@@ -3581,8 +3580,8 @@ function thenMenu(el, w) { // w: 'm' = Settings project (mp), else the open proj
 const thenRow = p => `<div class="label row" style="gap:8px;align-items:center" title="Runs in plain code when Clauracle finishes a task${p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''}"><span class="grow">Then</span>${thenBtn(p)}</div>`; // #192 under the NEXT list, styled as its label
 async function drawRight(force) {
   if ($('right').hidden || !cur) return;
-  if (RC()) { drawRRail(); return tabDots(); }
-  document.querySelectorAll('#rtabs button').forEach(b => { b.classList.toggle('on', b.dataset.t === tab); if (b.dataset.t === tab) b.scrollIntoView({block: 'nearest', inline: 'nearest'}); }); rtOver();
+  document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', !RC() && b.dataset.t === tab)); // #421 collapsed → no active icon
+  if (RC()) return tabDots();
   tabDots();
   const box = $('rbody'), p = P();
   if (box.dataset.t !== tab + cur) { box.dataset.t = tab + cur; if (['code', 'web', 'svc'].includes(tab)) box.innerHTML = sec('', skel(60, 'b100', 90, 75, 'b100')); } // #105: async tabs paint a skeleton on switch
@@ -4059,9 +4058,12 @@ function codeView() { const c = codeAt[cur]; if (!c?.text) return;
   fileView({name: c.file.split('/').pop(), path: P().path.replace(/[\/]+$/, '') + '/' + c.file, text: c.text, html: docHtml(c.text, c.file, !!UI.ew)}); }
 function setSide(t) { UI.st = t; layout('l'); drawSide(); }
 function toggleLeft() { UI.lc = !UI.lc; layout('l'); }
+// #421 icon bar click: active icon of an open panel → collapse, else open on it
+function barL(s) { if (!LC() && s === UI.st) return toggleLeft(); UI.lc = false; setSide(s); }
+function barR(t) { if (!RC() && t === tab) return toggleRight(); UI.tab = t; expandRight(t); }
 function drawSide() {
   const t = ['files', 'notes'].includes(UI.st) ? UI.st : 'projects'; // old saved 'tasks'/'graph' tab (removed; #370 Hot → GitHub tab fold) → projects
-  document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', b.dataset.s === t));
+  document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', !LC() && b.dataset.s === t));
   $('projects').hidden = t !== 'projects'; $('files').hidden = t !== 'files'; $('notes').hidden = t !== 'notes';
   if (t === 'files') drawFiles();
   if (t === 'notes') drawNotes();
@@ -5197,20 +5199,7 @@ async function clone(repo) {
 // ---- panels: drag to resize (no minimum); under SNAP px a panel collapses to a rail ----
 const RC = () => $('right').classList.contains('rail'), LC = () => $('side').classList.contains('rail'); // #387 shown state (layout may rail a panel the user left open)
 const RAIL = 52, SNAP = 140, MAINW = 480; // ponytail: fixed guess of the header's need; measure #head if it drifts
-// a panel's narrowest: its tab bar with the longest label open, so it never jumps between tabs; cached, MINW reset
-// when the Tasks tab shows/hides. Probe = clone keeping ids (styles hit it; $ still finds the original, it comes first)
-const MINW = {};
-function barMin(id) {
-  if (MINW[id]) return MINW[id];
-  const c = $(id).cloneNode(true);
-  c.style.cssText = 'position:absolute;visibility:hidden;width:max-content;left:-9999px';
-  document.body.append(c);
-  const bs = [...c.querySelectorAll('[data-t], [data-s]')].filter(b => !b.hidden);
-  MINW[id] = Math.max(...bs.map(b => { bs.forEach(x => x.classList.toggle('on', x === b)); return c.offsetWidth; })) + 2;
-  c.remove();
-  return MINW[id];
-}
-const rMin = () => 240, lMin = () => Math.max(180, barMin('shead'));
+const rMin = () => 240 + RAIL, lMin = () => 180 + RAIL; // #421 widths include the icon bar
 let UI = {lw: 252, rw: 380, lc: false, rc: true, st: 'projects'};
 try { Object.assign(UI, JSON.parse(localStorage.ui || '{}')); } catch {}
 UI.ew ??= true; // #386 Edit view word wrap on by default
@@ -5403,25 +5392,17 @@ async function queueToTeam(btn) {
 }
 function drawRails() {
   drawAtp();
+  const st = ['files', 'notes'].includes(UI.st) ? UI.st : 'projects'; document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', !LC() && b.dataset.s === st)); // #421 every layout() (grip drag/dblclick too)
   if (LC()) {
     const p = P(), pid = cur;
     if (p && !HEAT[pid]) { HEAT[pid] = {t: 0, d: {files: []}}; call('file_heat', {pid}).then(d => { HEAT[pid] = {t: Date.now(), d}; pid === cur && drawRails(); }, () => {}); } // git heat fills the rail past the chat log; t:0 → Graph still rescans
-    $('lrail').innerHTML = `<button class="ib" title="Home" onclick="goHome()" style="width:36px;height:36px"><svg style="width:22px;height:22px"><use href="#i-logo"/></svg></button>
-      <button class="ib" title="Expand the sidebar" onclick="toggleLeft()">${icon('panelL')}</button>
-      <button class="ib" title="Add a project" onclick="menuAt(this, addItems())">${icon('plus')}</button>
-      <button class="ib" title="Files" onclick="UI.lc = false; setSide('files')">${icon('folder')}</button><hr>`
+    $('lrail').innerHTML = `<hr><button class="ib" title="Add a project" onclick="menuAt(this, addItems())">${icon('plus')}</button>`
       + (p ? `<div class="tile on" title="${esc(p.name)} (open)">${initials(p.name)}<span class="dot ${dotOf(p)}"></span></div>`
         + recentFiles().map(f => `<button class="ib" title="${esc(f)}" data-p="${esc(f)}" onclick="previewFile(this.dataset.p)">${ftIcon(f)}</button>`).join('') + '<hr>' : '') // #291 = Code tab's "Recently worked on"; redrawn per tool entry
       + recent().filter(x => x.id !== cur).map(x => `<div class="tile" title="${esc(x.name)}" onclick="openProject('${x.id}')">${initials(x.name)}<span class="dot ${dotOf(x)}"></span>
           ${x.questions.length ? '<span class="pill" style="position:absolute;top:-6px;right:-8px;padding:0 4px;font-size:10px">' + x.questions.length + '</span>' : ''}</div>`).join('')
       + `<span class="grow"></span><button class="ib racct" title="Clauracle menu: search, tabs, settings" onclick="startMenu($('acctBtn'))">${(() => { const a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0]; return p?.gh ? avGh(p.gh) : a ? avAI(a) : icon('user'); })()}<span class="sdot">${icon('search')}</span></button>`; /* #305 profile pic (project's GitHub, else AI account = drawAcct's pick) + search dot */
   }
-  if (RC() && cur && !$('right').hidden) drawRRail();
-}
-// #291 rail = the tab bar as icons (same data-t → tabDots, same divider); stats live in the statusbar
-function drawRRail() {
-  $('rrail').innerHTML = [...$('rtabs').children].map(b => b.dataset.t ? `<button class="ib${b.dataset.t === tab ? ' on' : ''}" data-t="${b.dataset.t}" title="${esc(b.title)}" onclick="expandRight('${b.dataset.t}')">${b.querySelector('svg').outerHTML}</button>` : '<hr>').join('');
-  tabDots();
 }
 function expandRight(t) { tab = t; UI.rc = false; layout('r'); drawRight(); }
 function openFile(abs) {
