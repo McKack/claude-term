@@ -731,7 +731,9 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   border-radius:12px; color:var(--dim); font-size:11.5px; cursor:pointer; transition:background .12s, color .12s; }
 .prefs .tbar button svg { width:22px; height:22px; stroke-width:1.6; } .prefs .tbar button:hover { background:var(--hover); }
 .prefs .tbar button.on { background:var(--soft); color:var(--accent); }
-.prefs .tbar .x { position:absolute; right:10px; top:10px; }
+.prefs .tbar .x { position:absolute; right:10px; top:10px; min-width:0; width:30px; height:30px; padding:0; justify-content:center; } /* #428 .ib, not a 78px tab */
+.prefs .tbar .rsep { width:1px; height:auto; align-self:stretch; margin:6px 8px; } /* #428 vertical here (#421 made .rsep a horizontal bar line) */
+.prefs .tbar button { white-space:nowrap; }
 .prefs .body { overflow:auto; padding:20px 28px; display:flex; flex-direction:column; }
 .prefs .body h2 { margin:0 0 4px; font-size:17px; font-weight:600; } .stitle { margin:0 0 4px; } .stitle h2 { margin:0; } .ssearch { width:200px; } .prefs .body > p.dim:first-of-type { margin-top:0; }
 .split { display:grid; grid-template-columns:190px 1fr; gap:24px; align-items:start; }
