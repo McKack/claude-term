@@ -30,7 +30,7 @@
 .swatch.on { box-shadow:0 0 0 2px var(--text); }
 * { box-sizing:border-box; } [hidden] { display:none !important; }
 html, body { height:100%; }
-body { margin:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-rows:minmax(0,1fr) auto; background:var(--bg); color:var(--text);
+body { margin:0; display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-rows:auto minmax(0,1fr) auto; background:var(--bg); color:var(--text);
   font:14px/1.55 system-ui,-apple-system,"Segoe UI Variable Text","Segoe UI",sans-serif; overflow:hidden; user-select:none; -webkit-font-smoothing:antialiased; }
 /* selectable: chat/terminal log, inputs, code + build output, .sel; set per element (inheritance leaked in WebView2) */
 *, ::before, ::after { -webkit-user-select:none; user-select:none; }
@@ -585,6 +585,11 @@ pre.diff .ctx { color:var(--faint); }
 #status button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:5px; align-items:center; padding:2px 4px; border-radius:6px; }
 #status { container-type:inline-size; } #status .ab { display:none; }
 @container (max-width:400px) { #status .lb, #status button > svg:last-child:not(:first-child) { display:none; } #status .ab { display:inline; } }
+/* Window bar: Clauracle draws its own title bar (Windows: the native one is off). Drag it to move, double-click to maximise. */
+#wbar { grid-column:1 / -1; display:flex; align-items:center; height:32px; background:var(--side); border-bottom:1px solid var(--line); font-size:12px; color:var(--faint); }
+#wbar[hidden] { display:none; } #wbar .wt { flex:1; align-self:stretch; display:flex; align-items:center; gap:8px; padding-left:12px; } #wbar .wt svg { width:14px; height:14px; }
+#wbar button { width:46px; height:100%; border:0; background:none; color:var(--dim); display:grid; place-items:center; cursor:default; } #wbar button svg { width:14px; height:14px; stroke-width:1.5; }
+#wbar button:hover { background:var(--hover); color:var(--text); } #wbar button.wx:hover { background:#c42b1c; color:#fff; }
 #gbar { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:4px 14px; align-items:center; white-space:nowrap; overflow:hidden; font-size:12px; color:var(--faint); padding:2px 10px; border-top:1px solid var(--line); background:var(--side); min-height:24px; }
 #gbar button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; display:inline-flex; gap:6px; align-items:center; padding:2px 6px; border-radius:6px; min-width:0; }
 #gbar button:hover { color:var(--text); background:var(--hover); } #gbar b { color:var(--dim); font-weight:500; } #gbar .i { width:14px; height:14px; } #gbar .bar { width:22px; height:3px; }
@@ -861,6 +866,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-boxnote" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h10M7 14h6"/></symbol>
 </svg>
 
+<div id="wbar" hidden><div class="wt" data-tauri-drag-region><svg><use href="#i-logo"/></svg><span data-tauri-drag-region id="wtitle">Clauracle</span></div>
+  <button title="Minimise" onclick="WIN().minimize()"><svg class="i"><use href="#i-minus"/></svg></button><button title="Maximise or restore" onclick="WIN().toggleMaximize()"><svg class="i"><use href="#i-rect"/></svg></button><button class="wx" title="Close" onclick="WIN().close()"><svg class="i"><use href="#i-x"/></svg></button></div>
 <aside id="side">
   <nav id="lbar" class="ibar"><button class="ib vhome" title="Home" onclick="goHome()"><svg><use href="#i-logo"/></svg></button><hr><span id="stabs"><button data-s="projects" onclick="barL('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="barL('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="notes" onclick="barL('notes')" title="Notes: NOTES.md, only on this computer (git-ignored)"><svg class="i"><use href="#i-notepad"/></svg><span>Notes</span></button></span><div id="lrail"></div></nav>
   <div id="brand"><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b><small id="appver"></small>
@@ -926,6 +933,9 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 
 <script src="sortable.min.js"></script>
 <script>
+// Own window bar where the native title bar is off (tauri.windows.conf.json). ponytail: Windows only; macOS and Linux keep theirs.
+const WIN = () => window.__TAURI__.window.getCurrentWindow();
+if (/Windows/.test(navigator.userAgent)) document.getElementById('wbar').hidden = false;
 const T = window.__TAURI__, call = (cmd, args) => T.core.invoke(cmd, args);
 let S = {projects: [], accounts: [], usage: {}, busy: []}, cur = null, ghUsers = [], SET = null, tab = 'gh', page = 'ai', mp = null;
 const ctx = (() => { try { return JSON.parse(localStorage.ctx || '{}'); } catch { return {}; } })();

@@ -3,6 +3,8 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Windows: Clauracle draws its own title bar in the app's theme (drag to move, double-click to maximise).
+- Every close button looks the same; confirmations that remove or discard something have a red button and a clear verb.
 - Right-click an attachment for the same menu as its … button; right-click a queued task to edit it.
 - Help texts across Settings, Services and Build are one short sentence each.
 - Icon buttons use three sizes everywhere.
