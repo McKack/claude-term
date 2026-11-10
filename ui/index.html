@@ -645,6 +645,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 :root { --rail:52px; } #side { padding-left:calc(var(--rail) - 1px); } #right { padding-right:calc(var(--rail) - 1px); }
 #side.rail > :not(#lbar):not(.grip), #right.rail > :not(#rbar):not(.grip) { display:none !important; }
 #side:not(.rail) #lrail { display:none !important; }
+#side:not(.rail) .side-foot { position:relative; z-index:4; margin-left:calc(1px - var(--rail)); background:var(--side); } /* account row spans the whole panel, over the icon bar's foot (later in the DOM, same z) */
 .ibar { position:absolute; top:0; bottom:0; width:calc(var(--rail) - 1px); display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 0; overflow:hidden auto; scrollbar-width:none; background:var(--side); z-index:4; }
 #lbar { left:0; } #rbar { right:0; } #side:not(.rail) #lbar { border-right:1px solid var(--line); } #right:not(.rail) #rbar { border-left:1px solid var(--line); }
 :is(#stabs, #rtabs, #lrail) { display:flex; flex-direction:column; align-items:center; gap:6px; } #lrail { flex:1; width:100%; } #lrail > .under { visibility:hidden; } /* #456 railHide */

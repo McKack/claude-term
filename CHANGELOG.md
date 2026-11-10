@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- The account row at the bottom of the side panel spans its full width.
 - Relay at its limits: no more loop. It switches to an account with room, else goes up to 5–10% past one account's set limit, else pauses with "work is paused until <time, date>" and carries on by itself at the reset.
 - Windows: building a project while a copy of it is still open from its build folder works (Clauracle can build itself); the open copy is moved aside instead of blocking the build with "Access is denied".
 - A long paste (over 12 lines or 1200 characters) becomes a chip in the composer and in the sent message; click it to read the whole text in a small window. Claude and the filed task still get the full text.
