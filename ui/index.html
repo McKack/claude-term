@@ -2577,7 +2577,7 @@ function edCtx() { const el = $(ED?.tab ? 'ectx' : 'vctx'); if (!el || !ED) retu
   el.innerHTML = head + `<span class="faint">${t === 'text' ? 'Size' : 'Width'}</span><input type="range" min="1" max="100" value="${w}"><b>${w}</b>`
     + (t === 'pen' || t === 'line' ? `<span class="sep"></span><select data-ds data-tip="Line style">${options({'': 'Solid', dash: 'Dashed', dot: 'Dotted'}, ds)}</select>` : '')
     + (t === 'line' ? `<span class="sep"></span><span class="faint">Arrows</span>${[0, 1].map(k => `<button class="ib${arr[k] ? ' on' : ''}" data-a data-tip="Arrow at the ${k ? 'end' : 'start'}">${icon(k ? 'go' : 'back')}</button>`).join('')}` : '')
-    + (EDSH.test(t) ? `<span class="sep"></span><button class="ib${fl ? ' on' : ''}" data-fl data-tip="Fill with the secondary colour">${icon('brush')}</button>` : '')
+    + (EDSH.test(t) ? `<span class="sep"></span><span class="faint">Fill</span><button class="ib${fl ? ' on' : ''}" data-fl data-tip="Fill with the secondary colour"><svg class="i" style="fill:currentColor"><use href="#i-${ic}"/></svg></button>` : '')
     + (t === 'text' ? `<span class="sep"></span>${[['b', 'Bold', '<b>B</b>'], ['i', 'Italic', '<i style="font-family:Georgia,serif">I</i>'], ['u', 'Underline', '<u>U</u>']].map(([k, n, g]) => `<button class="ib${ts[k] ? ' on' : ''}" data-ts="${k}" data-tip="${n}">${g}</button>`).join('')}<select data-ts="f">${options({sans: 'Sans-serif', serif: 'Serif', mono: 'Monospace'}, ts.f || 'sans')}</select>` : '')
     + (S.length ? `<span class="sep"></span><span class="faint">Applies to the selected shape${S.length > 1 ? 's' : ''}</span>` : '') + ur; edUR();
   let snap = 0;
