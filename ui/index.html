@@ -2361,7 +2361,7 @@ function edSetCol(k, v) { EDC2[k] = v; try { localStorage[k ? 'penColor2' : 'pen
   const s = $('edCol' + k); s.classList.toggle('tr', v === 'transparent'); if (v !== 'transparent') s.value = v;
   const T = ED?.sel.length ? ED.sel : ED?.act && ED.ops.includes(ED.act) ? [ED.act] : [];
   if (T.length) { if (!ED.csnap) { ED.csnap = 1; edSnap(); } T.forEach(o => { if (!(k && EDSH.test(o.t) && !o.fill)) o[k ? 'fill' : 'color'] = v; }); /* unfilled shape stays unfilled */ edDraw(); edNotes(); } }
-const ETOOLS = [['sel', 'cursor', 'Select: drag empty space = marquee, Shift/Ctrl+click adds/removes, drag inside the box moves, handles scale, Delete removes'], ['pen', 'pen', 'Pen: draw freehand'], ['line', 'line', 'Line: straight line'], ['rect', 'rect', 'Rectangle: drag (Shift = square)'], ['ellipse', 'ellipse', 'Ellipse: drag (Shift = circle)'], ['text', 'text', 'Text: click to type, click a text to edit it, Enter = done'], ['box', 'boxnote', 'Box + note: drag a box, then type a note for it'], ['erase', 'eraser', 'Eraser: click a shape to remove it']]; // #238 icons + data-tip
+const ETOOLS = [['sel', 'cursor', 'Select: click picks (again = next one below), drag empty space = box/freehand, Shift/Ctrl+click adds/removes, drag inside the box moves, handles scale, Delete removes'], ['pen', 'pen', 'Pen: draw freehand'], ['line', 'line', 'Line: straight line'], ['rect', 'rect', 'Rectangle: drag (Shift = square)'], ['ellipse', 'ellipse', 'Ellipse: drag (Shift = circle)'], ['text', 'text', 'Text: click to type, click a text to edit it, Enter = done'], ['box', 'boxnote', 'Box + note: drag a box, then type a note for it'], ['erase', 'eraser', 'Eraser: click a shape to remove it']]; // #238 icons + data-tip
 function editImage() {
   const m = VW.imgs[VW.i], n = VW.imgs.length;
   // canvas fits the stage (any window size); notes re-placed ∵ scale changed
@@ -2399,14 +2399,17 @@ function edInit(src, ed, tab) {
       if (t === 'sel') { // #240 handle → scale | shape/inside box → move all | empty → marquee (Shift/Ctrl = add/toggle)
         const add = e.shiftKey || e.ctrlKey || e.metaKey, h = add ? -1 : edHandle(x, y), o = h < 0 && edHit(x, y);
         if (add && o) { const k = ED.sel.indexOf(o); k < 0 ? ED.sel.push(o) : ED.sel.splice(k, 1); return edDraw(); }
-        if (h >= 0 || o || (ED.sel.length && edIn(x, y))) { if (o && !ED.sel.includes(o)) ED.sel = [o]; edSnap();
-          ED.drag = {x, y, h, o, bb: edSelBB(), src: structuredClone(ED.sel), moved: false}; return edDraw(); }
-        ED.drag = {mq: [x, y, x, y], base: add ? [...ED.sel] : []}; ED.sel = [...ED.drag.base]; return edDraw(); }
-      edSnap(); ED.cur = t === 'pen' ? {t, color, lw: edLW, pts: [[x, y]]} : t === 'line' ? {t, color, lw: edLW, a0: edArr[0], a1: edArr[1], x1: x, y1: y, x2: x, y2: y} : EDSH.test(t) ? {t, color, fill: edFill ? fill : null, lw: edLW, x, y, w: 0, h: 0} : {t: 'box', color, fill, lw: edLW, x, y, w: 0, h: 0, note: '', n: ++ED.nmax}; ED.ops.push(ED.cur); };
+        if (h >= 0 || o || (ED.sel.length && edIn(x, y))) { const prev = ED.sel.length === 1 ? ED.sel[0] : null; if (o && !ED.sel.includes(o)) ED.sel = [o]; edSnap();
+          ED.drag = {x, y, h, o, prev, bb: edSelBB(), src: structuredClone(ED.sel), moved: false}; return edDraw(); }
+        const base = add ? [...ED.sel] : []; ED.sel = [...base]; ED.lc = null; // #452 empty space: shape mode = deselect only
+        if (edSM !== 'shape') ED.drag = edSM === 'lasso' ? {lz: [[x, y]], base} : {mq: [x, y, x, y], base}; return edDraw(); }
+      edSnap(); ED.cur = t === 'pen' ? {t, color, lw: edLW, ds: edDS, pts: [[x, y]]} : t === 'line' ? {t, color, lw: edLW, ds: edDS, a0: edArr[0], a1: edArr[1], x1: x, y1: y, x2: x, y2: y} : EDSH.test(t) ? {t, color, fill: edFill ? fill : null, lw: edLW, x, y, w: 0, h: 0} : {t: 'box', color, fill, lw: edLW, x, y, w: 0, h: 0, note: '', n: ++ED.nmax}; ED.ops.push(ED.cur); };
     c.onpointermove = e => { const [x, y] = pt(e);
       const D = ED.drag;
       if (D?.mq) { D.mq[2] = x; D.mq[3] = y; const [a, b, c2, d] = D.mq, l = Math.min(a, c2), r = Math.max(a, c2), tp = Math.min(b, d), bt = Math.max(b, d); // touches = bbox overlap
         ED.sel = [...new Set([...D.base, ...ED.ops.filter(o => { const [p, q, s, u] = edBB(o); return p <= r && s >= l && q <= bt && u >= tp; })])]; return edDraw(); }
+      if (D?.lz) { D.lz.push([x, y]); const P = D.lp = new Path2D(), g = c.getContext('2d'); D.lz.forEach(([a, b], k) => k ? P.lineTo(a, b) : P.moveTo(a, b)); P.closePath(); // #452 lasso: any shape point inside (pen pts | line ends | box corners+centre)
+        ED.sel = [...new Set([...D.base, ...ED.ops.filter(o => (o.t === 'pen' ? o.pts : o.t === 'line' ? [[o.x1, o.y1], [o.x2, o.y2]] : [[o.x, o.y], [o.x + o.w, o.y], [o.x, o.y + o.h], [o.x + o.w, o.y + o.h], [o.x + o.w / 2, o.y + o.h / 2]]).some(([a, b]) => g.isPointInPath(P, a, b)))])]; return edDraw(); }
       if (D) { D.moved = true;
         if (D.h >= 0) { const [fx, fy] = EDH[D.h], [a, b, c2, d] = D.bb, ax = a + (1 - fx) * (c2 - a), ay = b + (1 - fy) * (d - b), hx = a + fx * (c2 - a), hy = b + fy * (d - b); // anchor = opposite handle
           const sx = fx === .5 || Math.abs(hx - ax) < 1 ? 1 : (x - ax) / (hx - ax), sy = fy === .5 || Math.abs(hy - ay) < 1 ? 1 : (y - ay) / (hy - ay); // flat bbox axis → no scale (÷0)
@@ -2417,8 +2420,10 @@ function edInit(src, ed, tab) {
       const o = ED.cur; if (!o) return;
       if (o.t === 'pen') { const m = o.sm ||= [...o.pts[0]], [px, py] = o.pts.at(-1); m[0] += (x - m[0]) * .35; m[1] += (y - m[1]) * .35; o.raw = [x, y]; if (Math.hypot(m[0] - px, m[1] - py) > ED.w / 2) o.pts.push([...m]); } // #292 EMA smoothing ∵ raw pointer jitters; ↑ factor = less lag, more jitter
       else if (o.t === 'line') { let dx = x - o.x1, dy = y - o.y1; if (e.shiftKey) { const L = Math.hypot(dx, dy), a = Math.round(Math.atan2(dy, dx) / (Math.PI / 8)) * Math.PI / 8; dx = L * Math.cos(a); dy = L * Math.sin(a); } o.x2 = o.x1 + dx; o.y2 = o.y1 + dy; } /* #292 Shift = 22.5° steps */ else { o.w = x - o.x; o.h = y - o.y; if (e.shiftKey && o.t !== 'box') { const m = Math.max(Math.abs(o.w), Math.abs(o.h)); o.w = Math.sign(o.w || 1) * m; o.h = Math.sign(o.h || 1) * m; } } edDraw(); };
-    c.onpointerup = () => { const D = ED.drag; ED.drag = null;
-      if (D) { if (!D.mq && !D.moved) { edUnsnap(); if (D.o) ED.sel = [D.o]; } return edDraw(); } // plain click: no undo entry, picks just that shape
+    c.onpointerup = e => { const D = ED.drag; ED.drag = null;
+      if (D) { if (!D.mq && !D.lz && !D.moved) { edUnsnap(); let o = D.o; const L = ED.lc; ED.lc = [e.clientX, e.clientY]; // plain click: no undo entry, picks just that shape
+        if (o && edCT && L && Math.abs(e.clientX - L[0]) <= 2 && Math.abs(e.clientY - L[1]) <= 2) { const H = edHits(D.x, D.y), i = H.indexOf(D.prev); if (i >= 0) o = H[(i + 1) % H.length]; } // #452 click-through: same spot → next shape below (wraps)
+        if (o) ED.sel = [o]; } return edDraw(); }
       const o = ED.cur; ED.cur = null; if (!o) return;
       if (o.t === 'box') { if (Math.abs(o.w) < 8 && Math.abs(o.h) < 8) o.w = o.h = 0; // #248 click = numbered point (note, no box)
         if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } edDraw(); return edNotes(o); }
@@ -2500,15 +2505,16 @@ const edIn = (x, y) => { const [a, b, c, d] = edSelBB(); return x >= a && x <= c
 const edScale = (o, s, ax, ay, sx, sy) => { const X = v => ax + (v - ax) * sx, Y = v => ay + (v - ay) * sy;
   if (o.t === 'pen') o.pts = s.pts.map(([x, y]) => [X(x), Y(y)]); else if (o.t === 'line') Object.assign(o, {x1: X(s.x1), y1: Y(s.y1), x2: X(s.x2), y2: Y(s.y2)});
   else { const x1 = X(s.x), x2 = X(s.x + s.w), y1 = Y(s.y), y2 = Y(s.y + s.h); Object.assign(o, {x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1)}); } };
-function edHit(x, y) { const r = ED.w * 4; // topmost shape within r of its stroke (box/rect/ellipse/text: inside its bbox too; ponytail: ellipse = bbox hit)
-  return [...ED.ops].reverse().find(o => o.t === 'box' || o.t === 'text' || EDSH.test(o.t) ? x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r
-    : o.t === 'line' ? segD(x, y, o.x1, o.y1, o.x2, o.y2) < r : o.pts.some((p, k) => segD(x, y, ...p, ...(o.pts[k + 1] || p)) < r)) || null; }
+const edHit = (x, y) => edHits(x, y)[0] || null;
+function edHits(x, y) { const r = ED.w * 4; // shapes within r of their stroke, topmost first (box/rect/ellipse/text: inside its bbox too; ponytail: ellipse = bbox hit)
+  return [...ED.ops].reverse().filter(o => o.t === 'box' || o.t === 'text' || EDSH.test(o.t) ? x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r
+    : o.t === 'line' ? segD(x, y, o.x1, o.y1, o.x2, o.y2) < r : o.pts.some((p, k) => segD(x, y, ...p, ...(o.pts[k + 1] || p)) < r)); }
 function edDraw(flat) {
   if (!flat && ED.ck !== edCk()) edCtx(); // #451 selection/tool changed → context bar follows
   const c = $('edC'), g = c.getContext('2d');
   g.drawImage(ED.img, 0, 0); g.lineCap = g.lineJoin = 'round';
   for (const o of ED.ops) {
-    const lw = ED.w * (o.lw || 1); g.strokeStyle = g.fillStyle = o.color; g.lineWidth = lw; g.setLineDash(!flat && ED.sel.includes(o) ? [ED.w * 3, ED.w * 2] : []); g.beginPath();
+    const lw = ED.w * (o.lw || 1); g.strokeStyle = g.fillStyle = o.color; g.lineWidth = lw; g.setLineDash(EDDASH(o, lw)); g.beginPath();
     if (o.t === 'pen' && o.pts.length === 1) { g.arc(...o.pts[0], lw / 2, 0, 7); g.fill(); continue; } // #248 click = dot (zero-length strokes don't paint)
     if (o.t === 'line') { const a = Math.atan2(o.y2 - o.y1, o.x2 - o.x1), L = lw * 2.5 + ED.w * 2; // #248 arrowheads: filled, line stops at the head's base
       const head = (x, y, d) => { g.save(); g.setLineDash([]); g.beginPath(); g.moveTo(x, y); g.lineTo(x - d * L * Math.cos(a - .45), y - d * L * Math.sin(a - .45)); g.lineTo(x - d * L * Math.cos(a + .45), y - d * L * Math.sin(a + .45)); g.fill(); g.restore(); };
@@ -2524,6 +2530,7 @@ function edDraw(flat) {
   }
   if (flat) return; const r = ED.w * 4, box = ([a, b, c2, d]) => { g.setLineDash([ED.w * 2, ED.w * 2]); g.lineWidth = ED.w / 2; g.strokeStyle = '#4096ff'; g.strokeRect(a, b, c2 - a, d - b); g.setLineDash([]); };
   if (ED.drag?.mq) { const [a, b, c2, d] = ED.drag.mq; g.fillStyle = '#4096ff22'; g.fillRect(a, b, c2 - a, d - b); box(ED.drag.mq); } // marquee
+  if (ED.drag?.lp) { g.fillStyle = '#4096ff22'; g.fill(ED.drag.lp); g.setLineDash([ED.w * 2, ED.w * 2]); g.lineWidth = ED.w / 2; g.strokeStyle = '#4096ff'; g.stroke(ED.drag.lp); g.setLineDash([]); } // #452 lasso
   if (ED.sel.length) { const [a, b, c2, d] = edSelBB(); box([a, b, c2, d]); g.fillStyle = '#fff';
     EDH.forEach(([fx, fy]) => { const hx = a + fx * (c2 - a) - r / 2, hy = b + fy * (d - b) - r / 2; g.fillRect(hx, hy, r, r); g.strokeRect(hx, hy, r, r); }); }
 }
@@ -2546,6 +2553,9 @@ function edNotes(focus) {
 }
 /* #248 global width (× base ED.w) + line arrows, remembered; menu also restyles the selection */
 let edFill = (() => { try { return !!localStorage.penFill; } catch { return false; } })(), edLW = +(localStorage.penW || 1) || 1, edArr = (() => { try { return JSON.parse(localStorage.penArr || '[0,0]'); } catch { return [0, 0]; } })();
+// #452 select bar = mode only: shape (click) | rect (marquee) | lasso (freehand); edCT = click-through (same spot ±2px → next shape below). edDS = pen/line dash ''|'dash'|'dot'
+let edSM = localStorage.edSM || 'rect', edCT = localStorage.edCT !== '0', edDS = localStorage.penDS || '';
+const EDDASH = (o, lw) => o.ds === 'dash' ? [lw * 3, lw * 2] : o.ds === 'dot' ? [0, lw * 2] : []; // dot = 0-length dash + round cap
 /* #293 width 1–250 = edLW × 8 (8 = old Medium = 1× ED.w, so saved o.lw multipliers keep working); arrows = 2 toggles; applies live to ED.sel too.
    #379 lives in the viewer's context bar (#vctx) per tool: erase = hint only, arrows for line/select; one undo snap per slider drag */
 /* #451 selection of one shape kind → that tool's settings, values read from the first selected shape; mixed = generic Select bar. ED.ck = tool+sel indices → edDraw re-renders on change */
@@ -2554,24 +2564,31 @@ let edTS = (() => { try { return JSON.parse(localStorage.penTS || '{}'); } catch
 const edCk = () => ED.tool + ED.sel.map(o => ED.ops.indexOf(o)).join();
 function edCtx() { const el = $(ED?.tab ? 'ectx' : 'vctx'); if (!el || !ED) return; ED.ck = edCk(); const S = ED.sel, ks = new Set(S.map(o => o.t)), o0 = S[0];
   const t = ED.tool === 'sel' && ks.size === 1 ? o0.t : ED.tool, one = t !== 'sel' && S.length > 0; // one = editing selected shapes of tool t
-  const lw = one ? o0.lw || 1 : edLW, w = Math.round(lw * 8), arr = one ? [o0.a0 ? 1 : 0, o0.a1 ? 1 : 0] : [...edArr], fl = one ? !!o0.fill : edFill, ts = one ? {b: o0.b, i: o0.i, u: o0.u, f: o0.f} : {...edTS};
+  const ds = one ? o0.ds || '' : edDS, lw = one ? o0.lw || 1 : edLW, w = Math.round(lw * 8), arr = one ? [o0.a0 ? 1 : 0, o0.a1 ? 1 : 0] : [...edArr], fl = one ? !!o0.fill : edFill, ts = one ? {b: o0.b, i: o0.i, u: o0.u, f: o0.f} : {...edTS};
   const [nm, hint] = ETOOLS.find(x => x[0] === t)[2].split(': '), head = `<span class="vtn">${nm}</span><span class="sep"></span>`; // #411 tool name first, stronger than the faint labels
   const ur = `<span class="vur">${VZ ? zoomCtl('Math.round(VZ.s * 100)', 'vZp(p)', ', wheel, Ctrl + / −. Middle-drag pans') + '<span class="sep"></span>' : ''}<button class="ib" data-u="0" title="Undo (Ctrl+Z)" onclick="edUndo()">${icon('undo')}</button><button class="ib" data-u="1" title="Redo (Ctrl+Y, Ctrl+Shift+Z)" onclick="edRedo()">${icon('redo')}</button></span>`; // #437
   if (t === 'erase') { el.innerHTML = head + `<span class="faint">${hint}</span>` + ur; return edUR(); }
-  const sel = t === 'sel' ? ' (selected ' : '';
+  if (t === 'sel') { // #452 mode only (mixed/empty selection); click-through toggle
+    el.innerHTML = head + [['shape', 'cursor', 'Shape: click a shape to select it'], ['rect', 'marquee', 'Rectangle: drag a box over shapes'], ['lasso', 'lasso', 'Freehand: draw around shapes']].map(([k, i, n]) => `<button class="ib${edSM === k ? ' on' : ''}" data-sm="${k}" data-tip="${n}">${icon(i)}</button>`).join('')
+      + `<span class="sep"></span><button class="ib${edCT ? ' on' : ''}" data-ct data-tip="Click-through: clicking the same spot again selects the next shape below">${icon('layers')}</button>` + ur; edUR();
+    el.querySelectorAll('.ib[data-sm]').forEach(b => b.onclick = () => { edSM = b.dataset.sm; try { localStorage.edSM = edSM; } catch {} edCtx(); });
+    el.querySelector('.ib[data-ct]').onclick = () => { edCT = !edCT; try { localStorage.edCT = edCT ? 1 : 0; } catch {} edCtx(); };
+    return; }
   el.innerHTML = head + `<span class="faint">${t === 'text' ? 'Size' : 'Width'}</span><input type="range" min="1" max="250" value="${w}"><b>${w}</b>`
-    + (t === 'line' || t === 'sel' ? `<span class="sep"></span><span class="faint">Arrows</span>${[0, 1].map(k => `<button class="ib${arr[k] ? ' on' : ''}" data-a data-tip="Arrow at the ${k ? 'end' : 'start'}${sel && sel + 'lines)'}">${icon(k ? 'go' : 'back')}</button>`).join('')}` : '')
-    + (EDSH.test(t) || t === 'sel' ? `<span class="sep"></span><button class="ib${fl ? ' on' : ''}" data-fl data-tip="Fill with the secondary colour${sel && sel + 'rectangles/ellipses)'}">${icon('brush')}</button>` : '')
+    + (t === 'pen' || t === 'line' ? `<span class="sep"></span><select data-ds data-tip="Line style">${options({'': 'Solid', dash: 'Dashed', dot: 'Dotted'}, ds)}</select>` : '')
+    + (t === 'line' ? `<span class="sep"></span><span class="faint">Arrows</span>${[0, 1].map(k => `<button class="ib${arr[k] ? ' on' : ''}" data-a data-tip="Arrow at the ${k ? 'end' : 'start'}">${icon(k ? 'go' : 'back')}</button>`).join('')}` : '')
+    + (EDSH.test(t) ? `<span class="sep"></span><button class="ib${fl ? ' on' : ''}" data-fl data-tip="Fill with the secondary colour">${icon('brush')}</button>` : '')
     + (t === 'text' ? `<span class="sep"></span>${[['b', 'Bold', '<b>B</b>'], ['i', 'Italic', '<i style="font-family:Georgia,serif">I</i>'], ['u', 'Underline', '<u>U</u>']].map(([k, n, g]) => `<button class="ib${ts[k] ? ' on' : ''}" data-ts="${k}" data-tip="${n}">${g}</button>`).join('')}<select data-ts="f">${options({sans: 'Sans-serif', serif: 'Serif', mono: 'Monospace'}, ts.f || 'sans')}</select>` : '')
-    + (S.length ? `<span class="sep"></span><span class="faint">Applies to the selected ${one ? 'shape' + (S.length > 1 ? 's' : '') : 'shapes'}</span>` : '') + ur; edUR();
+    + (S.length ? `<span class="sep"></span><span class="faint">Applies to the selected shape${S.length > 1 ? 's' : ''}</span>` : '') + ur; edUR();
   let snap = 0;
-  const set = (k, v) => { if (k === 'lw') edLW = v; else if (k === 'f') edFill = v; else if (typeof k === 'string') edTS[k] = v; else edArr[k] = v;
-    try { localStorage.penW = edLW; localStorage.penArr = JSON.stringify(edArr); localStorage.penFill = edFill ? 1 : ''; localStorage.penTS = JSON.stringify(edTS); } catch {}
-    if (S.length) { if (!snap++) edSnap(); S.forEach(o => { if (k === 'lw') { o.lw = v; if (o.t === 'text') o.h = ED.w * 6 * v; } else if (k === 'f') { if (EDSH.test(o.t)) o.fill = v ? EDC2[1] : null; } else if (typeof k === 'string') { if (o.t === 'text') o[k] = v; } else if (o.t === 'line') o[k ? 'a1' : 'a0'] = v; }); edDraw(); } };
+  const set = (k, v) => { if (k === 'lw') edLW = v; else if (k === 'f') edFill = v; else if (k === 'ds') edDS = v; else if (typeof k === 'string') edTS[k] = v; else edArr[k] = v;
+    try { localStorage.penW = edLW; localStorage.penArr = JSON.stringify(edArr); localStorage.penFill = edFill ? 1 : ''; localStorage.penTS = JSON.stringify(edTS); localStorage.penDS = edDS; } catch {}
+    if (S.length) { if (!snap++) edSnap(); S.forEach(o => { if (k === 'lw') { o.lw = v; if (o.t === 'text') o.h = ED.w * 6 * v; } else if (k === 'f') { if (EDSH.test(o.t)) o.fill = v ? EDC2[1] : null; } else if (k === 'ds') { if (o.t === 'pen' || o.t === 'line') o.ds = v; } else if (typeof k === 'string') { if (o.t === 'text') o[k] = v; } else if (o.t === 'line') o[k ? 'a1' : 'a0'] = v; }); edDraw(); } };
   const r = el.querySelector('input'); r.oninput = () => { el.querySelector('b').textContent = r.value; set('lw', r.value / 8); }; r.onchange = () => snap = 0;
   el.querySelector('.ib[data-fl]')?.addEventListener('click', e => { snap = 0; set('f', e.currentTarget.classList.toggle('on')); });
   el.querySelectorAll('.ib[data-a]').forEach((x, k) => x.onclick = () => { snap = 0; set(k, x.classList.toggle('on') ? 1 : 0); });
   el.querySelectorAll('.ib[data-ts]').forEach(x => x.onclick = () => { snap = 0; set(x.dataset.ts, x.classList.toggle('on') || undefined); });
+  const ds2 = el.querySelector('select[data-ds]'); if (ds2) ds2.onchange = () => { snap = 0; set('ds', ds2.value); };
   const f = el.querySelector('select[data-ts]'); if (f) f.onchange = () => { snap = 0; set('f', f.value); }; }
 // #248 cursor = the tool's icon (white halo for any background); hotspot = where the tool touches (user-marked)
 const EDHOT = {sel: [5, 3], pen: [4, 20], line: [5, 19], rect: [3, 6], ellipse: [3, 12], text: [12, 12], box: [3, 5], erase: [4, 20]}, EDCUR = {};
