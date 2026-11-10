@@ -50,6 +50,9 @@ textarea { resize:none; field-sizing:content; min-height:4.5em; max-height:60vh;
 /* own chevron: the native one hugs the edge; this one sits 10px in, same as the text on the left */
 select, .selbtn { appearance:none; -webkit-appearance:none; padding-right:32px; cursor:pointer; background-repeat:no-repeat; background-position:right 11px center; background-size:12px;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%238e8e96' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+/* #450 menu opened above its anchor (.mup, set by buildMenu) → chevron points up */
+:is(select, .selbtn).mup { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 7.5l3-3 3 3' fill='none' stroke='%238e8e96' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.mup svg:has(use[href="#i-down"]) { rotate:180deg; }
 /* #415 .selbtn = menu button that looks like a select (font/colour/chevron/size) */ .selbtn { font:inherit; font-size:13px; font-weight:400; letter-spacing:normal; text-transform:none; color:var(--dim); white-space:nowrap; }
 input:focus, select:focus, textarea:focus { border-color:var(--accent); }
 input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
@@ -1081,6 +1084,7 @@ function buildMenu(items, r, side, level = 0) {
     m.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
     m.style.top = (below ? r.bottom + 6 : r.top - h - 6) + 'px';
   }
+  if (!level) MENU_A?.classList?.toggle('mup', !side && !below && above); // #450 chevron flips when the menu sits above
   m.querySelectorAll('[data-i]').forEach(b => { const it = items[b.dataset.i];
     b.onmouseenter = () => it.items ? buildMenu(it.items, b.getBoundingClientRect(), true, level + 1) : document.querySelectorAll('.menu').forEach(x => +x.dataset.level > level && !x.dataset.click && x.remove()); // click-opened: stays till a click/another submenu
     // acts = click-only dropdowns (hover ones overlapped each other); labelled act → opens below it like a select
@@ -1090,7 +1094,14 @@ function buildMenu(items, r, side, level = 0) {
 }
 const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
 let CTXP = null, CTXD = false; // #390 pending editable right-click / Rust holds a spelling deferral (closed w/o pick → release it)
-function closeMenu() { if (CTXD) setTimeout(() => CTXD && (CTXD = false, call('ctx_pick', {id: -1}))); if (document.querySelector('.menu')) MENU_T = Date.now(); document.querySelectorAll('.menu').forEach(x => x.remove()); document.removeEventListener('mousedown', outside); }
+function closeMenu() { if (CTXD) setTimeout(() => CTXD && (CTXD = false, call('ctx_pick', {id: -1}))); if (document.querySelector('.menu')) MENU_T = Date.now(); document.querySelectorAll('.menu').forEach(x => x.remove()); document.querySelectorAll('.mup').forEach(x => x.classList.remove('mup')); document.removeEventListener('mousedown', outside); }
+// #450 every <select> opens the app menu, never the native square popup; pick → value + 'change' (inline onchange keeps working)
+// optgroup → caption + indented items; keyboard ↑↓ still steps the value natively (no popup)
+function selMenu(s) { const o2i = o => ({label: o.text, check: o.selected, off: o.disabled, sub: o.parentElement.tagName === 'OPTGROUP', run: () => { s.value = o.value; s.dispatchEvent(new Event('change', {bubbles: true})); }});
+  const it = [...s.children].flatMap(c => c.tagName === 'OPTGROUP' ? [{title: c.label}, ...[...c.children].map(o2i)] : c.hidden ? [] : [o2i(c)]);
+  s.focus(); menuAt(s, it); const m = document.querySelector('.menu'); if (m) m.style.minWidth = s.offsetWidth + 'px'; }
+document.addEventListener('mousedown', e => { const s = e.target.closest?.('select:not([multiple],[size])'); if (!s || e.button || s.disabled) return; e.preventDefault(); if (MENU_A === s && document.querySelector('.menu')) return closeMenu(); selMenu(s); }, true);
+document.addEventListener('keydown', e => { const s = e.target; if (s.tagName !== 'SELECT' || s.multiple || !(e.key === ' ' || e.key === 'Enter' || e.altKey && /^Arrow(Down|Up)$/.test(e.key) || e.key === 'F4')) return; e.preventDefault(); selMenu(s); }, true);
 // right-click: own menu on chat msgs, tool rows, Files tree, projects; WebView default only in inputs / over a selection
 const copy = t => navigator.clipboard.writeText(t);
 const absOf = rel => { const b = P().path.replace(/[\\/]+$/, ''), s = b.includes('\\') ? '\\' : '/'; return b + s + rel.replace(/\//g, s); };
@@ -4669,7 +4680,7 @@ async function openSettings(p) {
   const scroll = $('dlg').querySelector('.body')?.scrollTop;
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `${k === 'cx' ? '<i class="rsep"></i>' : ''}<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
-    <div class="body"><div class="row stitle"><h2 class="grow">${PAGES[page][1]}</h2><input type="search" class="ssearch" list="sidx" placeholder="Search settings" onfocus="sidxFill()" onchange="sFind(this)"><datalist id="sidx"></datalist></div>
+    <div class="body"><div class="row stitle"><h2 class="grow">${PAGES[page][1]}</h2><input type="search" class="ssearch" placeholder="Search settings" onfocus="sidxFill()" oninput="sSug(this)" onkeydown="if (event.key === 'Enter') document.querySelector('.menu [data-i]')?.click()"><datalist id="sidx"></datalist></div>
     ${SPG[page]()}</div>
     <div class="sfoot"><select id="sjump" title="Jump to a section" onchange="sjumpGo(this)"></select><span class="row grow">${(FOOT[page] || (() => ''))()}</span><button class="btn primary" onclick="closeDlg()">Done</button></div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
@@ -4684,6 +4695,10 @@ function sidxFill() { const dl = $('sidx'); if (!dl || dl.options.length) return
   dl.innerHTML = Object.entries(SPG).flatMap(([k, f]) => { const t = document.createElement('template'); try { t.innerHTML = f(); } catch { return []; }
     return [...t.content.querySelectorAll(SSEL)].map(sTxt).filter(x => x.length > 1 && x.length < 60 && !seen.has(k + x) && seen.add(k + x))
       .map(x => `<option value="${esc(x + ' · ' + PAGES[k][1].replace('&amp;', '&'))}"></option>`); }).join(''); }
+// #450 suggestions = app menu (native datalist popup = square WebView box); datalist stays the index
+function sSug(i) { sidxFill(); const q = i.value.trim().toLowerCase(); if (!q) return closeMenu();
+  const m = [...$('sidx').options].map(o => o.value).filter(v => v.toLowerCase().includes(q)).slice(0, 12);
+  if (!m.length) return closeMenu(); MENU_T = 0; menuAt(i, m.map(v => ({label: v, run: () => { i.value = v; sFind(i); }}))); }
 function sFind(i) { const m = i.value.match(/^(.*) · ([^·]+)$/), k = m && Object.keys(PAGES).find(k => PAGES[k][1].replace('&amp;', '&') === m[2]); i.value = '';
   if (k) openSettings(k).then(() => jumpTo(() => [...$('dlg').querySelectorAll('.prefs .body ' + SSEL.split(', ').join(', .prefs .body '))].find(e => sTxt(e) === m[1]))); }
 // #215 footer: Jump to = the page's section titles (folds + secs), live from the DOM; FOOT[page] = contextual actions
