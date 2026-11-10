@@ -193,7 +193,7 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .vstage { position:relative; display:grid; place-items:center; padding:14px; min-height:0; overflow:hidden; }
 .zctl { display:inline-flex; align-items:center; gap:0; } .zctl .ib { width:22px !important; height:22px !important; padding:0; } .zctl .zp { min-width:38px; text-align:center; font-size:11.5px; color:var(--dim); cursor:ew-resize; user-select:none; font-variant-numeric:tabular-nums; } .zctl .zp:hover { color:var(--text); } /* #393 */
 .vstage > .vdoc, .vstage > .vtext { place-self:stretch; width:100%; height:100%; } .vdoc { border:0; border-radius:6px; background:#fff; } .vtext { max-height:none; margin:0; padding:0; align-content:start; } /* #247 File viewer: pdf / text */
-.vstage > img, #edC { max-width:100%; object-fit:contain; border-radius:6px; display:block; }
+.vstage > img { max-width:100%; } .vstage > img, #edC { object-fit:contain; border-radius:6px; display:block; }
 #edWrap { position:relative; } #edC { cursor:crosshair; touch-action:none; }
 .ednote { position:absolute; width:240px; display:flex; align-items:flex-end; gap:4px; padding:3px 4px 3px 8px; border:2px solid; border-radius:8px; background:var(--card); }
 .ednote textarea { flex:1; border:0; padding:2px 0; background:none; resize:none; min-height:0; font-size:12.5px; box-shadow:none; overflow:hidden; } .ednote .ib { width:22px; height:22px; }
@@ -1748,7 +1748,7 @@ function evDraw(re) { if (view !== 'edit' || !cur) return;
   if (t.err) { b.innerHTML = `<div class="empty dim">${esc(t.err)}</div>`; return; }
   if (t.img) { b._t = t; /* #435 image tab = File viewer's editor: context bar + side tools; Save writes the flattened image back */
     b.innerHTML = `<div class="evimg"><div class="vctx" id="vctx"></div><div class="vtools">${edToolsHtml()}</div><div class="vstage"><div id="edWrap"><canvas id="edC"></canvas></div></div></div>`;
-    const S = b.querySelector('.vstage'); new ResizeObserver(() => { const c = $('edC'); if (c) c.style.maxHeight = S.clientHeight - 28 + 'px'; if (ED?.tab === t) edNotes(); }).observe(S);
+    const S = b.querySelector('.vstage'); new ResizeObserver(() => { if (ED?.tab === t) edNotes(); }).observe(S);
     edInit(t.img, t.ed, t); return; }
   if (t.text === undefined) { b.innerHTML = `<div style="flex:1;padding:14px">${skel(60)}</div>`; if (!t.loading) { t.loading = 1; evLoad(t, cur); } return; }
   if (evFm(t)) { let h; try { h = evPv(t) === 'md' ? `<div class="mdoc">${mdDoc(t.text)}</div>` : codeHtml(JSON.stringify(JSON.parse(t.text), null, 2), 'json', !!UI.ew).replace('class="code', 'class="code' + (hlOn() ? '' : ' plain')); } catch (e) { h = `<div class="dim">${esc(String(e))}</div>`; }
@@ -2339,7 +2339,7 @@ function editImage() {
   // #379 every image = a tab (Edit-view look; ← → still step). ponytail: no ✕ per tab ∵ images belong to the chat/composer
   vWin(`<div class="vtabs" onpointerdown="event.stopPropagation()">${VW.imgs.map((x, k) => `<div class="et${k === VW.i ? ' on' : ''}" title="${esc(x.name)}" onclick="${k === VW.i ? '' : `VW.i = ${k}; drawViewer()`}"><img src="${x.url}" alt=""><span>${esc(x.name)}</span></div>`).join('')}</div>`,
     `<button class="btn primary sm" id="edSave" onclick="edDone()"${VW.map ? ' disabled title="Nothing changed yet"' : ''}>${VW.map ? 'Save' : 'Add to message'}</button>`,
-    edToolsHtml(), '<div id="edWrap"><canvas id="edC"></canvas></div>', S => { $('edC').style.maxHeight = S.clientHeight - 28 + 'px'; if (ED) edNotes(); }, 'img', ' ');
+    edToolsHtml(), '<div id="edWrap"><canvas id="edC"></canvas></div>', () => { if (ED) edNotes(); }, 'img', ' ');
   edInit(m.ed?.orig || m.url, m.ed);
 }
 const edToolsHtml = () => `<span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
@@ -2356,6 +2356,9 @@ function edInit(src, ed, tab) {
   const img = new Image(), c = $('edC');
   img.onload = () => { if (!c.isConnected) return; // tab switched / dialog closed before load
     c.width = img.naturalWidth; c.height = img.naturalHeight;
+    // #436 no clamp: start at (stage − padding)·95%, ↓ to 10% steps, ≤100%; window resize keeps it. Viewer: VZ.s = shown %, transform = s/b
+    const S = c.closest('.vstage'), b = Math.max(1, Math.floor(Math.min(1, (S.clientWidth - 28) * .95 / c.width, (S.clientHeight - 28) * .95 / c.height) * 10)) / 10;
+    c.style.width = c.width * b + 'px'; if (VZ?.k === 'img' && S.closest('#dlg')) { VZ.b = VZ.s = b; vZoom(1); }
     ED = {img, ops: structuredClone(ed?.ops || []), nmax: ed?.nmax || 0, tool: 'pen', cur: null, sel: [], drag: null, undo: [], w: Math.max(3, img.naturalWidth / 300), tab};
     edCursor(); edDraw(); edNotes(); edCtx();
     const pt = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
@@ -2418,12 +2421,12 @@ let VZ = null; const vZp = (p, e) => VZ && vZoom(Math.min(800, Math.max(10, p)) 
 // f = factor; e = pointer → that point stays put (transform-origin 0 0: screen = layout + t + s·u ∴ t' = P − O − s'/s·(P − O − t))
 function vZoom(f, e) {
   if (!VZ) return; const S = $('dlg').querySelector('.vstage'), el = S?.firstElementChild; if (!el) return;
-  const s2 = f === 0 ? 1 : Math.min(8, Math.max(.1, VZ.s * f));
+  const s2 = f === 0 ? VZ.b || 1 : Math.min(8, Math.max(.1, VZ.s * f)); // 0 = reset to the #436 fit
   if (f === 0) VZ.x = VZ.y = 0;
   else if (VZ.k === 'img') { const r = el.getBoundingClientRect(), ox = r.left - VZ.x, oy = r.top - VZ.y, px = e ? e.clientX : r.left + r.width / 2, py = e ? e.clientY : r.top + r.height / 2;
     VZ.x = px - ox - s2 / VZ.s * (px - ox - VZ.x); VZ.y = py - oy - s2 / VZ.s * (py - oy - VZ.y); }
   VZ.s = s2;
-  if (VZ.k === 'img') { el.style.transformOrigin = '0 0'; el.style.transform = `translate(${VZ.x}px, ${VZ.y}px) scale(${VZ.s})`; } else el.style.zoom = VZ.s;
+  if (VZ.k === 'img') { el.style.transformOrigin = '0 0'; el.style.transform = `translate(${VZ.x}px, ${VZ.y}px) scale(${VZ.s / (VZ.b || 1)})`; } else el.style.zoom = VZ.s;
   const z = $('dlg').querySelector('.zctl .zp'); if (z) z.textContent = Math.round(VZ.s * 100) + '%';
 }
 // read-only files → "Save as…" (editable ones = images → Save in editImage). f = {name, path?(copied as is), text?(saved), url?(pdf blob), html?(text view)}
