@@ -7,15 +7,15 @@
 <style>
 :root { --bg:#ffffff; --side:#f7f7f8; --card:#ffffff; --line:#ececee; --line2:#dcdce0; --text:#1d1d1f; --dim:#6e6e76; --faint:#a1a1a8;
   --accent:#4f5bd5; --accent2:#3f4ac0; --soft:#eef0fd; --primary:#1d1d1f; --primary2:#3a3a3e; --ink:#fff; --hover:#f0f0f2; --code:#f6f6f7;
-  --err:#c4281c; --ok:#1f8a4c; --crab:#d77757; --shadow:0 1px 2px #0000000a, 0 2px 12px #00000008; color-scheme:light; }
+  --err:#c4281c; --danger:#c4281c; --danger-ink:#fff; --ok:#1f8a4c; --crab:#d77757; --shadow:0 1px 2px #0000000a, 0 2px 12px #00000008; color-scheme:light; }
 :root[data-theme=dark] { --bg:#161618; --side:#1c1c1f; --card:#232326; --line:#2c2c30; --line2:#3a3a3f; --text:#ededef;
   --dim:#a0a0a8; --faint:#6c6c74; --accent:#8b93ff; --accent2:#a3a9ff; --soft:#262a4a; --primary:#ededef; --primary2:#ffffff; --ink:#161618;
-  --hover:#2a2a2e; --code:#1c1c1f; --err:#ff7b6e; --ok:#5fd08e; --shadow:0 1px 2px #00000040, 0 4px 16px #00000030; color-scheme:dark; }
+  --hover:#2a2a2e; --code:#1c1c1f; --err:#ff7b6e; --danger:#e5484d; --danger-ink:#fff; --ok:#5fd08e; --shadow:0 1px 2px #00000040, 0 4px 16px #00000030; color-scheme:dark; }
 /* Mono accent: pure black/white, high contrast (utilitarian); keep surfaces in sync with MONO in JS */
 :root.mono { --bg:#fff; --side:#fff; --card:#fff; --line:#bbb; --line2:#000; --text:#000; --dim:#222; --faint:#555; --hover:#e8e8e8; --code:#f2f2f2;
-  --primary:#000; --primary2:#333; --ink:#fff; --shadow:none; }
+  --primary:#000; --primary2:#333; --ink:#fff; --shadow:none; --danger:#000; --danger-ink:#fff; }
 :root.mono[data-theme=dark] { --bg:#000; --side:#000; --card:#000; --line:#444; --line2:#fff; --text:#fff; --dim:#ddd; --faint:#aaa; --hover:#1c1c1c;
-  --code:#0d0d0d; --primary:#fff; --primary2:#ccc; --ink:#000; }
+  --code:#0d0d0d; --primary:#fff; --primary2:#ccc; --ink:#000; --danger:#fff; --danger-ink:#000; }
 /* corners (Appearance): soft = the stylesheet; square = none; round = bigger on the main containers */
 :root.c-square *:not(.av):not(.swatch):not(img):not(input[type=range]) { border-radius:0 !important; }
 :root.c-round :is(.box, .menu, .termcard) { border-radius:20px !important; } :root.c-round #composer { border-radius:26px !important; }
@@ -42,6 +42,8 @@ svg.i { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.
 .btn { display:inline-flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line2); border-radius:99px; padding:2px 12px; line-height:20px; /* #304 = Next step size (26px): standard max for regular buttons */ cursor:pointer; transition:background .12s, border-color .12s; }
 .btn:hover { background:var(--hover); } .btn:disabled { opacity:.45; cursor:default; }
 .btn.primary { background:var(--primary); border-color:var(--primary); color:var(--ink); } .btn.primary:hover { background:var(--primary2); }
+/* danger = the confirm button of something that removes or discards; each theme sets --danger */
+.btn.danger { background:var(--danger); border-color:var(--danger); color:var(--danger-ink); } .btn.danger:hover { filter:brightness(.9); }
 .btn.ghost { background:none; border-color:transparent; } .btn.ghost:hover { background:var(--hover); }
 /* Icon button: three sizes only. 30 in bars, 26 beside regular buttons, 20 inside tabs and pills. A container picks one with --ib. */
 :root { --ib-md:26px; --ib-sm:20px; } :is(#notes .nbar, .sh, .vctx, #ptabs, #emenu, .cvh) { --ib:var(--ib-md); } :is(.zctl, .ednote, .qp, #etabs .et, .cvh .ib.x) { --ib:var(--ib-sm); }
@@ -733,11 +735,11 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 .prefs { width:min(920px,94vw); height:min(700px,88vh); display:grid; grid-template-rows:auto 1fr auto; }
 .prefs .sfoot { display:flex; align-items:center; gap:10px; padding:10px 16px; border-top:1px solid var(--line); } .prefs .sfoot .row { justify-content:center; gap:8px; } .prefs .sfoot select { max-width:200px; }
 .prefs .tbar { display:flex; justify-content:center; gap:2px; padding:10px 48px 8px; border-bottom:1px solid var(--line); position:relative; }
-.prefs .tbar button { display:flex; flex-direction:column; align-items:center; gap:4px; min-width:78px; padding:7px 8px 5px; border:0; background:none;
+.prefs .tbar button:not(.x) { display:flex; flex-direction:column; align-items:center; gap:4px; min-width:78px; padding:7px 8px 5px; border:0; background:none;
   border-radius:12px; color:var(--dim); font-size:11.5px; cursor:pointer; transition:background .12s, color .12s; }
-.prefs .tbar button svg { width:22px; height:22px; stroke-width:1.6; } .prefs .tbar button:hover { background:var(--hover); }
+.prefs .tbar button:not(.x) svg { width:22px; height:22px; stroke-width:1.6; } .prefs .tbar button:not(.x):hover { background:var(--hover); }
 .prefs .tbar button.on { background:var(--soft); color:var(--accent); }
-.prefs .tbar .x { position:absolute; right:10px; top:10px; min-width:0; width:30px; height:30px; padding:0; justify-content:center; } /* #428 .ib, not a 78px tab */
+.prefs .tbar .x { position:absolute; right:10px; top:10px; } /* the same close button as every other window */
 .prefs .tbar .rsep { width:1px; height:auto; align-self:stretch; margin:6px 8px; } /* #428 vertical here (#421 made .rsep a horizontal bar line) */
 .prefs .tbar button { white-space:nowrap; }
 .prefs .body { overflow:auto; padding:20px 28px; display:flex; flex-direction:column; }
@@ -1052,13 +1054,13 @@ function splitCmd(c) {
 // html: body as HTML (already escaped) instead of text's rest
 let SURE = Promise.resolve(); // one at a time
 const sure = (...a) => (SURE = SURE.then(() => sure1(...a)));
-function sure1(text, ok = 'OK', cancel = 'Cancel', html) {
+function sure1(text, ok = 'OK', cancel = 'Cancel', html, danger) { // danger: the OK button removes or discards something
   const d = $('dlgc'), [head, ...rest] = String(text).split('\n\n'), body = html ?? (rest.length ? esc(rest.join('\n\n')) : '');
   d.innerHTML = `<div class="small-dlg"><h2 style="margin:0 0 8px;font-size:17px;white-space:pre-wrap">${esc(head)}</h2>${body ? `<p class="dim" style="margin:0;font-size:13px;white-space:pre-wrap">${body}</p>` : ''}
-    <div class="btns">${cancel ? `<button class="btn ghost" value="">${esc(cancel)}</button>` : ''}<button class="btn primary" value="1">${esc(ok)}</button></div></div>`;
+    <div class="btns">${cancel ? `<button class="btn ghost" value="">${esc(cancel)}</button>` : ''}<button class="btn ${danger ? 'danger' : 'primary'}" value="1">${esc(ok)}</button></div></div>`;
   dlgShell(d.firstElementChild);
   return new Promise(res => { d.onclose = () => res(d.returnValue === '1'); d.returnValue = '';
-    d.querySelectorAll('button').forEach(b => b.onclick = () => d.close(b.value)); d.showModal(); d.querySelector('.primary').focus(); });
+    d.querySelectorAll('button').forEach(b => b.onclick = () => d.close(b.value)); d.showModal(); d.querySelector(danger ? '.ghost, .danger' : '.primary').focus(); }); // danger: Enter lands on Cancel
 }
 const say = text => sure(String(text), 'OK', '');
 document.addEventListener('click', e => { const u = e.target.closest('[data-url]')?.dataset.url; if (u) { e.preventDefault(); T.opener.openUrl(u); } });
@@ -1754,7 +1756,7 @@ function evNew() { const E = etabs(), n = Math.max(0, ...E.tabs.map(t => +(t.nam
   E.on = E.tabs.push({rel: null, name: 'Untitled-' + n, text: '', orig: ''}) - 1; evDraw(); }
 function evPick(i) { etabs().on = i; evKeep(); evDraw(); }
 async function evClose(i) { const E = etabs(), t = E.tabs[i]; if (!t) return;
-  if (evDirty(t) && !await sure(`Close ${t.name} without saving?`, 'Close')) return;
+  if (evDirty(t) && !await sure(`Close ${t.name} without saving?`, 'Discard changes', 'Cancel', undefined, true)) return;
   E.tabs.splice(i, 1); if (E.on >= i && E.on > 0) E.on--; if ($('ebody')._t === t) $('ebody')._t = null; evKeep(); evDraw(); }
 async function evLoad(t, pid) { const abs = P(pid).path.replace(/[\\/]+$/, '') + '/' + t.rel;
   try { if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(t.rel)) t.img = URL.createObjectURL(new Blob([await call('read_image', {path: abs})]));
@@ -2462,7 +2464,7 @@ let VBOX = (() => { try { return JSON.parse(localStorage.vbox || 'null'); } catc
    tools = left toolbar (contextual per file type), stage = content; fit(stage) on every resize */
 function vWin(head, act, tools, stage, fit, zoom, ctx = '') {
   VZ = zoom ? {k: zoom, s: 1, x: 0, y: 0} : null; // #248 zoom: 'img' = transform (pan too) | 'text' = CSS zoom; pdf = its own viewer's zoom
-  dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span><button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
+  dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span><button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
     <div class="vctx" id="vctx">${ctx}${zoom === 'text' ? `<span class="vur">${zoomCtl('Math.round(VZ.s * 100)', 'vZp(p)', ', Ctrl+wheel, Ctrl + / −')}</span>` : ''}</div><div class="vtools">${tools}</div><div class="vstage">${stage}</div>${act ? `<div class="vfoot">${act}</div>` : ''}`, 'viewer'); /* #437 zoom right in the bar, act = footer bottom-right */
   const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
   if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; } // #298 .viewer max-* (< dialog's UA max = 100% − 2em − 6px) clamps ∴ ✕ + resize corner never clipped, follows window shrink
@@ -3275,7 +3277,7 @@ async function availFill() {
 }
 async function availAdd(path) { const p = await call('add_project', {path}); SCAN = null; await refresh(); mp = p.id; openSettings('projects'); askProject(P(p.id)); }
 async function removeProject() {
-  if (!await sure(`Remove ${P(mp).name} from Clauracle? The folder stays on disk.`)) return;
+  if (!await sure(`Remove ${P(mp).name} from Clauracle? The folder stays on disk.`, 'Remove', 'Cancel', undefined, true)) return;
   await call('remove_project', {pid: mp}); closeDlg();
   if (mp === cur) goHome();
   mp = null; refresh();
@@ -5249,9 +5251,9 @@ async function askNewAccount() {
   if (a) await pickItems(a.id, `What should ${a.nick}'s new projects get?`, []);
   openSettings('ai');
 }
-async function rmClaude(id) { if (await sure('Remove this account? Its projects fall back to Main.')) { await call('claude_remove', {id}); openSettings(); } }
+async function rmClaude(id) { if (await sure('Remove this account? Its projects fall back to Main.', 'Remove', 'Cancel', undefined, true)) { await call('claude_remove', {id}); openSettings(); } }
 async function addGh() { $('ghMsg').textContent = 'Waiting for gh…'; const ok = await call('gh_login').catch(e => ($('ghMsg').textContent = e, false)); if (ok) reloadSettings(); }
-async function rmGh(u) { if (await sure(`Log @${u} out of gh?`)) { await call('gh_logout', {user: u}); reloadSettings(); } }
+async function rmGh(u) { if (await sure(`Log @${u} out of gh?`, 'Log out', 'Cancel', undefined, true)) { await call('gh_logout', {user: u}); reloadSettings(); } }
 
 // ---- clone ----
 async function cloneLogin(b) { b.disabled = true; b.textContent = 'Waiting for gh…'; if (await call('gh_login').catch(e => (toast(String(e), 'err'), false))) { SET = null; openClone(); } else b.disabled = false; }
