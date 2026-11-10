@@ -1886,6 +1886,8 @@ function toEnd(stick, n = 0) {
 // #251 jump pill = the live middle status while busy (Working pill's text), else New!
 function jumpTxt() { const j = $('jump'), w = busy[cur] && !$('workpill').hidden; j.classList.toggle('on', w); j.lastChild.textContent = w ? $('worktext').textContent : unseen ? 'New!' : ''; }
 $('log').addEventListener('scroll', () => { const j = $('jump'), e = atEnd(); if (e && !j.hidden) { unseen = 0; j.hidden = true; } else if (!e && j.hidden && busy[cur] && view === 'chat') { j.hidden = false; jumpTxt(); } }, {passive: true}); // #251 scrolled up mid-turn → status pill floats at the bottom
+// #424 log shrinks (composer grew: thumbs, more lines) → scrollTop stays ∴ last msg slid under the dock fade; was at end → stay at end
+{ let wasEnd = true; $('log').addEventListener('scroll', () => { wasEnd = atEnd(); }, {passive: true}); new ResizeObserver(() => { if (wasEnd && view === 'chat') $('log').scrollTop = $('log').scrollHeight; }).observe($('log')); }
 // #327 term grid: every block child of .col padded (margin-bottom) to a whole 20px row ∴ next block starts on a row; inline notes skipped (line box = 20px already)
 const LH = 20, gridRO = new ResizeObserver(es => { const t = view !== 'chat'; for (const e of es) { const h = e.borderBoxSize[0].blockSize; e.target.style.marginBottom = t && h ? Math.ceil(h / LH - .01) * LH - h + 'px' : ''; } });
 new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) { if (n.nodeType !== 1) continue; if (n.classList.contains('col')) [...n.children].forEach(c => gridRO.observe(c)); else if (n.parentElement?.classList.contains('col')) gridRO.observe(n); } }).observe($('log'), {childList: true, subtree: true});
