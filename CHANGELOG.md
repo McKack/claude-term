@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Image editor: the selection-type buttons (rectangle, freehand) show their icons; the colour swap arrow now points left.
 - Sent chat messages appear instantly again, also while the Continue bar is up.
 - Code tab: "Open in file viewer" moved to the top right of the file header; X next to the file name closes it (#458)
 
