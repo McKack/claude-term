@@ -1250,6 +1250,8 @@ let NUNREAD = NOTES.filter(n => !n.seen).length;
 // #402 snooze = S.notify.snooze unix secs (Rust notify() skips desktop/phone too); ∞ = 9999999999
 const snoozed = () => Date.now() / 1000 < (S.notify?.snooze || 0);
 const snooze = s => saveNotify({snooze: s && (s > 1e9 ? s : Math.floor(Date.now() / 1000) + s)});
+const snoozeMenu = b => { const go = s => () => { snooze(s); document.querySelector('.acard:popover-open')?.hidePopover(); }; // #430 bell card snooze icon
+  menuAt(b, [...(snoozed() ? [{label: 'Unsnooze', icon: 'bell', run: go(0)}, '-'] : []), ...[['1h', 3600], ['24h', 86400], ['7d', 604800], ['∞', 9999999999]].map(([l, s]) => ({label: 'Snooze ' + l, icon: 'clock', run: go(s)}))]); };
 const notesSave = () => { try { localStorage.notes = JSON.stringify(NOTES.map(({act, ...n}) => n)); } catch {} };
 function toast(text, kind = 'info', act, log = true) { // act = [label, fn] → button; such toasts stay 20s; log false = popup only (ⓘ help)
   // #429 same text = one entry: older copy (list + open popup) replaced, never stacked
@@ -1405,8 +1407,8 @@ function gCard(btn, kind) {
     const ga = card.querySelector('#gacts'), iv = setInterval(() => { if (!card.isConnected) return clearInterval(iv); const h = acts(); if (ga._h !== h) ga.innerHTML = ga._h = h; }, 1000); ga._h = acts();
   } else if (kind === 'notes') {
     NUNREAD = 0; NOTES.forEach(n => n.seen = 1); window.NSNAP = NOTES.slice(); /* indices stable while card open */ notesSave(); drawGbar();
-    card.innerHTML = `<div class="row" style="flex-wrap:wrap"><h5 class="grow" style="flex:1 0 auto">Notifications${snoozed() ? ` <span class="dim" style="font-weight:400">· snoozed${S.notify.snooze < 9e9 ? ' until ' + new Date(S.notify.snooze * 1000).toLocaleString([], {weekday: 'short', hour: '2-digit', minute: '2-digit'}) : ''}</span>` : ''}</h5>`
-      + (snoozed() ? act('Unsnooze', `snooze(0); ${close}`, 'ghost') : act('Snooze 24h', `snooze(86400); ${close}`, 'ghost') + act('Snooze ∞', `snooze(9999999999); ${close}`, 'ghost'))
+    card.innerHTML = `<div class="row"><h5 class="grow">Notifications${snoozed() ? ` <span class="dim" style="font-weight:400">· snoozed${S.notify.snooze < 9e9 ? ' until ' + new Date(S.notify.snooze * 1000).toLocaleString([], {weekday: 'short', hour: '2-digit', minute: '2-digit'}) : ''}</span>` : ''}</h5>`
+      + `<button class="ib${snoozed() ? ' on' : ''}" title="Snooze" onclick="event.stopPropagation(); snoozeMenu(this)">${icon('clock')}</button>` /* #430 one icon → menu */
       + `${NOTES.length ? act('Clear all', `NOTES = []; notesSave(); drawGbar(); ${close}`, 'ghost') : ''}</div>`
       + (NOTES.map((n, i) => { const [ic, c] = TOASTK[n.kind] || TOASTK.info;
         return `<div class="row" style="gap:8px;align-items:flex-start;font-size:12px"><span style="color:${c};flex:none;display:inline-flex">${icon(ic)}</span><span class="grow sel">${esc(n.text)}</span><span class="dim" style="white-space:nowrap">${gago(n.ts)}</span></div>`
