@@ -797,6 +797,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-bot" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M12 8V4M8 14h.01M16 14h.01"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-bell-off" viewBox="0 0 24 24"><path d="M8.7 3A6 6 0 0 1 18 8c0 2.8.5 4.8 1.1 6.2M17 17H3s3-2 3-9c0-.8.1-1.5.4-2.2M10.3 21a1.9 1.9 0 0 0 3.4 0M2 2l20 20"/></symbol>
   <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
@@ -1375,7 +1376,7 @@ function drawGbar() {
   const bl = bd.length ? `<button onclick="gCard(this, 'build')" title="Builds in progress"><span class="spin"></span><span class="gt">Building ${bd.length > 1 ? bd.length + ' projects' : `<b>${esc(bd[0].name)}</b>`}</span></button>`
     : last ? `<button onclick="gCard(this, 'build')" title="Last build"><span class="${last.b.ok ? 'ok' : 'bad'}">${icon(last.b.ok ? 'check' : 'x')}</span><span class="gt">${last.b.ok ? 'Built' : 'Build failed'} <b>${esc(last.p.name)}</b> · ${gago(last.b.at)}</span></button>`
     : `<button onclick="gCard(this, 'build')" title="Builds">${icon('hammer')}<span class="gt">No builds</span></button>`;
-  const bell = `<button onclick="gCard(this, 'notes')" title="Notifications${NUNREAD ? ': ' + NUNREAD + ' new' : ''}" style="position:relative">${icon('bell')}${NUNREAD ? '<i class="gdot" style="position:absolute;top:2px;right:3px;width:6px;height:6px;animation:none"></i>' : ''}</button>`;
+  const bell = `<button onclick="gCard(this, 'notes')" title="Notifications${snoozed() ? ' (snoozed)' : ''}${NUNREAD ? ': ' + NUNREAD + ' new' : ''}" style="position:relative">${icon(snoozed() ? 'bell-off' : 'bell')}${NUNREAD ? '<i class="gdot" style="position:absolute;top:2px;right:3px;width:6px;height:6px;animation:none"></i>' : ''}</button>`;
   const clock = `<span title="${new Date().toLocaleDateString([], {weekday: 'long', day: 'numeric', month: 'long'})}">${new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}</span>`; // locale picks 24h / AM-PM
   const h = `<div class="gz">${ai}</div><div class="gz r">${bl}${clock}${bell}</div>`;
   if (el._h !== h) { el._h = h; el.innerHTML = h; }
@@ -1407,9 +1408,10 @@ function gCard(btn, kind) {
     const ga = card.querySelector('#gacts'), iv = setInterval(() => { if (!card.isConnected) return clearInterval(iv); const h = acts(); if (ga._h !== h) ga.innerHTML = ga._h = h; }, 1000); ga._h = acts();
   } else if (kind === 'notes') {
     NUNREAD = 0; NOTES.forEach(n => n.seen = 1); window.NSNAP = NOTES.slice(); /* indices stable while card open */ notesSave(); drawGbar();
-    card.innerHTML = `<div class="row"><h5 class="grow">Notifications${snoozed() ? ` <span class="dim" style="font-weight:400">· snoozed${S.notify.snooze < 9e9 ? ' until ' + new Date(S.notify.snooze * 1000).toLocaleString([], {weekday: 'short', hour: '2-digit', minute: '2-digit'}) : ''}</span>` : ''}</h5>`
+    card.innerHTML = `<div class="row"><h5 class="grow">Notifications</h5>`
       + `<button class="ib${snoozed() ? ' on' : ''}" title="Snooze" onclick="event.stopPropagation(); snoozeMenu(this)">${icon('clock')}</button>` /* #430 one icon → menu */
       + `${NOTES.length ? act('Clear all', `NOTES = []; notesSave(); drawGbar(); ${close}`, 'ghost') : ''}</div>`
+      + (snoozed() ? `<div class="row dim" style="gap:6px;font-size:12px">${icon('bell-off')}<span class="grow">Snoozed${S.notify.snooze < 9e9 ? ' until ' + new Date(S.notify.snooze * 1000).toLocaleString([], {weekday: 'short', hour: '2-digit', minute: '2-digit'}) : ''}: no popups</span></div>` : '') /* #431 own full-width row */
       + (NOTES.map((n, i) => { const [ic, c] = TOASTK[n.kind] || TOASTK.info;
         return `<div class="row" style="gap:8px;align-items:flex-start;font-size:12px"><span style="color:${c};flex:none;display:inline-flex">${icon(ic)}</span><span class="grow sel">${esc(n.text)}</span><span class="dim" style="white-space:nowrap">${gago(n.ts)}</span></div>`
           + (n.act ? `<div class="gact">${act(esc(n.act[0]), `NSNAP[${i}].act[1](); ${close}`, 'primary')}</div>` : ''); }).join('') || '<p class="dim">No notifications yet: toasts (builds, limits, errors…) land here.</p>');
