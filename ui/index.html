@@ -2269,6 +2269,13 @@ function addEntry(pid, e) {
 // ---- composer: text, pasted images (previews), attached files ----
 const hasInput = () => $('prompt').value.trim() || (atts[cur] || []).length;
 const stem = n => n.replace(/\.\w+$/, '');
+// a new attachment whose stem is already taken gets -2, -3 … before the extension (refs and notes go by stem)
+const attName = name => { const l = atts[cur] || [], s = stem(name), e = name.slice(s.length); let n = name;
+  for (let k = 2; l.some(x => stem(x.name) === stem(n)); k++) n = `${s}-${k}${e}`; return n; };
+// dropped image file: load its bytes so it can be annotated and saved like a pasted one
+async function imgLoad(a) { try { const x = a.path.match(/\.(\w+)$/)[1].toLowerCase(), mt = 'image/' + (x === 'jpg' ? 'jpeg' : x),
+  url = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; call('read_image', {path: a.path}).then(b => r.readAsDataURL(new Blob([b], {type: mt})), no); });
+  Object.assign(a, {url, media_type: mt, data: url.split(',')[1]}); drawAtts(); } catch {} }
 // #217 notes live on the attachment; #238: also in the filed issue body + file/isQ checks (were session-only → the ask got lost)
 const noteTxt = a => a.filter(x => x.notes?.length).map(x => `\n\nNotes on @[${stem(x.name)}] (numbered boxes):\n${x.notes.join('\n')}`).join('');
 // #227 file-type icon for pills/thumbs: image | doc | code | file
@@ -2355,7 +2362,8 @@ function viewAtt(i) {
   openViewer(map.map(k => a[k]), map.indexOf(i), map);
 }
 function openViewer(imgs, i, map) { VW = {imgs, i, map}; drawViewer(); }
-function drawViewer() { edStash(); ED = null; editImage(); } // #232 opens straight in edit mode (ponytail: arrows step = unsaved marks dropped)
+const edPending = () => ED && !ED.tab && VW?.map && $('edC') && $('edSave') && !$('edSave').disabled; // composer image with unsaved marks
+function drawViewer() { if (edPending()) try { edDone(1); } catch {} edStash(); ED = null; editImage(); } // #232 opens straight in edit mode; stepping applies unsaved marks first
 const stepViewer = d => { VW.i = (VW.i + d + VW.imgs.length) % VW.imgs.length; drawViewer(); };
 /* #217 vector editor: ops = shapes (pen pts | line | box+note), selectable/movable/resizable/erasable; flattened to one PNG on save
    (PNG ∵ tokens ∝ pixels, not format; JPG blurs text). Attachment keeps a.ed = {orig, ops, nmax} → re-edit stays vector + box numbers
@@ -2372,7 +2380,7 @@ function edSetCol(k, v, q) { EDC2[k] = v; try { localStorage[k ? 'penColor2' : '
   if (T.length) { if (!ED.csnap) { ED.csnap = 1; edSnap(); } T.forEach(o => { if (!(k && EDSH.test(o.t) && !o.fill)) o[k ? 'fill' : 'color'] = v; }); /* unfilled shape stays unfilled */ edDraw(); edNotes(); } }
 const ETOOLS = [['sel', 'cursor', 'Select: click picks (again = next one below), drag empty space = box/freehand, Shift/Ctrl+click adds/removes, drag inside the box moves, handles scale, Delete removes'], ['pen', 'pen', 'Pen: draw freehand'], ['line', 'line', 'Line: straight line'], ['rect', 'rect', 'Rectangle: drag (Shift = square)'], ['ellipse', 'ellipse', 'Ellipse: drag (Shift = circle)'], ['text', 'text', 'Text: click to type, click a text to edit it, Enter = done'], ['box', 'boxnote', 'Box + note: drag a box, then type a note for it'], ['erase', 'eraser', 'Eraser: click a shape to remove it']]; // #238 icons + data-tip
 function editImage() {
-  const m = VW.imgs[VW.i], n = VW.imgs.length;
+  const m = VW.imgs[VW.i], n = VW.imgs.length; VW.ei = VW.i; // ei = image the editor holds (VW.i moves first on a switch)
   // canvas fits the stage (any window size); notes re-placed ∵ scale changed
   // #379 every image = a tab (Edit-view look; ← → still step). ponytail: no ✕ per tab ∵ images belong to the chat/composer
   vWin(`<div class="vtabs" onpointerdown="event.stopPropagation()">${VW.imgs.map((x, k) => `<div class="et${k === VW.i ? ' on' : ''}" title="${esc(x.name)}" onclick="${k === VW.i ? '' : `VW.i = ${k}; drawViewer()`}"><img src="${x.url}" alt=""><span>${esc(x.name)}</span></div>`).join('')}</div>`,
@@ -2620,13 +2628,13 @@ const edState = () => JSON.stringify([ED.ops, ED.nmax]);
 function edUndo() { const u = ED?.undo.pop(); if (u) { ED.redo.push(edState()); [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = []; edDirty(); edDraw(); edNotes(); } edUR(); }
 function edRedo() { const u = ED?.redo.pop(); if (u) { ED.undo.push(edState()); [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = []; edDirty(); edDraw(); edNotes(); } edUR(); }
 const edUR = () => document.querySelectorAll('#vctx [data-u], #ectx [data-u]').forEach(b => b.disabled = !ED?.[+b.dataset.u ? 'redo' : 'undo'].length); // #437 greyed when empty
-function edDone() {
-  const m = VW.imgs[VW.i]; ED.sel = []; edDraw(true);
-  const url = $('edC').toDataURL('image/png'), name = m.name.replace(/\.\w+$/, '') + '.png'; // same stem ∴ [refs] in the text still match
+function edDone(keep) { // keep = apply the marks but leave the viewer to the caller (tab/arrow switch, dialog close)
+  const k = VW.ei ?? VW.i, m = VW.imgs[k]; ED.sel = []; edDraw(true);
+  const url = $('edC').toDataURL('image/png'), name = VW.map ? m.name.replace(/\.\w+$/, '') + '.png' : attName(m.name.replace(/\.\w+$/, '') + '.png'); // same stem ∴ [refs] in the text still match
   const notes = ED.ops.filter(o => o.t === 'box' && o.note.trim()).map(o => `${o.n}. ${o.note.trim()}`);
   const a = {name, url, media_type: 'image/png', data: url.split(',')[1], ed: {orig: m.ed?.orig || m.url, ops: ED.ops, nmax: ED.nmax}, notes};
-  if (VW.map) atts[cur][VW.map[VW.i]] = a; else { (atts[cur] ||= []).push(a); attRef(atts[cur].length - 1); }
-  ED = null; closeDlg(); drawAtts(); grow(); $('prompt').focus();
+  if (VW.map) { atts[cur][VW.map[k]] = a; VW.imgs[k] = a; } else { (atts[cur] ||= []).push(a); attRef(atts[cur].length - 1); }
+  ED = null; if (!keep) closeDlg(); drawAtts(); grow(); if (!keep) $('prompt').focus();
 }
 document.addEventListener('keydown', e => {
   if (e.key === 'F11') { e.preventDefault(); return call('fullscreen'); }
@@ -2640,15 +2648,15 @@ document.addEventListener('keydown', e => {
   if (ED?.sel.length && !typing && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); edSnap(); ED.ops = ED.ops.filter(o => !ED.sel.includes(o)); ED.sel = []; edDraw(); edNotes(); }
   if (!typing && VW && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
 });
-$('dlg').addEventListener('close', () => { VW = VF = VZ = null; if (!ED?.tab) ED = null; $('dlg').style.cssText = ''; if (view === 'edit' && cur && !$('ebody')._t) evDraw(true); }); // #435 Edit-view image editor survives dialogs; re-mounts after the viewer parked it // #239 drop the viewer's pinned spot (dlg is shared)
+$('dlg').addEventListener('close', () => { if (edPending()) try { edDone(1); } catch {} VW = VF = VZ = null; if (!ED?.tab) ED = null; $('dlg').style.cssText = ''; if (view === 'edit' && cur && !$('ebody')._t) evDraw(true); }); // #435 Edit-view image editor survives dialogs; re-mounts after the viewer parked it // #239 drop the viewer's pinned spot (dlg is shared)
 function addImage(file) {
   const r = new FileReader();
   const rid = () => Array.from({length: 3}, () => Math.random().toString(36).slice(2, 5).padEnd(3, '0')).join('-');
   const name = !file.name || /^image\.\w+$/i.test(file.name) ? rid() + '.' + ((file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')) : file.name;
-  r.onload = () => { (atts[cur] ||= []).push({name, url: r.result, media_type: file.type, data: r.result.split(',')[1]}); attRef(atts[cur].length - 1); drawAtts(); };
+  r.onload = () => { (atts[cur] ||= []).push({name: attName(name), url: r.result, media_type: file.type, data: r.result.split(',')[1]}); attRef(atts[cur].length - 1); drawAtts(); };
   r.readAsDataURL(file);
 }
-const addPaths = paths => { for (const p of paths) { (atts[cur] ||= []).push({name: p.split(/[\\/]/).pop(), path: p}); if (view !== 'chat') attRef(atts[cur].length - 1); } drawAtts(); }; // #325 term: no chips ∴ ref = only sign of it
+const addPaths = paths => { for (const p of paths) { const a = {name: attName(p.split(/[\\/]/).pop()), path: p}; (atts[cur] ||= []).push(a); if (view !== 'chat') attRef(atts[cur].length - 1); if (/\.(png|jpe?g|gif|webp)$/i.test(p)) imgLoad(a); } drawAtts(); }; // #325 term: no chips ∴ ref = only sign of it
 async function pickFiles() { const f = await T.dialog.open({multiple: true}); if (f) addPaths([].concat(f)); }
 $('prompt').addEventListener('paste', e => {
   const imgs = [...e.clipboardData.items].filter(i => i.type.startsWith('image/'));
@@ -2673,12 +2681,10 @@ function send() {
   // Chained per project → order kept while gh runs. Edited queued ones were filed already (text carries the note)
   // #93: a plain question (ends "?", not "can you…/please"; or "btw …") → not filed: answered + ```tasks cards (sugCards)
   // #212: doubt → file (a lost ask costs more than a filed question): Q only if ONE short sentence, no change/bug words
-  const nw = noteTxt(a).split(/\s+/).length - 1; // #238 words in image notes count as the ask (a short text + notes = still a task)
-  const isQ = ask || issueOn(pid) && !nw && !FILED_RE.test(t) && !QNOTE_RE.test(t) && !ASK_RE.test(t) && t.trim().split(/\s+/).length <= 30 && !/[.!?:]\s+\S/.test(t.trim())
-    && (/\?\s*$/.test(t) || /^\s*btw\b/i.test(t));
-  // #142: a short status/unblock reply ("I've turned the Mac on", "done, try again") = context for the blocked task, not new work
-  const isS = issueOn(pid) && !isQ && !nw && !FILED_RE.test(t) && !QNOTE_RE.test(t) && STATUS_RE.test(t) && t.trim().split(/\s+/).length <= 25;
-  const file = issueOn(pid) && !isQ && !isS && !/^\s*\//.test(t) && t.trim().split(/\s+/).length + nw >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
+  // No guessing here: everything goes to Rust task_do, which keeps a local copy of the ask and decides task / question /
+  // remark / status (anything with an image is always a task). Only /ask, slash commands and one- or two-word replies skip it.
+  const isQ = ask;
+  const file = issueOn(pid) && !isQ && !/^\s*\//.test(t) && (a.length || t.trim().split(/\s+/).length >= 3) && !FILED_RE.test(t) && !QNOTE_RE.test(t);
   // #101: bubble shows now (⏱ while filing); the chain re-checks below
   // #103: queued (turn running) → bubble now too, ⏱ Queued; QB ties it to its queue item
   const hold = qWait(pid); /* #422 open questions (≠ auto_answer) → queued only, flushed once they're answered */ if (hold) toast('Queued: answer the open question first', 'info');
@@ -2686,18 +2692,10 @@ function send() {
   // saved to disk while gh files it (seconds): a crash/quit in that window used to lose it (composer already cleared)
   const fm = {text: t, atts: a}; (FILING[pid] ||= []).push(fm); keepDraft(pid, true);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
-    // CLI feel: idle + this ask is next anyway (urgent / nothing else open) → Clauracle starts NOW, gh files it in parallel
-    // and the number follows mid-turn (send_mid); p.work pins it so a crash/handover still resumes it
-    if (file && !busy[pid] && !RESTARTING && !qWait(pid) && !contWaiting(pid) && !ed && !a.length && (URGENT_RE.test(t) || !issueQ(pid)?.some(x => x.number))) {
-      sendNow(pid, {text: t + FASTNOTE, atts: a, work: 0}, opt?.log && opt);
-      const n = await fileAsk(pid, t, a); if (!n) return;
-      if (typeof n === 'string') return call('send_mid', {pid, text: n === 'remark' ? RNOTE.trim() : QNOTE.trim(), work: null}).catch(() => {}); // #336 triage: not a task → told mid-turn, nothing filed
-      fileNow(pid, t, n); P(pid).work = n; call('update_project', {pid, changes: {work: n}}).catch(() => {});
-      call('send_mid', {pid, text: `(Clauracle filed the ask you're on as issue #${n}. ${NEUT(n)} Close it with \`gh issue close ${n} -c <one-line summary>\` when done.${SPLIT(n)})`, work: n}).catch(() => {});
-      return;
-    }
-    const f = file ? await fileAsk(pid, t, a) : 0, cls = typeof f === 'string' ? f : '', n = cls ? 0 : f; // #336 cls = Sonnet triage: question/remark → never filed
-    const now = n && fileNow(pid, t, n), text = isQ || cls === 'question' ? t + QNOTE : cls === 'remark' ? t + RNOTE : isS ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
+    // One path: file first, then deliver (the bubble already shows). cls = not a task (question / remark / status): never filed
+    const f = file ? await fileAsk(pid, t, a) : 0, cls = typeof f === 'string' ? f : '', n = cls ? 0 : f;
+    const now = n && fileNow(pid, t, n), text = isQ || cls === 'question' ? t + QNOTE : cls === 'remark' ? t + RNOTE : cls === 'status' ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t))
+      : file ? t + UNFILED : t;
     const q = queue[pid] ||= [], qw = qWait(pid);
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
     if (!qw && contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); if (opt.log) { reBub(opt, text, a); tick(opt, 'sent'); } return toTasks(pid, [text], opt.log); } // #460 keeps the bubble already shown
@@ -2713,16 +2711,14 @@ function send() {
   }).finally(() => { FILING[pid] = (FILING[pid] || []).filter(x => x !== fm); keepDraft(pid, true); });
 }
 const FILING = {}; // pid → messages between send() and their place in queue/session (saved in the draft)
-const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A (question|status update|remark), not a task \(Clauracle\)/,
-  STATUS_RE = /^\s*(ok(ay)?[,.!]?\s+)?(i('ve| have)|it'?s|it is|(the )?\w+ is) (now )?(turned|booted|started|switched|plugged|logged|installed|granted|fixed|enabled|added|set up|paid|connected|on|up|running|online|ready|back|done|fixed|awake)\b|^\s*(done|ready|fixed|try again|retry|go ahead|it works now|works now)\b/i;
-// #212 change/bug wording → a task even when it ends with "?" (misfiled before: "…Fix it. …?", "wasn't X supposed to…?", "not showing…?")
-const ASK_RE = /\b(fix|make|add|change|remove|rename|move|replace|show|hide|style|should|supposed|instead|broken|bug|wrong|missing|still|not (showing|working)|(does|is|was|wo|ca|did)n'?t|please|let'?s|how about|is it possible|(can|could|would|will|shall) (you|we|it|i))\b/i;
-const FASTNOTE = '\n\n(Clauracle is filing this as an issue right now; its number follows in a moment: don\'t file it yourself. Work on it now.)';
+const WSEEN = new Set(), sendChain = {}, QB = new WeakMap() /* queue item → its ⏱ bubble (not saved: lost on restart, pill stays) */, FILED_RE = /\(Filed as issue #(\d+) by Clauracle/, QNOTE_RE = /\(A (question|status update|remark), not a task \(Clauracle\)/;
+// filing failed (gh or network down): the session files it itself so the ask is not lost
+const UNFILED = '\n\n(Clauracle could not file this as an issue. If it is new work, file it yourself first: `gh issue create --label clauracle --label task`, neutral wording, then follow the task-queue rules.)';
 const SNOTE = '\n\n(A status update, not a task (Clauracle): context for the task you are on or the one labelled `needs-user`: retry what was blocked; if it unblocks a needs-user issue, `gh issue edit N --remove-label needs-user` and resume it. File nothing.)';
 // #98: the appended note is for the AI only → bubble/queue show the user's own text (+ a small #N chip)
 // #100: notes = one line each → strip per note (triage batch keeps later bullets); triage preamble hidden too
 const bare = t => t.replace(/^New from the user while a Continue waited\.[^\n]*\n\n/, '').replace(/\s*\((Filed as issue #\d+ by Clauracle|A (question|status update|remark), not a task \(Clauracle\)|Clauracle is filing this as an issue right now)[^\n]*/g, '');
-const QNOTE = '\n\n(A question, not a task (Clauracle): answer it briefly; change no files, start no work. If it actually asks for a change, it is a task: file it (`gh issue create --label clauracle --label task`) and say so. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
+const QNOTE = '\n\n(A question, not a task (Clauracle): not filed. Answer it; it is not a request for new work. If it does ask for a change, it is a task: file it (`gh issue create --label clauracle --label task`) and say so. If follow-up work makes sense, end with a fenced code block of language tasks, one "- Title: one-line summary" line per task; the user gets them as Accept/Dismiss cards.)';
 /* user's rule: outstanding tasks first, a new ask goes to the END of the queue unless it says urgent (→ front of P.order, worked now).
    Ask into an empty queue = worked now too. now → send({work}) pins it in Rust (p.work) ∴ a handover/crash resumes it, not the queue head */
 const URGENT_RE = /(^|[\s#])(urgent|asap|right now|immediately)\b/i;
@@ -2732,7 +2728,7 @@ function fileNow(pid, t, n) {
   return urgent || !iq /* not loaded → old behaviour */ || !iq.some(x => x.number && x.number !== n); // in-progress work is in iq too
 }
 // #309 privacy: issue text = Sonnet's neutral rewrite (Rust task_do new); raw ask never goes to GitHub (edit history keeps it)
-const NEUT = n => `Its title + summary are Clauracle's neutral rewrite of the ask: fix them (\`gh issue edit ${n}\`) only if wrong; never put the user's raw words on GitHub. Attached images: Read each first, drawn markup/notes on them = instructions the summary may miss; any body edit keeps the Screenshots lines.`; // #459 split/edit dropped them → markup asks lost
+const NEUT = n => `Its title + summary are Clauracle's neutral rewrite of the ask: fix them (\`gh issue edit ${n}\`) only if wrong; never put the user's raw words on GitHub. The user's exact words and the notes for each image are kept locally in \`.git/clauracle-att/ask-${n}.md\` (never on GitHub): Read it first, it wins over the summary. Attached images: Read each one too, drawn markup on them = instructions; any body edit keeps the Screenshots lines.`; // #459 split/edit dropped them → markup asks lost
 // #252: one ask, several separate tasks → split like other AIs (related asks stay together); one line ∵ notes are one line each
 const SPLIT = n => ` Several separate asks in it (a wall of text) → split: keep the first (+ closely related ones) in #${n}, file each other separate one right after it (\`gh issue create --label clauracle --label task\`, own neutral summary, never the user's raw words, + its Screenshots lines), say which numbers in one line.`;
 // one line each (bare() strips it for display; FILED_RE reads the number)
@@ -2740,7 +2736,7 @@ const filedNote = (n, now, urgent) => now
   ? `\n\n(Filed as issue #${n} by Clauracle${urgent ? ', marked urgent: it goes before the other open tasks' : ''}. Work on it now: ${NEUT(n)} Close it with a one-line summary when done.${SPLIT(n)} Not a task after all (a question, a status/unblock reply, already done) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`
   : `\n\n(Filed as issue #${n} by Clauracle at the END of the task queue: open tasks come first (the user's rule), so don't start it now. ${NEUT(n)} Say it's queued in one line, then carry on with the task you're on.${SPLIT(n)} It only adds to that task → fold it in and close #${n} as a duplicate. Not a task (a question, a status/unblock reply) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`;
 // #336 remark = comment/feedback/thanks (Sonnet triage in task_do "ask"): acknowledged, never filed
-const RNOTE = '\n\n(A remark, not a task (Clauracle): acknowledge it in a line; change no files, start no work, file nothing. If it actually asks for a change, file it (`gh issue create --label clauracle --label task`) and say so.)';
+const RNOTE = '\n\n(A remark, not a task (Clauracle): not filed, it reads as a reply or comment in the conversation. If it answers something you asked or agrees to something you proposed, carry on with that; otherwise reply briefly. If it asks for a change after all, file it (`gh issue create --label clauracle --label task`) and say so.)';
 // → issue number, 'question'/'remark' when triage says it's no task (nothing filed), 0 on failure (then it's sent unfiled, with a toast; never blocks the prompt)
 async function fileAsk(pid, t, a) {
   // #220: images → Rust saves them + lists their paths in the body (was names only → the session on the issue never saw them)
@@ -2748,7 +2744,7 @@ async function fileAsk(pid, t, a) {
   // #309 local draft: row in the task list at once (gray "local" dot) while Sonnet writes the neutral issue text, then gh files it
   const loc = {number: 0, local: true, title: t.split('\n')[0].slice(0, 90), url: '', labels: [{name: 'local (being filed)', color: '9aa0a6'}], assignees: [], t: Date.now()};
   (FRESH[pid] ||= []).push(loc); issueRedraw(pid);
-  try { const [url = '', title, warn] = String(await call('task_do', {pid, action: 'ask', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data, name: x.name}))})).trim().split('\n'); if (warn) toast(warn, 'warn');
+  try { const [url = '', title, warn] = String(await call('task_do', {pid, action: 'ask', arg: body, images: a.filter(x => x.data).map(x => ({media_type: x.media_type, data: x.data, name: x.name, notes: x.notes || []}))})).trim().split('\n'); if (warn) toast(warn, 'warn');
     const cls = url.match(/^triage:(\w+)/)?.[1]; if (cls) { toast(`Not filed: Clauracle reads it as a ${cls}`, 'info'); return cls; }
     const n = +(url.match(/\/issues\/(\d+)/)?.[1] || 0);
     if (n) FRESH[pid].push({number: n, title: title || loc.title, url, labels: [{name: 'clauracle'}, {name: 'task', color: '888'}], assignees: [], t: Date.now()});
@@ -2811,7 +2807,8 @@ const contNote = (pid, t = nextUp(pid)[0]) => t && !qWait(pid) && addEntry(pid, 
 const contClick = pid => { if (busy[pid]) { contQ[pid] = true; return drawChrome(); } const r = P(pid).ready, t = nextUp(pid)[0]; contGo(pid); if (r) contNote(pid, t); };
 function toTasks(pid, texts, shown) {
   triaging[pid] = true;
-  call('send', {pid, text: (issueOn(pid) ? TRIAGE_ISSUES : TRIAGE) /* issueOn ∵ issueQ = null until team loads → wrongly PLAN.md */ + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n'), images: [], files: []});
+  call('send', {pid, text: (issueOn(pid) ? TRIAGE_ISSUES : TRIAGE) /* issueOn ∵ issueQ = null until team loads → wrongly PLAN.md */ + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n'), images: [], files: []})
+    .catch(e => { triaging[pid] = false; texts.forEach(t => (queue[pid] ||= []).push({text: t, atts: [], work: 0})); keepDraft(pid, true); if (pid === cur) drawQueue(); toast(`Message kept in the queue (send hit an error: ${e})`, 'warn'); }); // a failed send used to drop them
   if (!shown) texts.forEach(t => addEntry(pid, {kind: 'user', text: t}));
   if (pid === cur) drawChrome();
 }
@@ -2907,7 +2904,7 @@ function pickSlash(i) { const c = menuXs()[i]; if (c?.opt) return c.run(); if (t
 // #270 picked file → path attachment (sent as "Attached files", like a dropped one) + its @[name] tag in place of "@query"
 function pickAt(rel) { const p = $('prompt'), c = p.selectionStart, s = p.value.lastIndexOf('@', c - 1), root = P().path, sep = root.includes('\\') ? '\\' : '/';
   const abs = root.replace(/[\\/]+$/, '') + sep + rel.split('/').join(sep), a = (atts[cur] ||= []); let i = a.findIndex(x => x.path === abs);
-  if (i < 0) i = a.push({name: rel.split('/').pop(), path: abs}) - 1;
+  if (i < 0) i = a.push({name: attName(rel.split('/').pop()), path: abs}) - 1;
   p.setSelectionRange(s, c); attRef(i); slashSel = 0; drawAtts(); drawSlash(); }
 $('prompt').addEventListener('keydown', e => {
   const xs = $('slash').hidden ? [] : menuXs();
@@ -2940,7 +2937,9 @@ new ResizeObserver(() => pbDraw()).observe($('prompt')); // width/scrollbar chan
 let chromeRAF = 0; // typing: one chrome redraw per frame, not per keystroke
 // #325 term view: refs = the attachments (no chips) ∴ deleting its last @[name] drops the attachment; chat keeps it (chip stays)
 // only refs present before this edit count (_pv) ∴ an attachment added in Chat view w/o a ref never vanishes on typing
-const attSync = () => { const p = $('prompt'), v = p.value, pv = p._pv || '', a = atts[cur] || [], has = (t, x) => new RegExp(`@\\[ ?${reEsc(stem(x.name))}\\]`).test(t), k = a.filter(x => has(v, x) || !has(pv, x)); p._pv = v; if (k.length < a.length) { atts[cur] = k; drawAtts(); } };
+const attSync = () => { const p = $('prompt'), v = p.value, pv = p._pv || '', a = atts[cur] || [], has = (t, x) => new RegExp(`@\\[ ?${reEsc(stem(x.name))}\\]`).test(t), k = a.filter(x => has(v, x) || !has(pv, x)); p._pv = v; if (k.length < a.length) { // term view only (caller): thumbs are hidden, so a ref that vanished = removed; Undo puts it back
+    const pid = cur, gone = a.map((x, i) => [x, i]).filter(([x]) => !k.includes(x)); atts[cur] = k; drawAtts();
+    gone.forEach(([x, i]) => toast('Removed ' + x.name, 'info', ['Undo', () => { if (cur !== pid) return; const l = atts[cur] ||= []; l.splice(Math.min(i, l.length), 0, x); attRef(l.indexOf(x)); drawAtts(); }])); } };
 $('prompt').addEventListener('focus', e => e.target._pv = e.target.value);
 $('prompt').addEventListener('input', () => { if (cur && view !== 'chat') attSync(); grow(); slashSel = 0; drawSlash(); if (cur) { if (!chromeRAF) chromeRAF = requestAnimationFrame(() => { chromeRAF = 0; drawChrome(); }); keepDraft(); } });
 // Continue/auto-clear → "Reading handover…" pill (same spot as Working…) until Claude's first own line/tool or turn end

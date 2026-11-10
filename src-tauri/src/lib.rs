@@ -319,10 +319,6 @@ fn set_lessons(st: St, lessons: Vec<String>) {
 #[tauri::command]
 fn set_you(st: St, you: store::You) {
     let mut cfg = st.cfg.lock().unwrap();
-    // #356 nick baked into the Voice prompt at spawn (claude::args) → live sessions reconnect to pick it up
-    if cfg.you.nick != you.nick.trim() {
-        for l in st.live.lock().unwrap().values() { l.inbox.front(vec![Input::Reconnect]); }
-    }
     cfg.you = store::You {nick: you.nick.trim().into(), prefs: you.prefs.trim().into(),
         tags: you.tags.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()};
     let md = format!("# About the user
@@ -967,7 +963,7 @@ async fn disk_clean(st: St<'_>, pid: String, dirs: Vec<String>) -> R<u64> {
 fn triage(s: &str) -> (&'static str, &str) {
     let (h, rest) = s.split_once('\n').unwrap_or((s, ""));
     match h.trim().trim_matches(|c: char| !c.is_alphabetic()).to_ascii_uppercase().as_str() {
-        "QUESTION" => ("question", ""), "REMARK" => ("remark", ""), "TASK" => ("task", rest.trim()), _ => ("task", s.trim()),
+        "QUESTION" => ("question", ""), "REMARK" => ("remark", ""), "STATUS" => ("status", ""), "TASK" => ("task", rest.trim()), _ => ("task", s.trim()),
     }
 }
 #[test]
@@ -976,12 +972,17 @@ fn triage_works() {
     assert_eq!(triage("**Question**\n"), ("question", ""));
     assert_eq!(triage("TASK\nFix X\n\n- a"), ("task", "Fix X\n\n- a"));
     assert_eq!(triage("Fix X\n\n- a"), ("task", "Fix X\n\n- a"));
+    assert_eq!(triage("STATUS"), ("status", ""));
+    assert_eq!(triage("status.\nthanks"), ("status", ""));
+    assert!(neutral_prompt("hi", true).contains("STATUS"));
 }
 
 fn neutral_prompt(ask: &str, chat: bool) -> String { // chat=false (accepted card) → always TASK
     let pick = if chat { "" } else { " It was accepted as a task: line 1 = TASK." };
     format!("Triage this chat message to a software assistant.{pick} Line 1 = exactly one word: TASK (asks for a change/fix/feature/work), \
-        QUESTION (only asks for information/an answer) or REMARK (comment, feedback, thanks, opinion, small talk: asks for nothing). \
+        QUESTION (only asks for information/an answer), REMARK (comment, feedback, thanks, opinion, small talk: asks for nothing) or \
+        STATUS (a short status or unblock reply about something the user did, e.g. \"done, try again\", \"I turned the Mac on\"; asks for no new work). \
+        A message that contains any request for a change, even alongside a question or remark, is TASK; when unsure, TASK. \
         Not TASK → output only that word, nothing else. TASK → after line 1: rewrite this request to a software assistant as a GitHub issue. It goes on a shared repo, so write it neutrally: \
         no quotes of the request, no personal remarks, names, emotions or private details; keep every technical fact, file path and \
         requirement. If it doesn't name which screen/element it means (vague \"buttons\", \"this\"), never guess: end the summary with \
@@ -995,26 +996,44 @@ async fn task_do(st: St<'_>, pid: String, action: String, mut arg: String, image
     let mut err = String::new(); // "new": Sonnet failure → 3rd line of the reply → UI toast
     let chat = action == "ask"; // #336 "ask" = chat message → triaged first, then filed as "new"
     let action = if chat { "new".to_string() } else { action };
-    if action == "new" { // #309 privacy: raw ask never reaches GitHub (edit history keeps first bodies) → Sonnet's neutral rewrite filed
-        let tags: String = store::hash_tags(&arg).iter().map(|t| format!(" #{t}")).collect(); // raw #Tags → labels still
-        let (st2, p2, raw) = (st.inner().clone(), p.clone(), arg.clone());
-        let dir = store::home(); // = ~/.clauracle (≠ join again → missing dir → os error 267)
-        let r = tauri::async_runtime::spawn_blocking(move || sonnet(&st2, &p2, "low", &dir, &neutral_prompt(&raw, chat))).await.map_err(|e| e.to_string())?
-            .map(|s| s.trim_matches('`').trim().to_string()).and_then(|s| if s.is_empty() { Err("empty reply".into()) } else { Ok(s) });
-        // #336 not a task → nothing filed; UI gets "triage:<class>" (Sonnet down → filed anyway: lost ask costs more)
-        let r = match r { Ok(s) => match triage(&s) { ("task", b) if !b.is_empty() => Ok(b.to_string()), ("task", _) => Err("empty reply".to_string()), (c, _) if chat => return Ok(format!("triage:{c}")), _ => Err("not a task".to_string()) }, e => e };
-        // ponytail: Sonnet down → placeholder title, the session working it writes the summary (never the raw text); err → UI toast
-        if let Err(e) = &r { err = format!("\nNeutral rewrite failed ({}): placeholder title filed", e.lines().last().unwrap_or("no output")); }
-        arg = r.unwrap_or_else(|_| "New task from Clauracle (summary pending)".into()) + &tags;
+    let imgs = images.unwrap_or_default();
+    let mut saved: Vec<String> = vec![];
+    let mut ask_path: Option<String> = None;
+    if action == "new" {
+        // The ask file is the durable record: exact text plus per-image notes, written before anything can fail.
+        let opt = store::att_save_opt(&p.path, &imgs);
+        let shots: Vec<(String, String)> = opt.iter().zip(&imgs).filter_map(|(f, x)| Some((f.clone()?, match &x["notes"] {
+            Value::String(s) => s.clone(),
+            Value::Array(a) => a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("\n"),
+            _ => String::new(),
+        }))).collect();
+        saved = shots.iter().map(|s| s.0.clone()).collect();
+        ask_path = store::ask_save(&p.path, &arg, &shots);
     }
-    // #220: "new" + ask images → saved locally, paths in the body ∴ the session that works the issue sees them
-    let saved = store::att_save(&p.path, images.as_deref().unwrap_or_default());
+    if action == "new" { // privacy: raw ask never reaches GitHub (edit history keeps first bodies), Sonnet's neutral rewrite is filed
+        let tags: String = store::hash_tags(&arg).iter().map(|t| format!(" #{t}")).collect(); // raw #Tags still become labels
+        let (st2, p2, raw) = (st.inner().clone(), p.clone(), arg.clone());
+        let dir = store::home(); // = ~/.clauracle (joining again gives a missing dir, os error 267)
+        let triaged = chat && imgs.is_empty(); // a message with images is always a task
+        let r = tauri::async_runtime::spawn_blocking(move || claude_pt(&st2, &p2, &["--model", "sonnet", "--effort", "low"], &dir, vec![], &neutral_prompt(&raw, triaged), Some(std::time::Duration::from_secs(60)))).await.map_err(|e| e.to_string())?
+            .map(|s| s.trim_matches('`').trim().to_string()).and_then(|s| if s.is_empty() { Err("empty reply".into()) } else { Ok(s) });
+        // Not a task: nothing filed, the UI gets "triage:<class>". Sonnet down: filed anyway, a lost ask costs more.
+        let r = match r { Ok(s) => match triage(&s) { ("task", b) if !b.is_empty() => Ok(b.to_string()), ("task", _) => Err("empty reply".to_string()), (c, _) if triaged => {
+            if let Some(a) = &ask_path { store::ask_note(&p.path, a, &format!("Not filed: {c}")); }
+            return Ok(format!("triage:{c}"))
+        }, _ => Err("not a task".to_string()) }, e => e };
+        // ponytail: Sonnet down gives a placeholder title; the session working it reads the ask file. err goes to a UI toast.
+        if let Err(e) = &r { err = format!("\nNeutral rewrite failed ({}): placeholder title filed", e.lines().last().unwrap_or("no output")); }
+        arg = r.unwrap_or_else(|_| "New task from Clauracle (summary pending)".into()) + &tags;    } else { saved = store::att_save(&p.path, &imgs); }
     if !saved.is_empty() {
         arg += &format!("\n\nScreenshots (local to the project folder, not on GitHub; open them with the Read tool from the repo root; drawn markup/notes on them = instructions, keep these lines when editing or splitting):\n{}", saved.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n"));
     }
-    // "new" → "URL\nfiled title" (UI's row shows the neutral title, not the raw ask)
+    // "new" returns "URL, newline, filed title" (the UI row shows the neutral title, not the raw ask)
     tauri::async_runtime::spawn_blocking(move || store::task_do(&p.path, &p.gh, &action, &arg)
-        .map(|u| if action == "new" { format!("{u}\n{}{err}", store::split_task(&arg).0) } else { u })).await.map_err(|e| e.to_string())?
+        .map(|u| if action == "new" {
+            if let Some(a) = &ask_path { store::ask_filed(&p.path, a, u.lines().next().unwrap_or("").trim()); }
+            format!("{u}\n{}{err}", store::split_task(&arg).0)
+        } else { u })).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -2104,7 +2123,12 @@ fn sonnet(st: &State, p: &store::Project, effort: &str, cwd: &std::path::Path, p
 
 /// `claude -p` (text out, prompt on stdin) with the project's AI account + `args`/`env` extra.
 fn claude_p(st: &State, p: &store::Project, args: &[&str], cwd: &std::path::Path, env: Vec<(String, String)>, prompt: &str) -> R<String> {
-    use std::io::Write;
+    claude_pt(st, p, args, cwd, env, prompt, None)
+}
+
+/// Same, but with `limit` the child is killed after that long and the call fails with "timed out".
+fn claude_pt(st: &State, p: &store::Project, args: &[&str], cwd: &std::path::Path, env: Vec<(String, String)>, prompt: &str, limit: Option<std::time::Duration>) -> R<String> {
+    use std::io::{Read, Write};
     let claude = store::which("claude").ok_or("Claude Code isn't installed")?;
     let base = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).map(|a| a.base_url.clone()).unwrap_or_default();
     let mut c = store::command(&claude);
@@ -2115,9 +2139,23 @@ fn claude_p(st: &State, p: &store::Project, args: &[&str], cwd: &std::path::Path
     let mut ch = c.spawn().map_err(|e| e.to_string())?;
     track(ch.id());
     ch.stdin.take().unwrap().write_all(prompt.as_bytes()).map_err(|e| e.to_string())?;
-    let o = ch.wait_with_output().map_err(|e| e.to_string())?;
-    let out = String::from_utf8_lossy(&o.stdout).trim().to_string();
-    if !o.status.success() || out.is_empty() { return Err(String::from_utf8_lossy(&o.stderr).trim().to_string()); }
+    // Output is read on threads so the wait below can poll the deadline.
+    let rd = |mut r: Box<dyn Read + Send>| std::thread::spawn(move || { let mut b = Vec::new(); let _ = r.read_to_end(&mut b); b });
+    let (so, se) = (rd(Box::new(ch.stdout.take().unwrap())), rd(Box::new(ch.stderr.take().unwrap())));
+    let t0 = std::time::Instant::now();
+    let status = loop {
+        if let Some(s) = ch.try_wait().map_err(|e| e.to_string())? { break s; }
+        if limit.is_some_and(|l| t0.elapsed() > l) {
+            // ponytail: kills the direct child only; on Windows a .cmd shim's node child lingers until app exit (tracked). taskkill /T here if that shows up.
+            let _ = ch.kill();
+            let _ = ch.wait();
+            return Err("timed out".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    let (o, e) = (so.join().unwrap_or_default(), se.join().unwrap_or_default());
+    let out = String::from_utf8_lossy(&o).trim().to_string();
+    if !status.success() || out.is_empty() { return Err(String::from_utf8_lossy(&e).trim().to_string()); }
     Ok(out)
 }
 

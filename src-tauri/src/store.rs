@@ -1800,11 +1800,22 @@ fn trusted_works() {
 /// issue bodies → no user/folder names; the session's cwd = project root ∴ still readable.
 /// ponytail: kept forever (screenshots, small); prune when someone notices the folder.
 pub fn att_save(dir: &str, images: &[serde_json::Value]) -> Vec<String> {
-    if images.is_empty() { return vec![]; }
+    att_save_opt(dir, images).into_iter().flatten().collect()
+}
+
+/// Folder for ask files and screenshots, and the path shown for it.
+fn att_dir(dir: &str) -> (PathBuf, &'static str) {
     let git = std::path::Path::new(dir).join(".git");
-    let (d, shown) = if git.is_dir() { (git.join("clauracle-att"), ".git/clauracle-att") } else { (home().join("att"), "~/.clauracle/att") };
-    let _ = std::fs::create_dir_all(&d);
-    images.iter().enumerate().filter_map(|(i, x)| {
+    let r = if git.is_dir() { (git.join("clauracle-att"), ".git/clauracle-att") } else { (home().join("att"), "~/.clauracle/att") };
+    let _ = std::fs::create_dir_all(&r.0);
+    r
+}
+
+/// Like att_save, but one entry per input image (None = that image failed), so callers can pair them with notes.
+pub fn att_save_opt(dir: &str, images: &[serde_json::Value]) -> Vec<Option<String>> {
+    if images.is_empty() { return vec![]; }
+    let (d, shown) = att_dir(dir);
+    images.iter().enumerate().map(|(i, x)| {
         let ext = x["media_type"].as_str().unwrap_or("image/png").rsplit('/').next().unwrap_or("png").replace("jpeg", "jpg");
         // #239 attachment stem kept (sanitized) ∴ viewer/issue show the name the composer used; none → index
         let stem: String = x["name"].as_str().map(|n| n.rsplit_once('.').map_or(n, |s| s.0)).unwrap_or("").chars()
@@ -1813,6 +1824,73 @@ pub fn att_save(dir: &str, images: &[serde_json::Value]) -> Vec<String> {
         std::fs::write(d.join(&name), b64(x["data"].as_str()?)?).ok()?;
         Some(format!("{shown}/{name}"))
     }).collect()
+}
+
+/// The durable record of a chat ask: exact text, then the saved images with their notes (shots = path, notes).
+/// Written next to the screenshots; returns the shown path. Each image's notes also go in a same-name `.md` beside it.
+/// Nothing about these files goes on GitHub: the app finds them by name (ask_filed, ask_of).
+pub fn ask_save(dir: &str, raw: &str, shots: &[(String, String)]) -> Option<String> {
+    let (d, shown) = att_dir(dir);
+    let name = format!("ask-{}.md", new_id());
+    let mut t = raw.to_string();
+    if !shots.is_empty() {
+        t += "\n\n## Screenshots\n";
+        for (p, n) in shots {
+            t += &format!("- {p}\n");
+            for l in n.lines().filter(|l| !l.trim().is_empty()) { t += &format!("  {l}\n"); }
+            if !n.trim().is_empty() { let _ = std::fs::write(ask_file(dir, p).with_extension("md"), n); }
+        }
+    }
+    std::fs::write(d.join(&name), t).ok()?;
+    Some(format!("{shown}/{name}"))
+}
+
+/// Appends a line to an ask file given by its shown path (best effort).
+pub fn ask_note(dir: &str, shown: &str, line: &str) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(ask_file(dir, shown)) { let _ = writeln!(f, "\n{line}"); }
+}
+
+/// Shown path (`.git/clauracle-att/x` or `~/.clauracle/att/x`) → real path.
+fn ask_file(dir: &str, shown: &str) -> PathBuf {
+    match shown.strip_prefix("~/.clauracle/att/") {
+        Some(n) => home().join("att").join(n),
+        None => std::path::Path::new(dir).join(shown),
+    }
+}
+
+/// Filed: note the URL, then rename to `ask-<issue number>.md` so the app finds it by number (ask_of).
+/// ponytail: only inside a repo's .git; the shared ~/.clauracle/att fallback keeps its id name (numbers would collide).
+pub fn ask_filed(dir: &str, shown: &str, url: &str) {
+    ask_note(dir, shown, &format!("Filed: {url}"));
+    let n = url.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+    if shown.starts_with(".git/") && !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()) {
+        let f = ask_file(dir, shown);
+        let _ = std::fs::rename(&f, f.with_file_name(format!("ask-{n}.md")));
+    }
+}
+
+/// The ask file of issue `n`, as a path relative to the project, when there is one.
+pub fn ask_of(dir: &str, n: u64) -> Option<String> {
+    let s = format!(".git/clauracle-att/ask-{n}.md");
+    std::path::Path::new(dir).join(&s).is_file().then_some(s)
+}
+
+#[test]
+fn ask_save_works() {
+    let d = std::env::temp_dir().join(format!("clauracle-ask-test-{}", new_id()));
+    std::fs::create_dir_all(d.join(".git")).unwrap();
+    let ds = d.to_string_lossy().to_string();
+    let shots = vec![(".git/clauracle-att/a.png".to_string(), "first\nsecond".to_string()), (".git/clauracle-att/b.png".to_string(), String::new())];
+    let shown = ask_save(&ds, "Do  the\nthing", &shots).unwrap();
+    assert!(shown.starts_with(".git/clauracle-att/ask-"));
+    assert_eq!(std::fs::read_to_string(d.join(".git/clauracle-att/a.md")).unwrap(), "first\nsecond"); // notes beside the image
+    assert!(!d.join(".git/clauracle-att/b.md").exists());
+    assert_eq!(ask_of(&ds, 7), None);
+    ask_filed(&ds, &shown, "http://x/7");
+    let t = std::fs::read_to_string(d.join(ask_of(&ds, 7).unwrap())).unwrap();
+    assert_eq!(t, "Do  the\nthing\n\n## Screenshots\n- .git/clauracle-att/a.png\n  first\n  second\n- .git/clauracle-att/b.png\n\nFiled: http://x/7\n");
+    let _ = std::fs::remove_dir_all(&d);
 }
 
 /// ponytail: minimal standard base64 decoder (no crate for one use); None on a bad char.

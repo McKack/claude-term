@@ -118,7 +118,11 @@ pub fn cont_text(p: &Project) -> Option<String> {
         return Some(format!("{CONTINUE_ISSUES} run `gh issue list --label clauracle` to see them."));
     }
     let q = store::task_queue(&v, &p.gh, &p.order, p.work);
-    (!q.is_empty()).then(|| format!("{CONTINUE_ISSUES}\n{}",
+    // the first task's local ask file (exact words, image notes) is found by issue number; nothing about it is on GitHub
+    let ask = q.first().and_then(|x| { let n = x["number"].as_u64()?; Some((n, store::ask_of(&p.path, n)?)) })
+        .map(|(n, f)| format!("\n\nThe user's exact words for #{n} are in the local file {f}: Read it first, it wins over the issue summary. \
+            An image's notes are in a .md of the same name beside it.")).unwrap_or_default();
+    (!q.is_empty()).then(|| format!("{CONTINUE_ISSUES}\n{}{ask}",
         q.iter().map(|x| format!("- #{} {}", x["number"], x["title"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n")))
 }
 
@@ -294,12 +298,10 @@ fn args(st: &State, p: &Project) -> Vec<String> {
     if p.terse {
         append += TERSE_RULES;
     }
-    // #255 voice: name = Accounts › You nickname (#256) > the chat-bubble name (UI chatRow: p.gh)
-    let who = [&cfg.you.nick, &p.gh].into_iter().find(|n| !n.is_empty()).cloned().unwrap_or_else(|| "the user".into());
-    append += &format!("\n# Voice\nThe user sees you as Clauracle. Reply like a natural conversation with {who}, using \
-        the name now and then (\"Yes, {who}, …\", \"I wouldn't recommend that, {who}\"), not in every message. \
+    // voice: never address the user by name (read as sarcastic)
+    append += "\n# Voice\nThe user sees you as Clauracle. Reply plainly and directly, like a colleague; never address the user by name. \
         \"You\" = Clauracle: answer as Clauracle (the app and the assistant in it), never as Claude/the underlying model. \
-        Asked to do something in the app (open a tab, change a setting, add a service…) → do it with the clauracle `ui` tool.\n");
+        Asked to do something in the app (open a tab, change a setting, add a service…) → do it with the clauracle `ui` tool.\n";
     if !p.ai_credit {
         append += "\n# Attribution\nNo AI credit in this repo: no Co-Authored-By trailers, no \"Generated with\" lines, never add \
             yourself as contributor/collaborator/author in commits, PRs, or files.\n";
@@ -1122,6 +1124,10 @@ fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value)
             }
             Some("restart") => {
                 let exe = m["params"]["arguments"]["exe"].as_str().unwrap_or("").to_string();
+                // swapping in another exe = running any binary as the app: only Clauracle's own repo may do it
+                if !exe.is_empty() && !own_repo(st, pid) {
+                    return text("Refused: only Clauracle's own project can restart into another build.");
+                }
                 match restart_target(&exe) {
                     Ok((target, args)) => {
                         // page holds new prompts in its (saved) queue from now on ∵ one sent in the next 800ms reached
