@@ -88,11 +88,6 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .mdoc code { font:12px ui-monospace,Consolas,monospace; background:var(--card); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
 .mdoc blockquote { border-left:3px solid var(--line); padding-left:10px; opacity:.85; } .mdoc hr { border:0; border-top:1px solid var(--line); margin:1em 0; }
 .mdoc table { border-collapse:collapse; display:block; overflow:auto; } .mdoc th, .mdoc td { border:1px solid var(--line); padding:3px 8px; text-align:left; } .mdoc img { max-width:100%; }
-#graph { height:340px; display:flex; flex-direction:column; margin:0; border-radius:10px; overflow:hidden; background:#161514; color:#cfd6e4; min-height:120px; font-size:12px; } /* #137 always dark; #221 hot files; #223 bg = .termcard */
-#graph .ghd { display:flex; align-items:center; padding:2px 4px 2px 10px; } #graph .ginfo { opacity:.6; } #graph .gre { color:#cfd6e4; } #graph .faint { padding:10px; }
-#graph .tm { flex:1; position:relative; min-height:100px; } #graph .tm div { position:absolute; box-sizing:border-box; border:1px solid #161514; overflow:hidden; padding:1px 3px; font-size:10.5px; line-height:1.25; white-space:nowrap; text-overflow:ellipsis; color:#e6ebf5; cursor:pointer; }
-#graph .tm div.on { outline:2px solid #fff; outline-offset:-2px; z-index:1; } #graph .gdet { max-height:45%; overflow:auto; padding:6px 10px; border-top:1px solid #ffffff1a; line-height:1.5; }
-#graph .gdet .row { display:flex; gap:8px; } #graph .gdet .row > a { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #graph .gdet a { color:#8ab4ff; cursor:pointer; } #graph .dim { opacity:.6; }
 .tree div.on { background:var(--soft); color:var(--text); }
 #projects { flex:1; overflow:auto; padding:8px; } .ptop { display:flex; justify-content:flex-end; gap:2px; margin:-4px 0 4px; } #projects > .btn.block { margin-top:8px; } #rbody > .ptop { margin:-6px -4px 4px 0; } /* #401 + / … inside the tab */
 .proj { display:flex; gap:10px; align-items:center; padding:7px 9px; border-radius:9px; cursor:pointer; transition:background .12s; }
@@ -831,7 +826,6 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
-  <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="18" cy="19" r="2"/><circle cx="5" cy="18" r="1.5"/><path d="M6.7 7.2l3.5 3M17.6 6.4l-4 4M13.8 13.8l2.8 3.6M10 13.6l-3.6 3.2"/></symbol>
   <symbol id="i-branch"viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9a6 6 0 0 1-6 6H6"/></symbol>
   <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 6 6v4"/></symbol>
   <symbol id="i-info"viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
@@ -851,7 +845,6 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <div id="projects"></div>
   <div id="files" hidden></div>
   <div id="notes" hidden></div>
-  <div id="graph" hidden></div>
   <div class="grip" data-side="l" title="Drag to resize, double-click to collapse"></div>
   <div class="side-foot"><button class="btn ghost grow" id="acctBtn" onclick="startMenu(this)" title="Clauracle menu: search, tabs, settings, restart"></button></div>
 </aside>
@@ -3022,7 +3015,6 @@ const optRow = (title, hint, control) => `<div class="opt-row"><div class="grow"
 // collapsible section: open state remembered per key (only when clicked); never clicked → open when it has something.
 // count (number or short text) shows as a pill = collapsed summary; buttons in `actions` don't toggle it; open = default when never clicked (#257: filled → false)
 const folds = (() => { try { return JSON.parse(localStorage.folds || '{}'); } catch { return {}; } })();
-delete folds['w-hot']; // #370 Hot files fold always starts collapsed (open state kept in-session only)
 const fold = (key, title, body, count = 0, actions = '', open = !!count) => `<details class="sec fold" data-f="${key}" ${(folds[key] ?? open) ? 'open' : ''}>
   <summary class="sh" onclick="setTimeout(() => { folds['${key}'] = this.parentNode.open; try { localStorage.folds = JSON.stringify(folds); } catch {} })">${icon('chev')}<span class="label">${title}</span>
   ${count ? `<span class="pill">${count}</span>` : ''}<span onclick="event.preventDefault()">${actions}</span></summary><div class="sc">${body}</div></details>`;
@@ -4100,58 +4092,8 @@ async function drawNotes() {
 }
 function notesPut(v) { const pid = cur; NOTETXT[pid] = v; clearTimeout(NOTEST[pid]);
   NOTEST[pid] = setTimeout(() => call('notes', {pid, text: v}).catch(e => toast('Notes not saved: ' + e, 'err')), 800); }
-/* #221 Hot files: squarified treemap, area = size, colour = 30-day churn (Rust file_heat: git log --numstat).
-   Click a cell → its recent commits + the #N issues they name (→ editIssue); file name → open in Code. 60s cache per project.
-   ponytail: flat (no folder nesting); shown = 200 largest + every churned file, each ≥ 1/400 of the area so hot small files stay clickable */
+// file_heat cache per project (search, @/slash, recent-files rail): {t, d: {files: [[path, bytes, churn, …]], commits}}
 const HEAT = {};
-async function drawGraph(force) {
-  const box = $('graph'), pid = cur;
-  if (!pid) { box.innerHTML = '<p class="faint" style="font-size:13px">Open a project to see where work concentrates.</p>'; return; }
-  if (!force && box.dataset.pid === pid && box.querySelector('.tm')) return;
-  box.dataset.pid = pid;
-  box.innerHTML = `<div class="ghd"><span class="grow ginfo">Reading git history…</span><button class="ib gre" title="Scan again" onclick="delete HEAT[cur]; drawGraph(true)">${icon('loop')}</button></div><div class="tm"></div><div class="gdet"></div>`;
-  if (!HEAT[pid] || Date.now() - HEAT[pid].t > 60e3) HEAT[pid] = {t: Date.now(), d: await call('file_heat', {pid}).catch(e => ({files: [], commits: [], err: String(e)}))};
-  const tm = box.querySelector('.tm'), det = box.querySelector('.gdet');
-  if (cur !== pid || !tm.isConnected) return;
-  const {files, commits, err} = HEAT[pid].d, maxC = Math.max(1, ...files.map(f => f[2]));
-  const big = new Set([...files].sort((a, b) => b[1] - a[1]).slice(0, 200));
-  const F = files.filter(f => f[1] && (f[2] || big.has(f))).sort((a, b) => b[1] - a[1]);
-  const tot = F.reduce((s, f) => s + f[1], 0);
-  box.querySelector('.ginfo').textContent = err || `${files.filter(f => f[2]).length} files changed · ${commits.length} commits · 30 days`;
-  const col = f => { if (!f[2]) return '#1c2230'; const t = Math.sqrt(f[2] / maxC); return `hsl(${210 - 195 * t},${45 + 25 * t}%,${24 + 18 * t}%)`; };
-  const lines = n => n.toLocaleString() + ' line' + (n === 1 ? '' : 's');
-  const iss = s => esc(s).replace(/#(\d+)/g, '<a onclick="editIssue($1)">#$1</a>');
-  const ago = t => { const h = (Date.now() / 1e3 - t) / 3600; return h < 1 ? Math.round(h * 60) + 'm' : h < 48 ? Math.round(h) + 'h' : Math.round(h / 24) + 'd'; };
-  let sel = null;
-  const show = () => {
-    tm.querySelectorAll('.on').forEach(e => e.classList.remove('on')); if (sel) tm.querySelector(`[data-i="${F.indexOf(sel)}"]`)?.classList.add('on');
-    if (!sel) { const hot = F.filter(f => f[2]).sort((a, b) => b[2] - a[2]).slice(0, 6);
-      det.innerHTML = hot.length ? '<b>Hottest</b>' + hot.map(f => `<div class="row"><a data-i="${F.indexOf(f)}">${esc(f[0].split('/').pop())}</a><span class="dim">${lines(f[2])}</span></div>`).join('')
-        : '<span class="dim">No commits in the last 30 days.</span>'; return; }
-    const cs = sel[3].map(i => commits[i]), nums = [...new Set(cs.flatMap(c => (c[2] || '').match(/#\d+/g) || []))];
-    det.innerHTML = `<div class="row"><a onclick="previewFile(${esc(JSON.stringify(sel[0]))})" title="Open in Code" class="mono">${esc(sel[0])}</a></div>
-      <div class="dim">${mb(sel[1])} · ${sel[2] ? lines(sel[2]) + ' changed' : 'no changes'} in 30 days</div>
-      ${nums.length ? `<div>Tasks: ${iss(nums.join(' '))}</div>` : ''}
-      ${cs.map(c => `<div class="row"><span class="dim mono">${ago(c[1])}</span><span class="grow">${iss(c[2] || '')}</span></div>`).join('')}`;
-  };
-  det.onclick = e => { const i = e.target.dataset.i; if (i != null) { sel = F[i]; show(); } };
-  tm.onclick = e => { const i = e.target.closest('[data-i]')?.dataset.i; sel = i == null || F[i] === sel ? null : F[i]; show(); };
-  const lay = () => {
-    const W = tm.clientWidth, H = tm.clientHeight; if (!W || !H || !tot) return void (tm.innerHTML = '');
-    const floor = tot / 400, sum = F.reduce((s, f) => s + Math.max(f[1], floor), 0), k = W * H / sum, out = [];
-    let a = F.map(f => ({f, v: Math.max(f[1], floor) * k})), x = 0, y = 0, w = W, h = H;
-    while (a.length) { // squarified: grow a row along the short side while the worst aspect ratio improves
-      const s = Math.min(w, h); let n = 0, sm = 0, worst = Infinity;
-      for (const q of a) { const s2 = sm + q.v, wr = Math.max(s * s * a[0].v / (s2 * s2), s2 * s2 / (s * s * q.v)); if (wr > worst) break; n++; sm = s2; worst = wr; }
-      const t = sm / s; let o = 0;
-      for (const q of a.splice(0, n)) { const l = q.v / t; out.push(w >= h ? [q.f, x, y + o, t, l] : [q.f, x + o, y, l, t]); o += l; }
-      if (w >= h) { x += t; w -= t; } else { y += t; h -= t; }
-    }
-    tm.innerHTML = out.map(([f, x, y, w, h]) => `<div data-i="${F.indexOf(f)}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${col(f)}" title="${esc(f[0])}\n${mb(f[1])} · ${lines(f[2])} changed">${w > 34 && h > 13 ? esc(f[0].split('/').pop()) : ''}</div>`).join('');
-    show();
-  };
-  new ResizeObserver(lay).observe(tm);
-}
 
 // browser view: in-app browser (native child webview, own profile shared by all projects), or open in a real browser profile
 const webUrl = {}, QRS = new Map(); // QR svg per url (cached)
@@ -5317,15 +5259,10 @@ function drawAtp() {
       `<div class="atrow"><span class="dot ${a.running ? 'busy' : 'ready'}"></span><span class="grow" style="min-width:0"><b>${esc(a.type)}</b> ${esc(a.desc)}
         <small>${a.running ? esc(a.last || 'starting…') : 'done'}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}</small></span></div>`).join('')
     : agentIdle();
-  const h = (tab === 'agents' ? agents : iq && tab === 'gh' ? ghSteps(iq, qRows, t, open, fin, dn) : tasks)
-    + (tab === 'gh' ? fold('w-hot', 'Hot files', '') : ''); // #370 treemap (#graph) moved in after render
+  const h = (tab === 'agents' ? agents : iq && tab === 'gh' ? ghSteps(iq, qRows, t, open, fin, dn) : tasks);
   if (qDragging) return; // mid-drag: a rebuild would drop the row
   if (el._h === h) return; // drawChrome → drawRails → here on every keystroke: same HTML → keep DOM (open rows, animations)
-  const g = $('graph'); g?.remove(); // #370 keep the treemap DOM (+ its ResizeObserver) across rebuilds: detach, re-home below
   el.innerHTML = el._h = h;
-  const hf = el.querySelector('[data-f=w-hot]');
-  if (hf && g) { g.hidden = false; hf.querySelector('.sc').append(g); hf.ontoggle = () => hf.open && drawGraph(true); if (hf.open) drawGraph(); } // scans only while open (HEAT 60s cache)
-  else if (g) document.body.append(Object.assign(g, {hidden: true}));
   if ($('qlist')) qSortable($('qlist'));
 }
 // sweep: Claude merges every plan file's open tasks into PLAN.md (confirmed first, showing what moves)
