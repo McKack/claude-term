@@ -152,6 +152,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .rpill { display:inline; white-space:nowrap; padding:.1em 8px .1em 6px; border-radius:99px; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); } .rpill svg { width:1em; height:1em; margin-right:4px; vertical-align:-.1em; } /* #271 inline (≠ inline-flex: svg-baseline lifted the pill), nowrap */
 #pback .fic { position:relative; } #pback .fic svg { position:absolute; left:.2em; top:50%; width:.8em; height:.8em; transform:translateY(-50%); color:var(--accent); } /* #270 icon over the "@[" slot */
 .cm .mid { border:0; background:none; padding:0 4px; border-radius:4px; font:inherit; font-size:11px; color:var(--faint); cursor:pointer; opacity:.7; font-variant-numeric:tabular-nums; } .cm .mid:hover { opacity:1; color:var(--accent); background:var(--soft); } .rpill.mref { cursor:pointer; } /* #418 message ID → reply ref */
+.crow.claude .cm .mid { margin-left:auto; } .crow.user .cm { align-self:stretch; justify-content:flex-end; } .crow.user .cm .mid { order:-1; margin-right:auto; } /* #425 ID on the side opposite the sender */
 .filedtag { margin-left:8px; font-size:11px; color:var(--dim); white-space:nowrap; }
 /* #250 = composer .att.img: 56px high, real aspect, 56..220px wide, 10px radius, gap 8 */
 .msg .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px; max-width:100%; }
