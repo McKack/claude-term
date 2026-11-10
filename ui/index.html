@@ -726,7 +726,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 .prefs .tbar button.on { background:var(--soft); color:var(--accent); }
 .prefs .tbar .x { position:absolute; right:10px; top:10px; }
 .prefs .body { overflow:auto; padding:20px 28px; display:flex; flex-direction:column; }
-.prefs .body h2 { margin:0 0 4px; font-size:18px; } .prefs .body > p.dim:first-of-type { margin-top:0; }
+.prefs .body h2 { margin:0 0 4px; font-size:17px; font-weight:600; } .stitle { margin:0 0 4px; } .stitle h2 { margin:0; } .ssearch { width:200px; } .prefs .body > p.dim:first-of-type { margin-top:0; }
 .split { display:grid; grid-template-columns:190px 1fr; gap:24px; align-items:start; }
 .plist { position:sticky; top:0; display:flex; flex-direction:column; gap:2px; }
 .plist button { display:flex; gap:8px; align-items:center; border:0; background:none; text-align:left; padding:7px 10px; border-radius:10px; cursor:pointer; color:var(--dim); }
@@ -4632,13 +4632,23 @@ async function openSettings(p) {
   const scroll = $('dlg').querySelector('.body')?.scrollTop;
   dlg(`<div class="tbar">${Object.entries(PAGES).map(([k, [ic, l]]) => `${k === 'cx' ? '<i class="rsep"></i>' : ''}<button class="${k === page ? 'on' : ''}" onclick="openSettings('${k}')">${icon(ic)}${l}</button>`).join('')}
       <button class="ib x" title="Close" onclick="closeDlg()">${icon('x')}</button></div>
-    <div class="body">${page === 'projects' ? '' : `<h2 class="row">${PAGES[page][1]}</h2>`}
-    ${{look: lookPage, projects: projectsPage, build: buildPage, cx: cxPage, ai: aiPage, notify: notifyPage}[page]()}</div>
+    <div class="body"><div class="row stitle"><h2 class="grow">${PAGES[page][1]}</h2><input type="search" class="ssearch" list="sidx" placeholder="Search settings" onfocus="sidxFill()" onchange="sFind(this)"><datalist id="sidx"></datalist></div>
+    ${SPG[page]()}</div>
     <div class="sfoot"><select id="sjump" title="Jump to a section" onchange="sjumpGo(this)"></select><span class="row grow">${(FOOT[page] || (() => ''))()}</span><button class="btn primary" onclick="closeDlg()">Done</button></div>`, 'prefs');
   if (same && scroll) $('dlg').querySelector('.body').scrollTop = scroll;
   if (page === 'ai') relaySort();
   sjumpFill(); setTimeout(sjumpFill, 1500); // ponytail: 2nd pass ∵ some pages fill sections async
 }
+// #420 title-row search: native <datalist> of every page's labels (pages rendered into an inert <template> on focus); pick → open page + jumpTo
+const SPG = {look: () => lookPage(), projects: () => projectsPage(), build: () => buildPage(), cx: () => cxPage(), ai: () => aiPage(), notify: () => notifyPage()};
+const SSEL = '.opt-row .grow > div:first-child, .label, .grid2 > span:nth-child(odd), summary b';
+const sTxt = e => [...e.childNodes].filter(n => n.nodeName !== 'BUTTON').map(n => n.textContent).join('').replace(/\s+/g, ' ').trim();
+function sidxFill() { const dl = $('sidx'); if (!dl || dl.options.length) return; const seen = new Set();
+  dl.innerHTML = Object.entries(SPG).flatMap(([k, f]) => { const t = document.createElement('template'); try { t.innerHTML = f(); } catch { return []; }
+    return [...t.content.querySelectorAll(SSEL)].map(sTxt).filter(x => x.length > 1 && x.length < 60 && !seen.has(k + x) && seen.add(k + x))
+      .map(x => `<option value="${esc(x + ' · ' + PAGES[k][1].replace('&amp;', '&'))}"></option>`); }).join(''); }
+function sFind(i) { const m = i.value.match(/^(.*) · ([^·]+)$/), k = m && Object.keys(PAGES).find(k => PAGES[k][1].replace('&amp;', '&') === m[2]); i.value = '';
+  if (k) openSettings(k).then(() => jumpTo(() => [...$('dlg').querySelectorAll('.prefs .body ' + SSEL.split(', ').join(', .prefs .body '))].find(e => sTxt(e) === m[1]))); }
 // #215 footer: Jump to = the page's section titles (folds + secs), live from the DOM; FOOT[page] = contextual actions
 const sjumpEls = () => [...$('dlg').querySelectorAll('.prefs .body :is(details.fold, section.sec)')].filter(e => !e.parentElement.closest('details.fold, section.sec'));
 function sjumpFill() { const s = $('sjump'); if (!s) return;
