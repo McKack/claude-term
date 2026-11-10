@@ -3,7 +3,16 @@
 User-facing changes, newest first.
 
 ## Unreleased
-- Windows: Clauracle draws its own title bar in the app's theme (drag to move, double-click to maximise).
+- Chat: identical status notes in a row (e.g. "Resumed session") collapse into one line with a ×2, ×3… count.
+- Windows: Clauracle draws its own title bar in the app's theme, with native measures (32 px, 24 px when maximised), a restore icon and a dimmed title when the window is not active.
+- Any `/command` of the Claude CLI now goes to it as typed and its reply shows in the chat; options a command names (`/effort`, `/model`, `/config`, `/output-style`…) become buttons.
+- Composer: one Skills button. On top are Clauracle's picks, installed in the background on first run and ticked per project: Ponytail, Impeccable, Superpowers' verify-before-done, Playwright and Context7 (Godot on a click). Every other skill sits in a folder per source.
+- No third-party skill ships inside Clauracle any more: Ponytail too is downloaded from its source on first run, and installed skills are updated in the background once a day.
+- "Add" buttons sit in the section header, top right, in one style (Settings accounts, GitHub accounts, helper agents, projects, services).
+- One look for the same thing everywhere: dropdowns, section headers (Settings and the right panel), dialog titles, controls in one row share a height, and Refresh, Edit, Copy and Show each have one icon.
+- Removing a service, deleting a secret, removing a helper agent, cleaning disk space and dismissing a task now ask first.
+- Empty lists and panels offer their next step (open a folder, new file, add) instead of only saying they are empty.
+- Switches and buttons show a focus ring when you move with the keyboard.
 - Every close button looks the same; confirmations that remove or discard something have a red button and a clear verb.
 - Right-click an attachment for the same menu as its … button; right-click a queued task to edit it.
 - Help texts across Settings, Services and Build are one short sentence each.
