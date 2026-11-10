@@ -403,10 +403,10 @@ pre.diff .ctx { color:var(--faint); }
 #log.term + #dock .qp .qt { padding:0 1ch 0 0; } #log.term + #dock .qp .ib { width:auto; height:20px; border-radius:0; background:none; color:var(--accent); } #log.term + #dock .qp .ib:hover { color:#fff; }
 /* #342 dock rows on the 20px grid: rules = inset shadows (take no height), no 2/4px paddings → ready/prompt/toolbar = whole rows under the log */
 #log.term + #dock #ready { margin:0; border:0; box-shadow:inset 0 1px #3a3733; } #log.term + #dock #ready > svg { margin-top:3px; } #log.term + #dock #readytext * { vertical-align:top; line-height:20px; } /* 11.5px .pill/input on the baseline grew the line to 20.5 */
-#log.term + #dock #composer { border:0; padding:0 0 0 2ch; box-shadow:inset 0 1px #3a3733, inset 0 -1px #3a3733; }
-#log.term + #dock #composer:focus-within { box-shadow:inset 0 1px color-mix(in srgb, var(--accent) 50%, #3a3733), inset 0 -1px color-mix(in srgb, var(--accent) 50%, #3a3733); } #log.term + #dock #composer.drop { outline:1px dashed var(--accent); outline-offset:-1px; }
+#log.term + #dock #composer { border:0; padding:0 0 0 2ch; box-shadow:inset 0 0 0 1px #3a3733; } /* #442 full box border, inset ∴ no grid height */
+#log.term + #dock #composer:focus-within { box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 50%, #3a3733); } #log.term + #dock #composer.drop { outline:1px dashed var(--accent); outline-offset:-1px; }
 #log.term + #dock :is(#prompt, #pback) { padding:0; min-height:20px; } #log.term + #dock #pwrap::before { top:0; }
-#log.term + #dock .tb { margin:0; height:20px; min-height:0; } #log.term + #dock .tb > :is(.ib, #send) { height:20px; } #log.term + #dock #status button { padding:0 4px; height:20px; }
+#log.term + #dock .tb { margin:0 0 0 -2ch; padding-left:2ch; height:20px; min-height:0; background:repeating-linear-gradient(90deg, #3a3733 0 4px, transparent 4px 8px) top / 100% 1px no-repeat; } /* #442 dashed rule over the buttons, edge to edge */ #log.term + #dock .tb > :is(.ib, #send) { height:20px; } #log.term + #dock #status button { padding:0 4px; height:20px; }
 /* #394 term composer bottom row: action = [x], opens menu = [x...]; one hover = bg behind chars + white text; icons 12px centred; Send = solid block */
 #log.term + #dock .tb > .ib, #log.term + #dock #status button { gap:.5ch; padding:0 .3ch; height:20px; border-radius:0; display:inline-flex; align-items:center; background:none; transition:none; }
 /* #409 menu = CSS chevron pointing up (menus open upward) */ #log.term + #dock #status button::after, #log.term + #dock .tb > #tCont::after { content:""; flex:none; width:4px; height:4px; margin:3px 1px 0 2px; border:solid currentColor; border-width:1.5px 0 0 1.5px; rotate:45deg; }
@@ -1873,12 +1873,12 @@ new ResizeObserver(() => { const s = SH[cur]; if (s?.term.element && $('shellbox
 $('pgrip').ondblclick = () => { UI.pc = !UI.pc; applyView(); };
 // #380 pointer capture (mouseup was lost when the panel collapsed under the cursor → stuck drag) + buttons==0 guard;
 // total panel = log + composer: log shrinks to 0 first, then the composer (PH, term grid), collapse only when the whole panel < 60px
-$('pgrip').onpointerdown = e => { const m = $('main'), d0 = DH, t0 = $('prompt').offsetHeight, ph0 = PH;
+$('pgrip').onpointerdown = e => { const m = $('main'), d0 = DH, t0 = $('prompt').offsetHeight, rest = d0 - t0, k = t0 / Math.max(1, $('log').offsetHeight + t0);
   dragOn(e, e => { const r = m.getBoundingClientRect(), tabs = $('ptabs').offsetHeight, total = r.bottom - e.clientY - tabs;
     const was = UI.pc; UI.pc = total < 60;
-    if (!UI.pc) { const max = r.bottom - $('edv').getBoundingClientRect().top - 80 - tabs - d0, h = Math.min(total - d0, max); /* #344 max = editor keeps 80px */
-      UI.ph = Math.max(0, Math.round(h));
-      if (UI.pt !== 'shell') { const np = h < 0 ? Math.round((t0 + h) / LH) * LH : 0; PH = h < 0 ? (np < 40 ? 0 : np) : ph0; grow(); } }
+    if (!UI.pc) { const max = r.bottom - $('edv').getBoundingClientRect().top - 80 - tabs - rest, sp = Math.max(0, Math.min(total - rest, max)); /* #344 max = editor keeps 80px; sp = log + prompt */
+      if (UI.pt === 'shell') UI.ph = Math.max(0, Math.round(sp - t0));
+      else { PH = Math.max(LH, Math.round(sp * k / LH) * LH); UI.ph = Math.max(0, Math.round(sp - PH)); grow(); } } /* #442 log:prompt ratio from drag start, prompt = whole rows (panelLay snaps the log) */
     panelLay(); if (was && !UI.pc && UI.pt === 'shell') shellShow(); }); };
 function drawLog() {
   const box = document.createElement('div'), l = logs[cur] || [];
