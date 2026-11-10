@@ -1700,7 +1700,7 @@ function applyView() { $('log').classList.toggle('term', view !== 'chat'); reque
    ponytail: plain textarea (no highlight/line numbers); Untitled tabs not persisted. Panel: UI.ph px, UI.pc collapsed, UI.pt term|shell */
 function panelLay() { const m = $('main'), ed = view === 'edit' && !!cur;
   m.classList.toggle('edit', ed); m.classList.toggle('shell', ed && UI.pt === 'shell'); m.classList.toggle('pc', ed && !!UI.pc);
-  m.style.setProperty('--ph', (UI.ph ?? 260) + 'px');
+  const ph = UI.ph ?? 260; m.style.setProperty('--ph', (ph < 8 ? ph : 8 + Math.floor((ph - 8) / 20) * 20) + 'px'); /* #426 log = 8px pad-top + whole 20px rows ∴ scrolled-up rows never cut at the bottom; ponytail: flex-shrunk log (tiny window) stays fractional */
   document.querySelectorAll('#ptabs > button[data-k]').forEach(b => b.classList.toggle('on', b.dataset.k === (UI.pt || 'term') && !UI.pc));
   try { localStorage.ui = JSON.stringify(UI); } catch {} }
 function panelTab(k) { UI.pc = false; UI.pt = k; applyView(); }
