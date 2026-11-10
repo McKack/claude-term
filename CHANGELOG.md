@@ -4,6 +4,8 @@ User-facing changes, newest first.
 
 ## Unreleased
 
+- Collapsed side rail: file icons that slide behind the account button are hidden and can't be clicked through it.
+- Image editor: selecting a shape shows its tool's settings (text gets bold/italic/underline/font); select by shape, box or freehand, click through stacked shapes; dashed pen/line styles; the context bar shows the tool's icon; Fill toggle with a solid-shape icon; swap/reset colour buttons on the swatches.
 - Every dropdown now opens the app's own menu instead of the square system popup (incl. Settings search); a dropdown opening upward shows its arrow pointing up.
 - Edit view menu bar: hovering switches between open menus, a "Show menu" toggle (Alt+M), icons on every entry.
 
