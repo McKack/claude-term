@@ -305,13 +305,13 @@ pre.diff .ctx { color:var(--faint); }
 #ebody textarea { flex:1; border:0; border-radius:0; resize:none; outline:0; padding:10px 14px; font:13px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; tab-size:4; background:var(--bg); color:var(--text); white-space:pre; }
 #ebody .ecode { flex:1; max-height:none; border:0; border-radius:0; background:var(--bg); tab-size:4; } #ebody .ew { position:relative; min-width:max-content; min-height:100%; } /* #329 */
 #ebody .ecode pre { font:inherit; pointer-events:none; -webkit-user-select:none; user-select:none; tab-size:4; } #ebody .ecode textarea { position:absolute; inset:0; width:100%; height:100%; max-height:none; min-height:0; field-sizing:fixed; overflow:hidden; padding:8px 12px 8px var(--lw); font:inherit; background:none; color:transparent; caret-color:var(--text); }
-#emenu { display:flex; align-items:center; gap:2px; padding:2px 6px; background:var(--side); border-bottom:1px solid var(--line); font-size:12.5px; } #emenu .mb { background:none; border:0; padding:3px 9px; border-radius:6px; color:var(--dim); font:inherit; cursor:pointer; } #emenu .mb:hover { background:var(--hover); color:var(--text); } #emenu .ib { width:26px; height:24px; padding:0; } #emenu .ez { width:auto; padding:0 6px; font-size:11.5px; color:var(--dim); } /* #372 */
+#emenu { display:flex; align-items:center; gap:2px; padding:2px 6px; background:var(--side); border-bottom:1px solid var(--line); font-size:12.5px; } #emenu .mb { background:none; border:0; padding:3px 9px; border-radius:6px; color:var(--dim); font:inherit; cursor:pointer; } #emenu .mb:hover { background:var(--hover); color:var(--text); } #emenu .ib { width:26px; height:24px; padding:0; } :is(#emenu, #ectx) .ez { width:auto; padding:0 6px; font-size:11.5px; color:var(--dim); } /* #372 */
 #ebody .ecode.wrap .ew { min-width:0; } #ebody .ecode.wrap textarea { white-space:pre-wrap; overflow-wrap:anywhere; } #ebody .epv { flex:1; overflow:auto; padding:14px 22px; background:var(--bg); } #ebody .epv:has(> .code) { padding:0; }
 .epv .code, #rbody > .code, .vtext > .code { background:none; border:0; border-radius:0; } /* #392 code views: no box, just coloured text */
 #ebody .ecode pre > div.lw, #rbody .code pre > div.lw { background:color-mix(in srgb, #d9a21b 10%, transparent); } #ebody .ecode pre > div.le, #rbody .code pre > div.le { background:color-mix(in srgb, var(--err) 10%, transparent); } /* #374 lint rows + gutter icons */
 .code pre > div.lw::before { background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5 15 14.5H1z' fill='%23d9a21b'/%3E%3Cpath d='M8 6v4M8 11.4v1.2' stroke='%23000' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat 3px .3em/12px; }
 .code pre > div.le::before { background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23e5484d'/%3E%3Cpath d='M5.5 5.5l5 5m0-5-5 5' stroke='%23fff' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat 3px .3em/12px; }
-#ebody .evimg { flex:1; min-width:0; display:grid; grid-template-rows:auto minmax(0,1fr); grid-template-columns:auto minmax(0,1fr); } #ebody .evimg > :not(.vctx) { grid-row:2; } /* #435 = .viewer grid minus its header */ #ebody .empty { margin:auto; text-align:center; }
+#ebody .evimg { flex:1; min-width:0; display:grid; grid-template-rows:minmax(0,1fr); grid-template-columns:auto minmax(0,1fr); } /* #435 = .viewer grid minus header + context bar (#439: that's #ectx, under the tabs for every file type) */ #ectx { flex:none; } #ebody .empty { margin:auto; text-align:center; }
 #log.term { background:var(--term); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
 #log.term { padding-top:60px; } /* #327 3 rows; rows sit at 60+20k */
 #log.term .col { max-width:none; display:block; /* #327 block flow: notes run inline + no flex gap; JS gridPad pads each block to whole 20px rows */ font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; }
@@ -730,7 +730,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 .prefs .tbar .rsep { width:1px; height:auto; align-self:stretch; margin:6px 8px; } /* #428 vertical here (#421 made .rsep a horizontal bar line) */
 .prefs .tbar button { white-space:nowrap; }
 .prefs .body { overflow:auto; padding:20px 28px; display:flex; flex-direction:column; }
-.prefs .body h2 { margin:0 0 4px; font-size:17px; font-weight:600; } .stitle { margin:0 0 4px; } .stitle h2 { margin:0; } .ssearch { width:200px; } .prefs .body > p.dim:first-of-type { margin-top:0; }
+.prefs .body h2 { margin:0 0 4px; font-size:17px; font-weight:600; } .stitle { margin:0 0 4px; } .stitle h2 { margin:0; } .prefs .ssearch { width:200px; } /* #439 scoped: start menu search = full width */ .prefs .body > p.dim:first-of-type { margin-top:0; }
 .split { display:grid; grid-template-columns:190px 1fr; gap:24px; align-items:start; }
 .plist { position:sticky; top:0; display:flex; flex-direction:column; gap:2px; }
 .plist button { display:flex; gap:8px; align-items:center; border:0; background:none; text-align:left; padding:7px 10px; border-radius:10px; cursor:pointer; color:var(--dim); }
@@ -858,7 +858,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
     <span class="seg vsw"><button data-v="chat" onclick="setView('chat')" title="Chat view" aria-label="Chat view"><svg class="i"><use href="#i-chat"/></svg></button><button data-v="edit" onclick="setView('edit')" title="Editor view" aria-label="Editor view"><svg class="i"><use href="#i-pen"/></svg></button><button data-v="term" onclick="setView('term')" title="Terminal view" aria-label="Terminal view"><svg class="i"><use href="#i-term"/></svg></button></span>
     <button class="ib" title="Side panel: GitHub, Build, .env, Code, Browser" onclick="toggleRight()"><svg class="i"><use href="#i-panel"/></svg></button>
   </div>
-  <div id="edv"><div id="emenu"></div><div id="etabs"></div><div id="ebody"></div></div>
+  <div id="edv"><div id="emenu"></div><div id="etabs"></div><div class="vctx" id="ectx"></div><div id="ebody"></div></div>
   <div id="ptabs"><div id="pgrip" title="Drag to resize, double-click to collapse"></div><button data-k="term" onclick="panelTab('term')"><svg class="i"><use href="#i-term"/></svg>Terminal</button><button data-k="shell" onclick="panelTab('shell')"><svg class="i"><use href="#i-code"/></svg>Shell</button><span class="grow"></span><button class="ib" id="pcol" title="Collapse / expand the panel" onclick="UI.pc = !UI.pc; applyView()"><svg class="i"><use href="#i-chev"/></svg></button></div>
   <div id="log"><div class="col"></div><!-- skeleton of Claude's next message: sits after the log column (drawLog keeps it) -->
     <div class="col" id="skel" hidden><div class="crow claude"><span id="skelav"><svg class="av"><use href="#i-logo"/></svg></span><div class="cb"><div class="cm"><b>Clauracle</b><span id="skelts"></span></div></div></div><div id="dockpill"><div id="handpill" hidden>Preparing handover…</div><div id="workpill" hidden><svg class="i"><use href="#i-sparkle"/></svg><span id="worktext">Thinking</span></div></div></div></div>
@@ -1749,7 +1749,7 @@ function evDraw(re) { if (view !== 'edit' || !cur) return;
   if (!t) { b.innerHTML = `<div class="empty dim"><p>No files open</p><button class="btn" onclick="evNew()">${icon('plus')}New file</button> <button class="btn ghost" onclick="UI.lc = false; setSide('files')">${icon('folder')}Open from Files</button></div>`; return; }
   if (t.err) { b.innerHTML = `<div class="empty dim">${esc(t.err)}</div>`; return; }
   if (t.img) { b._t = t; /* #435 image tab = File viewer's editor: context bar + side tools; Save writes the flattened image back */
-    b.innerHTML = `<div class="evimg"><div class="vctx" id="vctx"></div><div class="vtools">${edToolsHtml()}</div><div class="vstage"><div id="edWrap"><canvas id="edC"></canvas></div></div></div>`;
+    b.innerHTML = `<div class="evimg"><div class="vtools">${edToolsHtml()}</div><div class="vstage"><div id="edWrap"><canvas id="edC"></canvas></div></div></div>`;
     const S = b.querySelector('.vstage'); new ResizeObserver(() => { if (ED?.tab === t) edNotes(); }).observe(S); vWire(S, 'img');
     edInit(t.img, t.ed, t); return; }
   if (t.text === undefined) { b.innerHTML = `<div style="flex:1;padding:14px">${skel(60)}</div>`; if (!t.loading) { t.loading = 1; evLoad(t, cur); } return; }
@@ -1833,13 +1833,15 @@ function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.tex
       {label: 'Zoom in', icon: 'plus', run: () => evZoom(.1)}, {label: 'Zoom out', icon: 'minus', run: () => evZoom(-.1)}, {label: 'Reset zoom', hint: Math.round((evImg() ? VZ.s : UI.ez || 1) * 100) + '%', run: () => evZoom(0)}]};
   menuAt(btn, M[k]); }
 function evBar(t) { const pv = evPv(t), tx = t?.text !== undefined;
-  $('emenu').innerHTML = ['File', 'Edit', 'View'].map(k => `<button class="mb" onclick="evMenu('${k.toLowerCase()}', this)">${k}</button>`).join('') + '<span class="grow"></span>'
+  $('emenu').innerHTML = ['File', 'Edit', 'View'].map(k => `<button class="mb" onclick="evMenu('${k.toLowerCase()}', this)">${k}</button>`).join('');
+  if (t?.img) { if (ED?.tab === t) edCtx(); else $('ectx').innerHTML = ''; return; } // #439 image: edCtx fills #ectx once loaded
+  $('ectx').innerHTML = !t || t.err || t.text === undefined ? '' : `<span class="vtn">${pv ? (evFm(t) ? 'Formatted' : 'Source') : 'Text'}</span><span class="sep"></span>`
     + (pv ? `<button class="ib${evFm(t) ? ' on' : ''}" title="Formatted view" onclick="fmtFlip(etabs().tabs[etabs().on].rel || etabs().tabs[etabs().on].name); evSet()">${icon('eye')}</button>` : '')
     + (tx ? hlBtn('', evFm(t) && pv === 'md') : '') /* #373 same toggle as the Code tab (localStorage.codeHl) */
     + (tx && !evFm(t) && !UI.nl && t.lint?.length ? `<button class="ib ez" title="Problems: click to jump" onclick="evProbs(this, etabs().tabs[etabs().on])">${['e', 'w'].map(s => { const n = t.lint.filter(x => x.s === s).length; return n ? `<span style="color:${s === 'e' ? 'var(--err)' : '#d9a21b'}">${icon(s === 'e' ? 'x' : 'warn')}${n}</span>` : ''; }).join(' ')}</button>` : '')
     + (tx ? `<button class="ib${UI.nl ? '' : ' on'}" title="Lint: errors/warnings in the gutter (JS/HTML scripts via node or the project's eslint, Python, Rust on save, JSON)" onclick="evSet('nl', !UI.nl)">${icon('bug')}</button>` : '')
     + (tx ? `<button class="ib${UI.ew ? ' on' : ''}" title="Word wrap" onclick="evSet('ew', !UI.ew)">${icon('wrap')}</button>` : '')
-    + (t?.img ? '' : zoomCtl('Math.round((UI.ez || 1) * 100)', 'evZp(p)', ', Ctrl+wheel')); } /* #438 image tab: zoom lives in its context bar */
+    + `<span class="vur">${zoomCtl('Math.round((UI.ez || 1) * 100)', 'evZp(p)', ', Ctrl+wheel')}</span>`; } /* #439 = image tab's bar layout: tool/mode name, toggles, zoom right */
 $('ebody').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); evZoom(e.deltaY < 0 ? .1 : -.1); } }, {passive: false});
 // Shell tab: xterm.js (vendored in ui/xterm, MIT) loaded on first use; SH[pid] = {el, term, fit, dead}; one pty per project (lib shell_open)
 let XT; const SH = {};
@@ -2432,7 +2434,7 @@ function vZoom(f, e) {
     VZ.x = px - ox - s2 / VZ.s * (px - ox - VZ.x); VZ.y = py - oy - s2 / VZ.s * (py - oy - VZ.y); }
   VZ.s = s2;
   if (VZ.k === 'img') { el.style.transformOrigin = '0 0'; el.style.transform = `translate(${VZ.x}px, ${VZ.y}px) scale(${VZ.s / (VZ.b || 1)})`; } else el.style.zoom = VZ.s;
-  const z = S.parentElement?.querySelector('.vctx .zctl .zp'); if (z) z.textContent = Math.round(VZ.s * 100) + '%';
+  const z = (S.closest('#edv') || S.parentElement)?.querySelector('.vctx .zctl .zp'); if (z) z.textContent = Math.round(VZ.s * 100) + '%';
 }
 // read-only files → "Save as…" (editable ones = images → Save in editImage). f = {name, path?(copied as is), text?(saved), url?(pdf blob), html?(text view)}
 function fileView(f) {
@@ -2517,7 +2519,7 @@ function edNotes(focus) {
 let edLW = +(localStorage.penW || 1) || 1, edArr = (() => { try { return JSON.parse(localStorage.penArr || '[0,0]'); } catch { return [0, 0]; } })();
 /* #293 width 1–250 = edLW × 8 (8 = old Medium = 1× ED.w, so saved o.lw multipliers keep working); arrows = 2 toggles; applies live to ED.sel too.
    #379 lives in the viewer's context bar (#vctx) per tool: erase = hint only, arrows for line/select; one undo snap per slider drag */
-function edCtx() { const el = $('vctx'); if (!el || !ED) return; const t = ED.tool, w = Math.round(edLW * 8);
+function edCtx() { const el = $(ED?.tab ? 'ectx' : 'vctx'); if (!el || !ED) return; const t = ED.tool, w = Math.round(edLW * 8);
   const [nm, hint] = ETOOLS.find(x => x[0] === t)[2].split(': '), head = `<span class="vtn">${nm}</span><span class="sep"></span>`; // #411 tool name first, stronger than the faint labels
   const ur = `<span class="vur">${VZ ? zoomCtl('Math.round(VZ.s * 100)', 'vZp(p)', ', wheel, Ctrl + / −. Middle-drag pans') + '<span class="sep"></span>' : ''}<button class="ib" data-u="0" title="Undo (Ctrl+Z)" onclick="edUndo()">${icon('undo')}</button><button class="ib" data-u="1" title="Redo (Ctrl+Y, Ctrl+Shift+Z)" onclick="edRedo()">${icon('redo')}</button></span>`; // #437
   if (t === 'erase') { el.innerHTML = head + `<span class="faint">${hint}</span>` + ur; return edUR(); }
@@ -2539,7 +2541,7 @@ function edCursor() { const c = $('edC'); if (!c || !ED) return; const t = ED.to
 const edState = () => JSON.stringify([ED.ops, ED.nmax]);
 function edUndo() { const u = ED?.undo.pop(); if (u) { ED.redo.push(edState()); [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = []; edDirty(); edDraw(); edNotes(); } edUR(); }
 function edRedo() { const u = ED?.redo.pop(); if (u) { ED.undo.push(edState()); [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = []; edDirty(); edDraw(); edNotes(); } edUR(); }
-const edUR = () => document.querySelectorAll('#vctx [data-u]').forEach(b => b.disabled = !ED?.[+b.dataset.u ? 'redo' : 'undo'].length); // #437 greyed when empty
+const edUR = () => document.querySelectorAll('#vctx [data-u], #ectx [data-u]').forEach(b => b.disabled = !ED?.[+b.dataset.u ? 'redo' : 'undo'].length); // #437 greyed when empty
 function edDone() {
   const m = VW.imgs[VW.i]; ED.sel = []; edDraw(true);
   const url = $('edC').toDataURL('image/png'), name = m.name.replace(/\.\w+$/, '') + '.png'; // same stem ∴ [refs] in the text still match
