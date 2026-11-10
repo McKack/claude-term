@@ -183,7 +183,7 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .msg.tool .tp { flex:none; display:inline-flex; gap:2px; align-items:center; font-size:11px; padding:0 6px; border-radius:99px; background:var(--soft); color:var(--accent); }
 .msg.tool .tp .i { width:11px; height:11px; }
 /* #239 viewer = floating window: header drags (vDrag), CSS resize corner, size kept in VBOX; tools = left column */
-.viewer { width:92vw; height:90vh; min-width:360px; min-height:260px; max-width:calc(100vw - 40px); max-height:calc(100vh - 40px); resize:both; overflow:hidden; display:grid; grid-template-rows:auto auto minmax(0,1fr); grid-template-columns:auto minmax(0,1fr); } .viewer > .vtools, .viewer > .vstage { grid-row:3; } /* #379 row 2 = .vctx (0 when empty) */
+.viewer { width:92vw; height:90vh; min-width:360px; min-height:260px; max-width:calc(100vw - 40px); max-height:calc(100vh - 40px); resize:both; overflow:hidden; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; grid-template-columns:auto minmax(0,1fr); } .viewer > .vtools, .viewer > .vstage { grid-row:3; } .vfoot { grid-row:4; grid-column:1/-1; display:flex; justify-content:flex-end; gap:8px; padding:8px 12px; border-top:1px solid var(--line); } /* #437 actions bottom-right */ /* #379 row 2 = .vctx (0 when empty) */
 .vbar { grid-column:1/-1; display:flex; gap:8px; align-items:center; padding:8px 12px; border-bottom:1px solid var(--line); cursor:grab; user-select:none; }
 .vbar:active { cursor:grabbing; } .vbar button, .vbar input { cursor:pointer; }
 .vname { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
@@ -598,7 +598,7 @@ pre.diff .ctx { color:var(--faint); }
 .menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); } .menu button svg { width:14px; height:14px; } .menu button small { font-size:11px; }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
 .menu .mand { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--faint); padding:2px 10px; } .menu .mand::before, .menu .mand::after { content:''; flex:1; border-top:1px solid var(--line); }
-.vctx { grid-column:1/-1; display:flex; align-items:center; gap:8px; min-height:34px; padding:0 12px; border-bottom:1px solid var(--line); font-size:12px; white-space:nowrap; overflow:hidden; } .vctx:empty { display:none; } .vctx input[type=range] { width:140px; padding:0; border:0; accent-color:var(--accent); } .vctx b { min-width:24px; font-weight:500; font-variant-numeric:tabular-nums; } .vctx .ib { width:26px; height:26px; padding:0; } .vctx .sep { width:1px; height:16px; background:var(--line); } .vctx .vtn { color:var(--text); font-weight:600; } /* #379 context bar = per-tool settings (was #293 stroke popover) */
+.vctx { grid-column:1/-1; display:flex; align-items:center; gap:8px; min-height:34px; padding:0 12px; border-bottom:1px solid var(--line); font-size:12px; white-space:nowrap; overflow:hidden; } .vctx:empty { display:none; } .vctx input[type=range] { width:140px; padding:0; border:0; accent-color:var(--accent); } .vctx b { min-width:24px; font-weight:500; font-variant-numeric:tabular-nums; } .vctx .ib { width:26px; height:26px; padding:0; } .vctx .sep { width:1px; height:16px; background:var(--line); } .vctx .vtn { color:var(--text); font-weight:600; } .vctx .vur { margin-left:auto; display:flex; gap:2px; } /* #437 undo/redo right */ /* #379 context bar = per-tool settings (was #293 stroke popover) */
 .menu .mcap { font-size:11.5px; font-weight:600; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; padding:6px 10px 2px; }
 .menu .mact { display:inline-grid; place-items:center; width:24px; height:22px; border-radius:6px; color:var(--dim); } .menu .mact:hover { background:var(--soft); color:var(--accent); } .menu .mact svg { width:14px; height:14px; }
 .menu .mact.lab { display:inline-flex; gap:4px; width:auto; min-width:92px; padding:0 6px; margin-left:4px; border:1px solid var(--line2); font-size:12px; } .menu .mact.lab svg:last-child { width:10px; height:10px; margin-left:auto; }
@@ -769,6 +769,8 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-panelL" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
   <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
   <symbol id="i-stop"viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></symbol>
@@ -2344,8 +2346,7 @@ function editImage() {
 }
 const edToolsHtml = () => `<span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
     <span class="edcols"><span class="edpair">${EDC2.map((v, k) => `<input type="color" id="edCol${k}" class="${v === 'transparent' ? 'tr' : ''}" value="${v === 'transparent' ? '#ffffff' : v}" data-tip="${k ? 'Secondary colour: right mouse button (left button: number in the note dot)' : 'Primary colour: left mouse button'}. Also recolours the selection / the note being typed">`).join('')}</span>
-      <button class="edtr" data-tip="Transparent: click = primary, right-click = secondary"></button></span>
-    <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>`;
+      <button class="edtr" data-tip="Transparent: click = primary, right-click = secondary"></button></span>`;
 /* #435 editor wiring shared by the File viewer dialog + Edit-view image tabs (tab = Edit tab → ED.tab). ids (#edC, #vctx…) ∴ one editor at a time: edStash parks the tab's marks */
 function edStash() { if (!ED?.tab) return; ED.tab.ed = {ops: ED.ops, nmax: ED.nmax}; ED = null; const b = $('ebody'); b._t = null; b.innerHTML = ''; }
 function edInit(src, ed, tab) {
@@ -2359,7 +2360,7 @@ function edInit(src, ed, tab) {
     // #436 no clamp: start at (stage − padding)·95%, ↓ to 10% steps, ≤100%; window resize keeps it. Viewer: VZ.s = shown %, transform = s/b
     const S = c.closest('.vstage'), b = Math.max(1, Math.floor(Math.min(1, (S.clientWidth - 28) * .95 / c.width, (S.clientHeight - 28) * .95 / c.height) * 10)) / 10;
     c.style.width = c.width * b + 'px'; if (VZ?.k === 'img' && S.closest('#dlg')) { VZ.b = VZ.s = b; vZoom(1); }
-    ED = {img, ops: structuredClone(ed?.ops || []), nmax: ed?.nmax || 0, tool: 'pen', cur: null, sel: [], drag: null, undo: [], w: Math.max(3, img.naturalWidth / 300), tab};
+    ED = {img, ops: structuredClone(ed?.ops || []), nmax: ed?.nmax || 0, tool: 'pen', cur: null, sel: [], drag: null, undo: [], redo: [], w: Math.max(3, img.naturalWidth / 300), tab};
     edCursor(); edDraw(); edNotes(); edCtx();
     const pt = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
     c.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); }; // right btn = secondary colour, no menu
@@ -2388,11 +2389,11 @@ function edInit(src, ed, tab) {
       if (o.t === 'pen') { const m = o.sm ||= [...o.pts[0]], [px, py] = o.pts.at(-1); m[0] += (x - m[0]) * .35; m[1] += (y - m[1]) * .35; o.raw = [x, y]; if (Math.hypot(m[0] - px, m[1] - py) > ED.w / 2) o.pts.push([...m]); } // #292 EMA smoothing ∵ raw pointer jitters; ↑ factor = less lag, more jitter
       else if (o.t === 'line') { let dx = x - o.x1, dy = y - o.y1; if (e.shiftKey) { const L = Math.hypot(dx, dy), a = Math.round(Math.atan2(dy, dx) / (Math.PI / 8)) * Math.PI / 8; dx = L * Math.cos(a); dy = L * Math.sin(a); } o.x2 = o.x1 + dx; o.y2 = o.y1 + dy; } /* #292 Shift = 22.5° steps */ else { o.w = x - o.x; o.h = y - o.y; } edDraw(); };
     c.onpointerup = () => { const D = ED.drag; ED.drag = null;
-      if (D) { if (!D.mq && !D.moved) { ED.undo.pop(); if (D.o) ED.sel = [D.o]; } return edDraw(); } // plain click: no undo entry, picks just that shape
+      if (D) { if (!D.mq && !D.moved) { edUnsnap(); if (D.o) ED.sel = [D.o]; } return edDraw(); } // plain click: no undo entry, picks just that shape
       const o = ED.cur; ED.cur = null; if (!o) return;
       if (o.t === 'box') { if (Math.abs(o.w) < 8 && Math.abs(o.h) < 8) o.w = o.h = 0; // #248 click = numbered point (note, no box)
         if (o.w < 0) { o.x += o.w; o.w = -o.w; } if (o.h < 0) { o.y += o.h; o.h = -o.h; } edDraw(); return edNotes(o); }
-      if (o.t === 'line' && Math.hypot(o.x2 - o.x1, o.y2 - o.y1) < 2) { ED.ops.pop(); ED.undo.pop(); }
+      if (o.t === 'line' && Math.hypot(o.x2 - o.x1, o.y2 - o.y1) < 2) { ED.ops.pop(); edUnsnap(); }
       if (o.t === 'pen') { if (o.raw) o.pts.push(o.raw); delete o.sm; delete o.raw; } // EMA lags → end exactly at the release point
       edDraw(); };
     c.onpointercancel = c.onpointerup; // #237 box numbered at pointerdown (was pointerup → 'undefined' tag when the up got lost)
@@ -2404,8 +2405,8 @@ let VBOX = (() => { try { return JSON.parse(localStorage.vbox || 'null'); } catc
    tools = left toolbar (contextual per file type), stage = content; fit(stage) on every resize */
 function vWin(head, act, tools, stage, fit, zoom, ctx = '') {
   VZ = zoom ? {k: zoom, s: 1, x: 0, y: 0} : null; // #248 zoom: 'img' = transform (pan too) | 'text' = CSS zoom; pdf = its own viewer's zoom
-  dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${zoom ? `${zoomCtl('Math.round(VZ.s * 100)', 'vZp(p)', zoom === 'img' ? ', wheel, Ctrl + / −. Middle-drag pans' : ', Ctrl+wheel, Ctrl + / −')}<span class="grow"></span>` : ''}${act}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
-    <div class="vctx" id="vctx">${ctx}</div><div class="vtools">${tools}</div><div class="vstage">${stage}</div>`, 'viewer');
+  dlg(`<div class="vbar" onpointerdown="vDrag(event)">${head}<span class="grow"></span>${zoom ? zoomCtl('Math.round(VZ.s * 100)', 'vZp(p)', zoom === 'img' ? ', wheel, Ctrl + / −. Middle-drag pans' : ', Ctrl+wheel, Ctrl + / −') : ''}<button class="ib" title="Close (Esc)" onclick="closeDlg()">${icon('x')}</button></div>
+    <div class="vctx" id="vctx">${ctx}</div><div class="vtools">${tools}</div><div class="vstage">${stage}</div>${act ? `<div class="vfoot">${act}</div>` : ''}`, 'viewer'); /* #437 zoom right in the bar, act = footer bottom-right */
   const V = $('dlg').querySelector('.viewer'), S = V.querySelector('.vstage');
   if (VBOX) { V.style.width = VBOX[0] + 'px'; V.style.height = VBOX[1] + 'px'; } // #298 .viewer max-* (< dialog's UA max = 100% − 2em − 6px) clamps ∴ ✕ + resize corner never clipped, follows window shrink
   // #261 offsetWidth 0 = dlg closing (display:none) → don't keep, else reopens at min size
@@ -2453,7 +2454,8 @@ function vClamp(dx = 0, dy = 0) { const d = $('dlg'); if (!d.style.left) return;
 function vDrag(e) { if (e.target.closest('button, input')) return; let px = e.clientX, py = e.clientY;
   dragOn(e, ev => { vClamp(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY; }); }
 const edDirty = () => { const b = $('edSave'); if (b) { b.disabled = false; b.removeAttribute('title'); } if (ED?.tab) { ED.tab.dirty = 1; $('etabs').querySelector('.et.on')?.classList.add('dirty'); } }; // #232 Save greyed till a change
-const edSnap = () => { edDirty(); ED.undo.push(JSON.stringify([ED.ops, ED.nmax])); ED.undo.splice(0, ED.undo.length - 50); };
+const edSnap = () => { edDirty(); ED.undo.push(JSON.stringify([ED.ops, ED.nmax])); ED.undo.splice(0, ED.undo.length - 50); ED.rk = ED.redo; ED.redo = []; edUR(); }; // rk: no-op snaps (plain click) give redo back via edUnsnap
+const edUnsnap = () => { ED.undo.pop(); ED.redo = ED.rk || []; edUR(); };
 const edMove = (o, dx, dy) => { if (o.t === 'pen') o.pts = o.pts.map(([x, y]) => [x + dx, y + dy]); else if (o.t === 'line') { o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; } else { o.x += dx; o.y += dy; } };
 const segD = (x, y, a, b, c, d) => { const l = (c - a) ** 2 + (d - b) ** 2, t = l ? Math.max(0, Math.min(1, ((x - a) * (c - a) + (y - b) * (d - b)) / l)) : 0; return Math.hypot(x - a - t * (c - a), y - b - t * (d - b)); };
 // #240 selection gizmo: bbox [x0,y0,x1,y1] of all selected; 8 handles EDH (fractions of the box), cursors EDC; scale = from drag-start copy (src) ∴ no drift, flips ok
@@ -2513,10 +2515,11 @@ let edLW = +(localStorage.penW || 1) || 1, edArr = (() => { try { return JSON.pa
    #379 lives in the viewer's context bar (#vctx) per tool: erase = hint only, arrows for line/select; one undo snap per slider drag */
 function edCtx() { const el = $('vctx'); if (!el || !ED) return; const t = ED.tool, w = Math.round(edLW * 8);
   const [nm, hint] = ETOOLS.find(x => x[0] === t)[2].split(': '), head = `<span class="vtn">${nm}</span><span class="sep"></span>`; // #411 tool name first, stronger than the faint labels
-  if (t === 'erase') { el.innerHTML = head + `<span class="faint">${hint}</span>`; return; }
+  const ur = `<span class="vur"><button class="ib" data-u="0" title="Undo (Ctrl+Z)" onclick="edUndo()">${icon('undo')}</button><button class="ib" data-u="1" title="Redo (Ctrl+Y, Ctrl+Shift+Z)" onclick="edRedo()">${icon('redo')}</button></span>`; // #437
+  if (t === 'erase') { el.innerHTML = head + `<span class="faint">${hint}</span>` + ur; return edUR(); }
   el.innerHTML = head + `<span class="faint">Width</span><input type="range" min="1" max="250" value="${w}"><b>${w}</b>`
     + (t === 'line' || t === 'sel' ? `<span class="sep"></span><span class="faint">Arrows</span>${[0, 1].map(k => `<button class="ib${edArr[k] ? ' on' : ''}" data-tip="Arrow at the ${k ? 'end' : 'start'}${t === 'sel' ? ' (selected lines)' : ''}">${icon(k ? 'go' : 'back')}</button>`).join('')}` : '')
-    + (t === 'sel' ? '<span class="sep"></span><span class="faint">Applies to the selected shapes</span>' : '');
+    + (t === 'sel' ? '<span class="sep"></span><span class="faint">Applies to the selected shapes</span>' : '') + ur; edUR();
   let snap = 0;
   const set = (k, v) => { if (k === 'lw') edLW = v; else edArr[k] = v; try { localStorage.penW = edLW; localStorage.penArr = JSON.stringify(edArr); } catch {}
     if (ED?.sel.length) { if (!snap++) edSnap(); ED.sel.forEach(o => { if (k === 'lw') o.lw = v; else if (o.t === 'line') o[k ? 'a1' : 'a0'] = v; }); edDraw(); } };
@@ -2529,7 +2532,10 @@ function edCursor() { const c = $('edC'); if (!c || !ED) return; const t = ED.to
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><g stroke="#fff" stroke-width="4">${p}</g><g stroke="#111" stroke-width="1.8">${p}</g></svg>`;
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${EDHOT[t].join(' ')}, crosshair`; })();
   c.style.cursor = EDCUR[t]; }
-function edUndo() { const u = ED?.undo.pop(); if (u) { [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = []; edDraw(); edNotes(); } }
+const edState = () => JSON.stringify([ED.ops, ED.nmax]);
+function edUndo() { const u = ED?.undo.pop(); if (u) { ED.redo.push(edState()); [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = []; edDirty(); edDraw(); edNotes(); } edUR(); }
+function edRedo() { const u = ED?.redo.pop(); if (u) { ED.undo.push(edState()); [ED.ops, ED.nmax] = JSON.parse(u); ED.sel = []; edDirty(); edDraw(); edNotes(); } edUR(); }
+const edUR = () => document.querySelectorAll('#vctx [data-u]').forEach(b => b.disabled = !ED?.[+b.dataset.u ? 'redo' : 'undo'].length); // #437 greyed when empty
 function edDone() {
   const m = VW.imgs[VW.i]; ED.sel = []; edDraw(true);
   const url = $('edC').toDataURL('image/png'), name = m.name.replace(/\.\w+$/, '') + '.png'; // same stem ∴ [refs] in the text still match
@@ -2545,7 +2551,7 @@ document.addEventListener('keydown', e => {
   if (inl && (e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); return evSave(ED.tab); }
   if (!inl && (!$('dlg').open || !VW)) return;
   const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
-  if (ED && (e.ctrlKey || e.metaKey) && e.key === 'z' && !typing) { e.preventDefault(); edUndo(); }
+  if (ED && (e.ctrlKey || e.metaKey) && /^[zy]$/i.test(e.key) && !typing) { e.preventDefault(); e.key === 'y' || e.key === 'Y' || e.shiftKey ? edRedo() : edUndo(); } // #437 Ctrl+Y / Ctrl+Shift+Z = redo
   if (ED?.sel.length && !typing && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); edSnap(); ED.ops = ED.ops.filter(o => !ED.sel.includes(o)); ED.sel = []; edDraw(); edNotes(); }
   if (!typing && VW && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
 });
