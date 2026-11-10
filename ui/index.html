@@ -2677,10 +2677,10 @@ function send() {
   // #142: a short status/unblock reply ("I've turned the Mac on", "done, try again") = context for the blocked task, not new work
   const isS = issueOn(pid) && !isQ && !nw && !FILED_RE.test(t) && !QNOTE_RE.test(t) && STATUS_RE.test(t) && t.trim().split(/\s+/).length <= 25;
   const file = issueOn(pid) && !isQ && !isS && !/^\s*\//.test(t) && t.trim().split(/\s+/).length + nw >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
-  // #101: bubble shows now (⏱ while filing) unless it'd queue/triage anyway; the chain re-checks below
+  // #101: bubble shows now (⏱ while filing); the chain re-checks below
   // #103: queued (turn running) → bubble now too, ⏱ Queued; QB ties it to its queue item
   const hold = qWait(pid); /* #422 open questions (≠ auto_answer) → queued only, flushed once they're answered */ if (hold) toast('Queued: answer the open question first', 'info');
-  const opt = hold || !(contWaiting(pid) && !a.length) ? userEntry(pid, t, a, {st: hold || busy[pid] || RESTARTING ? 'queue' : 'pend'}) : null;
+  const opt = userEntry(pid, t, a, {st: hold || busy[pid] || RESTARTING ? 'queue' : 'pend'}); // #460 always at once (Continue-waiting path used to wait for the Sonnet rewrite + gh)
   // saved to disk while gh files it (seconds): a crash/quit in that window used to lose it (composer already cleared)
   const fm = {text: t, atts: a}; (FILING[pid] ||= []).push(fm); keepDraft(pid, true);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
@@ -2698,8 +2698,7 @@ function send() {
     const now = n && fileNow(pid, t, n), text = isQ || cls === 'question' ? t + QNOTE : cls === 'remark' ? t + RNOTE : isS ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
     const q = queue[pid] ||= [], qw = qWait(pid);
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
-    if (opt && !qw && contWaiting(pid) && !a.length) unEntry(pid, opt); // a Continue came up while filing → triage shows its own
-    if (!qw && contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
+    if (!qw && contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); if (opt.log) { reBub(opt, text, a); tick(opt, 'sent'); } return toTasks(pid, [text], opt.log); } // #460 keeps the bubble already shown
     const m = {text, atts: a, work: now ? n : 0};
     if (!qw && busy[pid] && !RESTARTING && !a.length && !ed && await call('send_mid', {pid, text, work: m.work || null}).catch(() => false)) { // CLI feel: reaches Clauracle mid-turn
       if (m.work) P(pid).work = m.work; if (opt?.log) { reBub(opt, text, a); tick(opt, 'read'); } }
@@ -2808,10 +2807,10 @@ const contQ = {}; // pid → Continue clicked mid-turn; runs on turn end (status
 const qWait = pid => !!P(pid).questions?.length && P(pid).cont !== 'auto_answer'; // #220: questions open → runner paused
 const contNote = (pid, t = nextUp(pid)[0]) => t && !qWait(pid) && addEntry(pid, {kind: 'user', text: 'Continue: ' + t, cont: true});
 const contClick = pid => { if (busy[pid]) { contQ[pid] = true; return drawChrome(); } const r = P(pid).ready, t = nextUp(pid)[0]; contGo(pid); if (r) contNote(pid, t); };
-function toTasks(pid, texts) {
+function toTasks(pid, texts, shown) {
   triaging[pid] = true;
   call('send', {pid, text: (issueOn(pid) ? TRIAGE_ISSUES : TRIAGE) /* issueOn ∵ issueQ = null until team loads → wrongly PLAN.md */ + texts.map(t => '- ' + t.trim().replace(/\n/g, '\n  ')).join('\n'), images: [], files: []});
-  texts.forEach(t => addEntry(pid, {kind: 'user', text: t}));
+  if (!shown) texts.forEach(t => addEntry(pid, {kind: 'user', text: t}));
   if (pid === cur) drawChrome();
 }
 // ready → clear + continue; idle bar → next task in this session
