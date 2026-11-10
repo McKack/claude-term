@@ -217,9 +217,13 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .termcard .ttabs button:hover { color:#d8d4cb; } .termcard .ttabs button.on { background:var(--tc-hi); color:#d8d4cb; } .termcard .ttabs small { margin-left:4px; color:var(--tc-dim); }
 .termcard .tl { padding:7px 0; color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; max-height:10.5em; overflow:auto; }
 .termcard .tl > div { padding:0 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; } .termcard .tl > div:hover { background:var(--tc-row); }
-.termcard .tl > div.run { position:relative; padding-right:52px; color:#fff; box-shadow:inset 2px 0 var(--accent); /* #124 = Working pill look */
-  background:linear-gradient(90deg, var(--tc-row) 25%, color-mix(in srgb, var(--accent) 22%, var(--tc-row)) 50%, var(--tc-row) 75%) 0 0/200% 100%; animation:shimmer 1.8s linear infinite; }
-.termcard .tl > div.run::after { content:attr(data-t); position:absolute; right:12px; color:var(--accent); font-variant-numeric:tabular-nums; }
+/* #423 running row fades in/out (80ms) ∵ back-to-back quick calls flickered: shimmer on ::before (opacity), timer ::after kept w/ opacity */
+.termcard { transition:border-color .08s; } .termcard .tl > div { position:relative; isolation:isolate; transition:color .08s, box-shadow .08s, padding-right .08s; }
+.termcard .tl > div::before { content:""; position:absolute; inset:0; z-index:-1; opacity:0; transition:opacity .08s; pointer-events:none;
+  background:linear-gradient(90deg, var(--tc-row) 25%, color-mix(in srgb, var(--accent) 22%, var(--tc-row)) 50%, var(--tc-row) 75%) 0 0/200% 100%; }
+.termcard .tl > div::after { content:attr(data-t); position:absolute; right:12px; color:var(--accent); font-variant-numeric:tabular-nums; opacity:0; transition:opacity .08s; }
+.termcard .tl > div.run { padding-right:52px; color:#fff; box-shadow:inset 2px 0 var(--accent); } /* #124 = Working pill look */
+.termcard .tl > div.run::before { opacity:1; animation:shimmer 1.8s linear infinite; } .termcard .tl > div.run::after { opacity:1; }
 .termcard:has(.tl > div.run) { border-color:color-mix(in srgb, var(--accent) 45%, #2e2c2a); }
 .termcard .tl .i { width:12px; height:12px; vertical-align:-2px; color:var(--tc-dim); }
 .termcard pre { margin:0; padding:9px 12px; color:#d8d4cb; font:12px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; max-height:9em; overflow:auto; cursor:pointer; }
@@ -433,6 +437,7 @@ pre.diff .ctx { color:var(--faint); }
 .qp .qt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; padding:0 4px; }
 #workpill { display:inline-flex; gap:6px; align-items:center; color:var(--accent) !important; white-space:nowrap; overflow:hidden; } #worktext { font-variant-numeric:tabular-nums; }
 #workpill[hidden], #handpill[hidden] { display:none; }
+#workpill, #handpill { transition:opacity .08s; } @starting-style { #workpill, #handpill { opacity:0; } } /* #423 80ms fade-in on show (no pop between quick calls); ponytail: no fade-out ∵ global [hidden] !important beats display transitions; add a JS hide delay if it still flickers */
 .born { animation:hatch .4s ease-out; } /* from the pill's bubble (top-left) out to the full row */
 @keyframes hatch { from { clip-path:inset(0 50% calc(100% - 64px) 0 round 16px); opacity:.5; } to { clip-path:inset(0 0 0 0 round 0); opacity:1; } }
 .respawn { animation:respawn .5s ease-out; } @keyframes respawn { from { opacity:0; translate:0 -12px; } }
