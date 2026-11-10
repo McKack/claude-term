@@ -4,7 +4,6 @@ User-facing changes, newest first.
 
 ## Unreleased
 - Edit view menu bar: hovering switches between open menus, a "Show menu" toggle (Alt+M), icons on every entry.
-
 - Fewer AI tokens: the release checklist writes LICENSE.md (official text from GitHub) and CREDITS.md itself, and a task's PDF report is built without AI. Only README writing still uses Claude.
 
 - Library license check: Settings › Projects › License and the release checklist list every shipped Rust/npm library with its license, flag ones your license doesn't allow or that have no known license, and add uncredited libraries to CREDITS.md in one click. The license file is now LICENSE.md.
