@@ -311,7 +311,7 @@ pre.diff .ctx { color:var(--faint); }
 #ebody .ecode pre > div.lw, #rbody .code pre > div.lw { background:color-mix(in srgb, #d9a21b 10%, transparent); } #ebody .ecode pre > div.le, #rbody .code pre > div.le { background:color-mix(in srgb, var(--err) 10%, transparent); } /* #374 lint rows + gutter icons */
 .code pre > div.lw::before { background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5 15 14.5H1z' fill='%23d9a21b'/%3E%3Cpath d='M8 6v4M8 11.4v1.2' stroke='%23000' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat 3px .3em/12px; }
 .code pre > div.le::before { background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23e5484d'/%3E%3Cpath d='M5.5 5.5l5 5m0-5-5 5' stroke='%23fff' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat 3px .3em/12px; }
-#ebody .eimg { margin:auto; max-width:100%; max-height:100%; object-fit:contain; } #ebody .empty { margin:auto; text-align:center; }
+#ebody .evimg { flex:1; min-width:0; display:grid; grid-template-rows:auto minmax(0,1fr); grid-template-columns:auto minmax(0,1fr); } #ebody .evimg > :not(.vctx) { grid-row:2; } /* #435 = .viewer grid minus its header */ #ebody .empty { margin:auto; text-align:center; }
 #log.term { background:var(--term); color:color-mix(in srgb, var(--tint, #000) calc(var(--tintm, 0%) * 2), #d8d4cb); }
 #log.term { padding-top:60px; } /* #327 3 rows; rows sit at 60+20k */
 #log.term .col { max-width:none; display:block; /* #327 block flow: notes run inline + no flex gap; JS gridPad pads each block to whole 20px rows */ font:12.5px/20px ui-monospace,"Cascadia Code",Consolas,monospace; }
@@ -1710,7 +1710,13 @@ const ETABS = {};
 function etabs(pid = cur) { if (!ETABS[pid]) { let o = {}; try { o = JSON.parse(localStorage['etabs:' + pid] || '{}'); } catch {}
   const tabs = (o.rels || []).map(rel => ({rel, name: rel.split('/').pop()})); ETABS[pid] = {tabs, on: Math.max(0, tabs.findIndex(t => t.rel === o.on))}; } return ETABS[pid]; }
 function evKeep(pid = cur) { const E = ETABS[pid]; if (E) try { localStorage['etabs:' + pid] = JSON.stringify({rels: E.tabs.filter(t => t.rel).map(t => t.rel), on: E.tabs[E.on]?.rel}); } catch {} }
-const evDirty = t => t.text !== undefined && t.text !== t.orig;
+/* #435 flatten marks (box note text not kept: numbers only) → same format; gif/bmp can't be encoded by canvas. ponytail: bytes as JSON array, fine ≤ few MB */
+async function evSaveImg(t) { if (ED?.tab !== t) return; const ty = {png: 'png', jpg: 'jpeg', jpeg: 'jpeg', webp: 'webp'}[t.rel.split('.').pop().toLowerCase()];
+  if (!ty) return toast('Only PNG, JPG and WebP can be saved', 'warn');
+  ED.sel = []; edDraw(true); const bl = await new Promise(r => $('edC').toBlob(r, 'image/' + ty, .92)); edDraw();
+  try { await call('write_bytes', {pid: cur, rel: t.rel, data: [...new Uint8Array(await bl.arrayBuffer())]}); } catch (e) { return toast(String(e), 'err'); }
+  Object.assign(t, {img: URL.createObjectURL(bl), ed: null, dirty: 0}); ED = null; $('ebody')._t = null; evDraw(true); toast('Saved ' + t.name, 'ok'); }
+const evDirty = t => !!t.dirty || (t.text !== undefined && t.text !== t.orig);
 function evOpen(rel) { const E = etabs(); let i = E.tabs.findIndex(t => t.rel === rel); if (i < 0) i = E.tabs.push({rel, name: rel.split('/').pop()}) - 1; E.on = i; evKeep(); evDraw(); }
 function evNew() { const E = etabs(), n = Math.max(0, ...E.tabs.map(t => +(t.name.match(/^Untitled-(\d+)$/)?.[1] || 0))) + 1;
   E.on = E.tabs.push({rel: null, name: 'Untitled-' + n, text: '', orig: ''}) - 1; evDraw(); }
@@ -1723,6 +1729,7 @@ async function evLoad(t, pid) { const abs = P(pid).path.replace(/[\\/]+$/, '') +
     else t.text = t.orig = await call('read_file', {pid, rel: t.rel}); } catch (e) { t.err = String(e); }
   if (pid === cur) evDraw(); }
 async function evSave(t) { if (!t) return;
+  if (t.img) return evSaveImg(t);
   try { if (t.rel) await call('write_file', {pid: cur, rel: t.rel, text: t.text});
     else { const to = await T.dialog.save({defaultPath: P().path.replace(/[\\/]+$/, '') + '/' + t.name + '.txt'}); if (!to) return;
       await call('save_as', {to, from: null, text: t.text}); const base = P().path.replace(/\\/g, '/').replace(/\/$/, '') + '/', f = to.replace(/\\/g, '/');
@@ -1733,12 +1740,16 @@ function evDraw(re) { if (view !== 'edit' || !cur) return;
   $('etabs').innerHTML = E.tabs.map((x, i) => `<div class="et${i === E.on ? ' on' : ''}${evDirty(x) ? ' dirty' : ''}" title="${esc(x.rel || x.name)}${x.rel ? ' · Ctrl+click: also open in the side Code tab' : ''}" onclick="(event.ctrlKey || event.metaKey) && ${!!x.rel} ? previewFile(${esc(JSON.stringify(x.rel || ''))}, true) : evPick(${i})" onauxclick="if (event.button === 1) evClose(${i})">${icon(/\.(png|jpe?g|gif|webp|bmp)$/i.test(x.rel || '') ? 'image' : 'file')}${esc(x.name)}<button class="ib x" title="Close" onclick="event.stopPropagation(); evClose(${i})">${icon('x')}</button></div>`).join('')
     + `<button class="ib add" title="New tab" onclick="evNew()">${icon('plus')}</button>`;
   evBar(t); b.style.zoom = UI.ez || 1;
-  const ta = b.querySelector('textarea'); if (ta && b._t) Object.assign(b._t, {ss: ta.selectionStart, se: ta.selectionEnd, sy: b.firstChild.scrollTop}); // caret + scroll survive tab switches
+  const ta = b.querySelector('.ecode textarea'); if (ta && b._t) Object.assign(b._t, {ss: ta.selectionStart, se: ta.selectionEnd, sy: b.firstChild.scrollTop}); // caret + scroll survive tab switches
   if (ta && b._t === t && !re) return;
-  b._t = null;
+  if (t?.img && b._t === t && ED?.tab === t && !re) return;
+  edStash(); b._t = null;
   if (!t) { b.innerHTML = `<div class="empty dim"><p>No files open</p><button class="btn" onclick="evNew()">${icon('plus')}New file</button> <button class="btn ghost" onclick="UI.lc = false; setSide('files')">${icon('folder')}Open from Files</button></div>`; return; }
   if (t.err) { b.innerHTML = `<div class="empty dim">${esc(t.err)}</div>`; return; }
-  if (t.img) { b.innerHTML = `<img class="eimg" src="${t.img}">`; return; }
+  if (t.img) { b._t = t; /* #435 image tab = File viewer's editor: context bar + side tools; Save writes the flattened image back */
+    b.innerHTML = `<div class="evimg"><div class="vctx" id="vctx"></div><div class="vtools">${edToolsHtml()}</div><div class="vstage"><div id="edWrap"><canvas id="edC"></canvas></div></div></div>`;
+    const S = b.querySelector('.vstage'); new ResizeObserver(() => { const c = $('edC'); if (c) c.style.maxHeight = S.clientHeight - 28 + 'px'; if (ED?.tab === t) edNotes(); }).observe(S);
+    edInit(t.img, t.ed, t); return; }
   if (t.text === undefined) { b.innerHTML = `<div style="flex:1;padding:14px">${skel(60)}</div>`; if (!t.loading) { t.loading = 1; evLoad(t, cur); } return; }
   if (evFm(t)) { let h; try { h = evPv(t) === 'md' ? `<div class="mdoc">${mdDoc(t.text)}</div>` : codeHtml(JSON.stringify(JSON.parse(t.text), null, 2), 'json', !!UI.ew).replace('class="code', 'class="code' + (hlOn() ? '' : ' plain')); } catch (e) { h = `<div class="dim">${esc(String(e))}</div>`; }
     b.innerHTML = `<div class="epv">${h}</div>`; return; } /* #372 read-only preview; edits = View › Preview off */
@@ -1805,7 +1816,7 @@ function zDrag(e, get, set) { const x0 = e.clientX, p0 = get(); dragOn(e, ev => 
 function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.text !== undefined, ed = tx && !evFm(t), pv = evPv(t);
   const M = {
     file: [{label: 'New file', icon: 'plus', run: evNew}, {label: 'Open from Files', icon: 'folder', run: () => { UI.lc = false; setSide('files'); }}, '-',
-      ...(tx ? [{label: 'Save', hint: 'Ctrl+S', run: () => evSave(t)}] : []), ...(t?.rel ? [{label: 'Open in Code tab', icon: 'code', run: () => previewFile(t.rel, true)}] : []),
+      ...(tx || t?.img ? [{label: 'Save', hint: 'Ctrl+S', run: () => evSave(t)}] : []), ...(t?.rel ? [{label: 'Open in Code tab', icon: 'code', run: () => previewFile(t.rel, true)}] : []),
       ...(t ? ['-', {label: 'Close tab', icon: 'x', run: () => evClose(E.on)}] : [])],
     edit: ed ? [{label: 'Undo', hint: 'Ctrl+Z', run: () => evCmd('undo')}, {label: 'Redo', hint: 'Ctrl+Y', run: () => evCmd('redo')}, '-',
       {label: 'Cut', hint: 'Ctrl+X', run: () => evCmd('cut')}, {label: 'Copy', icon: 'copy', hint: 'Ctrl+C', run: () => evCmd('copy')},
@@ -2309,7 +2320,7 @@ function viewAtt(i) {
   openViewer(map.map(k => a[k]), map.indexOf(i), map);
 }
 function openViewer(imgs, i, map) { VW = {imgs, i, map}; drawViewer(); }
-function drawViewer() { ED = null; editImage(); } // #232 opens straight in edit mode (ponytail: arrows step = unsaved marks dropped)
+function drawViewer() { edStash(); ED = null; editImage(); } // #232 opens straight in edit mode (ponytail: arrows step = unsaved marks dropped)
 const stepViewer = d => { VW.i = (VW.i + d + VW.imgs.length) % VW.imgs.length; drawViewer(); };
 /* #217 vector editor: ops = shapes (pen pts | line | box+note), selectable/movable/resizable/erasable; flattened to one PNG on save
    (PNG ∵ tokens ∝ pixels, not format; JPG blurs text). Attachment keeps a.ed = {orig, ops, nmax} → re-edit stays vector + box numbers
@@ -2328,19 +2339,24 @@ function editImage() {
   // #379 every image = a tab (Edit-view look; ← → still step). ponytail: no ✕ per tab ∵ images belong to the chat/composer
   vWin(`<div class="vtabs" onpointerdown="event.stopPropagation()">${VW.imgs.map((x, k) => `<div class="et${k === VW.i ? ' on' : ''}" title="${esc(x.name)}" onclick="${k === VW.i ? '' : `VW.i = ${k}; drawViewer()`}"><img src="${x.url}" alt=""><span>${esc(x.name)}</span></div>`).join('')}</div>`,
     `<button class="btn primary sm" id="edSave" onclick="edDone()"${VW.map ? ' disabled title="Nothing changed yet"' : ''}>${VW.map ? 'Save' : 'Add to message'}</button>`,
-    `<span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
+    edToolsHtml(), '<div id="edWrap"><canvas id="edC"></canvas></div>', S => { $('edC').style.maxHeight = S.clientHeight - 28 + 'px'; if (ED) edNotes(); }, 'img', ' ');
+  edInit(m.ed?.orig || m.url, m.ed);
+}
+const edToolsHtml = () => `<span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
     <span class="edcols"><span class="edpair">${EDC2.map((v, k) => `<input type="color" id="edCol${k}" class="${v === 'transparent' ? 'tr' : ''}" value="${v === 'transparent' ? '#ffffff' : v}" data-tip="${k ? 'Secondary colour: right mouse button (left button: number in the note dot)' : 'Primary colour: left mouse button'}. Also recolours the selection / the note being typed">`).join('')}</span>
       <button class="edtr" data-tip="Transparent: click = primary, right-click = secondary"></button></span>
-    <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>`,
-    '<div id="edWrap"><canvas id="edC"></canvas></div>', S => { $('edC').style.maxHeight = S.clientHeight - 28 + 'px'; if (ED) edNotes(); }, 'img', ' ');
+    <button class="ib" title="Undo (Ctrl+Z)" onclick="edUndo()" style="font-size:16px">↶</button>`;
+/* #435 editor wiring shared by the File viewer dialog + Edit-view image tabs (tab = Edit tab → ED.tab). ids (#edC, #vctx…) ∴ one editor at a time: edStash parks the tab's marks */
+function edStash() { if (!ED?.tab) return; ED.tab.ed = {ops: ED.ops, nmax: ED.nmax}; ED = null; const b = $('ebody'); b._t = null; b.innerHTML = ''; }
+function edInit(src, ed, tab) {
   $('edTools').querySelectorAll('button').forEach(b => b.onclick = () => { if (!ED) return; ED.tool = b.dataset.tool; ED.sel = []; $('edTools').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); edCursor(); edDraw(); edCtx(); });
   [0, 1].forEach(k => { const s = $('edCol' + k); s.oninput = () => edSetCol(k, s.value); s.onchange = () => { if (ED) ED.csnap = 0; }; }); // one undo snap per picker session
   const tr = document.querySelector('.edtr'); tr.onclick = () => { edSetCol(0, 'transparent'); if (ED) ED.csnap = 0; };
   tr.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); edSetCol(1, 'transparent'); if (ED) ED.csnap = 0; };
-  const img = new Image();
-  img.onload = () => {
-    const c = $('edC'); c.width = img.naturalWidth; c.height = img.naturalHeight;
-    ED = {img, ops: structuredClone(m.ed?.ops || []), nmax: m.ed?.nmax || 0, tool: 'pen', cur: null, sel: [], drag: null, undo: [], w: Math.max(3, img.naturalWidth / 300)};
+  const img = new Image(), c = $('edC');
+  img.onload = () => { if (!c.isConnected) return; // tab switched / dialog closed before load
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    ED = {img, ops: structuredClone(ed?.ops || []), nmax: ed?.nmax || 0, tool: 'pen', cur: null, sel: [], drag: null, undo: [], w: Math.max(3, img.naturalWidth / 300), tab};
     edCursor(); edDraw(); edNotes(); edCtx();
     const pt = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
     c.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); }; // right btn = secondary colour, no menu
@@ -2378,7 +2394,7 @@ function editImage() {
       edDraw(); };
     c.onpointercancel = c.onpointerup; // #237 box numbered at pointerdown (was pointerup → 'undefined' tag when the up got lost)
   };
-  img.src = m.ed?.orig || m.url;
+  img.src = src;
 }
 let VBOX = (() => { try { return JSON.parse(localStorage.vbox || 'null'); } catch { return null; } })(), VF = null; // VBOX = window size kept across steps/opens/restarts (localStorage.vbox); VF = file in the File viewer {name, path?, text?}
 /* #247 one File viewer window (image editor template): head = left of the bar, act = right buttons (before ✕),
@@ -2433,7 +2449,7 @@ function vClamp(dx = 0, dy = 0) { const d = $('dlg'); if (!d.style.left) return;
   d.style.left = Math.max(-r.width / 2, Math.min(innerWidth - r.width / 2, r.left + dx)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - r.height / 2, r.top + dy)) + 'px'; }
 function vDrag(e) { if (e.target.closest('button, input')) return; let px = e.clientX, py = e.clientY;
   dragOn(e, ev => { vClamp(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY; }); }
-const edDirty = () => { const b = $('edSave'); if (b) { b.disabled = false; b.removeAttribute('title'); } }; // #232 Save greyed till a change
+const edDirty = () => { const b = $('edSave'); if (b) { b.disabled = false; b.removeAttribute('title'); } if (ED?.tab) { ED.tab.dirty = 1; $('etabs').querySelector('.et.on')?.classList.add('dirty'); } }; // #232 Save greyed till a change
 const edSnap = () => { edDirty(); ED.undo.push(JSON.stringify([ED.ops, ED.nmax])); ED.undo.splice(0, ED.undo.length - 50); };
 const edMove = (o, dx, dy) => { if (o.t === 'pen') o.pts = o.pts.map(([x, y]) => [x + dx, y + dy]); else if (o.t === 'line') { o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy; } else { o.x += dx; o.y += dy; } };
 const segD = (x, y, a, b, c, d) => { const l = (c - a) ** 2 + (d - b) ** 2, t = l ? Math.max(0, Math.min(1, ((x - a) * (c - a) + (y - b) * (d - b)) / l)) : 0; return Math.hypot(x - a - t * (c - a), y - b - t * (d - b)); };
@@ -2522,13 +2538,15 @@ function edDone() {
 document.addEventListener('keydown', e => {
   if (e.key === 'F11') { e.preventDefault(); return call('fullscreen'); }
   if ($('dlg').open && VZ && (e.ctrlKey || e.metaKey) && ['+', '=', '-', '0'].includes(e.key)) { e.preventDefault(); return e.key === '0' ? vZoom(0) : vZp(zStep(Math.round(VZ.s * 100), e.key === '-' ? -1 : 1)); }
-  if (!$('dlg').open || !VW) return;
+  const inl = !$('dlg').open && view === 'edit' && ED?.tab; // #435 editor inside an Edit-view image tab
+  if (inl && (e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); return evSave(ED.tab); }
+  if (!inl && (!$('dlg').open || !VW)) return;
   const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
   if (ED && (e.ctrlKey || e.metaKey) && e.key === 'z' && !typing) { e.preventDefault(); edUndo(); }
   if (ED?.sel.length && !typing && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); edSnap(); ED.ops = ED.ops.filter(o => !ED.sel.includes(o)); ED.sel = []; edDraw(); edNotes(); }
-  if (!typing && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
+  if (!typing && VW && $('dlg').querySelector('.viewer') && VW.imgs.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) stepViewer(e.key === 'ArrowLeft' ? -1 : 1);
 });
-$('dlg').addEventListener('close', () => { VW = ED = VF = VZ = null; $('dlg').style.cssText = ''; }); // #239 drop the viewer's pinned spot (dlg is shared)
+$('dlg').addEventListener('close', () => { VW = VF = VZ = null; if (!ED?.tab) ED = null; $('dlg').style.cssText = ''; if (view === 'edit' && cur && !$('ebody')._t) evDraw(true); }); // #435 Edit-view image editor survives dialogs; re-mounts after the viewer parked it // #239 drop the viewer's pinned spot (dlg is shared)
 function addImage(file) {
   const r = new FileReader();
   const rid = () => Array.from({length: 3}, () => Math.random().toString(36).slice(2, 5).padEnd(3, '0')).join('-');

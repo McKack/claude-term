@@ -1846,6 +1846,13 @@ fn write_file(st: St, pid: String, rel: String, text: String) -> R<()> {
     std::fs::write(inside(&p.path, &rel)?, text).map_err(|e| e.to_string())
 }
 
+/// #435 Edit view: image tab saved with its marks (flattened by the page). ponytail: bytes arrive as a JSON array.
+#[tauri::command(async)]
+fn write_bytes(st: St, pid: String, rel: String, data: Vec<u8>) -> R<()> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    std::fs::write(inside(&p.path, &rel)?, data).map_err(|e| e.to_string())
+}
+
 /// #374 Edit view lint → [{l, s: "e"|"w", m}]. js-family: project eslint (stdin, own config) if installed, else `node --check` (syntax only);
 /// py: py_compile; rs: `cargo check` at the nearest Cargo.toml (reads the SAVED file, whole crate ∴ UI calls it on open/save only). Tool missing → [].
 /// HTML: UI blanks non-script lines and sends ext js/mjs (line numbers kept); eslint skipped then (rel ≠ .ext).
@@ -2539,7 +2546,7 @@ pub fn run() {
             continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, lint, notes, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
+            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, write_bytes, lint, notes, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {
