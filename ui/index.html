@@ -595,7 +595,11 @@ pre.diff .ctx { color:var(--faint); }
 /* Window bar: Clauracle draws its own title bar (Windows: the native one is off). Drag it to move, double-click to maximise. */
 /* Windows title bar, native measures: 32px restored, 24px maximised (the native bar loses its top resize border there); 46px caption buttons with 10px 1px glyphs; text dims when the window is not the active one */
 #wbar { grid-column:1 / -1; display:flex; align-items:center; height:32px; background:var(--side); border-bottom:1px solid var(--line); font:12px "Segoe UI Variable Text","Segoe UI",sans-serif; color:var(--text); user-select:none; } #wbar.max { height:24px; }
-.cmdo { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; } .cmdo.rows { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:6px 12px; font-size:12.5px; } .cmdo.rows > span:nth-child(even) { display:flex; flex-wrap:wrap; gap:6px; }#wbar[hidden] { display:none; } #wbar .wt { flex:1; min-width:0; align-self:stretch; display:flex; align-items:center; gap:8px; padding-left:10px; } #wbar .wt svg { width:16px; height:16px; flex:none; } #wbar .wt span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #wbar.off .wt, #wbar.off button { color:var(--faint); }
+.cmdo { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; } .cmdo.rows { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:6px 12px; font-size:12.5px; } .cmdo.rows > span:nth-child(even) { display:flex; flex-wrap:wrap; gap:6px; }.tchip { cursor:pointer; } .tpills { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; } .tpills .tchip { border:0; font:inherit; }
+dialog.tview { width:min(860px, 90vw); height:min(78vh, 900px); padding:0; display:flex; flex-direction:column; overflow:hidden; }
+.tview .tvh { flex:none; display:flex; align-items:center; gap:10px; height:38px; padding:0 4px 0 14px; border-bottom:1px solid var(--line); font-size:13px; } .tview .tvh > span:first-child { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tview pre { flex:1; margin:0; overflow:auto; padding:12px 14px; font:12.5px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; white-space:pre-wrap; word-break:break-word; }
+#wbar[hidden] { display:none; } #wbar .wt { flex:1; min-width:0; align-self:stretch; display:flex; align-items:center; gap:8px; padding-left:10px; } #wbar .wt svg { width:16px; height:16px; flex:none; } #wbar .wt span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #wbar.off .wt, #wbar.off button { color:var(--faint); }
 #wbar button { flex:none; width:46px; height:100%; border:0; border-radius:0; padding:0; background:none; color:var(--text); display:grid; place-items:center; cursor:default; } #wbar button svg { width:10px; height:10px; fill:none; stroke:currentColor; stroke-width:1; }
 #wbar button:hover { background:var(--hover); color:var(--text); } #wbar button.wx:hover { background:#c42b1c; color:#fff; } #wbar button.wx:active { background:#c84031; }
 #gbar { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); gap:4px 14px; align-items:center; white-space:nowrap; overflow:hidden; font-size:12px; color:var(--faint); padding:2px 10px; border-top:1px solid var(--line); background:var(--side); min-height:24px; }
@@ -2120,6 +2124,9 @@ function entry(e) {
   else if (e.kind === 'user' && view === 'chat') { d.innerHTML = refPills(bare(e.text), fnames(e.text)); for (const [, n] of e.text.matchAll(new RegExp(FILED_RE, 'g'))) d.insertAdjacentHTML('beforeend', `<span class="filedtag" data-tip="Filed as task #${n}">#${n}</span>`); }
   else if (e.pill) d.innerHTML = `<span class="npill${e.rb ? ' on' : builds[cur]?.busy && e === logs[cur]?.findLast(x => x.pill && !x.rb) ? ' on' : ''}">${icon(e.pill)}${esc(e.text)}</span>`; // #244 Thinking-pill look; shimmer while its build runs (#247 rb = report being written)
   else { d.textContent = e.text; if (e.kind === 'note' && !e.act && !e.rid) d._txt = e.text; } // #463 _txt = collapsible repeat key
+  if (e.kind === 'user' && e.texts?.length) { // big pastes stay chips in the bubble (texts saved in the log entry → open after a restart too)
+    d.insertAdjacentHTML('beforeend', `<div class="tpills">${e.texts.map((x, k) => `<button class="rpill tchip" data-k="${k}">${icon('doc')}${esc(stem(x.name))} · ${tsize(x.text)}</button>`).join('')}</div>`);
+    d.querySelectorAll('.tpills .tchip').forEach(b => b.onclick = () => textView(stem(e.texts[+b.dataset.k].name), e.texts[+b.dataset.k].text)); }
   // #169 ticks after the chain: as its own if, its `else` overwrote md() replies with plain text
   if (e.kind === 'user' && e.st && view === 'chat') USEREL.set(e, d); // #248 tick sits after the timestamp (row head), not in the bubble
   if (view === 'chat' && e.kind === 'note' && e.ts) d.dataset.ts = tm(e.ts); // shown above via CSS ::before
@@ -2346,7 +2353,8 @@ async function imgLoad(a) { try { const x = a.path.match(/\.(\w+)$/)[1].toLowerC
   url = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; call('read_image', {path: a.path}).then(b => r.readAsDataURL(new Blob([b], {type: mt})), no); });
   Object.assign(a, {url, media_type: mt, data: url.split(',')[1]}); drawAtts(); } catch {} }
 // #217 notes live on the attachment; #238: also in the filed issue body + file/isQ checks (were session-only → the ask got lost)
-const noteTxt = a => a.filter(x => x.notes?.length).map(x => `\n\nNotes on @[${stem(x.name)}] (numbered boxes):\n${x.notes.join('\n')}`).join('');
+const noteTxt = a => a.filter(x => x.notes?.length).map(x => `\n\nNotes on @[${stem(x.name)}] (numbered boxes):\n${x.notes.join('\n')}`).join('')
+  + a.filter(x => x.text).map(x => `\n\n${stem(x.name)} (pasted by the user):\n~~~~\n${x.text}\n~~~~`).join(''); // big pastes (chips): to Claude and the filed ask
 // #227 file-type icon for pills/thumbs: image | doc | code | file
 const fIcon = n => /\.(png|jpe?g|gif|webp|bmp|svg|ico)$/i.test(n) ? 'image' : /\.(md|txt|pdf|docx?|rtf|csv|log)$/i.test(n) ? 'doc' : /\.(js|ts|tsx|jsx|rs|py|go|java|c|cpp|h|cs|rb|php|html|css|json|toml|ya?ml|sh|ps1|kt|swift)$/i.test(n) ? 'code' : 'file';
 // #308 Files tree/rail: icon by type + tint by language (dev-icon colours); unknown ext → plain faint file
@@ -2372,11 +2380,11 @@ function rmAtt(i) { const n = stem(atts[cur].splice(i, 1)[0].name), p = $('promp
   if (!atts[cur].some(a => stem(a.name) === n)) { p.value = p.value.replace(new RegExp(`@\\[ ?${reEsc(n)}\\] ?`, 'g'), ''); grow(); } drawAtts(); }
 // #419 one "…" per thumb/chip → View / Refer / Remove (replaced hover × + refer buttons)
 function attMenu(b, i) { const a = atts[cur][i], base = (P().path || '').replace(/\\/g, '/').replace(/\/$/, '').toLowerCase(), ap = (a.path || '').replace(/\\/g, '/'),
-    pdf = /\.pdf$/i.test(ap), inP = ap.toLowerCase().startsWith(base + '/'), canV = a.url || pdf || inP; // ponytail: non-pdf files outside the project → disabled (no generic text reader for abs paths)
-  menuAt(b, [{label: 'View file', icon: 'eye', off: !canV, hint: canV ? '' : 'Only files inside the project', run: () => a.url ? viewAtt(i) : pdf ? openPdf(a.path) : openFile(a.path)},
+    pdf = /\.pdf$/i.test(ap), inP = ap.toLowerCase().startsWith(base + '/'), canV = a.url || a.text || pdf || inP; // ponytail: non-pdf files outside the project → disabled (no generic text reader for abs paths)
+  menuAt(b, [{label: 'View file', icon: 'eye', off: !canV, hint: canV ? '' : 'Only files inside the project', run: () => a.url ? viewAtt(i) : a.text ? attText(i) : pdf ? openPdf(a.path) : openFile(a.path)},
     {label: 'Refer to this', icon: 'reply', run: () => attRef(i)}, '-', {label: 'Remove', icon: 'trash', run: () => rmAtt(i)}]); }
 function drawAtts() {
-  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}" onmouseenter="markHov(${i})" onmouseleave="markHov(-1)">${a.url ? `<img src="${a.url}" onclick="viewAtt(${i})" onload="this.parentNode.style.aspectRatio = this.naturalWidth + '/' + this.naturalHeight; attArr()">` : icon(fIcon(a.name)) + `<span>${esc(a.name)}</span>`}
+  $('atts').innerHTML = (atts[cur] || []).map((a, i) => `<div class="att${a.url ? ' img' : ''}" title="${esc(a.path || a.name)}" onmouseenter="markHov(${i})" onmouseleave="markHov(-1)">${a.url ? `<img src="${a.url}" onclick="viewAtt(${i})" onload="this.parentNode.style.aspectRatio = this.naturalWidth + '/' + this.naturalHeight; attArr()">` : icon(fIcon(a.name)) + (a.text ? `<span class="tchip" onclick="attText(${i})">${esc(stem(a.name))} · ${tsize(a.text)}</span>` : `<span>${esc(a.name)}</span>`)}
     <button class="amore" title="View, refer to or remove" onmousedown="event.preventDefault()" onclick="attMenu(this, ${i})">${icon('more')}</button>
     ${a.notes?.length ? `<button class="anote" title="${esc(a.notes.join('\n').slice(0, 160))}&#10;(click to edit the notes)" onclick="viewAtt(${i}); editImage()">${icon('doc')}</button>` : ''}</div>`).join('');
   attArr(); pbDraw(); if (cur) { drawChrome(); keepDraft(); }
@@ -2426,6 +2434,17 @@ function keepDraft(pid = cur, now = false) {
 }
 // ---- image viewer (chat, terminal, composer attachments) + editor: pen and numbered boxes with notes ----
 let VW = null; // {imgs: [{url, name}], i, map: composer attachment index per image | null (from chat → added as new)}
+// big pastes → chip: more than this many lines or characters (ponytail: fixed numbers; a setting if someone asks)
+const PASTE_LINES = 12, PASTE_CHARS = 1200;
+const tsize = t => { const n = t.split('\n').length; return n > 1 ? n + ' lines' : t.length + ' characters'; };
+const attText = i => { const a = atts[cur][i]; textView(stem(a.name), a.text); };
+// read-only text in a thin frame: title + X; Esc or a click outside closes it
+function textView(title, text) { document.querySelector('dialog.tview')?.remove();
+  const d = Object.assign(document.createElement('dialog'), {className: 'tview glass'});
+  d.innerHTML = `<div class="tvh"><span>${esc(title)}</span><span class="faint">${tsize(text)}</span><button class="ib x" title="Close (Esc)">${icon('x')}</button></div><pre></pre>`;
+  d.querySelector('pre').textContent = text; d.querySelector('.ib.x').onclick = () => d.close();
+  d.onclick = e => { if (e.target === d) d.close(); }; d.onclose = () => d.remove();
+  document.body.appendChild(d); d.showModal(); }
 function viewAtt(i) {
   const a = atts[cur] || [], map = a.map((x, k) => x.url ? k : -1).filter(k => k >= 0);
   openViewer(map.map(k => a[k]), map.indexOf(i), map);
@@ -2729,6 +2748,9 @@ const addPaths = paths => { for (const p of paths) { const a = {name: attName(p.
 async function pickFiles() { const f = await T.dialog.open({multiple: true}); if (f) addPaths([].concat(f)); }
 $('prompt').addEventListener('paste', e => {
   const imgs = [...e.clipboardData.items].filter(i => i.type.startsWith('image/'));
+  const txt = imgs.length ? '' : e.clipboardData.getData('text/plain'), n = txt.split('\n').length;
+  if (cur && (n > PASTE_LINES || txt.length > PASTE_CHARS)) { e.preventDefault(); const a = atts[cur] ||= [];
+    const k = 1 + a.filter(x => x.text).length; a.push({name: `Pasted text ${k}.txt`, text: txt}); drawAtts(); return; }
   if (!imgs.length) return;
   e.preventDefault();
   imgs.forEach(i => addImage(i.getAsFile()));
@@ -2890,7 +2912,7 @@ const contGo = pid => qWait(pid) ? (pid === cur && showQuestions(pid), toast('An
 const UNREAD = {}, USEREL = new WeakMap(); // pid → entries awaiting ✓✓; entry → its bubble (WeakMap ∵ logs stay plain data)
 const fnames = t => (t.match(/\n📎 (.+)$/)?.[1] || '').split(', ').filter(Boolean); // utext's file list
 const utext = (t, a) => { const f = a.filter(x => x.path); return t + (f.length ? `\n📎 ${f.map(x => x.name).join(', ')}` : ''); };
-const userEntry = (pid, t, a, e = {}) => { addEntry(pid, Object.assign(e, {kind: 'user', st: e.st || 'pend', text: utext(t, a), images: a.filter(x => x.data).map(x => ({url: x.url, name: x.name}))}));
+const userEntry = (pid, t, a, e = {}) => { addEntry(pid, Object.assign(e, {kind: 'user', st: e.st || 'pend', text: utext(t, a), images: a.filter(x => x.data).map(x => ({url: x.url, name: x.name})), texts: a.filter(x => x.text).map(x => ({name: x.name, text: x.text}))}));
   e.log = !!logs[pid]?.includes(e); return e; }; // log false = a handover turn hid it
 const unEntry = (pid, e) => { logs[pid] = (logs[pid] || []).filter(x => x !== e); saveLog(pid); (USEREL.get(e)?.closest('.crow') || USEREL.get(e))?.remove(); e.log = false; };
 const qBub = (pid, m) => { const e = userEntry(pid, m.text, m.atts, {st: 'queue'}); if (e.log) QB.set(m, e); };
@@ -3064,6 +3086,9 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   mac_setup: () => macLine(d.line),
   ctxmenu: () => CTXP ? (clearTimeout(CTXP.t), CTXP.show(d.sp)) : d.sp.length && call('ctx_pick', {id: -1}), // #390 late → release deferral
   switched: () => toast(d.text, 'warn'), // #398 auto relay switch
+  paused: () => { const t = new Date(d.until * 1000), at = `${t.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}, ${t.toLocaleDateString([], {weekday: 'short', day: 'numeric', month: 'short'})}`; // Rust has no local time: the page writes it
+    const msg = `${d.relay ? `All usage limits of the ${d.relay} relay are hit` : 'The usage limits are hit'}: work is paused until ${at}.${P(d.pid)?.cont?.startsWith('auto') ? ' It carries on by itself then.' : ''}`;
+    addEntry(d.pid, {kind: 'note', text: msg}); toast(P(d.pid) ? `${P(d.pid).name}: ${msg}` : msg, 'warn'); },
   janitor: () => toast(`Storage Janitor freed ${mb(d.freed)} (old caches, Claude Code versions)`, 'ok'),
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),

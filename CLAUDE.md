@@ -11,7 +11,8 @@ Current state: `HANDOVER.md`. Open work: GitHub issues labelled `task`. Frozen, 
 - `src-tauri/src/store.rs`: `~/.clauracle/config.json`, accounts (tokens in the OS keychain), usage/limits/pools, gh helpers,
   catalog of MCP/skills, installers, .env parsing, browsers.
 - `ui/index.html`: the whole UI, vanilla JS, no build step. Rust → page: event `clauracle` `{event, data}`.
-- `plugin/`: Clauracle's built-in Claude Code plugin (Ponytail skills, MIT), bundled as a resource.
+- `plugin/`: Clauracle's own Claude Code plugin, bundled as a resource. Third-party skills are never shipped: the page installs them
+  from their source on first run (`APPSKILLS` in `ui/index.html`) and updates them daily (`ext_update`).
 
 ## Commands
 - Run: `npx tauri dev`. Test: `cargo test --manifest-path src-tauri/Cargo.toml`. Build: `npx tauri build` (bundle for this OS).
@@ -32,6 +33,7 @@ Current state: `HANDOVER.md`. Open work: GitHub issues labelled `task`. Frozen, 
 - Connections/skills are allow-lists per project/account (`on`): nothing is on until picked (a picker asks on every new
   project/account). `on: None` = legacy deny-list (`off`). Global `cfg.off` switches an item off everywhere.
   Disabled MCP servers become `--disallowedTools`; Clauracle's own `skill:clauracle:*` are always on.
+  Ponytail is the project switch `ponytail`: while on, `~/.claude/skills/ponytail/SKILL.md` is added to the prompt.
 - The project is the source of truth: its `gh`/`off` are copied from its AI account at creation and never follow it after.
 - Never touch `gh auth switch`: per-process `GH_TOKEN` (+ git credential helper via `GIT_CONFIG_*`) instead.
 - Account/settings changes reconnect sessions after the current reply (`Input::Reconnect`).

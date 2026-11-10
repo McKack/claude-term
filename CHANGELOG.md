@@ -3,6 +3,9 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Relay at its limits: no more loop. It switches to an account with room, else goes up to 5–10% past one account's set limit, else pauses with "work is paused until <time, date>" and carries on by itself at the reset.
+- Windows: building a project while a copy of it is still open from its build folder works (Clauracle can build itself); the open copy is moved aside instead of blocking the build with "Access is denied".
+- A long paste (over 12 lines or 1200 characters) becomes a chip in the composer and in the sent message; click it to read the whole text in a small window. Claude and the filed task still get the full text.
 - Chat: identical status notes in a row (e.g. "Resumed session") collapse into one line with a ×2, ×3… count.
 - Windows: Clauracle draws its own title bar in the app's theme, with native measures (32 px, 24 px when maximised), a restore icon and a dimmed title when the window is not active.
 - Any `/command` of the Claude CLI now goes to it as typed and its reply shows in the chat; options a command names (`/effort`, `/model`, `/config`, `/output-style`…) become buttons.

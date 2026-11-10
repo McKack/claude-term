@@ -339,15 +339,8 @@ fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<String>) {
 
 {x}", p.answers) });
     }
-    let p = st.project(&pid).unwrap();
-    let over = store::over_limit(&st.cfg.lock().unwrap(), &p.account);
-    if let Some(w) = over {
-        let pick = store::relay_pick(&st.cfg.lock().unwrap(), &p.account); // own statement: an if-let would hold the lock into with_project → deadlock
-        if let Some(n) = pick {
-            st.with_project(&pid, |q| q.account = n.clone());
-            claude::relay_switched(&app, &st, &pid, &p.account, &n, &w);
-        }
-    }
+    live.pause_gen.fetch_add(1, SeqCst); // a manual Continue replaces a pending auto-resume
+    if !claude::limit_route(&app, &st, &pid, &live) { return; } // nothing left anywhere: paused until a reset, said so
     let p = st.project(&pid).unwrap(); // after a relay switch: same path/gh anyway
     // #220: open question = runner paused in every mode (auto_answer holds them by design) ∵ next task went on unanswered
     if !p.questions.is_empty() && p.cont != "auto_answer" {
@@ -441,6 +434,16 @@ async fn ext_find(kind: String, q: String) -> R<Value> {
     tauri::async_runtime::spawn_blocking(move || ureq::get(&url).call().map_err(|e| e.to_string())?.into_string().map_err(|e| e.to_string()))
         .await.map_err(|e| e.to_string())?
         .and_then(|s| serde_json::from_str(&s).map_err(|e| e.to_string()))
+}
+
+/// Skills installed from their source follow it: the skills CLI re-fetches every global skill that changed upstream.
+#[tauri::command]
+async fn ext_update() -> R<()> {
+    let home = dirs::home_dir().unwrap_or_default().to_string_lossy().to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let o = store::run("npx", &["-y", "skills", "update", "-g", "-y"], Some(&home), &[]);
+        if o.ok { Ok(()) } else { Err(o.stderr.chars().rev().take(300).collect::<Vec<_>>().into_iter().rev().collect()) }
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// #213 install user-wide. skill: a = "owner/repo", b = skill id → `npx skills add` (Claude Code only, copied ∵ Windows
@@ -2581,7 +2584,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![rel_fix, lic_credits, lic_write, ctx_pick, 
             fullscreen, state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
-            continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
+            continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, ext_update, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
             update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
             test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
             env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, write_bytes, lint, notes, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])

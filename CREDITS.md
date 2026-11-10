@@ -18,11 +18,14 @@ Clauracle is made by Kim ([McKack](https://github.com/McKack)), licensed under G
 - [SortableJS](https://github.com/SortableJS/Sortable) 1.15.6 (`ui/sortable.min.js`): MIT
 - [Fredoka](https://github.com/hafontia-zz/Fredoka) font by Milena Brandão, latin subset (`ui/fredoka-600.woff2`): SIL Open Font License 1.1
 - Icons drawn in the style of [Lucide](https://lucide.dev): ISC
-- Ponytail skills (`plugin/skills/`) by Dietrich Gebert: MIT (`plugin/LICENSE-ponytail`)
 
 The app icon (`assets/`) is Clauracle's own.
 
 ## Used, not shipped
 
 - [Claude Code](https://claude.com/claude-code) and [GitHub CLI](https://cli.github.com) are run from your own install.
+- [Ponytail](https://github.com/DietrichGebert/ponytail) by Dietrich Gebert: installed from its own source on first run, MIT
+- [Impeccable](https://github.com/pbakaus/impeccable) by Paul Bakaus: offered as a one-click install from its own source, Apache-2.0
+- [Superpowers](https://github.com/obra/superpowers) by Jesse Vincent (its verification skill): installed from its own source, MIT
+- [Playwright MCP](https://github.com/microsoft/playwright-mcp) (Apache-2.0), [Context7](https://github.com/upstash/context7) (MIT), [Godot MCP](https://github.com/Coding-Solo/godot-mcp) (MIT): installed from npm on first run or on a click
 - [@tauri-apps/cli](https://github.com/tauri-apps/tauri): build tool, MIT or Apache-2.0

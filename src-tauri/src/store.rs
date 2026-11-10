@@ -651,10 +651,63 @@ pub fn usage(cfg: &Config, account: &str) -> HashMap<String, f64> {
 
 /// The window that is at or past this account's limit, if any.
 pub fn over_limit(cfg: &Config, account: &str) -> Option<String> {
+    over_by(cfg, account, 0.0)
+}
+
+/// Same, with the limit raised by `extra` points (never past 100: a full window stays full).
+fn over_by(cfg: &Config, account: &str, extra: f64) -> Option<String> {
     let a = account_or_main(cfg, account);
     let u = usage(cfg, account);
     [("five_hour", a.limits.five_hour), ("seven_day", a.limits.seven_day)].iter()
-        .find(|(k, lim)| u.get(*k).copied().unwrap_or(0.0) >= *lim).map(|(k, _)| k.to_string())
+        .find(|(k, lim)| u.get(*k).copied().unwrap_or(0.0) >= (lim + extra).min(100.0)).map(|(k, _)| k.to_string())
+}
+
+/// What an auto run does when its account may be at a limit.
+#[derive(Debug, PartialEq)]
+pub enum Route {
+    Stay,                 // under its limit: carry on
+    Switch(String),       // another relay account has room
+    Stretch(String, f64), // every account is at its set limit: the one with the most left goes `extra` points over it
+    Pause(f64),           // nothing left anywhere: wait until this time (unix secs), the earliest reset in the relay
+}
+
+/// Limit hit → another account of the relay with room, else stretch (+5, then +10 points over the set limit, never
+/// past 100) to keep going until a window resets, else pause until the earliest reset. No relay = the account alone.
+pub fn relay_route(cfg: &Config, account: &str) -> Route {
+    if over_limit(cfg, account).is_none() { return Route::Stay; }
+    if let Some(n) = relay_pick(cfg, account) { return Route::Switch(n); }
+    let me = account_or_main(cfg, account);
+    let members: Vec<&Account> = if me.relay.is_empty() { vec![me] } else { cfg.accounts.iter().filter(|a| a.relay == me.relay).collect() };
+    let most = |id: &str| usage(cfg, id).values().cloned().fold(0.0, f64::max);
+    for extra in [5.0, 10.0] {
+        if let Some(a) = members.iter().filter(|a| over_by(cfg, &a.id, extra).is_none())
+            .min_by(|x, y| most(&x.id).partial_cmp(&most(&y.id)).unwrap()) {
+            return Route::Stretch(a.id.clone(), extra);
+        }
+    }
+    Route::Pause(relay_free_at(cfg, account))
+}
+
+/// When the relay (or a lone account) has room again: each account is free once its last blocking window resets,
+/// the relay once its first account is. No reset time known → look again in an hour.
+pub fn relay_free_at(cfg: &Config, account: &str) -> f64 {
+    let me = account_or_main(cfg, account);
+    let members: Vec<&Account> = if me.relay.is_empty() { vec![me] } else { cfg.accounts.iter().filter(|a| a.relay == me.relay).collect() };
+    let t = now();
+    let free_at = |a: &Account| cfg.usage.get(&a.id).map(|w| w.iter()
+        .filter(|(k, v)| v.resets_at.is_some_and(|r| r > t) && v.utilization * 100.0 >= match k.as_str() { "five_hour" => a.limits.five_hour, "seven_day" => a.limits.seven_day, _ => 100.0 })
+        .filter_map(|(_, v)| v.resets_at).fold(0.0, f64::max)).unwrap_or(0.0);
+    let until = members.iter().map(|a| free_at(a)).filter(|r| *r > t).fold(f64::INFINITY, f64::min);
+    if until.is_finite() { until } else { t + 3600.0 }
+}
+
+/// The CLI said a limit was hit (result text) but no rate-limit event marked the window full: mark it now, or the
+/// loop sends the next turn into the same wall. Reset time unknown → kept if known, else checked again in an hour.
+pub fn mark_limit_hit(cfg: &mut Config, account: &str, text: &str) {
+    let w = if text.to_lowercase().contains("week") { "seven_day" } else { "five_hour" };
+    let t = now();
+    let reset = cfg.usage.get(account).and_then(|u| u.get(w)).and_then(|v| v.resets_at).filter(|r| *r > t).unwrap_or(t + 3600.0);
+    cfg.usage.entry(account.into()).or_default().insert(w.into(), Window { utilization: 1.0, resets_at: Some(reset) });
 }
 
 /// Another account of the same relay that's under its limits, the one with the most left.
@@ -2399,6 +2452,26 @@ mod tests {
         cfg.usage.get_mut("A").unwrap().get_mut("five_hour").unwrap().resets_at = Some(now() - 1.0);
         assert_eq!(serde_json::from_str::<Account>(r#"{"pool":"x"}"#).unwrap().relay, "x", "#383 old key still loads");
         assert_eq!(over_limit(&cfg, "A"), None, "a reset window no longer counts");
+    }
+
+    #[test]
+    fn relay_routes_stretch_then_pause() {
+        let mut cfg = Config::default();
+        for id in ["A", "B"] { cfg.accounts.push(Account { id: id.into(), relay: "team".into(), ..Default::default() }); }
+        let (soon, later) = (now() + 3600.0, now() + 7200.0);
+        let ev = |f: f64, w: f64, r: f64| serde_json::json!({"status": "allowed", "unifiedWindows": {
+            "five_hour": {"utilization": f, "resetsAt": r}, "seven_day": {"utilization": w, "resetsAt": later}}});
+        record_usage(&mut cfg, "A", &ev(0.5, 0.1, soon));
+        assert_eq!(relay_route(&cfg, "A"), Route::Stay);
+        record_usage(&mut cfg, "A", &ev(1.0, 0.1, soon)); // A full, B over its set 90 but not 95
+        record_usage(&mut cfg, "B", &ev(0.2, 0.92, soon));
+        assert_eq!(relay_route(&cfg, "A"), Route::Stretch("B".into(), 5.0));
+        record_usage(&mut cfg, "B", &ev(0.2, 0.97, soon));
+        assert_eq!(relay_route(&cfg, "A"), Route::Stretch("B".into(), 10.0));
+        record_usage(&mut cfg, "B", &ev(0.2, 1.0, soon));
+        assert_eq!(relay_route(&cfg, "A"), Route::Pause(soon), "A's 5-hour window resets first");
+        mark_limit_hit(&mut cfg, "B", "You've hit your weekly limit");
+        assert_eq!(cfg.usage["B"]["seven_day"].resets_at, Some(later), "a known reset is kept");
     }
 
     #[test]

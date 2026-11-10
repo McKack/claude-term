@@ -12,7 +12,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot, Notify};
 
 const LESSONS_MAX: usize = 30; // ponytail: ~30 one-liners ≈ 1k tokens per session; prune in Settings › Accounts
-const PONYTAIL_MD: &str =include_str!("../../plugin/skills/ponytail/SKILL.md");
 
 const APPEND: &str = "You are running inside Clauracle, a desktop app around Claude Code that keeps long work going \
 across fresh sessions through a task list and HANDOVER.md. Its tools: mcp__clauracle__ready (the task is done and plan + \
@@ -220,6 +219,90 @@ pub struct Live {
     blind: AtomicBool,
     pub continuing: AtomicBool, // a Continue's fresh session is on its way (cleared when its message goes out) → 2nd click ignored        // last auto continue couldn't read the issues (gh failing) → a 2nd in a row pauses
     built: Mutex<String>,     // #89 smart build: HEAD at session start / last good smart build = diff base
+    hits: Mutex<Vec<f64>>,    // times a limit made this run switch or stretch: 3 within 15 min = a loop → pause
+    stretched: Mutex<String>, // "account+extra" already announced, so the stretch note shows once
+    limit_hit: AtomicBool,    // this turn ended on the CLI's limit message
+    pub pause_gen: std::sync::atomic::AtomicU64, // a newer pause (or a manual Continue) cancels an older pause's auto-resume
+}
+
+/// Limits before a turn starts: switch to a relay account with room, stretch one past its set limit, or pause until
+/// the earliest reset (then an auto run resumes by itself). false = paused: start nothing.
+pub fn limit_route(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> bool {
+    let Some(p) = st.project(pid) else { return false };
+    let route = store::relay_route(&st.cfg.lock().unwrap(), &p.account);
+    let to = match &route {
+        store::Route::Stay => return true,
+        store::Route::Switch(n) | store::Route::Stretch(n, _) => n.clone(),
+        store::Route::Pause(until) => { pause(app, st, pid, live, *until); return false; }
+    };
+    // loop guard: the limit info can lag behind the real limit (a turn hits the wall, the next account too…)
+    let t = store::now();
+    let looping = { let mut h = live.hits.lock().unwrap(); h.retain(|x| t - x < 900.0); h.push(t); h.len() >= 3 };
+    if looping {
+        live.hits.lock().unwrap().clear();
+        let until = store::relay_free_at(&st.cfg.lock().unwrap(), &p.account);
+        pause(app, st, pid, live, until);
+        return false;
+    }
+    let window = store::over_limit(&st.cfg.lock().unwrap(), &p.account).unwrap_or_default();
+    if to != p.account {
+        // #111: keep = gh stays as set in the project, no "Keep current / Use these" suggestion
+        st.with_project(pid, |q| { q.account = to.clone(); q.keep = true; });
+        if let store::Route::Switch(_) = route { relay_switched(app, st, pid, &p.account, &to, &window); }
+        else { emit(app, "project", json!(st.project(pid))); }
+    }
+    if let store::Route::Stretch(n, extra) = route {
+        let key = format!("{n}+{extra}");
+        if *live.stretched.lock().unwrap() != key {
+            let (nick, relay) = { let c = st.cfg.lock().unwrap(); let a = store::account_or_main(&c, &n); (a.nick.clone(), a.relay.clone()) };
+            let who = if relay.is_empty() { format!("{nick} is") } else { format!("Every account of the {relay} relay is") };
+            line(app, pid, "note", &format!("{who} at its set limit: {nick} goes on up to {extra}% past it until a limit resets."));
+            *live.stretched.lock().unwrap() = key;
+        }
+    }
+    true
+}
+
+/// Nothing left anywhere: say until when (the page writes the local time), notify, and resume an auto run at the reset.
+fn pause(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, until: f64) {
+    let Some(p) = st.project(pid) else { return };
+    let relay = store::account_or_main(&st.cfg.lock().unwrap(), &p.account).relay.clone();
+    let gen = live.pause_gen.fetch_add(1, SeqCst) + 1;
+    emit(app, "paused", json!({"pid": pid, "until": until, "relay": relay}));
+    emit(app, "status", json!({"pid": pid, "busy": false}));
+    let mins = ((until - store::now()) / 60.0).max(1.0).round() as u64;
+    let what = if relay.is_empty() { "The usage limits are hit".to_string() } else { format!("All usage limits of the {relay} relay are hit") };
+    notify(app, st, &format!("{}: paused", p.name), &format!("{what}: work is paused for {}h {:02}m, until a limit resets.", mins / 60, mins % 60));
+    if !p.questions.is_empty() {
+        emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
+    }
+    if !p.cont.starts_with("auto") { return; } // manual: Continue after the reset
+    let (app, st, pid, live) = (app.clone(), st.clone(), pid.to_string(), live.clone());
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs_f64((until - store::now()).max(0.0) + 60.0)).await;
+        if live.pause_gen.load(SeqCst) != gen || live.busy.load(SeqCst) { return; }
+        live.hits.lock().unwrap().clear();
+        if st.project(&pid).is_some_and(|p| p.ready) {
+            tauri::async_runtime::spawn_blocking(move || auto_continue(&app, &st, &pid, &live));
+        } else if st.project(&pid).is_some() && limit_route(&app, &st, &pid, &live) {
+            // stopped mid-task by the limit: the same session carries on (a new account needs a new process)
+            line(&app, &pid, "note", "A limit reset: resuming.");
+            live.inbox.front(vec![Input::Reconnect, Input::Msg(RESUMED.into())]);
+        }
+    });
+}
+
+/// The CLI's own limit message (turn result): "You've hit your 5-hour limit · resets …", "usage limit reached".
+fn is_limit_msg(t: &str) -> bool {
+    let t = t.to_lowercase();
+    t.contains("limit") && (t.contains("hit your") || t.contains("usage limit") || t.contains("rate limit") || t.contains("limit reached"))
+}
+
+#[test]
+fn limit_messages() {
+    assert!(is_limit_msg("You've hit your 5-hour limit · resets 10:30pm (Europe/Oslo)"));
+    assert!(is_limit_msg("Claude usage limit reached. Your limit will reset at 5pm"));
+    assert!(!is_limit_msg("the turn ended with an error"));
 }
 
 /// #83: the issue a continue message pins = its first "- #N" line (task_queue order, taken ones skipped).
@@ -327,9 +410,11 @@ fn args(st: &State, p: &Project) -> Vec<String> {
         append += "\n# Lessons (never repeat; add one with mcp__clauracle__lesson after a costly mistake)\n- ";
         append += &cfg.lessons.join("\n- ");
     }
-    if p.ponytail {
+    // Ponytail is not shipped: the page installs it from its source on first run (APPSKILLS). Until it is there, the switch adds nothing.
+    if let Some(md) = Some(()).filter(|_| p.ponytail).and_then(|_| dirs::home_dir())
+        .and_then(|h| std::fs::read_to_string(h.join(".claude/skills/ponytail/SKILL.md")).ok()) {
         append += "\n\n";
-        append += PONYTAIL_MD.splitn(3, "---").nth(2).unwrap_or(PONYTAIL_MD).trim();
+        append += md.splitn(3, "---").nth(2).unwrap_or(&md).trim();
     }
     let mcp = json!({"mcpServers": {"clauracle": {"type": "sdk", "name": "clauracle"}}});
     let mut a: Vec<String> = ["--output-format", "stream-json", "--verbose", "--input-format", "stream-json",
@@ -511,6 +596,9 @@ fn show(app: &AppHandle, st: &State, pid: &str, acct: &str, m: &Value) { // acct
         Some("assistant") => {
             for b in m["message"]["content"].as_array().into_iter().flatten() {
                 match b["type"].as_str() {
+                    // model "<synthetic>" = text the CLI wrote itself: the reply of a /command (or an API error). cmd → the page offers the options it names
+                    Some("text") if m["parent_tool_use_id"].is_null() && m["message"]["model"] == "<synthetic>" =>
+                        emit(app, "line", json!({"pid": pid, "kind": "claude", "text": b["text"], "cmd": true})),
                     Some("text") if m["parent_tool_use_id"].is_null() => line(app, pid, "claude", b["text"].as_str().unwrap_or("")),
                     Some("tool_use") if !b["name"].as_str().unwrap_or("").starts_with("mcp__clauracle__") => {
                         let sub = if m["parent_tool_use_id"].is_null() { "" } else { "↳ " };
@@ -546,8 +634,22 @@ fn show(app: &AppHandle, st: &State, pid: &str, acct: &str, m: &Value) { // acct
             if let Some(sid) = m["session_id"].as_str() {
                 st.with_project(pid, |p| p.session = Some(sid.into()));
             }
+            // a /command the CLI ran itself and that printed nothing: say so, or the chat shows no reply at all
+            if let Some(c) = m["local_command"].as_str().filter(|_| m["is_error"] != true && m["result"].as_str().unwrap_or("").is_empty()) {
+                emit(app, "line", json!({"pid": pid, "kind": "claude", "text": format!("`/{c}` done."), "cmd": true}));
+            }
             if m["is_error"] == true {
-                line(app, pid, "err", m["result"].as_str().unwrap_or("the turn ended with an error"));
+                let r = m["result"].as_str().unwrap_or("the turn ended with an error");
+                line(app, pid, "err", r);
+                // the wall itself: mark that window full now, or the next continue walks into it again (the loop)
+                if is_limit_msg(r) {
+                    let mut cfg = st.cfg.lock().unwrap();
+                    store::mark_limit_hit(&mut cfg, acct, r);
+                    store::save(&cfg);
+                    emit(app, "usage", json!({"account": acct, "usage": store::usage(&cfg, acct)}));
+                    drop(cfg);
+                    if let Some(l) = st.live.lock().unwrap().get(pid) { l.limit_hit.store(true, SeqCst); }
+                }
             }
         }
         Some("rate_limit_event") => {
@@ -559,6 +661,10 @@ fn show(app: &AppHandle, st: &State, pid: &str, acct: &str, m: &Value) { // acct
         }
         Some("system") if m["subtype"] == "init" => {
             emit(app, "commands", json!({"pid": pid, "commands": m["slash_commands"]}));
+        }
+        // a skill or plugin was added or removed mid-session: the composer's /list follows
+        Some("system") if m["subtype"] == "commands_changed" => {
+            emit(app, "commands", json!({"pid": pid, "commands": m["commands"]}));
         }
         _ => {}
     }
@@ -585,6 +691,14 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
             Ok(n) => { line(&app, &pid, "note", &format!("Pushed {n} commit{}", if n > 1 { "s" } else { "" })); emit(&app, "pushed", json!({"pid": pid})); }
             Err(e) => line(&app, &pid, "note", &format!("Auto-push failed: {e}")),
         });
+    }
+    // stopped mid-task by a limit (no ready): an auto run moves to a relay account and carries on, or pauses until a reset
+    if live.limit_hit.swap(false, SeqCst) && !live.armed.load(SeqCst) && p.cont.starts_with("auto") {
+        if limit_route(app, st, pid, live) {
+            line(app, pid, "note", "Limit hit mid-task: carrying on.");
+            live.inbox.front(vec![Input::Reconnect, Input::Msg(RESUMED.into())]);
+        }
+        return;
     }
     if live.armed.swap(false, SeqCst) {
         let was_handover = live.handing_over.swap(false, SeqCst);
@@ -684,27 +798,8 @@ async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live
 
 /// Auto modes: check the limits, switch to a relay account or stop, else start the next session.
 fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) {
+    if !limit_route(app, st, pid, live) { return; } // ready stays: resumes at the reset (or Continue)
     let p = st.project(pid).unwrap();
-    let over = store::over_limit(&st.cfg.lock().unwrap(), &p.account);
-    if let Some(window) = over {
-        let next = store::relay_pick(&st.cfg.lock().unwrap(), &p.account);
-        match next {
-            Some(n) => {
-                // #111: keep = gh stays as set in the project, no "Keep current / Use these" suggestion
-                st.with_project(pid, |p| { p.account = n.clone(); p.keep = true; });
-                relay_switched(app, st, pid, &p.account, &n, &window);
-            }
-            None => {
-                let msg = format!("Paused: {} is at its {} limit and no relay account has room.", p.account, label(&window));
-                line(app, pid, "note", &msg);
-                if !p.questions.is_empty() {
-                    emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
-                }
-                notify(app, st, &format!("{}: paused", p.name), &format!("{msg} {} question(s) waiting.", p.questions.len()));
-                return; // ready stays: Continue resumes once there's room
-            }
-        }
-    }
     // #9/#67: ANY open question pauses the run (auto only; auto_answer holds them by design) ∵ a clear while the card
     // is up = card gone + work goes on without the user → answering the last one resumes it
     if p.cont != "auto_answer" && !p.questions.is_empty() { // #220: off+handover too
@@ -1051,7 +1146,9 @@ pub fn resume_interrupted(app: &AppHandle, st: &Arc<State>) {
     let cut: Vec<String> = st.cfg.lock().unwrap().projects.iter().filter(|p| p.working && p.session.is_some())
         .map(|p| p.id.clone()).collect();
     for pid in cut {
-        session(app, st, &pid).inbox.push(Input::Msg(RESUMED.into()));
+        let live = session(app, st, &pid);
+        if !limit_route(app, st, &pid, &live) { continue; } // all at a limit: resumes at the reset, not into the wall
+        live.inbox.push(Input::Msg(RESUMED.into()));
         line(app, &pid, "note", "Clauracle restarted mid-turn: resuming");
     }
     // auto run that was between tasks (ready) when the app went down (self-restart #170, update, crash) → carry on;
@@ -1187,6 +1284,26 @@ fn step_cmd(p: &Project, step: &str) -> String {
     match step { "build" | "local" => &p.build.build, "run" => &p.build.run, _ => &p.build.deploy }.clone()
 }
 
+/// Windows: a running exe can't be overwritten (cargo: "failed to remove file … Access is denied"), but it can be
+/// renamed. A copy of the app still open from target/ (e.g. Clauracle building itself) → moved aside to *.old,
+/// the running copy keeps working, the build writes a fresh exe. Old *.old files are deleted once nothing runs them.
+fn free_locked_exes(project: &str) {
+    for d in ["src-tauri/target/debug", "src-tauri/target/release", "target/debug", "target/release"] {
+        let dir = std::path::Path::new(project).join(d);
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let f = e.path();
+            match f.extension().and_then(|x| x.to_str()) {
+                Some("old") => { let _ = std::fs::remove_file(&f); }
+                Some("exe") if std::fs::OpenOptions::new().write(true).open(&f).is_err() => {
+                    let _ = std::fs::rename(&f, f.with_extension(format!("{}.exe.old", store::now() as u64)));
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// #288 full build cmd → fast this-machine twin (debug, no installers). ponytail: Tauri + cargo only; others unchanged
 pub fn fast_cmd(cmd: &str) -> String {
     if cmd.contains("tauri build") && !cmd.contains("--debug") { return cmd.replacen("tauri build", "tauri build --debug --no-bundle", 1); }
@@ -1241,6 +1358,7 @@ pub async fn run_step(app: &AppHandle, st: &Arc<State>, pid: &str, step: &str) -
     // #175 marker: still there at the next start = the app died mid-build → resume_builds() starts it again
     let marker = store::home().join(format!("building-{pid}"));
     if step == "build" { let _ = std::fs::write(&marker, ""); }
+    if cfg!(windows) && step == "build" { free_locked_exes(&p.path); }
     let sign = store::sign_env(&p.path);
     let mut cmds = if matches!(only, Some("linux" | "macos")) { vec![] } else { vec![(cmd.clone(), shell(&cmd), None::<String>)] }; // linux/macos alone = only their WSL / Mac pass
     // #131: Windows + Linux target + WSL → 2nd pass in WSL (args set by Rust, no cmd.exe quoting); WSLENV forwards signing keys
@@ -1696,6 +1814,25 @@ mod tests {
             Input::Reconnect => "RECONNECT".into(),
         }).collect();
         assert_eq!(order, ["RECONNECT", "continue", "queued"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn running_exe_is_moved_aside_before_a_build() {
+        let root = std::env::temp_dir().join(format!("clauracle-lock-{}", std::process::id()));
+        let dir = root.join("target/debug");
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("app.exe");
+        std::fs::copy(r"C:\Windows\System32\ping.exe", &exe).unwrap();
+        let mut child = std::process::Command::new(&exe).args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null()).spawn().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(std::fs::remove_file(&exe).is_err(), "a running exe should be locked");
+        free_locked_exes(root.to_str().unwrap());
+        let moved = std::fs::read_dir(&dir).unwrap().flatten().any(|e| e.file_name().to_string_lossy().ends_with(".exe.old"));
+        let _ = child.kill(); let _ = child.wait();
+        assert!(!exe.exists() && moved);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

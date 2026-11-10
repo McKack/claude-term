@@ -1,5 +1,5 @@
 {
   "name": "clauracle",
   "version": "1.0.0",
-  "description": "Skills built into Clauracle. Ponytail skills by Dietrich Gebert, MIT (see LICENSE-ponytail)."
+  "description": "Clauracle's own additions. Third-party skills are never shipped here: the app installs them from their source."
 }
