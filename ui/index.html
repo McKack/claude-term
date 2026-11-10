@@ -1117,6 +1117,9 @@ function quote(t) { const ta = $('prompt'); ta.value = (ta.value.trim() ? ta.val
   ta.dispatchEvent(new Event('input')); ta.focus(); }
 document.addEventListener('contextmenu', e => {
   const t = e.target, sel = String(getSelection()).trim(), at = items => { e.preventDefault(); menuAt({getBoundingClientRect: () => ({left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY, height: 0})}, items); };
+  // A row with a "more" button: right-click opens that same menu
+  const more = t.closest('.att')?.querySelector('.amore');
+  if (more) { e.preventDefault(); more.click(); return; }
   const ed = t.closest('input:not([type=checkbox],[type=radio],[type=range],[type=button],[type=file]), textarea, [contenteditable]:not([contenteditable=false])');
   if (ed) { // #253 own Cut/Copy/Paste/Select all; menu click steals focus → refocus + restore the saved selection before each edit
     const ce = !('value' in ed), ro = ed.readOnly || ed.disabled, pw = ed.type === 'password';
@@ -5426,8 +5429,8 @@ function qSortable(list) {
     onStart: () => { qDragging = true; document.body.classList.add('dragging'); },
     onEnd: ({oldIndex: from, newIndex: to}) => { qDragging = false; document.body.classList.remove('dragging'); qMove(from, to); }});
   list.oncontextmenu = e => { const r = e.target.closest('.ti'), d = r?.querySelector('.qdrag'); if (!d) return; e.preventDefault(); e.stopPropagation(); /* #281 own menu, not the global one */
-    const all = [...list.querySelectorAll('.qdrag')], i = all.indexOf(d), n = all.length - 1;
-    menuAt({getBoundingClientRect: () => ({left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY, height: 0})}, [i && {icon: 'up', label: 'Move to top', run: () => qMove(i, 0)}, i < n && {icon: 'down', label: 'Move to bottom', run: () => qMove(i, n)}].filter(Boolean)); };
+    const all = [...list.querySelectorAll('.qdrag')], i = all.indexOf(d), n = all.length - 1, num = +(r.closest('[data-n]') || r.querySelector('[data-n]'))?.dataset.n || 0;
+    menuAt({getBoundingClientRect: () => ({left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY, height: 0})}, [num && {icon: 'pen', label: 'Edit task', run: () => editIssue(num)}, i && {icon: 'up', label: 'Move to top', run: () => qMove(i, 0)}, i < n && {icon: 'down', label: 'Move to bottom', run: () => qMove(i, n)}].filter(Boolean)); };
 }
 // queue row from → to: drag drop + #281 right-click Move to top/bottom; issue mode = P.order, else PLAN.md via plan_move
 async function qMove(from, to) {

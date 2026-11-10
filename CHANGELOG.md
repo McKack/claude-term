@@ -3,6 +3,9 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Right-click an attachment for the same menu as its … button; right-click a queued task to edit it.
+- Help texts across Settings, Services and Build are one short sentence each.
+- Icon buttons use three sizes everywhere.
 - Every message you send is saved on your machine before it is filed, with each image's notes beside the image. A message with an image is always filed as a task.
 - Clauracle asks before it clicks or types in its own window for you.
 - Clauracle no longer addresses you by name, and reports work as done only after running a check.
