@@ -43,7 +43,9 @@ svg.i { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.
 .btn:hover { background:var(--hover); } .btn:disabled { opacity:.45; cursor:default; }
 .btn.primary { background:var(--primary); border-color:var(--primary); color:var(--ink); } .btn.primary:hover { background:var(--primary2); }
 .btn.ghost { background:none; border-color:transparent; } .btn.ghost:hover { background:var(--hover); }
-.ib { display:inline-grid; place-items:center; width:30px; height:30px; border-radius:8px; border:0; background:none; color:var(--dim); cursor:pointer; transition:background .12s, color .12s; }
+/* Icon button: three sizes only. 30 in bars, 26 beside regular buttons, 20 inside tabs and pills. A container picks one with --ib. */
+:root { --ib-md:26px; --ib-sm:20px; } :is(#notes .nbar, .sh, .vctx, #ptabs, #emenu, .cvh) { --ib:var(--ib-md); } :is(.zctl, .ednote, .qp, #etabs .et, .cvh .ib.x) { --ib:var(--ib-sm); }
+.ib { display:inline-grid; place-items:center; width:var(--ib, 30px); height:var(--ib, 30px); padding:0; border-radius:8px; border:0; background:none; color:var(--dim); cursor:pointer; transition:background .12s, color .12s; }
 .ib:hover { background:var(--hover); color:var(--text); } .ib.on { color:var(--accent); background:var(--soft); } .ib:disabled, .menu button:disabled { opacity:.35; cursor:default; pointer-events:none; }
 input, select, textarea, .selbtn { background:var(--card); border:1px solid var(--line2); border-radius:10px; padding:6px 10px; outline:none; }
 textarea { resize:none; field-sizing:content; min-height:4.5em; max-height:60vh; } /* #234 auto-grow ≠ ugly native corner */ @supports not (field-sizing:content) { textarea { resize:vertical; } } /* WKWebView w/o field-sizing → keep a handle */
@@ -82,7 +84,7 @@ input[type=checkbox], input[type=radio] { accent-color:var(--accent); }
 .side-head { display:flex; align-items:center; gap:2px; padding:8px 8px 6px 10px; }
 #brand .ib { margin-left:auto; }
 #files { flex:1; overflow:auto; padding:2px 8px; }
-#notes { flex:1; display:flex; flex-direction:column; min-height:0; padding:2px 8px 8px; } #notes .nbar { display:flex; align-items:center; gap:4px; padding:2px 0 6px; } #notes .nbar .ib { width:26px; height:26px; padding:0; }
+#notes { flex:1; display:flex; flex-direction:column; min-height:0; padding:2px 8px 8px; } #notes .nbar { display:flex; align-items:center; gap:4px; padding:2px 0 6px; } 
 #notes textarea { flex:1; resize:none; font:12.5px/1.5 ui-monospace,Consolas,monospace; max-height:none; } #notes .mdoc { flex:1; overflow:auto; }
 /* #371 rendered markdown (Notes, Code tab, File viewer) */
 .mdoc { font-size:13.5px; line-height:1.6; overflow-wrap:anywhere; } .mdoc > :first-child { margin-top:0; }
@@ -194,12 +196,12 @@ code.hl { color:var(--accent); background:var(--soft); padding:0 4px; border-rad
 .vtools { display:flex; flex-direction:column; align-items:center; gap:8px; padding:10px 8px; border-right:1px solid var(--line); overflow:auto; }
 .vtools .seg { flex-direction:column; } .vtools .seg button { padding:7px; }
 .vstage { position:relative; display:grid; place-items:center; padding:14px; min-height:0; overflow:hidden; }
-.zctl { display:inline-flex; align-items:center; gap:0; } .zctl .ib { width:22px !important; height:22px !important; padding:0; } .zctl .zp { min-width:38px; text-align:center; font-size:11.5px; color:var(--dim); cursor:ew-resize; user-select:none; font-variant-numeric:tabular-nums; } .zctl .zp:hover { color:var(--text); } /* #393 */
+.zctl { display:inline-flex; align-items:center; gap:0; }  .zctl .zp { min-width:38px; text-align:center; font-size:11.5px; color:var(--dim); cursor:ew-resize; user-select:none; font-variant-numeric:tabular-nums; } .zctl .zp:hover { color:var(--text); } /* #393 */
 .vstage > .vdoc, .vstage > .vtext { place-self:stretch; width:100%; height:100%; } .vdoc { border:0; border-radius:6px; background:#fff; } .vtext { max-height:none; margin:0; padding:0; align-content:start; } /* #247 File viewer: pdf / text */
 .vstage > img { max-width:100%; } .vstage > img, #edC { object-fit:contain; border-radius:6px; display:block; }
 #edWrap { position:relative; } #edC { cursor:crosshair; touch-action:none; }
 .ednote { position:absolute; width:240px; display:flex; align-items:flex-end; gap:4px; padding:3px 4px 3px 8px; border:2px solid; border-radius:8px; background:var(--card); }
-.ednote textarea { flex:1; border:0; padding:2px 0; background:none; resize:none; min-height:0; font-size:12.5px; box-shadow:none; overflow:hidden; } .ednote .ib { width:22px; height:22px; }
+.ednote textarea { flex:1; border:0; padding:2px 0; background:none; resize:none; min-height:0; font-size:12.5px; box-shadow:none; overflow:hidden; } 
 .edtxt { position:absolute; margin:0; padding:0; border:1px dashed #4096ff; border-radius:0; outline:none; background:none; line-height:1; min-width:2ch; field-sizing:content; box-shadow:none; } /* #444 text tool input */
 .ednote.col { width:auto; padding:3px; cursor:pointer; border-radius:50%; } .ednote.col .i { width:14px; height:14px; display:block; }
 .thumbs img { cursor:zoom-in; }
@@ -297,21 +299,21 @@ pre.diff .ctx { color:var(--faint); }
 :is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib)):hover { color:var(--text); background:var(--hover); }
 :is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib)).on { color:var(--text); background:var(--tabbg, var(--bg)); border-color:var(--line); box-shadow:inset 0 2px var(--accent); }
 :root.c-round :is(#etabs .et, .vtabs .et, #ptabs > button:not(.ib)) { border-radius:14px 14px 0 0 !important; }
-#ptabs .ib { width:24px; height:24px; padding:0; } #pcol .i { rotate:90deg; } #main.pc #pcol .i { rotate:-90deg; }
+ #pcol .i { rotate:90deg; } #main.pc #pcol .i { rotate:-90deg; }
 #pgrip { position:absolute; left:0; right:0; top:-4px; height:7px; cursor:row-resize; z-index:5; } #pgrip:hover, #pgrip.on { background:color-mix(in srgb, var(--accent) 30%, transparent); }
 #main.edit #log { flex:0 1 var(--ph); min-height:0; /* #344 shrinks before overflowing the window; #edv keeps its 80px */ margin-top:0; padding-top:8px; mask-image:none; }
 #main.edit.shell #log, #main.edit.shell #dock, #main.edit.pc #log, #main.edit.pc #dock { display:none; }
 #main.edit.shell:not(.pc) #shellbox { display:block; flex:0 1 calc(var(--ph) + var(--dh, 0px)); min-height:0; /* #317 + last dock height ∴ Terminal ⇄ Shell keeps the panel size */ background:var(--term); padding:6px 0 0 10px; overflow:hidden; } #shellbox > div { height:100%; }
 #etabs { display:flex; align-items:stretch; gap:2px; padding:4px 4px 0; box-shadow:inset 0 -1px var(--line); background:var(--side); overflow-x:auto; scrollbar-width:none; min-height:34px; }
-#etabs .et, .vtabs .et { display:flex; align-items:center; gap:6px; padding:0 6px 0 12px; font-size:12.5px; white-space:nowrap; } #etabs .et .ib { width:20px; height:20px; padding:0; opacity:0; } #etabs .et:hover .ib, #etabs .et.on .ib { opacity:1; }
+#etabs .et, .vtabs .et { display:flex; align-items:center; gap:6px; padding:0 6px 0 12px; font-size:12.5px; white-space:nowrap; } #etabs .et .ib { opacity:0; } #etabs .et:hover .ib, #etabs .et.on .ib { opacity:1; }
 #etabs .et.dirty .x::before { content:"●"; font-size:11px; } #etabs .et.dirty .x:not(:hover) .i { display:none; } #etabs .add { width:30px; height:auto; border-radius:0; }
 #ebody { flex:1; min-height:0; display:flex; position:relative; }
 #ebody textarea { flex:1; border:0; border-radius:0; resize:none; outline:0; padding:10px 14px; font:13px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; tab-size:4; background:var(--bg); color:var(--text); white-space:pre; }
 #ebody .ecode { flex:1; max-height:none; border:0; border-radius:0; background:var(--bg); tab-size:4; } #ebody .ew { position:relative; min-width:max-content; min-height:100%; } /* #329 */
 #ebody .ecode pre { font:inherit; pointer-events:none; -webkit-user-select:none; user-select:none; tab-size:4; } #ebody .ecode textarea { position:absolute; inset:0; width:100%; height:100%; max-height:none; min-height:0; field-sizing:fixed; overflow:hidden; padding:8px 12px 8px var(--lw); font:inherit; background:none; color:transparent; caret-color:var(--text); }
-#emenu { display:flex; align-items:center; gap:2px; padding:2px 6px; background:var(--side); border-bottom:1px solid var(--line); font-size:12.5px; } #emenu .mb { background:none; border:0; padding:3px 9px; border-radius:6px; color:var(--dim); font:inherit; cursor:pointer; } #emenu .mb:hover { background:var(--hover); color:var(--text); } #emenu .ib { width:26px; height:24px; padding:0; } :is(#emenu, #ectx) .ez { width:auto; padding:0 6px; font-size:11.5px; color:var(--dim); } /* #372 */
+#emenu { display:flex; align-items:center; gap:2px; padding:2px 6px; background:var(--side); border-bottom:1px solid var(--line); font-size:12.5px; } #emenu .mb { background:none; border:0; padding:3px 9px; border-radius:6px; color:var(--dim); font:inherit; cursor:pointer; } #emenu .mb:hover { background:var(--hover); color:var(--text); }  :is(#emenu, #ectx) .ez { width:auto; padding:0 6px; font-size:11.5px; color:var(--dim); } /* #372 */
 #ebody .ecode.wrap .ew { min-width:0; } #ebody .ecode.wrap textarea { white-space:pre-wrap; overflow-wrap:anywhere; } #ebody .epv { flex:1; overflow:auto; padding:14px 22px; background:var(--bg); } #ebody .epv:has(> .code) { padding:0; }
-#rbody:has(> .cview) { padding:0; overflow:hidden; display:flex; } .cview { flex:1; min-width:0; display:flex; flex-direction:column; } .cvh { display:flex; align-items:center; gap:6px; min-height:34px; padding:0 12px; font-size:12.5px; white-space:nowrap; } .cvh svg { flex:none; } .cvh .ib { width:24px; height:24px; padding:0; } .cvh .ib.x { width:20px; height:20px; } /* #458 */ .cview > .vctx { flex:none; } .cvs { flex:1; min-height:0; overflow:auto; padding:6px 0 10px; } .cvs > .code { max-height:none; overflow:visible; } .cimg { padding:8px 12px; } .cimg img { display:block; max-width:100%; height:auto; margin:0 auto; background:repeating-conic-gradient(#8882 0 25%, transparent 0 50%) 0 0/16px 16px; } /* #446 */ .cvs > .code:not(.wrap) { width:max-content; min-width:100%; } /* #443 Code tab = light File viewer: name row + context bar + one scroller to the panel bottom (was .code max-height 100vh-170 → clipped early) */
+#rbody:has(> .cview) { padding:0; overflow:hidden; display:flex; } .cview { flex:1; min-width:0; display:flex; flex-direction:column; } .cvh { display:flex; align-items:center; gap:6px; min-height:34px; padding:0 12px; font-size:12.5px; white-space:nowrap; } .cvh svg { flex:none; }  /* #458 */ .cview > .vctx { flex:none; } .cvs { flex:1; min-height:0; overflow:auto; padding:6px 0 10px; } .cvs > .code { max-height:none; overflow:visible; } .cimg { padding:8px 12px; } .cimg img { display:block; max-width:100%; height:auto; margin:0 auto; background:repeating-conic-gradient(#8882 0 25%, transparent 0 50%) 0 0/16px 16px; } /* #446 */ .cvs > .code:not(.wrap) { width:max-content; min-width:100%; } /* #443 Code tab = light File viewer: name row + context bar + one scroller to the panel bottom (was .code max-height 100vh-170 → clipped early) */
 .epv .code, #rbody > .code, .cvs > .code, .vtext > .code { background:none; border:0; border-radius:0; } /* #392 code views: no box, just coloured text */
 #ebody .ecode pre > div.lw, #rbody .code pre > div.lw { background:color-mix(in srgb, #d9a21b 10%, transparent); } #ebody .ecode pre > div.le, #rbody .code pre > div.le { background:color-mix(in srgb, var(--err) 10%, transparent); } /* #374 lint rows + gutter icons */
 .code pre > div.lw::before { background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5 15 14.5H1z' fill='%23d9a21b'/%3E%3Cpath d='M8 6v4M8 11.4v1.2' stroke='%23000' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat 3px .3em/12px; }
@@ -432,7 +434,7 @@ pre.diff .ctx { color:var(--faint); }
 #queue .qnav.l svg { rotate:180deg; }
 #qrow { display:flex; gap:6px; overflow:hidden; flex:1; min-width:0; scroll-behavior:smooth; }
 .qp { display:inline-flex; gap:2px; align-items:center; flex:none; max-width:300px; padding:2px 2px 2px 3px; border:1px dashed var(--line2); border-radius:99px; font-size:12.5px; background:var(--card); cursor:pointer; }
-.qp:hover { border-color:var(--accent); } .qp .ib { width:22px; height:22px; } .qp .ib svg { width:13px; height:13px; }
+.qp:hover { border-color:var(--accent); }  .qp .ib svg { width:13px; height:13px; }
 .qp .qi { display:inline-grid; place-items:center; width:24px; height:20px; border-radius:99px; background:var(--soft); color:var(--accent); flex:none; } .qp .qi svg { width:12px; height:12px; }
 .qp .qa { display:inline-flex; align-items:center; gap:1px; flex:none; color:var(--dim); font-size:11px; } .qp .qa svg { width:13px; height:13px; }
 .qp .qt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; padding:0 4px; }
@@ -470,7 +472,7 @@ pre.diff .ctx { color:var(--faint); }
 .btn.sm { padding:2px 8px; font-size:12px; }
 .warn { background:color-mix(in srgb, var(--err) 12%, transparent); color:var(--err); border-radius:10px; padding:8px 10px; font-size:12.5px; margin:6px 0; }
 .sec { margin:0 0 18px; } .sh { display:flex; align-items:center; gap:6px; min-height:26px; margin:0 2px 6px; } .sh .label { flex:1; display:flex; align-items:center; gap:6px; min-width:0; } /* #269: inline btn in title (ⓘ) made a 26px line box → text sank to its baseline */
-.sh .ib { width:26px; height:26px; }
+
 .fold > summary { list-style:none; cursor:pointer; user-select:none; } .fold > summary::-webkit-details-marker { display:none; }
 .fold > summary > .i { width:14px; height:14px; color:var(--faint); transition:rotate .15s; } .fold[open] > summary > .i { rotate:90deg; }
 .fold > summary:hover .label { color:var(--dim); } .fold:not([open]) { margin-bottom:8px; } .sh .pill { margin-right:2px; }
@@ -607,7 +609,7 @@ pre.diff .ctx { color:var(--faint); }
 .menu button:hover { background:var(--hover); } .menu button small { display:block; color:var(--faint); } .menu .chk { width:16px; color:var(--accent); } .menu button svg { width:14px; height:14px; } .menu button small { font-size:11px; }
 .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
 .menu .mand { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--faint); padding:2px 10px; } .menu .mand::before, .menu .mand::after { content:''; flex:1; border-top:1px solid var(--line); }
-.vctx { grid-column:1/-1; display:flex; align-items:center; gap:8px; min-height:34px; padding:0 12px; border-bottom:1px solid var(--line); font-size:12px; white-space:nowrap; overflow:hidden; } .vctx:empty { display:none; } .vctx input[type=range] { width:90px; padding:0; border:0; accent-color:var(--accent); } .vctx b { min-width:24px; font-weight:500; font-variant-numeric:tabular-nums; } .vctx .ib { width:26px; height:26px; padding:0; } .vctx .ib b { min-width:0; font-weight:700; } .vctx select { width:auto; height:26px; padding-block:0; font-size:12px; } /* #451 text style */ .vctx .sep { width:1px; height:16px; background:var(--line); } .vctx .vtn { color:var(--text); display:flex; } .vctx .vtn .i { width:18px; height:18px; } /* #453 tool icon */ .vctx .vur { margin-left:auto; display:flex; gap:2px; } /* #437 undo/redo right */ /* #379 context bar = per-tool settings (was #293 stroke popover) */
+.vctx { grid-column:1/-1; display:flex; align-items:center; gap:8px; min-height:34px; padding:0 12px; border-bottom:1px solid var(--line); font-size:12px; white-space:nowrap; overflow:hidden; } .vctx:empty { display:none; } .vctx input[type=range] { width:90px; padding:0; border:0; accent-color:var(--accent); } .vctx b { min-width:24px; font-weight:500; font-variant-numeric:tabular-nums; }  .vctx .ib b { min-width:0; font-weight:700; } .vctx select { width:auto; height:26px; padding-block:0; font-size:12px; } /* #451 text style */ .vctx .sep { width:1px; height:16px; background:var(--line); } .vctx .vtn { color:var(--text); display:flex; } .vctx .vtn .i { width:18px; height:18px; } /* #453 tool icon */ .vctx .vur { margin-left:auto; display:flex; gap:2px; } /* #437 undo/redo right */ /* #379 context bar = per-tool settings (was #293 stroke popover) */
 .menu .mcap { font-size:11.5px; font-weight:600; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; padding:6px 10px 2px; }
 .menu .mact { display:inline-grid; place-items:center; width:24px; height:22px; border-radius:6px; color:var(--dim); } .menu .mact:hover { background:var(--soft); color:var(--accent); } .menu .mact svg { width:14px; height:14px; }
 .menu .mact.lab { display:inline-flex; gap:4px; width:auto; min-width:92px; padding:0 6px; margin-left:4px; border:1px solid var(--line2); font-size:12px; } .menu .mact.lab svg:last-child { width:10px; height:10px; margin-left:auto; }
@@ -3164,7 +3166,7 @@ function projectsPage() {
   const root = `<div class="grid2" style="grid-template-columns:120px 1fr;margin-top:0"><span>Projects folder</span><span class="row">
       <input class="grow mono" value="${esc(S.projects_dir)}" onchange="call('set_projects_dir', {dir:this.value.trim()}).then(refresh)"><button class="btn" onclick="pickRoot()">Choose…</button>
       <button class="btn" title="Sort folders into owner/repo and local/" onclick="menuAt(this, [{label: 'Organize the projects folder', run: () => organize('')}, {label: 'Scan another folder…', run: async () => { const d = await T.dialog.open({directory: true, title: 'Folder to organize'}); if (d) organize(d); }}])">${icon('brush')}Organize…</button></span>
-      <span></span><small class="dim" style="margin-top:-6px">Clones go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> in here (others' repos under their owner), new projects to <span class="mono">local/</span>.</small></div>`;
+      <span></span><small class="dim" style="margin-top:-6px">Clones go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> in here, new projects to <span class="mono">local/</span>.</small></div>`;
   if (!mp) return root + empty('No projects yet', startProj);
   const p = P(mp);
   const items = kind => cxList(kind, 'project:' + p.id, p);
@@ -3188,8 +3190,8 @@ function projectsPage() {
     ${fold('p-save', 'Options', `<div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${(p.allow || []).length ? /* 3 rows: title / tags / description (#53) ∵ side-by-side squeezed the text */ `<div class="opt-row" style="display:block"><div>Always allowed</div><span class="row wrap" style="gap:4px;margin:6px 0">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ${icon('x')}</span>`).join('')}</span><small class="dim">Tools this project runs without asking</small></div>` : ''}
-      ${optRow('Credit Claude in commits', 'Off: no Co-Authored-By or "Generated with" lines; Claude never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
-      ${optRow('Keep .env away from Clauracle', 'Clauracle can\'t read or edit .env files; manage them in Services › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
+      ${optRow('Credit Claude in commits', 'Off: commits carry no Co-Authored-By or "Generated with" lines', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
+      ${optRow('Keep .env away from Clauracle', 'Clauracle can\'t read or edit .env files', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
     </div>`, [p.ponytail, p.ai_credit, p.hide_env].filter(Boolean).length + ' on', '', false)}
     ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
       <span>Local build</span><input class="mono" value="${esc(p.build.local || '')}" placeholder="Auto: fast debug build (e.g. tauri build --debug --no-bundle)" title="Used by builds after a task and /build on this machine. Release / deploy keep the full Build command." onchange="setBuild('local', this.value)">
@@ -3202,7 +3204,7 @@ function projectsPage() {
       ${!p.license && g ? `<button class="btn primary" onclick="setM({license:'${g}'})">${icon('check')}Confirm ${esc(LICS[g] || g)} (from its LICENSE file)</button>` : ''}<button class="btn" onclick="licHelp()">${icon('info')}Help me choose</button></div>
       <div id="licw">${licInfo(p.license)}</div><div class="label" style="margin-top:12px">Libraries it ships</div><div id="licd">${licDeps(RELC[mp]?.c, mp)}</div>`,
       p.license ? LICS[p.license] || p.license : '', '', !p.license))(RELC[mp]?.c?.lic_id)}
-    ${fold('p-disk', 'Disk' + infoI('Build and cache folders git ignores (a build makes them again). Storage Janitor cleans them on its own: after 14 days without commits, over 10 GB, or when the drive runs low (also old Claude Code versions and, on a low drive, Claude transcripts older than 14 days).'), `      <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
+    ${fold('p-disk', 'Disk' + infoI('Storage Janitor deletes build and cache folders that git ignores after 14 days idle.'), `      <div id="diskBox"><button class="btn" onclick="drawDisk()">Check disk use</button></div>`)}
     ${cxGroup('p-cx', 'Connections &amp; Skills', 'project:' + p.id, p)}${cxFold('p-plugin', 'Plugins & mods', 'plugin', 'project:' + p.id, p)}
     </div></div>`;
 }
@@ -3249,7 +3251,7 @@ async function organize(dir) {
   dlg(`<div style="padding:20px">${skel(50, 'b100', 'b100', 'b100')}</div>`);
   const l = (await call('scan_folder', {dir}).catch(() => [])).filter(x => !x.placed);
   if (!l.length) { await say('Everything there is already in place.'); return openSettings('projects'); }
-  dlg(`<h2 style="margin:0 0 4px;font-size:17px">Organize</h2><p class="dim" style="margin:0 0 10px;font-size:13px">GitHub repos go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> (renamed to the repo's name), everything else to <span class="mono">local/</span> in your projects folder. Untick what should stay.</p>
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">Organize</h2><p class="dim" style="margin:0 0 10px;font-size:13px">GitHub repos go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span>, the rest to <span class="mono">local/</span>. Untick what stays.</p>
     <div class="box" style="max-height:50vh;overflow:auto">${l.map((x, i) => `<label class="check"><input type="checkbox" value="${i}" checked><span class="grow mono" style="font-size:12px">${esc(x.path)}${x.project ? ' <span class="pill">active</span>' : ''}<small class="dim" style="display:block">→ ${esc(x.target)}</small></span></label>`).join('')}</div>
     <p id="orgMsg" class="err" style="font-size:13px"></p><div class="btns"><button class="btn ghost" onclick="openSettings('projects')">Cancel</button><button class="btn primary" id="orgGo">Move</button></div>`);
   $('orgGo').onclick = async () => {
@@ -3466,7 +3468,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   const c = RELC[pid].c, re = `<button class="ib" title="Check again" onclick="relRefresh()">${icon('loop')}</button>`;
   const ask = `<button class="btn${k < 0 ? ' primary' : ''}" ${RELFIX[pid]?.has('summary') ? 'disabled><i class="spin"></i>' : `onclick="relAsk('summary')">${icon('sparkle')}`}What's missing for ${relNext(p)}?</button>`;
   if (c.err) return stHead('Release', re) + (`<p class="err">${esc(c.err)}</p>`);
-  if (k < 0 && RELTO[pid] == null) return stHead('Release', re) + (`<p class="dim" style="margin:0 0 8px">Walk this project to a release: alpha → beta → release candidate → published. Each stage has its own checklist, stricter going up.</p>
+  if (k < 0 && RELTO[pid] == null) return stHead('Release', re) + (`<p class="dim" style="margin:0 0 8px">Walk this project to a release, one checklist per stage.</p>
     <div class="btnrow col">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`);
   const tv = (c.tag || '').replace(/^v/, ''), cv = (c.version || '').replace(/^v/, '');
   const top = (c.staged || []).reduce((a, x) => !a || vcmp(x.v, a) > 0 ? x.v : a, tv); // #266 staged versions count as taken
@@ -3680,7 +3682,7 @@ async function buildHtml(p, has, live, force) {
     <li><span class="sn">3</span>${live || RELC[pid0] ? await relWizard(p, live && force === true, !live) : stHead('Release') + skel(70, 45, 'b100')}</li></ol>`
       + actHtml()
       + (!svcOf(p).includes('macsign') && mac
-        ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">This project builds for macOS. Unsigned, testers get an "unidentified developer" block. Have an Apple Developer account? Sign and notarize from CI.</p>
+        ? sec('Mac builds', `<p class="dim" style="margin:0 0 8px">Unsigned, testers get an "unidentified developer" block. An Apple Developer account fixes that.</p>
           <button class="btn block" onclick="svcAdd('macsign').then(() => rightTab('svc'))">Set up Mac signing</button>`) : '')
       + (has || builds[cur]?.out ? sec('Output', `<div class="out" id="buildOut">${esc(builds[cur]?.out || '')}</div>`) : '');
 }
@@ -4028,7 +4030,7 @@ async function taskStart(n) {
 function publishForm(p, users) {
   if (!users.length) return `<p class="dim">Only on this computer. Add a GitHub account to publish it.</p><button class="btn primary block" onclick="addGh()">${icon('plus')}Add GitHub account</button>`;
   const def = p.gh || S.accounts.find(a => a.id === p.account)?.gh || users[0];
-  return `<p class="dim">Only on this computer so far. Publishing git-ignores .env files first, and makes a first commit if there isn't one.</p>
+  return `<p class="dim">Only on this computer so far. Publishing git-ignores .env files first.</p>
     ${field('Account', `<select id="pubUser">${users.map(u => `<option ${u === def ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select>`)}
     ${field('Name', `<input id="pubName" value="${esc(p.name)}" placeholder="name or org/name">`)}
     <label class="chk"><input type="checkbox" id="pubPrivate" checked> Private repository</label>
@@ -4465,7 +4467,7 @@ async function drawServices() {
   // #406 + / … row like Projects (.ptop); … = tab menu + jump to Secrets
   const top = `<div class="ptop"><button class="ib" title="Add a service" onclick="svcMenu(this)">${icon('plus')}</button><button class="ib" title="More: Secrets, refresh" onclick="menuAt(this, svcItems())">${icon('more')}</button></div>`;
   if (!ids.length) {
-    box.innerHTML = top + sec('Services', `<p class="dim">What this project signs in with, takes payments through or ships to. Each one keeps its links, steps and keys together, and fills .env for you.</p>
+    box.innerHTML = top + sec('Services', `<p class="dim">Services this project signs in with, takes payments through or ships to.</p>
       <button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>`) + secretsFold(files);
     SVCDOT[cur] = false; tabDots();
     return envJump(files);
@@ -4550,7 +4552,7 @@ function bundleRow(stack) {
 const BID_OK = s => /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(s);
 function bundleEdit() {
   const b = BUNDLE[cur] || {}, v = b.id || b.suggest || '';
-  dlg(`<h2 style="margin:0 0 4px;font-size:17px">Bundle ID</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Your app's ID at Apple, reversed domain you own or your GitHub name. Set it before the first release: changing it later makes it a different app (fresh settings, separate App ID).</p>
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">Bundle ID</h2><p class="dim" style="margin:0 0 12px;font-size:13px">Your app's ID at Apple. Changing it after the first release makes it a different app.</p>
     ${field('ID', `<input id="bidIn" class="mono" value="${esc(v)}" oninput="bidPrev()">`)}
     ${b.suggest && b.suggest !== v ? `<div class="btnrow"><button class="btn sm ghost" onclick="$('bidIn').value='${esc(b.suggest)}';bidPrev()">Use ${esc(b.suggest)}</button></div>` : ''}
     <p id="bidMsg" class="dim" style="font-size:13px"></p>
@@ -4645,7 +4647,7 @@ async function drawCloud() {
       ...Object.fromEntries(list(g.billing).filter(b => b.open).map(b => [b.name.split('/').pop(), b.displayName]))}, (g.linked?.billingAccountName || '').split('/').pop())}</select>`)
     + `<div class="fl"><span>APIs</span><div class="box" style="margin:0">${Object.entries(APIS).map(([api, l]) => optRow(esc(l), `<span class="mono">${api}</span>`,
       sw(on.has(api), `gDo('api', '${api}', this.checked, this)`))).join('')}</div></div>
-    <div class="fl"><span>Sign in with Google</span><span class="dim" style="font-size:13px">Google has no CLI for OAuth clients: set up the consent screen and a client, then fill in the keys below.</span></div>
+    <div class="fl"><span>Sign in with Google</span><span class="dim" style="font-size:13px">Set up the consent screen and a client in Google, then fill in the keys below.</span></div>
     <div class="btnrow"><button class="btn sm" data-url="${con('auth/overview')}">Consent screen</button><button class="btn sm" data-url="${con('auth/clients')}">Clients</button><button class="btn sm" data-url="${con('home/dashboard')}">Console</button></div>` : '')
     + `<p id="gMsg" class="${err ? 'err' : 'dim'}" style="font-size:13px;margin:0">${esc(err || '')}</p>`;
 }
@@ -4812,7 +4814,7 @@ async function pickItems(scope, title, pre) {
   const part = (k, l) => { const xs = all.filter(i => i.kind === k); return xs.length ? `<div class="label" style="margin-top:12px">${l}</div><div class="box" style="max-height:210px;overflow:auto;margin-bottom:0">${xs.map(row).join('')}</div>` : ''; };
   const tick = f => document.querySelectorAll('#dlg input[type=checkbox]').forEach(c => c.checked = f(c.value));
   let last = []; try { last = JSON.parse(localStorage.lastPick || '[]'); } catch {} // per computer, last Save of any picker
-  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(title)}</h2><p class="dim" style="margin:0;font-size:13px">Only what you tick loads; everything else on this computer doesn't even start for it. You can change it later in Settings.</p>
+  dlg(`<h2 style="margin:0 0 4px;font-size:17px">${esc(title)}</h2><p class="dim" style="margin:0;font-size:13px">Only what you tick loads for this project.</p>
     <p class="row" style="margin:10px 0 0">${last.length ? `<button class="btn sm" id="pickLast" title="${esc(last.length + ' items')}">${icon('loop')}Use last settings</button>` : ''}
       <button class="btn ghost sm" id="pickAll">All</button><button class="btn ghost sm" id="pickNone">None</button></p>
     ${part('mcp', 'Connections')}${part('skill', 'Skills')}${part('plugin', 'Plugins & mods (hooks, their own tools; also on when one of their skills is ticked)')}
@@ -4843,7 +4845,7 @@ const mcpHow = s => { const r = (s.remotes || []).find(r => r.type === 'streamab
   if (r) return [r.url]; const n = (s.packages || []).find(p => p.registryType === 'npm' && !(p.environmentVariables || []).some(e => e.isRequired));
   return n ? [n.identifier] : [null, 'needs keys or setup: see its page']; };
 function extRows() {
-  const r = EXF.r; if (!r) return EXF.q ? skel(60, 'b100') : '<p class="dim">Search the open skills directory (skills.sh) or the MCP registry. Installs are user-wide; the open project gets them switched on.</p>';
+  const r = EXF.r; if (!r) return EXF.q ? skel(60, 'b100') : '<p class="dim">Search the skills directory or the MCP registry and install what you find.</p>';
   if (r.err) return `<p class="err">${esc(r.err)}</p>`;
   if (!r.length) return '<p class="dim">Nothing found. Try another word.</p>';
   const have = new Set(SET.catalog.map(i => i.label.toLowerCase()));
@@ -4870,7 +4872,7 @@ async function extAdd(i, btn) {
   } catch (e) { delete EXF.busy[i]; extDraw(); toast(`${x.name}: ${e}`, 'err'); }
 }
 function cxPage() {
-  return `<p class="dim">Everything your Claude Code has: MCP servers, claude.ai connectors, your skills, plugin skills and Clauracle's own. Switch something off here and no project gets it.</p>
+  return `<p class="dim">Everything your Claude Code has. Switch something off here and no project gets it.</p>
     <p><button class="btn" onclick="this.textContent='Asking Claude Code…'; call('refresh_catalog').then(() => reloadSettings())">${icon('loop')}Rescan</button></p>
     ${fold('g-find', 'Find &amp; install', `<p class="row"><select id="exk">${options({skill: 'Skills', mcp: 'Connections (MCP)'}, EXF.k)}</select>
       <input id="exq" class="grow" placeholder="Search, e.g. pdf, postgres, figma" value="${esc(EXF.q)}" onkeydown="if(event.key==='Enter')extFind()">
@@ -4887,7 +4889,7 @@ function buildPage() {
   const p = P(), mac = p && svcOf(p).includes('macsign'), keys = RELC[cur]?.c?.sign || [],
     go = mac ? `rightTab('svc')` : `svcAdd('macsign').then(() => rightTab('svc'))`;
   return `<div class="label">CI</div>
-    <div class="box" id="set-ci">${optRow('CI builds', 'Let GitHub Actions build the platforms this computer can\'t (costs Actions minutes). Off: only local builds count, Release uploads them.', sw(S.ci_builds, `call('set_ci_builds', {on: this.checked}).then(refresh)`))}</div>
+    <div class="box" id="set-ci">${optRow('CI builds', 'Let GitHub Actions build the other platforms (costs Actions minutes).', sw(S.ci_builds, `call('set_ci_builds', {on: this.checked}).then(refresh)`))}</div>
     ${fold('g-deps', 'Dependencies (this computer, WSL for Linux)', `<div id="depsBox">${skel(90, 60, 'b100', 'b100', 'b100')}</div>`, 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}
     <div class="label" style="margin-top:18px">Mac signing (Apple Developer ID)</div>
     <div class="box">${p ? optRow(esc(p.name), !mac ? 'Not set up: Mac builds stay unsigned' : keys.includes('APPLE_SIGNING_IDENTITY') ? 'Keys in .env: ' + keys.join(', ') : 'Set up · signing keys not in .env yet',
@@ -4903,7 +4905,7 @@ function macHtml() {
   return `<div class="box" id="set-mac"><p class="dim" style="margin:6px 0">Build, sign and notarize macOS apps on a Mac on your network over SSH.</p>
     ${optRow('1. Turn on Remote Login on the Mac', 'System Settings › General › Sharing › Remote Login', '')}
     ${S.mac?.host && !MACF ? optRow('2. SSH login', esc(macTo()) + (t?.ok ? ' · key login works' : ''), `<button class="btn sm" onclick="MACF=1; $('set-mac').outerHTML = macHtml()">Change</button>`)
-      : optRow('2. Set up SSH', 'Mac name (Sharing settings, e.g. <code>mac-mini.local</code>) or IP, your Mac login. The password is used once to install a key, never saved.',
+      : optRow('2. Set up SSH', 'The Mac\'s name or IP and your login. The password is not saved.',
         `<div style="display:flex;flex-direction:column;gap:6px;width:260px"><input id="macf-host" value="${esc(S.mac?.host || '')}" placeholder="mac-mini.local">
           <div style="display:flex;gap:6px"><input id="macf-user" value="${esc(S.mac?.user || '')}" placeholder="Mac username" style="width:100%"><input id="macf-pw" type="password" placeholder="Mac password" style="width:100%" onkeydown="event.key === 'Enter' && macKey()"></div>
           <button class="btn sm" id="macKeyBtn" onclick="macKey()">${icon('key')}Set up SSH</button></div>`)}
@@ -4963,7 +4965,7 @@ const depsGet = async () => (DEPSC && Date.now() - DEPSC.t < 60e3) ? DEPSC.d : (
 async function depsFill() {
   const d = await depsGet(), box = $('depsBox'); if (!box) return;
   const want = new Set(S.projects.flatMap(p => p.targets || []));
-  box.innerHTML = `<p class="dim" style="margin:0 0 8px;font-size:13px">Tools this computer needs to build the target platforms your projects pick (Build &amp; Release › Target platforms). Other systems build on GitHub's CI.</p><div class="box">`
+  box.innerHTML = `<p class="dim" style="margin:0 0 8px;font-size:13px">Tools this computer needs to build the platforms your projects pick.</p><div class="box">`
     + Object.keys(DEPS).filter(k => k in d).map(k => { const [n, ts, url] = DEPS[k], need = ts.filter(t => want.has(t));
       return optRow(esc(n), d[k] ? 'Installed' : (ts.length ? (need.length ? 'Needed for ' + need.map(tgtName).join(', ') : 'Only for ' + ts.map(tgtName).join(', ')) : 'Not found'),
         d[k] ? `<span style="color:var(--ok)">${icon('check')}</span>` : `${cur ? `<button class="btn sm" onclick="depsAi('${k}')">${icon('sparkle')}Install with AI</button>` : ''}<button class="btn ghost sm" data-url="${url}">Download</button>`).replace('class="opt-row"', `class="opt-row" data-dep="${k}"`); }).join('') + '</div>';
@@ -4974,7 +4976,7 @@ async function depsAi(k) {
   closeDlg(); DEPSC = null; sendNow(cur, {text, atts: []});
 }
 function agentsPage() {
-  return `<p class="dim">Helpers the main session hands work to, on cheaper models: searching and reading go to a Haiku scout instead of filling the main context. Changes apply to each project's next session.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to Clauracle until you switch them on above.'}</p>`
+  return `<p class="dim">Helpers the main session hands work to, on cheaper models.${S.agents_on ? '' : ' <b>Off</b>: none of these are given to Clauracle until you switch them on above.'}</p>`
     + `<div style="${S.agents_on ? '' : 'opacity:.5'}">` + AGENTS.map((a, i) => `<div class="agent"><div class="row">${sw(a.on, `agentSet(${i}, 'on', this.checked)`)}<input class="mono" value="${esc(a.name)}" style="width:160px" onchange="agentSet(${i}, 'name', this.value.trim())">
         <select onchange="agentSet(${i}, 'model', this.value)">${options({haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus', inherit: 'Same as session'}, a.model || 'inherit')}</select>
         <span class="grow"></span><button class="ib" title="Remove" onclick="AGENTS.splice(${i},1); saveAgents()">${icon('trash')}</button></div>
@@ -4994,7 +4996,7 @@ function ccAgents() {
 }
 const agentSet = (i, k, v) => { AGENTS[i][k] = v; saveAgents(); };
 const saveAgents = () => call('set_agents', {agents: AGENTS}).then(() => openSettings());
-// #256 You: nickname (prompt + chat name) and interests/prefs (→ ~/.clauracle/you.md, read by the AI only when needed)
+// You: nickname (name on your chat messages; never used to address you) and interests/prefs (→ ~/.clauracle/you.md, read by the AI only when needed)
 const YOU_TAGS = ['Web apps', 'Websites', 'Mobile apps', 'Desktop apps', 'Games', 'Game engines', 'Backend & APIs', 'DevOps & cloud', 'CLI tools',
   'Machine learning', 'Data & analytics', 'Embedded & hardware', 'Security', 'Open source', 'Art & design', '3D', 'Music & audio', 'Video', 'Writing', 'Automation'];
 const you = (ch) => call('set_you', {you: {...{nick: '', tags: [], prefs: ''}, ...S.you, ...ch}}).then(refresh).then(() => openSettings('ai'));
@@ -5003,7 +5005,7 @@ const youFind = el => { const q = el.value.trim().toLowerCase();
   el.closest('.you').querySelectorAll('.chips .pill:not(.on)').forEach(c => c.hidden = !!q && !c.textContent.toLowerCase().includes(q)); };
 function youHtml() {
   const y = S.you || {}, tags = y.tags || [], all = [...new Set([...tags, ...YOU_TAGS])];
-  return fold('a-you', 'You' + infoI('Optional. The nickname is what Clauracle calls you in every project. Interests and preferences sit in a small file Clauracle reads only when it\'s tailoring a choice to you, so they cost no tokens otherwise.'), `<div class="you">    <div class="grid2"><span>Nickname</span><input value="${esc(y.nick || '')}" placeholder="${esc(P()?.gh || 'e.g. Kim')} (default: your GitHub name)" onchange="you({nick: this.value})">
+  return fold('a-you', 'You' + infoI('Optional. The nickname labels your own messages in the chat. Clauracle reads interests and preferences only when a choice depends on your taste.'), `<div class="you">    <div class="grid2"><span>Nickname</span><input value="${esc(y.nick || '')}" placeholder="${esc(P()?.gh || 'e.g. Kim')} (default: your GitHub name)" onchange="you({nick: this.value})">
       <span>Interests</span><div><input placeholder="Search or add your own (Enter)" style="width:100%;margin-bottom:6px" oninput="youFind(this)" onkeydown="if (event.key === 'Enter' && this.value.trim()) youTag(this.value.trim())">
         <div class="chips">${all.map(t => `<span class="pill${tags.includes(t) ? ' on' : ''}" onclick="youTag(${esc(JSON.stringify(t))})">${esc(t)}</span>`).join('')}</div></div>
       <span>Preferences</span><textarea style="width:100%;min-height:60px;font-size:13px" placeholder="e.g. TypeScript over JS, short answers, explain like I'm new to Rust, dark UIs" onchange="you({prefs: this.value})">${esc(y.prefs || '')}</textarea>
@@ -5052,11 +5054,11 @@ function aiPage() {
     return `<div class="relay"><div class="rh">${r ? `<input class="rname" value="${esc(r)}" title="Rename this relay" onchange="relayRename(${i}, this.value)">` : '<b>Not in a relay</b>'}
       <small class="dim">${as.length} account${as.length === 1 ? '' : 's'}</small><span class="grow"></span>${r && !as.length ? `<button class="ib" title="Remove this empty relay" onclick="relayDrop(${i})">${icon('trash')}</button>` : ''}</div>
       <div class="rl" data-r="${r ? i : ''}">${as.map(row).join('')}</div></div>`; }).join('');
-  return acctSteps() + youHtml() + sec('AI accounts', `<p class="dim" style="margin:0 0 8px;font-size:13px">An AI account is a login with limits. Put accounts in a <b>relay</b> to let them take over from each other: when one reaches a limit, auto mode carries on with the account in the same relay that has the most left.${RLS.length ? ' Drag an account by its title to move it to another relay.' : ''} New projects copy the default account's GitHub account and choices; after that they're the project's own.</p>`
+  return acctSteps() + youHtml() + sec('AI accounts', `<p class="dim" style="margin:0 0 8px;font-size:13px">Accounts in one <b>relay</b> take over from each other when one hits its limit.${RLS.length ? ' Drag an account by its title to move it to another relay.' : ''}</p>`
     + list, `<button class="btn sm" onclick="relayAdd()">${icon('plus')}Add relay</button><button class="btn primary sm" onclick="addAcctDlg()">${icon('plus')}Add account</button>`)
     + `${fold('a-gh', 'GitHub accounts' + infoI('GitHub accounts live in the GitHub CLI. Each project gets its own account\'s token, so any number can be signed in at once.'), ghPage() + `<p class="dim" style="font-size:13px">CI builds: <a href="#" onclick="event.preventDefault(); openSettings('build')">Settings › Build &amp; Release</a></p>`,
       ghUsers.map(u => '@' + u).join(' · '), '', !ghUsers.length)}
-    ${fold('a-lessons', 'Lessons' + infoI('Never-again rules Clauracle records after a costly mistake (or you add), one per line, compressed. Every session gets them, in every project and account.'), `    <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
+    ${fold('a-lessons', 'Lessons' + infoI('Never-again rules, one per line. Every session in every project gets them.'), `    <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
       onchange="call('set_lessons', {lessons: this.value.split('\\n')}).then(refresh)">${esc((S.lessons || []).join('\n'))}</textarea>`, (S.lessons || []).filter(Boolean).length || '', '', false)}`;
 }
 const limitsOf = id => S.accounts.find(a => a.id === id).limits;
@@ -5140,7 +5142,7 @@ function lookPage() {
     ${optRow('Theme tint', 'Colours the whole app a little', `<span style="display:flex;flex-direction:column;gap:8px"><span class="row" style="gap:8px"><button class="swatch ${!LOOK.tint ? 'on' : ''}" title="None" style="background:var(--bg);display:grid;place-items:center;color:var(--faint)" onclick="setLook({tint:''})">${icon('x')}</button>${Object.entries(ACCENTS).filter(([n]) => n !== 'Mono').map(([n, c]) => `<button class="swatch ${LOOK.tint === n ? 'on' : ''}" title="${n}" style="background:${c[dk]}" onclick="setLook({tint:'${n}'})"></button>`).join('')}</span>
       ${LOOK.tint ? `<span class="row" style="gap:8px"><input type="range" min="5" max="100" step="5" value="${LOOK.tintPct}" style="flex:1;padding:0;border:0;background:none" title="Amount"
         oninput="LOOK.tintPct=+this.value; this.nextElementSibling.textContent=this.value+'%'; applyLook()" onchange="setLook({tintPct:+this.value})"><b style="width:40px;text-align:right">${LOOK.tintPct}%</b></span>` : ''}</span>`)}
-    ${optRow('UI scale', 'Text and everything else, together. Same proportions on any screen: it adds to Windows display scaling',
+    ${optRow('UI scale', 'Scales text and everything else together, on top of Windows display scaling',
       `<span class="row" style="gap:10px"><input type="range" min="80" max="150" step="5" value="${LOOK.scale}" style="width:160px;padding:0;border:0;background:none"
         oninput="this.nextElementSibling.textContent=this.value+'%'" onchange="setLook({scale:+this.value})"><b style="width:40px">${LOOK.scale}%</b>
         <button class="btn sm" onclick="setLook({scale:100})">Reset</button></span>`)}</div>
@@ -5152,7 +5154,7 @@ function notifyPage() {
   const n = S.notify;
   return `<p class="dim">When questions need you in auto mode, or the loop pauses at a limit.</p>
     <div class="box">${optRow('Desktop notifications', '', sw(n.desktop, 'saveNotify({desktop:this.checked})'))}</div>
-    <div class="label">Phone</div><p class="dim">Install the free <a href="#" data-url="https://ntfy.sh" style="color:var(--accent)">ntfy</a> app and subscribe to this topic. Anyone who knows the topic can read the pushes, so keep it random.</p>
+    <div class="label">Phone</div><p class="dim">Install the free <a href="#" data-url="https://ntfy.sh" style="color:var(--accent)">ntfy</a> app and subscribe to this topic. Anyone who knows the topic can read the pushes.</p>
     <div class="row"><input id="topic" class="grow sel mono" value="${esc(n.ntfy)}" placeholder="Off" onchange="saveNotify({ntfy:this.value.trim()})">
       <button class="btn" onclick="$('topic').value='clauracle-'+crypto.randomUUID().slice(0,13); saveNotify({ntfy:$('topic').value})">Generate</button></div>
     <p><button class="btn" onclick="call('test_notify')">${icon('bell')}Send a test</button></p>
@@ -5184,7 +5186,7 @@ async function csLoad(scope = CS.scope) {
     <div class="row" style="margin-top:6px"><input class="grow mono" placeholder="e.g. Bash(npm test:*), Read(./src/**), WebFetch(domain:github.com)"
       onkeydown="if (event.key === 'Enter' && this.value.trim()) csAdd('${k}', this.value.trim())"><button class="btn sm" onclick="const v = this.previousElementSibling.value.trim(); if (v) csAdd('${k}', v)">Add</button></div>`;
   const env = Object.entries(j?.env || {});
-  el.innerHTML = `<p class="dim" style="margin-top:0">Claude Code settings: permissions and environment. The account file applies only to this AI account; the others are Claude Code's own files.</p>
+  el.innerHTML = `<p class="dim" style="margin-top:0">Claude Code settings for permissions and environment.</p>
     <div class="row"><select class="grow" onchange="csLoad(this.value)">${options(sc, scope)}</select></div>
     <p class="faint mono" style="font-size:12px">${esc(CS.path)}</p>
     ${j ? `<div class="label">Default permission mode</div>

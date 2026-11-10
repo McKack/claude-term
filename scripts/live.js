@@ -1,6 +1,6 @@
 // Check a change in the real app: starts the debug build, runs JS expressions in its page, prints each result, closes it.
 // Usage: cargo build --manifest-path src-tauri/Cargo.toml, then  node scripts/live.js "<expr>" ["<expr>" …]
-// No expression = smoke test (the page script loaded). Never touches the mouse, keyboard or an installed Clauracle.
+// No expression = smoke test (the page script loaded). An argument "shot:<file.png>" saves a screenshot instead. Never touches the mouse, keyboard or an installed Clauracle.
 // Careful: this is the user's real config. send() or task_do "new"/"ask" with a task files a real GitHub issue.
 const {spawn} = require('child_process'), path = require('path');
 const exprs = process.argv.slice(2), PORT = 9333;
@@ -28,6 +28,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   for (let i = 0; i < 40; i++) { if ((await run(1000 + i, "typeof S === 'object' && !!S.projects")).result?.value) break; await sleep(500); }
   let bad = 0;
   for (const [i, e] of exprs.entries()) {
+    if (e.startsWith('shot:')) { // shot:<file.png> saves a screenshot of the window as it is now
+      const r = await new Promise(ok => { wait[i + 1] = ok; ws.send(JSON.stringify({id: i + 1, method: 'Page.captureScreenshot', params: {format: 'png'}})); });
+      require('fs').writeFileSync(e.slice(5), Buffer.from(r.data, 'base64')); console.log('saved ' + e.slice(5)); continue;
+    }
     const r = await run(i + 1, e);
     if (r.exceptionDetails) { bad = 1; console.log('ERROR', r.exceptionDetails.exception?.description || r.exceptionDetails.text); }
     else console.log(typeof r.result.value === 'string' ? r.result.value : JSON.stringify(r.result.value));
