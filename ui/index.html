@@ -2559,13 +2559,14 @@ function send() {
   const file = issueOn(pid) && !isQ && !isS && !/^\s*\//.test(t) && t.trim().split(/\s+/).length + nw >= 3 && !FILED_RE.test(t) && !QNOTE_RE.test(t);
   // #101: bubble shows now (⏱ while filing) unless it'd queue/triage anyway; the chain re-checks below
   // #103: queued (turn running) → bubble now too, ⏱ Queued; QB ties it to its queue item
-  const opt = !(contWaiting(pid) && !a.length) ? userEntry(pid, t, a, {st: busy[pid] || RESTARTING ? 'queue' : 'pend'}) : null;
+  const hold = qWait(pid); /* #422 open questions (≠ auto_answer) → queued only, flushed once they're answered */ if (hold) toast('Queued: answer the open question first', 'info');
+  const opt = hold || !(contWaiting(pid) && !a.length) ? userEntry(pid, t, a, {st: hold || busy[pid] || RESTARTING ? 'queue' : 'pend'}) : null;
   // saved to disk while gh files it (seconds): a crash/quit in that window used to lose it (composer already cleared)
   const fm = {text: t, atts: a}; (FILING[pid] ||= []).push(fm); keepDraft(pid, true);
   sendChain[pid] = (sendChain[pid] || Promise.resolve()).then(async () => {
     // CLI feel: idle + this ask is next anyway (urgent / nothing else open) → Clauracle starts NOW, gh files it in parallel
     // and the number follows mid-turn (send_mid); p.work pins it so a crash/handover still resumes it
-    if (file && !busy[pid] && !RESTARTING && !contWaiting(pid) && !ed && !a.length && (URGENT_RE.test(t) || !issueQ(pid)?.some(x => x.number))) {
+    if (file && !busy[pid] && !RESTARTING && !qWait(pid) && !contWaiting(pid) && !ed && !a.length && (URGENT_RE.test(t) || !issueQ(pid)?.some(x => x.number))) {
       sendNow(pid, {text: t + FASTNOTE, atts: a, work: 0}, opt?.log && opt);
       const n = await fileAsk(pid, t, a); if (!n) return;
       if (typeof n === 'string') return call('send_mid', {pid, text: n === 'remark' ? RNOTE.trim() : QNOTE.trim(), work: null}).catch(() => {}); // #336 triage: not a task → told mid-turn, nothing filed
@@ -2575,14 +2576,14 @@ function send() {
     }
     const f = file ? await fileAsk(pid, t, a) : 0, cls = typeof f === 'string' ? f : '', n = cls ? 0 : f; // #336 cls = Sonnet triage: question/remark → never filed
     const now = n && fileNow(pid, t, n), text = isQ || cls === 'question' ? t + QNOTE : cls === 'remark' ? t + RNOTE : isS ? t + SNOTE : n ? t + filedNote(n, now, URGENT_RE.test(t)) : t;
-    const q = queue[pid] ||= [];
+    const q = queue[pid] ||= [], qw = qWait(pid);
     // Continue waiting: a typed prompt goes to Claude to triage into the Queue, and the work runs (toTasks)
-    if (opt && contWaiting(pid) && !a.length) unEntry(pid, opt); // a Continue came up while filing → triage shows its own
-    if (contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
+    if (opt && !qw && contWaiting(pid) && !a.length) unEntry(pid, opt); // a Continue came up while filing → triage shows its own
+    if (!qw && contWaiting(pid) && !ed && !a.length) { keepDraft(pid, true); return toTasks(pid, [text]); }
     const m = {text, atts: a, work: now ? n : 0};
-    if (busy[pid] && !RESTARTING && !a.length && !ed && await call('send_mid', {pid, text, work: m.work || null}).catch(() => false)) { // CLI feel: reaches Clauracle mid-turn
+    if (!qw && busy[pid] && !RESTARTING && !a.length && !ed && await call('send_mid', {pid, text, work: m.work || null}).catch(() => false)) { // CLI feel: reaches Clauracle mid-turn
       if (m.work) P(pid).work = m.work; if (opt?.log) { reBub(opt, text, a); tick(opt, 'read'); } }
-    else if (busy[pid] || RESTARTING) { q.splice(ed ? ed.i : q.length, 0, m); /* an edited one goes back to its place */ if (opt?.log) { reBub(opt, text, a); tick(opt, 'queue'); QB.set(m, opt); } }
+    else if (busy[pid] || RESTARTING || qw) { q.splice(ed ? ed.i : q.length, 0, m); /* an edited one goes back to its place */ if (opt?.log) { reBub(opt, text, a); tick(opt, 'queue'); QB.set(m, opt); } }
     else sendNow(pid, m, opt?.log && opt);
     if (pid === cur) drawQueue();
   }).catch(err => { // a throw used to leave the chain rejected → this and every later message for the project silently dropped
@@ -2645,7 +2646,7 @@ function cancelEdit(hold) {
 const drawEditBar = () => { $('cancelEdit').hidden = !editing[cur]; };
 let RESTARTING = false; // Claude asked for a restart: hold everything in the saved queue until the new app is up
 function flushQueue(pid) {
-  if (RESTARTING || busy[pid] || editing[pid] && pid === cur || !queue[pid]?.length) return; // an edit holds the queue only while you're on that project (else the rest waited forever)
+  if (RESTARTING || busy[pid] || qWait(pid) /* #422 */ || editing[pid] && pid === cur || !queue[pid]?.length) return; // an edit holds the queue only while you're on that project (else the rest waited forever)
   if (contWaiting(pid)) { // a Continue is up: text messages become tasks, then the Continue runs; attachments stay queued
     const tasks = queue[pid].filter(m => !m.atts.length); queue[pid] = queue[pid].filter(m => m.atts.length); tasks.forEach(m => qDrop(pid, m)); // toTasks shows its own
     if (pid === cur) drawQueue(); keepDraft(pid, true);
@@ -2887,7 +2888,7 @@ const notOther = o => !/^\s*other\b/i.test(o.label || ''); // #220: AI's own "Ot
 function questionCard(pid) {
   const qs = P(pid).questions, d = document.createElement('div');
   d.className = 'card qs';
-  d.innerHTML = `<h4>Clauracle has ${qs.length} question${qs.length > 1 ? 's' : ''}</h4><p class="dim" style="margin:0 0 4px;font-size:13px">Answers go along with the next message.</p>` + qs.map((q, i) => {
+  d.innerHTML = `<h4>Clauracle has ${qs.length} question${qs.length > 1 ? 's' : ''}</h4><p class="dim" style="margin:0 0 4px;font-size:13px">New messages wait in the queue until these are answered.</p>` + qs.map((q, i) => {
     const type = q.multi ? 'checkbox' : 'radio', name = 'q' + i;
     return `<div class="q" data-id="${esc(q.id)}"><div><span class="num">${i + 1}</span><b>${esc(q.question.replace(/^\s*\d+[.)]\s*/, ''))}</b>${q.blocking ? ' <span class="pill">needs you</span>' : ''}</div>
       ${q.options.filter(notOther).map(o => `<label class="choice"><input type="${type}" name="${name}" value="${esc(o.label)}" ${o.recommended ? 'checked' : ''}>
