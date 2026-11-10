@@ -565,7 +565,10 @@ pre.diff .ctx { color:var(--faint); }
 .att:hover .anote, .att.hl .anote { left:3px; bottom:3px; width:20px; height:20px; } .att:hover .anote svg, .att.hl .anote svg { opacity:1; }
 .edcols { display:inline-flex; flex-direction:column; align-items:center; gap:8px; flex:none; }
 /* #321 Photoshop-style stack: primary top-left over secondary bottom-right; transparent = checker square below */
-.edpair { position:relative; width:36px; height:36px; flex:none; } /* #379 8px offset (was 14) */
+.edpair { position:relative; width:44px; height:44px; flex:none; } /* #455 16px offset: free corners hold swap/reset */
+.edpair .edsw2, .edpair .edrs { position:absolute; width:16px; height:16px; padding:0; border:0; background:none; color:var(--dim); cursor:pointer; display:grid; place-items:center; } .edpair .edsw2 { right:0; top:0; } .edpair .edrs { left:0; bottom:0; }
+.edpair .edsw2:hover, .edpair .edrs:hover { color:var(--text); } .edpair .edsw2 svg { width:12px; height:12px; }
+.edrs::before, .edrs::after { content:''; position:absolute; width:7px; height:7px; border:1px solid var(--dim); border-radius:50%; background:#ff4d4f; left:2px; top:2px; z-index:1; } .edrs::after { background:#fff; left:6px; top:6px; z-index:0; } /* mini default pair */
 .edcols input { position:absolute; left:0; top:0; z-index:1; width:28px; height:28px; padding:0; border:2px solid var(--line); border-radius:50%; background:none; cursor:pointer; overflow:hidden; } /* #237 1:1 circle, colour fills it */
 .edcols input + input { left:auto; top:auto; right:0; bottom:0; z-index:0; } /* #294 secondary, behind */
 .edtr { width:22px; height:22px; padding:0; border:2px solid var(--line); border-radius:6px; cursor:pointer; background:repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 8px 8px; }
@@ -776,6 +779,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
   <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M6 18v-8a4 4 0 0 1 4-4h8"/><path d="m15 3 3 3-3 3"/><path d="m3 15 3 3 3-3"/></symbol>
   <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
@@ -2356,9 +2360,12 @@ const stepViewer = d => { VW.i = (VW.i + d + VW.imgs.length) % VW.imgs.length; d
    never repeat (nmax persists); a.notes = ["1. …"] → sent inside the message (sendNow), never typed into the composer. */
 /* #294 EDC2 = [primary, secondary]; 'transparent' = valid canvas colour (≠ input value). Left btn draws color=primary fill=secondary, right swaps.
    fill only shows as the box dot's number colour (note boxes/lines/pen ignore it). Colour change → recolours ED.sel, else ED.act (last focused note) */
-let ED = null, EDC2 = (() => { try { return [localStorage.penColor || '#ff4d4f', localStorage.penColor2 || '#ffffff']; } catch { return ['#ff4d4f', '#ffffff']; } })();
-function edSetCol(k, v) { EDC2[k] = v; try { localStorage[k ? 'penColor2' : 'penColor'] = v; } catch {}
+const EDC0 = ['#ff4d4f', '#ffffff'];
+let ED = null, EDC2 = (() => { try { return [localStorage.penColor || EDC0[0], localStorage.penColor2 || EDC0[1]]; } catch { return [...EDC0]; } })();
+const edCols = a => a.forEach((v, k) => edSetCol(k, v, 1)); /* #455 reset/swap: only the swatches, never recolours the selection */
+function edSetCol(k, v, q) { EDC2[k] = v; try { localStorage[k ? 'penColor2' : 'penColor'] = v; } catch {}
   const s = $('edCol' + k); s.classList.toggle('tr', v === 'transparent'); if (v !== 'transparent') s.value = v;
+  if (q) return;
   const T = ED?.sel.length ? ED.sel : ED?.act && ED.ops.includes(ED.act) ? [ED.act] : [];
   if (T.length) { if (!ED.csnap) { ED.csnap = 1; edSnap(); } T.forEach(o => { if (!(k && EDSH.test(o.t) && !o.fill)) o[k ? 'fill' : 'color'] = v; }); /* unfilled shape stays unfilled */ edDraw(); edNotes(); } }
 const ETOOLS = [['sel', 'cursor', 'Select: click picks (again = next one below), drag empty space = box/freehand, Shift/Ctrl+click adds/removes, drag inside the box moves, handles scale, Delete removes'], ['pen', 'pen', 'Pen: draw freehand'], ['line', 'line', 'Line: straight line'], ['rect', 'rect', 'Rectangle: drag (Shift = square)'], ['ellipse', 'ellipse', 'Ellipse: drag (Shift = circle)'], ['text', 'text', 'Text: click to type, click a text to edit it, Enter = done'], ['box', 'boxnote', 'Box + note: drag a box, then type a note for it'], ['erase', 'eraser', 'Eraser: click a shape to remove it']]; // #238 icons + data-tip
@@ -2372,7 +2379,7 @@ function editImage() {
   edInit(m.ed?.orig || m.url, m.ed);
 }
 const edToolsHtml = () => `<span class="seg" id="edTools">${ETOOLS.map(([k, l, t]) => `<button data-tool="${k}" class="${k === 'pen' ? 'on' : ''}" data-tip="${t}">${icon(l)}</button>`).join('')}</span>
-    <span class="edcols"><span class="edpair">${EDC2.map((v, k) => `<input type="color" id="edCol${k}" class="${v === 'transparent' ? 'tr' : ''}" value="${v === 'transparent' ? '#ffffff' : v}" data-tip="${k ? 'Secondary colour: right mouse button (left button: number in the note dot)' : 'Primary colour: left mouse button'}. Also recolours the selection / the note being typed">`).join('')}</span>
+    <span class="edcols"><span class="edpair">${EDC2.map((v, k) => `<input type="color" id="edCol${k}" class="${v === 'transparent' ? 'tr' : ''}" value="${v === 'transparent' ? '#ffffff' : v}" data-tip="${k ? 'Secondary colour: right mouse button (left button: number in the note dot)' : 'Primary colour: left mouse button'}. Also recolours the selection / the note being typed">`).join('')}<button class="edsw2" data-tip="Swap primary and secondary" onclick="edCols([EDC2[1], EDC2[0]])">${icon('swap')}</button><button class="edrs" data-tip="Reset to default colours" onclick="edCols(EDC0)"></button></span>
       <button class="edtr" data-tip="Transparent: click = primary, right-click = secondary"></button></span>`;
 /* #435 editor wiring shared by the File viewer dialog + Edit-view image tabs (tab = Edit tab → ED.tab). ids (#edC, #vctx…) ∴ one editor at a time: edStash parks the tab's marks */
 function edStash() { if (!ED?.tab) return; if (VZ === ED.tab.z) VZ = null; ED.tab.ed = {ops: ED.ops, nmax: ED.nmax}; ED = null; const b = $('ebody'); b._t = null; b.innerHTML = ''; }
