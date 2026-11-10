@@ -491,7 +491,7 @@ pre.diff .ctx { color:var(--faint); }
 .stdone span { flex:1; } .stdone > svg:last-child { color:var(--dim); transition:transform .15s; } .stdone.open > svg:last-child { transform:rotate(180deg); }
 /* Services all set → Next step (to Build & Release) + sticky "New!" pill till it's scrolled into view */
 .bsep { border:0; border-top:1px solid var(--line); margin:4px 0; } /* #237 desktop ─ mobile builds */
-.nextstep { margin-top:14px; padding:14px; border-radius:14px; background:var(--soft); text-align:center; } .nextstep p { margin:0 0 10px; font-size:13px; color:var(--dim); } /* #232 same as the GitHub tab one (inside .stepper) */
+.nextstep { margin-top:14px; padding:14px; border-radius:14px; background:var(--soft); text-align:center; } .nextstep p { margin:0 0 10px; font-size:13px; color:var(--dim); } .nextstep { container-type:inline-size; } .nextstep .nn { display:none; } @container (max-width:240px) { .nextstep .nw { display:none; } .nextstep .nn { display:inline; } } /* #440 narrow: card = "Next step:", button = target only */ /* #232 same as the GitHub tab one (inside .stepper) */
 .newpill { position:sticky; bottom:8px; display:flex; align-items:center; gap:4px; margin:10px auto 0; border:0; border-radius:99px; padding:6px 12px 6px 8px; background:var(--accent); color:#fff; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:var(--shadow); } .newpill[hidden] { display:none; }
 .ghsteps { margin-top:10px; } .ghsteps .sn { cursor:default; } .ghsteps .sn:hover { outline:0; } .qbox { max-height:320px; overflow-y:auto; margin:4px 0 8px; }
 .stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
@@ -3848,7 +3848,7 @@ function ghSteps(iq, qRows, t, open, fin, dn) {
   const nw = teamTasks(cur).filter(isWait).length, ns = teamTasks(cur).filter(isIdea).length;
   return `<ol class="stepper ghsteps">
     <li><span class="sn">1</span><div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>${iq.length ? `<span class="pill">${iq.length}</span>` : ''}${iq.length > 1 ? `<button class="ib" title="Clean up: Clauracle merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}</div>
-      ${iq.length || busy[cur] ? `<div class="qbox">${qRows}</div>` : `<div class="nextstep" style="margin:4px 0 8px"><p>No tasks! Set up Services?</p><button class="btn sm primary block" onclick="rightTab('svc')">Next step: Services ${icon('go')}</button></div>`}${x.add}</li>
+      ${iq.length || busy[cur] ? `<div class="qbox">${qRows}</div>` : `<div class="nextstep" style="margin:4px 0 8px"><p><span class="nw">No tasks! Set up Services?</span><span class="nn">Next step:</span></p><button class="btn sm primary block" onclick="rightTab('svc')"><span class="nw">Next step:&nbsp;</span>Services ${icon('go')}</button></div>`}${x.add}</li>
     ${iq.length || busy[cur] ? `<li><span class="sn">2</span><div class="label">Run the task list</div>${runStep(p, n)}</li>
     <li><span class="sn">3</span>${thenRow(p)}</li>` : ''}</ol>`
     + (nw ? fold('w-wait', `Waiting on you${infoI(WAIT_TIP)}`, L(x.wait), nw) : '')
@@ -4394,7 +4394,7 @@ async function drawServices() {
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('trash')}</button>`); }).join('')
     + `<button class="btn ghost block" onclick="svcMenu(this)">${icon('plus')}Add a service</button>` + secretsFold(files)
     // level up: every service set → Next step to Build & Release; pill floats at the bottom till the card is seen
-    + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p>All services and secrets set up.</p><button class="btn sm primary block" onclick="rightTab('build')">Next step: Build &amp; Release ${icon('go')}</button>
+    + (ids.every(svcDone) ? `<div class="nextstep" id="nextStep"><p><span class="nw">All services and secrets set up.</span><span class="nn">Next step:</span></p><button class="btn sm primary block" onclick="rightTab('build')"><span class="nw">Next step:&nbsp;</span>Build &amp; Release ${icon('go')}</button>
       ${(u => u.length ? `<button class="btn sm block" onclick="svcWire()" title="${esc(u.map(id => SERVICES[id].name).join(', '))}: Claude checks the code and adds a task on the GitHub tab to wire in each one the app doesn't use yet">${icon('back')}Go back: Integrate ${u.length} service${u.length > 1 ? 's' : ''}</button>` : '')(svcUnwired(p))}</div>
       <button class="newpill" id="newPill" onclick="$('nextStep').scrollIntoView({behavior: 'smooth', block: 'end'})">${icon('down')}New!</button>` : '');
   if ($('nextStep')) new IntersectionObserver(([e]) => { if (e.isIntersecting && $('newPill')) $('newPill').hidden = true; }).observe($('nextStep'));
