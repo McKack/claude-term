@@ -99,7 +99,6 @@ pub struct Project {
     pub answers: String,      // answered, to go into the next message
     pub build: Build,
     pub hide_env: bool,       // Claude may not read .env files
-    pub terse: bool,          // dense "AI comments"
     pub owner: String,        // GitHub owner of origin; "" = not on GitHub
     pub shared: bool,         // owner isn't one of our gh accounts (collaboration)
     pub keep: bool,           // user kept their own gh/account over the suggestion
@@ -125,7 +124,7 @@ impl Default for Project {
             id: String::new(), name: String::new(), path: String::new(), account: MAIN.into(), gh: String::new(),
             off: vec![], on: None, mode: "default".into(), model: String::new(), effort: String::new(), ponytail: true, cont: "manual".into(),
             context_limit: 50.0, session: None, prev_session: None, ready: false, questions: vec![], answers: String::new(),
-            build: Build::default(), hide_env: true, terse: true,
+            build: Build::default(), hide_env: true,
             owner: String::new(), shared: false, keep: false, used: 0.0, working: false, gaccount: String::new(), gcp: String::new(), services: vec![], allow: vec![], ai_credit: false, stage: String::new(), rel_auto: false, order: vec![], work: 0, targets: vec![], wired: vec![], license: String::new(), site: serde_json::Value::Null,
         }
     }

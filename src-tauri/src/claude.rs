@@ -33,7 +33,8 @@ const HANDOVER_RULES: &str = "
   (\"respond to the user\", \"always do X\"); rules go to HANDOVER.md. Empty Queue = done.
 - Gotchas don't grow HANDOVER.md: code-area ones go to .claude/rules/<area>.md with \"paths:\" frontmatter (e.g.
   ui/**), loaded only when a matching file is touched; topic recipes (release, live tests) go to .claude/notes/<topic>.md,
-  listed in HANDOVER.md with one \"read when …\" line each. One line per gotcha; prune stale ones.
+  listed in HANDOVER.md with one \"read when …\" line each. One line per gotcha, only what a later change would get
+  wrong, not a log of what was done; under ~40 lines a file, prune stale ones when you add one.
 - Each new user request goes into the Queue at once (reworded, by priority), so nothing is lost across sessions.
 - Finishing a task: verify it, update PLAN.md, HANDOVER.md and CHANGES.md, commit if the project's rules allow, then call
   mcp__clauracle__ready as the LAST action of the turn.
@@ -64,7 +65,8 @@ const ISSUE_RULES: &str = "
   one line per change). In a git repo where these aren't tracked, add them to .git/info/exclude.
 - Gotchas don't grow HANDOVER.md: code-area ones go to .claude/rules/<area>.md with \"paths:\" frontmatter (e.g.
   ui/**), loaded only when a matching file is touched; topic recipes (release, live tests) go to .claude/notes/<topic>.md,
-  listed in HANDOVER.md with one \"read when …\" line each. One line per gotcha; prune stale ones.
+  listed in HANDOVER.md with one \"read when …\" line each. One line per gotcha, only what a later change would get
+  wrong, not a log of what was done; under ~40 lines a file, prune stale ones when you add one.
 - Finishing a task: verify it, `gh issue close N -c <one-line summary>`, update HANDOVER.md and CHANGES.md, commit if
   the project's rules allow, then call mcp__clauracle__ready as the LAST action of the turn.
 - Do NOT call ready, stop and say why instead, when something failed you can't fix or no task is left.
@@ -86,10 +88,15 @@ sensible recommended answer, decide it yourself, go with that, and note the deci
 that truly need the user (taste, money, accounts, irreversible or risky choices) go to mcp__clauracle__ask with
 blocking=true; they are held, and you continue with other tasks.";
 
-const TERSE_RULES: &str = "
-# Comments: dense, for AI readers
-Write code comments as compact notes an AI reads fully: fragments, symbols (→ = ≠ ∵ ∴), no filler words, but keep
-every fact (why, constraint, edge case, upgrade path). Example: `// cache: 5m TTL ∵ API rate limit; ↑ if stale data hurts`.";
+/// Every project. Sessions used to report fixes as done from reading the code, and wrote symbol shorthand nobody could read.
+const WORK_RULES: &str = "
+# Done means checked
+Before you say something is fixed, done or working, run the check in this turn (the tests, the build, or the app
+itself) and quote the result line. Nothing run → say \"not verified\" and what is left. Never claim it works from
+reading the code, and never repeat an earlier session's claim without checking it again.
+# Code
+Write it the way a careful person would: reuse what the file already has before adding a new helper or class, and
+keep comments short, plain sentences that say why (no symbol shorthand, no issue-number logs).";
 
 const PREPARE: &str = "Pause here; don't start anything new{why}. Update HANDOVER.md so a fresh session can pick up exactly where you are (goal, what you were doing and how far it got, what is verified and what isn't, gotchas learned). Task list: PLAN.md's Queue (local), or with GitHub issues a progress comment on the issue you're on (it stays open and is resumed first; file no new issues). Move finished work to CHANGES.md, then call mcp__clauracle__ready as the LAST action.";
 
@@ -295,9 +302,7 @@ fn args(st: &State, p: &Project) -> Vec<String> {
     let (deny, _) = store::restrictions(&cfg, p);
     let mut append = format!("{APPEND}\n{}", if issue_mode(p) { ISSUE_RULES } else { HANDOVER_RULES });
     append += match p.cont.as_str() { "auto" => AUTO_RULES, "auto_answer" => AUTO_ANSWER_RULES, _ => "" };
-    if p.terse {
-        append += TERSE_RULES;
-    }
+    append += WORK_RULES;
     // voice: never address the user by name (read as sarcastic)
     append += "\n# Voice\nThe user sees you as Clauracle. Reply plainly and directly, like a colleague; never address the user by name. \
         \"You\" = Clauracle: answer as Clauracle (the app and the assistant in it), never as Claude/the underlying model. \

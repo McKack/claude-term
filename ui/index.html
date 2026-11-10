@@ -3187,11 +3187,10 @@ function projectsPage() {
     </div>`, [p.model && mName(p.model), PERMS[p.mode]].filter(Boolean).join(' · '), '', false)}
     ${fold('p-save', 'Options', `<div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
-      ${optRow('Dense AI comments', 'Short, symbol-rich comments that keep every fact', sw(p.terse, 'setM({terse:this.checked})'))}
       ${(p.allow || []).length ? /* 3 rows: title / tags / description (#53) ∵ side-by-side squeezed the text */ `<div class="opt-row" style="display:block"><div>Always allowed</div><span class="row wrap" style="gap:4px;margin:6px 0">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ${icon('x')}</span>`).join('')}</span><small class="dim">Tools this project runs without asking</small></div>` : ''}
       ${optRow('Credit Claude in commits', 'Off: no Co-Authored-By or "Generated with" lines; Claude never adds itself as an author', sw(p.ai_credit, 'setM({ai_credit:this.checked})'))}
       ${optRow('Keep .env away from Clauracle', 'Clauracle can\'t read or edit .env files; manage them in Services › Secrets', sw(p.hide_env, 'setM({hide_env:this.checked})'))}
-    </div>`, [p.ponytail, p.terse, p.ai_credit, p.hide_env].filter(Boolean).length + ' on', '', false)}
+    </div>`, [p.ponytail, p.ai_credit, p.hide_env].filter(Boolean).length + ' on', '', false)}
     ${fold('p-build', 'Build', `<div class="grid2" style="margin-top:0">${['build', 'run', 'deploy'].map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><input class="mono" value="${esc(p.build[k])}" placeholder="${{build: 'npm run build', run: 'npm run dev', deploy: 'npm run deploy'}[k]}" onchange="setBuild('${k}', this.value)">`).join('')}
       <span>Local build</span><input class="mono" value="${esc(p.build.local || '')}" placeholder="Auto: fast debug build (e.g. tauri build --debug --no-bundle)" title="Used by builds after a task and /build on this machine. Release / deploy keep the full Build command." onchange="setBuild('local', this.value)">
       <span></span><label class="row">${sw(p.build.release, 'setBuild(\'release\', this.checked)')}<small>Release builds after tasks (slower: the full Build command)</small></label>

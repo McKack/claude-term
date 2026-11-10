@@ -3,6 +3,10 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Every message you send is saved on your machine before it is filed, with each image's notes beside the image. A message with an image is always filed as a task.
+- Clauracle asks before it clicks or types in its own window for you.
+- Clauracle no longer addresses you by name, and reports work as done only after running a check.
+- The "Dense AI comments" option is gone: comments are always short, plain sentences.
 - Image editor: the selection-type buttons (rectangle, freehand) show their icons; the colour swap arrow now points left.
 - Sent chat messages appear instantly again, also while the Continue bar is up.
 - Code tab: "Open in file viewer" moved to the top right of the file header; X next to the file name closes it (#458)
