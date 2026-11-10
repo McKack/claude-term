@@ -1831,10 +1831,7 @@ fn set_zoom(w: tauri::WebviewWindow, scale: f64) -> R<()> {
 fn read_file(st: St, pid: String, rel: String) -> R<String> {
     let p = st.project(&pid).ok_or("no such project")?;
     let f = inside(&p.path, &rel)?;
-    let name = f.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    if p.hide_env && (name == ".env" || name.starts_with(".env.")) {
-        return Err("Open .env files in the .env tab.".into());
-    }
+    // #433 .env readable here (user's viewer); hide_env blocks only Claude's tools (store.rs deny rules)
     let bytes = std::fs::read(&f).map_err(|e| e.to_string())?;
     if bytes.len() > 2_000_000 || bytes.iter().take(8000).any(|b| *b == 0) {
         return Err("Binary or too large to show.".into());
