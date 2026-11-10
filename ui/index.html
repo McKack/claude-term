@@ -2731,9 +2731,9 @@ function fileNow(pid, t, n) {
   return urgent || !iq /* not loaded → old behaviour */ || !iq.some(x => x.number && x.number !== n); // in-progress work is in iq too
 }
 // #309 privacy: issue text = Sonnet's neutral rewrite (Rust task_do new); raw ask never goes to GitHub (edit history keeps it)
-const NEUT = n => `Its title + summary are Clauracle's neutral rewrite of the ask: fix them (\`gh issue edit ${n}\`) only if wrong; never put the user's raw words on GitHub.`;
+const NEUT = n => `Its title + summary are Clauracle's neutral rewrite of the ask: fix them (\`gh issue edit ${n}\`) only if wrong; never put the user's raw words on GitHub. Attached images: Read each first, drawn markup/notes on them = instructions the summary may miss; any body edit keeps the Screenshots lines.`; // #459 split/edit dropped them → markup asks lost
 // #252: one ask, several separate tasks → split like other AIs (related asks stay together); one line ∵ notes are one line each
-const SPLIT = n => ` Several separate asks in it (a wall of text) → split: keep the first (+ closely related ones) in #${n}, file each other separate one right after it (\`gh issue create --label clauracle --label task\`, own neutral summary, never the user's raw words), say which numbers in one line.`;
+const SPLIT = n => ` Several separate asks in it (a wall of text) → split: keep the first (+ closely related ones) in #${n}, file each other separate one right after it (\`gh issue create --label clauracle --label task\`, own neutral summary, never the user's raw words, + its Screenshots lines), say which numbers in one line.`;
 // one line each (bare() strips it for display; FILED_RE reads the number)
 const filedNote = (n, now, urgent) => now
   ? `\n\n(Filed as issue #${n} by Clauracle${urgent ? ', marked urgent: it goes before the other open tasks' : ''}. Work on it now: ${NEUT(n)} Close it with a one-line summary when done.${SPLIT(n)} Not a task after all (a question, a status/unblock reply, already done) → answer it and \`gh issue close ${n} --reason "not planned"\`; an unblock reply → remove \`needs-user\` from the issue it unblocks and carry on with that.)`
