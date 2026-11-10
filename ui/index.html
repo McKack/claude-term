@@ -3079,7 +3079,7 @@ function askCard(e) {
     rules = [[[e.tool], e.tool === 'Bash' ? 'Bash (any command)' : e.tool], ...(parts.length ? [lvl(1)] : []), ...(parts.some(w => w.length > 1) ? [lvl(2)] : [])];
     rule = rules[Math.min(1, rules.length - 1)][0];
     d.classList.add('perm');
-    d.innerHTML = `<h4><span class="edot"></span>Allow ${esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
+    d.innerHTML = `<h4><span class="edot"></span>Allow ${e.tool === 'mcp__clauracle__ui' ? 'Clauracle to act in this window' : esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
       <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="btn" data-m>Allow…</button><button class="btn primary" data-a="1">Allow now</button></div>`;
     // Allow… = dropdown: duration → (Bash only) what to allow, as a hover submenu
     const pick = (a, r) => () => { rule = r; answer(a); };

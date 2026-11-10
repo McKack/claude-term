@@ -818,7 +818,11 @@ async fn control(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, 
         // ui = async (waits on the page's reply) → handled here, not in sync mcp()
         Some("mcp_message") if req["message"]["params"]["name"] == "ui" => {
             let m = &req["message"];
-            let t = ui_tool(app, &m["params"]["arguments"]).await;
+            let a = &m["params"]["arguments"];
+            // js runs with the page's full powers (every app command): only Clauracle's own repo gets it, for self-tests
+            let t = if !a["js"].is_null() && !own_repo(st, pid) {
+                "Refused: `js` only works in Clauracle's own project. Use sel/text/x,y to click and `show` to read.".to_string()
+            } else { ui_tool(app, a).await };
             Ok(json!({"mcp_response": {"jsonrpc": "2.0", "id": m["id"], "result": {"content": [{"type": "text", "text": t}]}}}))
         }
         Some("mcp_message") => Ok(json!({"mcp_response": mcp(app, st, pid, live, &req["message"])})),
@@ -835,7 +839,8 @@ async fn control(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, 
 async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) -> Value {
     let tool = req["tool_name"].as_str().unwrap_or("");
     let input = req["input"].clone();
-    if tool.starts_with("mcp__clauracle__") {
+    // ui acts in the app as the user: it asks like any other tool (allow rules and bypass mode still apply)
+    if tool.starts_with("mcp__clauracle__") && tool != "mcp__clauracle__ui" {
         return json!({"behavior": "allow", "updatedInput": input});
     }
     let (cont, mode, allow) = st.project(pid).map(|p| (p.cont, p.mode, p.allow)).unwrap_or_default();
@@ -1011,7 +1016,7 @@ fn tool_list() -> Value {
           service, check notifications, open a link…), or to self-test it. Inside the page, not the OS mouse. Look first \
           (`show`, or `js` reading the DOM) when unsure what to click. Pick ONE target: `sel` (CSS selector), `text` (visible text/tooltip of a \
           clickable, case-insensitive substring) or `x`,`y` (CSS px). Default = click; `type` = set an input's value; \
-          `right` = right-click. `js` = expression evaluated after (await-ed; page globals like S, cur, P() visible). \
+          `right` = right-click. `js` (Clauracle's own project only) = expression evaluated after (await-ed; page globals like S, cur, P() visible). \
           Returns what was hit + the open dialog/popover text after `wait` ms (400); `show` = CSS selector whose text \
           to return instead (e.g. \"#right\"). \
           Permission/question cards are refused.", "inputSchema": {"type": "object", "properties": {
