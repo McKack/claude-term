@@ -620,9 +620,9 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 :root { --rail:52px; } #side { padding-left:calc(var(--rail) - 1px); } #right { padding-right:calc(var(--rail) - 1px); }
 #side.rail > :not(#lbar):not(.grip), #right.rail > :not(#rbar):not(.grip) { display:none !important; }
 #side:not(.rail) #lrail { display:none !important; }
-.vbar { position:absolute; top:0; bottom:0; width:calc(var(--rail) - 1px); display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 0; overflow:hidden auto; scrollbar-width:none; background:var(--side); z-index:4; }
+.ibar { position:absolute; top:0; bottom:0; width:calc(var(--rail) - 1px); display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 0; overflow:hidden auto; scrollbar-width:none; background:var(--side); z-index:4; }
 #lbar { left:0; } #rbar { right:0; } #side:not(.rail) #lbar { border-right:1px solid var(--line); } #right:not(.rail) #rbar { border-left:1px solid var(--line); }
-.vbar hr { width:60%; border:0; border-top:1px solid var(--line); margin:4px 0; flex:none; }
+.ibar hr { width:60%; border:0; border-top:1px solid var(--line); margin:4px 0; flex:none; }
 :is(#stabs, #rtabs, #lrail) { display:flex; flex-direction:column; align-items:center; gap:6px; } #lrail { flex:1; width:100%; }
 :is(#stabs, #rtabs) button { position:relative; width:36px; height:36px; padding:0; display:grid; place-items:center; flex:none; border:0; border-radius:10px; background:none; color:var(--dim); cursor:pointer; }
 :is(#stabs, #rtabs) button:hover { color:var(--text); background:var(--hover); } :is(#stabs, #rtabs) button.on { color:var(--accent); background:var(--soft); }
@@ -845,7 +845,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 </svg>
 
 <aside id="side">
-  <nav id="lbar" class="vbar"><button class="ib vhome" title="Home" onclick="goHome()"><svg><use href="#i-logo"/></svg></button><hr><span id="stabs"><button data-s="projects" onclick="barL('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="barL('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="notes" onclick="barL('notes')" title="Notes: NOTES.md, only on this computer (git-ignored)"><svg class="i"><use href="#i-notepad"/></svg><span>Notes</span></button></span><div id="lrail"></div></nav>
+  <nav id="lbar" class="ibar"><button class="ib vhome" title="Home" onclick="goHome()"><svg><use href="#i-logo"/></svg></button><hr><span id="stabs"><button data-s="projects" onclick="barL('projects')" title="Projects"><svg class="i"><use href="#i-folder"/></svg><span>Projects</span></button><button data-s="files" onclick="barL('files')" title="Files"><svg class="i"><use href="#i-doc"/></svg><span>Files</span></button><button data-s="notes" onclick="barL('notes')" title="Notes: NOTES.md, only on this computer (git-ignored)"><svg class="i"><use href="#i-notepad"/></svg><span>Notes</span></button></span><div id="lrail"></div></nav>
   <div id="brand"><b onclick="goHome()" style="cursor:pointer">Claur<span>acle</span></b><small id="appver"></small>
 </div>
   <div id="projects"></div>
@@ -891,7 +891,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 </main>
 
 <aside id="right" hidden>
-  <nav id="rbar" class="vbar"><div id="rtabs">
+  <nav id="rbar" class="ibar"><div id="rtabs">
     <button data-t="gh" onclick="barR('gh')" title="GitHub: plan, tasks, repo"><svg class="i"><use href="#i-gh"/></svg><span>GitHub</span></button>
     <button data-t="svc" onclick="barR('svc')" title="Services"><svg class="i"><use href="#i-layers"/></svg><span>Services</span></button>
     <button data-t="build" onclick="barR('build')" title="Build &amp; Release"><svg class="i"><use href="#i-hammer"/></svg><span>Build &amp; Release</span></button>
