@@ -627,7 +627,7 @@ body.dragging { cursor:col-resize; user-select:none; } body.dragging iframe { po
 .ibar { position:absolute; top:0; bottom:0; width:calc(var(--rail) - 1px); display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 0; overflow:hidden auto; scrollbar-width:none; background:var(--side); z-index:4; }
 #lbar { left:0; } #rbar { right:0; } #side:not(.rail) #lbar { border-right:1px solid var(--line); } #right:not(.rail) #rbar { border-left:1px solid var(--line); }
 .ibar hr { width:60%; border:0; border-top:1px solid var(--line); margin:4px 0; flex:none; }
-:is(#stabs, #rtabs, #lrail) { display:flex; flex-direction:column; align-items:center; gap:6px; } #lrail { flex:1; width:100%; }
+:is(#stabs, #rtabs, #lrail) { display:flex; flex-direction:column; align-items:center; gap:6px; } #lrail { flex:1; width:100%; } #lrail > .under { visibility:hidden; } /* #456 railHide */
 :is(#stabs, #rtabs) button { position:relative; width:36px; height:36px; padding:0; display:grid; place-items:center; flex:none; border:0; border-radius:10px; background:none; color:var(--dim); cursor:pointer; }
 :is(#stabs, #rtabs) button:hover { color:var(--text); background:var(--hover); } :is(#stabs, #rtabs) button.on { color:var(--accent); background:var(--soft); }
 :is(#stabs, #rtabs) button.on::before { content:''; position:absolute; top:8px; bottom:8px; width:2px; border-radius:2px; background:var(--accent); } #stabs button.on::before { left:-8px; } #rtabs button.on::before { right:-8px; }
@@ -5483,8 +5483,14 @@ function drawRails() {
       + recent().filter(x => x.id !== cur).map(x => `<div class="tile" title="${esc(x.name)}" onclick="openProject('${x.id}')">${initials(x.name)}<span class="dot ${dotOf(x)}"></span>
           ${x.questions.length ? '<span class="pill" style="position:absolute;top:-6px;right:-8px;padding:0 4px;font-size:10px">' + x.questions.length + '</span>' : ''}</div>`).join('')
       + `<span class="grow"></span><button class="ib racct" title="Clauracle menu: search, tabs, settings" onclick="startMenu($('acctBtn'))">${(() => { const a = S.accounts.find(x => x.id === (p?.account || S.default_account)) || S.accounts[0]; return p?.gh ? avGh(p.gh) : a ? avAI(a) : icon('user'); })()}<span class="sdot">${icon('search')}</span></button>`; /* #305 profile pic (project's GitHub, else AI account = drawAcct's pick) + search dot */
+    railHide();
   }
 }
+function railHide() { // #456 rail items under the sticky .racct (incl. its search dot + bar's bottom padding) → hidden + inert; visibility:hidden blocks click/hover/drag
+  const r = $('lrail'), a = r?.querySelector('.racct'); if (!a) return; const top = a.getBoundingClientRect().top - 8;
+  for (const el of r.children) if (el !== a) el.classList.toggle('under', el.getBoundingClientRect().bottom > top);
+}
+$('lbar').addEventListener('scroll', railHide, {passive: true}); addEventListener('resize', railHide);
 function expandRight(t) { tab = t; UI.rc = false; layout('r'); drawRight(); }
 function openFile(abs) {
   const base = P().path.replace(/\\/g, '/').replace(/\/$/, ''), f = abs.replace(/\\/g, '/');
