@@ -496,6 +496,7 @@ pre.diff .ctx { color:var(--faint); }
 .nextstep { margin-top:14px; padding:14px; border-radius:14px; background:var(--soft); text-align:center; } .nextstep p { margin:0 0 10px; font-size:13px; color:var(--dim); } .nextstep { container-type:inline-size; } .nextstep .nn { display:none; } @container (max-width:240px) { .nextstep .nw { display:none; } .nextstep .nn { display:inline; } } /* #440 narrow: card = "Next step:", button = target only */ /* #232 same as the GitHub tab one (inside .stepper) */
 .newpill { position:sticky; bottom:8px; display:flex; align-items:center; gap:4px; margin:10px auto 0; border:0; border-radius:99px; padding:6px 12px 6px 8px; background:var(--accent); color:#fff; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:var(--shadow); } .newpill[hidden] { display:none; }
 .ghsteps { margin-top:10px; } .ghsteps .sn { cursor:default; } .ghsteps .sn:hover { outline:0; } .qbox { max-height:320px; overflow-y:auto; margin:4px 0 8px; }
+.tsteps li { padding:0 0 16px; } #atp .tsteps li > div.label:first-of-type { min-height:28px; margin:0 0 6px 36px; display:flex; align-items:center; } .tsteps li:not(:last-child)::after { display:none; } /* #445 GitHub tab steps = fold layout: title beside the number, body full width like "Waiting on you" */
 .stepper li:not(:last-child)::after { content:''; position:absolute; left:13.5px; top:32px; bottom:4px; width:1px; background:var(--line2); }
 .stepper b { color:var(--text); font-weight:600; } .stepper .btnrow { margin-top:8px; align-items:center; } .stepper .keys { margin-top:8px; }
 /* stepper buttons never squeeze: nowrap + wrap row; a button alone on its line grows full width; non-buttons go below */
@@ -3867,7 +3868,7 @@ function ghSteps(iq, qRows, t, open, fin, dn) {
   const now = [...open.map(y => tli(esc(y.status === 'in_progress' && y.activeForm || y.content), {cls: y.status})), ...fin.slice(-3).map(y => tli(esc(y.content), {done: 1, cls: 'completed', tip: y.content}))].join('')
     + dn.map(y => tli(esc(y), {done: 1, cls: 'completed', tip: y})).join('');
   const nw = teamTasks(cur).filter(isWait).length, ns = teamTasks(cur).filter(isIdea).length;
-  return `<ol class="stepper ghsteps">
+  return `<ol class="stepper ghsteps tsteps">
     <li><span class="sn">1</span><div class="label row" style="gap:4px;align-items:center">Tasks<span class="grow"></span>${iq.length ? `<span class="pill">${iq.length}</span>` : ''}${iq.length > 1 ? `<button class="ib" title="Clean up: Clauracle merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''}</div>
       ${iq.length || busy[cur] ? `<div class="qbox">${qRows}</div>` : `<div class="nextstep" style="margin:4px 0 8px"><p><span class="nw">No tasks! Set up Services?</span><span class="nn">Next step:</span></p><button class="btn sm primary block" onclick="rightTab('svc')"><span class="nw">Next step:&nbsp;</span>Services ${icon('go')}</button></div>`}${x.add}</li>
     ${iq.length || busy[cur] ? `<li><span class="sn">2</span><div class="label">Run the task list</div>${runStep(p, n)}</li>
