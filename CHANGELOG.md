@@ -3,6 +3,7 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Code tab: "Open in file viewer" moved to the top right of the file header; X next to the file name closes it (#458)
 
 - Collapsed side rail: file icons that slide behind the account button are hidden and can't be clicked through it.
 - Image editor: selecting a shape shows its tool's settings (text gets bold/italic/underline/font); select by shape, box or freehand, click through stacked shapes; dashed pen/line styles; the context bar shows the tool's icon; Fill toggle with a solid-shape icon; swap/reset colour buttons on the swatches.
