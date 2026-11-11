@@ -5,19 +5,20 @@ It is a *wrapper*: commands, skills, MCP servers, hooks and settings all come fr
 Current state: `HANDOVER.md`. Open work: GitHub issues labelled `task`. Frozen, don't edit: `archive/tui/` (old TUI), `archive/python/` (pywebview prototype).
 
 ## Files
-- `src-tauri/src/lib.rs`: Tauri commands (what the page calls), child-process tracking, app setup.
-- `src-tauri/src/claude.rs`: one session per project: spawns `claude --input-format stream-json …`, control protocol
+- `src-tauri/src/lib.rs`: child-process tracking, window, app setup; Tauri commands (what the page calls) in one file per area beside it (`projects.rs`, `setup.rs`, `tasks.rs`, `build.rs`, `release.rs`, `license.rs`, `report.rs`, `files.rs`).
+- `src-tauri/src/claude/` (`mod.rs` types, `turn.rs`, `control.rs`, `steps.rs`, `plan.rs`): one session per project: spawns `claude --input-format stream-json …`, control protocol
   (initialize with skills/agents, can_use_tool, in-process MCP `clauracle` with `ask`/`ready`), clear-continue, handover, build steps.
-- `src-tauri/src/store.rs`: `~/.clauracle/config.json`, accounts (tokens in the OS keychain), usage/limits/pools, gh helpers,
+- `src-tauri/src/store/` (`mod.rs` config, `mac`, `proc`, `cli`, `env`, `build`, `tasks`): `~/.clauracle/config.json`, accounts (tokens in the OS keychain), usage/limits/pools, gh helpers,
   catalog of MCP/skills, installers, .env parsing, browsers.
-- `ui/index.html`: the whole UI, vanilla JS, no build step. Rust → page: event `clauracle` `{event, data}`.
+- `ui/`: the UI, vanilla JS, no build step. `index.html` = markup, `app.css` = styles, `js/*.js` = classic scripts loaded
+  in order (one shared global scope: code that runs at load may only use what earlier files define). Rust → page: event `clauracle` `{event, data}`.
 - `plugin/`: Clauracle's own Claude Code plugin, bundled as a resource. Third-party skills are never shipped: the page installs them
-  from their source on first run (`APPSKILLS` in `ui/index.html`) and updates them daily (`ext_update`).
+  from their source on first run (`APPSKILLS` in `ui/js/menus.js`) and updates them daily (`ext_update`).
 
 ## Commands
 - Run: `npx tauri dev`. Test: `cargo test --manifest-path src-tauri/Cargo.toml`. Build: `npx tauri build` (bundle for this OS).
 - If cargo isn't found, prefix PATH with `~/.cargo/bin`.
-- UI is embedded at compile time: rebuild after editing `ui/index.html`.
+- UI is embedded at compile time: rebuild after editing anything in `ui/`. New page script → add its `<script>` tag to `index.html`.
 - Check in the real app: `cargo build --manifest-path src-tauri/Cargo.toml`, then `node scripts/live.js "<expr>"` (starts the debug
   build, evaluates in its page, closes it; no arguments = smoke test). Done means this ran and you quote its output.
 - Dogfooding: run the installed build, not `target/debug` (Windows locks a running exe, so cargo can't overwrite it).

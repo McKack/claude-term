@@ -3,6 +3,42 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Every session now gets a built-in rule: work out unclear asks from their screenshots and notes, without remarking on the confusion.
+- Settings > Agents: Custom agents now comes before the Chat (Group thread) section.
+- Agents: background agents count as working until they actually finish; the status bar shows "+N" agents after the project name, and the Activity card lists each working agent with its face.
+- Side panels: every tab starts with the same header (name, + where it can add, … menu in the same place); the Notes tab tooltip is just "Notes".
+- Composer: the Skills and Clear & continue buttons no longer look switched on.
+- Tickers: copies are separated by " >> " instead of a wide gap.
+- Chat: new "Group thread" setting (Settings > Agents): what Clauracle and its helper agents say to each other shows as one thread row per turn; open it to read the messages and reply, with @name to address an agent.
+- Agents: faces are round on a soft accent-coloured background that follows the theme.
+- Every Refresh and Reload action uses the refresh icon.
+- Agents tab: counts show running / enabled agents and light up only while one runs; descriptions are cut to a short line; Custom agents is always listed, with an "Add custom agents" button and its switch greyed out until you add one; the settings button sits on its own row.
+- Chat: when Claude replies right after a failed step, its message opens with a short "Oops!"-style line and ends with a promise to avoid it next time, or, for a permission problem, to try another way.
+- Agents: the fixed agents your AI provider brings are listed first as "Clauracle agents" with their faces, in the Agents tab and in Settings; "Custom agents" are your own, shown once you add one, each with a random face (click it for another).
+- Tasks being worked on by a helper agent show its face instead of the checkbox; active task titles scroll as a ticker (paused on hover), and the Agents tab shows "#N title" for an agent on a task.
+- Agent faces: a one-pixel margin all round, body on every side of the eyes even while they glance, and whole-pixel scaling so they stay sharp at any display scale.
+- With agents switched on, Clauracle can work on up to three non-conflicting tasks at once, each claimed on GitHub so no one else takes it.
+- "Saved by Clauracle" no longer inflates: each turn counts at most what still fits the context window; big numbers show as B (2.1B). Old totals reset once.
+- Platform picker: a little space between the segmented buttons.
+- Settings > Accounts: AI accounts are cards like the other accounts, with their 5-hour and weekly usage bars on a second row
+- Right-click menus open with a corner on the pointer, flip near the window edges and slide in
+- Composer: the top scroll fade no longer stays over text and pills after a long message is cleared or sent
+- Agents: pixel-art creature avatars (random body, arms, feet, antennas, complementary background) that blink and glance around while enabled; a running agent's dot pulses in the accent colour
+- Agents tab: two folding sections, Clauracle agents and Custom agents, each with its own switch and an active/total count
+- Notifications queue up: one shows at a time with the next ones stacked behind it, and clicking one opens what it is about (CI run, project, account settings, report)
+- Info (ⓘ) buttons: hover shows a short summary, a click opens the full text in a tooltip at the button instead of a notification
+- One meaning per look: solid button = the main action of an area, outlined = other actions, plain = tools; one "on" look for every toggle; highlighted counts only when something waits on you or is running; hover feedback on every clickable card and row.
+- Chat: every message that turns into a task now shows its #number tag, including messages with images and asks the session filed itself
+- Composer: starts two lines tall, grows with the message and shrinks back after sending
+- Agents tab: every enabled agent in one list with a role name (The Scout, The Architect…), its own generated face, and a status dot that pulses while it works, thinks or failed
+- First run: a short setup, one step at a time (nickname, accounts, permissions). Accounts: GitHub and Google show as compact cards under "Other accounts"; a project picks its AI, GitHub and Google account by clicking cards
+- `/janitor` runs the Storage Janitor now and reports what it freed; it also clears Claude Code temp files untouched for 3 days
+- Service setup steps tick themselves once all the service's keys are filled; Mac signing's last step finishes when CI builds are off
+- macOS: the status bar shows at the bottom of every screen again
+- macOS: no stray horizontal scroll bar in the composer
+- Every "+ Add" button is now a plain "+" icon; with no project open, the side panel shows one "Add project" button with the add menu.
+- Release: a finished build is staged for release even when new work was committed while it ran, so its checklist no longer shows an open build check.
+- Composer: the web-search toggle sits next to Send; the second Clear & continue button on the right is gone (the left one stays).
 - The account row at the bottom of the side panel spans its full width.
 - Relay at its limits: no more loop. It switches to an account with room, else goes up to 5–10% past one account's set limit, else pauses with "work is paused until <time, date>" and carries on by itself at the reset.
 - Windows: building a project while a copy of it is still open from its build folder works (Clauracle can build itself); the open copy is moved aside instead of blocking the build with "Access is denied".

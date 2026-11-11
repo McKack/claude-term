@@ -1,5 +1,5 @@
 // #248 hiCode check: colouring never changes the text (strip tags = escaped source). Run: node scripts/hicode-check.js
-const fs = require('fs'), src = fs.readFileSync('ui/index.html', 'utf8');
+const fs = require('fs'), src = fs.readdirSync('ui/js').map(f => fs.readFileSync('ui/js/' + f, 'utf8')).join(String.fromCharCode(10));
 const a = src.indexOf('const HKW'), b = src.indexOf('const codeHtml');
 const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 eval(src.slice(a, b).replace('const HKW', 'var HKW'));

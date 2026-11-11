@@ -1,5 +1,5 @@
 // #371 mdDoc check: block types render, no raw markdown left, code spans keep their text. Run: node scripts/mddoc-check.js
-const fs = require('fs'), src = fs.readFileSync('ui/index.html', 'utf8');
+const fs = require('fs'), src = fs.readdirSync('ui/js').map(f => fs.readFileSync('ui/js/' + f, 'utf8')).join(String.fromCharCode(10));
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const cut = (a, b) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a)));
 eval(cut('const HKW', 'function hiCode').replace('const HKW', 'var HKW') + cut('function hiCode', '// #338 colour toggle') + cut('function mdDoc', '// one task row'));
