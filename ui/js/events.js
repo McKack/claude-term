@@ -10,7 +10,15 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
     if (d.kind === 'tool' && !d.parent) setDoing(d.pid, 'Running: ' + d.text.replace(/\s+/g, ' ').slice(0, 60), d.id);
     else if (d.result_of && d.result_of === doing[d.pid]?.id) setDoing(d.pid, 'Thinking');
     if (reading[d.pid] && /^(claude|tool|err)$/.test(d.kind)) readNote(d.pid, false); // notes/system lines of the reconnect ≠ the reply
-    addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of, cmd: d.cmd && LASTCMD[d.pid] || undefined}); if (d.result_of && d.pid === cur) drawAtp(); },
+    addEntry(d.pid, {kind: d.kind, text: d.text, detail: d.detail, id: d.id, parent: d.parent, result_of: d.result_of, cmd: d.cmd && LASTCMD[d.pid] || undefined}); if (d.result_of && d.pid === cur) drawAtp();
+    // Claude Code's auto-mode check blocked a call without asking Clauracle: offer the allow rule right here
+    if (d.kind === 'err' && /denied by the Claude Code auto mode classifier/i.test(d.text || '')) { const t = (logs[d.pid] || []).find(x => x.id === d.result_of);
+      if (t?.detail) addEntry(d.pid, {kind: 'ask', denied: true, pid: d.pid, id: 'den-' + d.result_of, tool: t.text.replace(/^↳ /, '').split(/\s/)[0], input: t.detail}); } },
+  manager: () => { mgrLog(d.pid, d.doing); if (d.doing) MGR[d.pid] = d.doing; else delete MGR[d.pid]; if (d.pid === cur) drawAtp(); }, // #572 The Manager is classifying a message
+  local: () => { const m = $('loginMsg'); if (m) m.textContent = `Downloading ${d.what}… ${d.pct}%`; }, // local model download progress
+  localLoad: () => { const l = logs[d.pid] || [], e = l.at(-1)?.loadNote ? l.at(-1) : null; // #576 one note per load, rewritten as the memory grows
+    if (!e) { addEntry(d.pid, {kind: 'note', text: d.text, loadNote: !d.done}); return; }
+    e.text = d.text; if (d.done) delete e.loadNote; saveLog(d.pid); if (d.pid === cur) drawLog(); },
   weburl: () => { if (d === 'about:blank') return; webUrl[cur] = webNav = d; const u = $('wurl'); if (u && document.activeElement !== u) u.value = d; }, // in-app browser navigated
   delta: () => { if (hand[d.pid] === true) return; live[d.pid] = (live[d.pid] || '') + d.text;
     if (d.pid === cur) { const el = $('live'), stick = atEnd(); if (el) el.innerHTML = md(live[d.pid]); else { const box = $('log').querySelector('.col'), n = box.appendChild(liveEl(d.pid)); hatch(box, n); } toEnd(stick); } },
@@ -36,7 +44,7 @@ T.event.listen('clauracle', ({payload: {event, data: d}}) => ({
   questions: () => refresh().then(() => { hiddenQs[d.pid] = false; if (d.pid === cur) drawLog(); }),
   ask: () => addEntry(d.pid, {kind: 'ask', ...d}),
   usage: () => { S.usage[d.account] = d.usage; if (P()) drawChrome(); },
-  commands: () => { if (Array.isArray(d.agents)) { CCAG = d.agents; try { localStorage.ccag = JSON.stringify(d.agents); } catch {} }
+  commands: () => { if (Array.isArray(d.agents)) { CCAG = d.agents = d.agents.filter(a => !AGHIDE.test(a.name)); try { localStorage.ccag = JSON.stringify(d.agents); } catch {} }
     if (Array.isArray(d.models) && d.models.length) { CMODELS = d.models; try { localStorage.cmodels = JSON.stringify(d.models); } catch {} }
     if (Array.isArray(d.commands)) cmds[d.pid] = [{name: 'ask', argumentHint: '<question>', description: 'Clauracle: ask a question; answered, never filed as a task'}, {name: 'build', argumentHint: '[windows|linux|macos|ios|android|all]', description: 'Clauracle: build a local copy and run it; or build one target / all'}, {name: 'janitor', description: 'Clauracle: run the Storage Janitor now (old build caches, Claude Code versions and temp files)'}, ...d.commands.map(c => typeof c === 'string' ? {name: c} : c)]; },
   build: () => { const b = builds[d.pid] ||= {out: ''}; if (d.line != null) b.out += d.line + '\n';
@@ -128,19 +136,24 @@ function askCard(e) {
     const lvl = n => { const ws = [...new Map(parts.map(w => [w.slice(0, n).join(' '), w.slice(0, n)])).values()], ls = ws.map(w => w.map(short).join(' '));
       return [ws.map(w => `${e.tool}(${w.join(' ')}:*)`), `${e.tool} ${ls.slice(0, 4).join(' + ')}${ls.length > 4 ? ` +${ls.length - 4} more` : ''}`]; };
     rules = [[[e.tool], e.tool === 'Bash' ? 'Bash (any command)' : e.tool], ...(parts.length ? [lvl(1)] : []), ...(parts.some(w => w.length > 1) ? [lvl(2)] : [])];
-    rule = rules[Math.min(1, rules.length - 1)][0];
+    rule = rules[e.denied ? rules.length - 1 : Math.min(1, rules.length - 1)][0]; // blocked call: the narrowest rule
     d.classList.add('perm');
-    d.innerHTML = `<h4><span class="edot"></span>Allow ${e.tool === 'mcp__clauracle__ui' ? 'Clauracle to act in this window' : esc(e.tool)}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
-      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="selbtn" data-m>Allow…</button><button class="btn primary" data-a="1">Allow now</button></div>`;
+    d.innerHTML = `<h4><span class="edot"></span>${e.denied ? 'Claude Code blocked this. Allow ' + esc(e.tool) : 'Allow ' + (e.tool === 'mcp__clauracle__ui' ? 'Clauracle to act in this window' : esc(e.tool))}?</h4><pre class="sel">${esc(body)}</pre><input class="deny" placeholder="Optional: why not, or what to do instead" style="width:100%">
+      <div class="btns"><button class="btn ghost" data-a="0">Deny</button><button class="selbtn" data-m>Allow…</button><button class="btn primary" data-a="1">${e.denied ? 'Allow and retry' : 'Allow now'}</button></div>`;
     // Allow… = dropdown: duration → (Bash only) what to allow, as a hover submenu
     const pick = (a, r) => () => { rule = r; answer(a); };
-    d.querySelector('[data-m]').onclick = ev => menuAt(ev.currentTarget, [['3', 'This session', 'Until this session restarts or is cleared'],
+    d.querySelector('[data-m]').onclick = ev => menuAt(ev.currentTarget, [...e.denied ? [] : [['3', 'This session', 'Until this session restarts or is cleared']],
       ['5', 'For 24 hours', 'In this project'], ['2', 'Always', 'In this project; undo in the project manager']]
       .map(([a, label, hint]) => rules.length > 1 || e.tool === 'Bash' ? {label, hint, items: [{title: 'What to allow'}, ...rules.map(([r, l]) => ({label: l, run: pick(a, r)}))]} : {label, hint, run: pick(a, rule)}));
   }
   var rules, rule;
   d.querySelectorAll('[data-a]').forEach(b => b.onclick = () => answer(b.dataset.a));
   function answer(a) {
+    // a blocked call: the CLI already moved on, so "Allow now" = a 24 h rule (it reaches the CLI on reconnect) + ask to retry
+    if (e.denied) { if (a === '1') a = '5';
+      if (a !== '0') { const p = P(e.pid) || P(), r = rule.map(x => a === '5' ? `${x}@${Math.floor(Date.now() / 1000) + 86400}` : x);
+        call('update_project', {pid: p.id, changes: {allow: [...new Set([...(p.allow || []), ...r])]}}).then(() => { refresh(); sendNow(p.id, {text: `Allowed ${rule.join(', ')}. Try it again.`, atts: []}); }); }
+      e.done = {0: 'Kept blocked', 5: 'Allowed for 24 h', 2: 'Always allowed'}[a]; e.doneAt = new Date().toISOString(); return d.replaceWith(askCard(e)); }
     const allow = a !== '0', answers = {};
     // 2 = always, 5 = 24 h ("rule@unix secs", claude::rule_hit): this project's allow list
     if (a === '2' || a === '5') { const p = P(e.pid) || P(), r = rule.map(x => a === '5' ? `${x}@${Math.floor(Date.now() / 1000) + 86400}` : x);

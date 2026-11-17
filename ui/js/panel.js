@@ -71,21 +71,16 @@ const buildSet = () => openManager(cur).then(() => jumpTo('[data-f=p-build]'));
 const TABSET = {gh: () => openSettings('gh'), agents: () => openSettings('agents'), build: buildSet}; // svc: no settings of its own
 const tabItems = t => [{icon: 'refresh', label: 'Refresh', run: () => { TABREF[t](); tab === t ? drawRight(true) : rightTab(t); }}, ...(TABSET[t] ? [{icon: 'gear', label: 'Settings…', run: TABSET[t]}] : [])]; // #404 tab btn + empty tab body
 $('rtabs').oncontextmenu = e => { const b = e.target.closest('button[data-t]'); if (!b || !cur) return; e.preventDefault(); menuAt(b, tabItems(b.dataset.t)); };
-// Build auto-setup: commands guessed from project files (Rust build_guess, no tokens) → confirm; cached per project
-const GUESS = {};
+// #586 no build steps yet: the AI reads the project's files (buildAi, settings.js), or the user types them in; no guessing
 const MAC = {}; // pid → ships for macOS (ships_mac), once per app run
-async function guessHtml() {
-  const g = GUESS[cur] ??= await call('build_guess', {pid: cur}).catch(() => ({}));
-  const ks = ['build', 'run', 'deploy'].filter(k => g[k]), set = `<button class="btn${ks.length ? '' : ' primary'} block" onclick="openManager(cur)">${icon('hammer')}Set build and run commands</button>`;
-  return ks.length ? `<p class="dim" style="margin:0 0 6px">Found in this project:</p><div class="grid2" style="margin-top:0">${ks.map(k => `<span>${k[0].toUpperCase() + k.slice(1)}</span><span class="mono">${esc(g[k])}</span>`).join('')}</div>
-    <div class="btnrow"><button class="btn primary" onclick="useGuess()">${icon('hammer')}Use these</button><button class="btn" onclick="openManager(cur)">Edit</button></div>` : set;
-}
-const useGuess = () => call('update_project', {pid: cur, changes: {build: {...P().build, ...Object.fromEntries(Object.entries(GUESS[cur]).filter(([k, v]) => v && k !== 'after' && k !== 'fix'))}}}).then(refresh).then(drawRight);
+function guessHtml() { const s = BAI[cur];
+  return s === 'busy' ? skel('b45') + '<p class="hint">Reading the project…</p>' : (s?.t ? `<p class="${s.err ? 'err' : 'hint'}">${esc(s.t)}</p>` : '')
+    + `<div class="btnrow"><button class="btn primary" onclick="buildAi(cur, 1)">${icon('sparkle')}Detect with AI</button><button class="btn" onclick="openManager(cur)">${icon('hammer')}Type them in</button></div>`; }
 /* Release wizard: stage per project (p.stage) alpha → beta → rc → published. Checklist = every item at or below the
    target stage (stricter going up). Facts from release_check (plain code, cached 60s/project); Claude only writes/judges
    via a Fix prompt. Same stage = light update (tag + publish in GitHub tab); Move up = target's full list first. */
 const STAGES = {alpha: 'Alpha', beta: 'Beta', rc: 'Release candidate', published: 'Published'}, SK = Object.keys(STAGES);
-const RELC = {}, RELTO = {}, RELBUSY = {}, RELFIX = {}; // RELFIX pid → Set of row ids whose background Fix/Run (#360 rel_fix) is out // pid → {c, t} check cache · pid → target stage while moving up
+const RELC = {}, RELTO = {}, RELBUSY = {}, RELFIX = {}, DOCFIX = {}; // DOCFIX pid → {readme, lic, credits: 'run' | 'ok'} while the Markdown Fix runs (Build-step look: shimmer, then a check) // RELFIX pid → Set of row ids whose background Fix/Run (#360 rel_fix) is out // pid → {c, t} check cache · pid → target stage while moving up
 const RELAI = { // fix prompts: Claude writes/judges, never template
   // #357 one row = README (≥10 lines, touched since the last tag) + LICENSE (picked, present, id matches) + CREDITS.md
   get readme() { const c = RELC[cur]?.c || {}; return [ // #413 LICENSE.md + CREDITS = code (relDocs), README prose = AI
@@ -111,12 +106,11 @@ function relItems(c, p) {
   const stale = files.filter(f => f.mtime && f.mtime < (c.code_t || 0)); // #92: built before the newest code commit → rebuild before release
   // array order = display order (filter keeps it) → Build stays last whatever the stage
   return [
-    {s: 0, id: 'readme', t: 'Markdown files written', ok: c.readme >= 10 && !c.readme_old && c.credits && licOk(c, p.license),
-      h: [c.readme < 10 ? (c.readme ? `README.md: only ${c.readme} lines` : 'README.md: missing') : c.readme_old ? `README.md: not updated since ${c.tag}` : 'README.md',
-        // #264 licence picked in Settings › Projects (p-lic); not picked → Choose / Confirm (file exists) → licPick; picked but file missing/other → Fix prompt
-        (c.lic_file || 'LICENSE.md') + (p.license ? `: ${LICS[p.license] || p.license}` + (!c.license ? ', no file yet' : c.lic_id && c.lic_id !== p.license ? `, file says ${c.lic_id}` : c.lic_file !== 'LICENSE.md' ? ', rename to LICENSE.md' : '') : c.license ? `: not picked, file looks like ${c.lic_id || 'an unknown license'}` : ': not picked'),
-        c.credits ? 'CREDITS.md' : 'CREDITS.md: missing'].map(t => `<span style="display:block">${esc(t)}</span>`).join(''),
-      ...(p.license ? {go: 'relDocs(this)'} : {go: 'licPick()', gl: c.license ? 'Confirm license' : 'Choose license'})},
+    {s: 0, id: 'readme', t: 'Markdown files', ok: c.readme >= 10 && !c.readme_old && c.credits && licOk(c, p.license),
+      // one line per file: a red X until it is written and current, a check once fixed (shimmer while the Fix works on it)
+      h: [['README', c.readme >= 10 && !c.readme_old, 'readme'], ['LICENSE', licOk(c, p.license), 'lic'], ['CREDITS', c.credits, 'credits']].map(([n, ok, k]) =>
+        (s => `<span class="bfile md${ok || s === 'ok' ? ' ok' : ''}${s === 'run' ? ' shim' : ''}">${icon(ok || s === 'ok' ? 'check' : 'x')}${n}</span>`)(DOCFIX[cur]?.[k])).join(''),
+      busy: !!DOCFIX[cur], ...(p.license ? {go: 'relDocs()'} : {go: 'licPick()', gl: c.license ? 'Confirm license' : 'Choose license'})},
     ...(c.deps ? [{s: 0, id: 'libs', t: 'Library licenses compatible', ok: licOkDeps(c), d: (b => b.length ? `${b.length} not allowed or unknown: ${b.slice(0, 5).map(x => x.n + ' (' + (x.l || '?') + ')').join(', ')}${b.length > 5 ? '…' : ''}` : '')(c.deps.filter(x => x.s === 'bad' || x.s === 'unk'))
       + (c.credits_miss?.length ? ` ${c.credits_miss.length} not credited in CREDITS.md` : '') || `${c.deps.length} libraries checked`, go: c.credits_miss?.length ? `licCredits(cur, this)` : `licPick()`, gl: c.credits_miss?.length ? 'Add credits' : 'Details'}] : []),
     {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` + (tv ? ` · last released ${c.tag}` : ' · first release') : 'not found'},
@@ -194,9 +188,9 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   }
   const c = RELC[pid].c, re = `<button class="ib" title="Refresh" onclick="relRefresh()">${icon('refresh')}</button>`;
   const ask = `<button class="btn${k < 0 ? ' primary' : ''}" ${RELFIX[pid]?.has('summary') ? 'disabled><i class="spin"></i>' : `onclick="relAsk('summary')">${icon('sparkle')}`}What's missing for ${relNext(p)}?</button>`;
-  if (c.err) return stHead('Release', re) + (`<p class="err">${esc(c.err)}</p>`);
-  if (k < 0 && RELTO[pid] == null) return stHead('Release', re) + (`<p class="hint">Walk this project to a release, one checklist per stage.</p>
-    <div class="btnrow col">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`);
+  if (c.err) return {stage: stHead('Stage', re) + `<p class="err">${esc(c.err)}</p>`, rel: stHead('Release')};
+  if (k < 0 && RELTO[pid] == null) return {stage: stHead('Stage', re) + `<p class="hint">Walk this project to a release, one checklist per stage.</p>
+    <div class="btnrow col">${ask}<button class="btn" onclick="RELTO[cur]=0; drawRight()">Start at Alpha</button></div>`, rel: stHead('Release')};
   const tv = (c.tag || '').replace(/^v/, ''), cv = (c.version || '').replace(/^v/, '');
   const top = (c.staged || []).reduce((a, x) => !a || vcmp(x.v, a) > 0 ? x.v : a, tv); // #266 staged versions count as taken
   if (top && SEMV.test(cv) && vcmp(cv, top) <= 0 && !c.bumping) { // #121 auto-bump past the latest tag / staged build (patch); once per check
@@ -205,9 +199,10 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
     catch (e) { addEntry(pid, {kind: 'note', text: `Auto-bump failed: ${e}`}); }
   }
   const items = relItems(c, p).filter(x => x.s <= to), left = items.filter(x => !x.ai && !x.ok).length;
-  const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:16px;display:inline-flex;padding-top:2px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${icon(x.ai ? 'sparkle' : x.ok ? 'check' : 'x')}</span>
+  const bi = items.find(x => x.id === 'build'), si = items.filter(x => x !== bi), sleft = si.filter(x => !x.ai && !x.ok).length; // the build row lives in the Build step
+  const row = x => `<div class="row" style="gap:8px;align-items:flex-start;padding:3px 0"><span style="width:24px;flex:none;display:inline-flex;justify-content:center;padding-top:2px;color:var(${x.ai ? '--dim' : x.ok ? '--ok' : '--err'})">${icon(x.ai ? 'sparkle' : x.ok ? 'check' : 'x')}</span>
     <span class="grow"><span${x.ok ? ' style="color:var(--text)"' : ''}>${esc(x.t)}</span>${x.dh ? '' : x.h ? `<small class="dim" style="display:block">${x.h}</small>` : x.d ? `<small class="dim" style="display:block">${x.url ? `<a data-url="${esc(x.url)}" style="cursor:pointer">${esc(x.d)}</a>` : esc(x.d)}</small>` : ''}</span>
-    ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" ${RELFIX[cur]?.has(x.id) ? 'disabled><i class="spin"></i>' : `onclick="relAsk('${x.id}')">`}${x.ai ? 'Run' : 'Fix'}</button>` : ''}</div>${x.dh ? `<small class="dim" style="display:block;padding-left:24px">${x.dh}</small>` : ''}`; /* #182 dh below the row: full width, not squeezed by the Building… button */
+    ${x.id === 'build' && builds[cur]?.busy ? buildingBtn(1) : x.busy ? '<button class="btn sm" disabled><i class="spin"></i>Fixing…</button>' : x.ok ? '' : x.go ? `<button class="btn sm" onclick="${x.go}">${x.gl || 'Fix'}</button>` : RELAI[x.id] ? `<button class="btn sm" ${RELFIX[cur]?.has(x.id) ? 'disabled><i class="spin"></i>' : `onclick="relAsk('${x.id}')">`}${x.ai ? 'Run' : 'Fix'}</button>` : ''}</div>${x.dh ? `<small class="dim" style="display:block;padding-left:24px">${x.dh}</small>` : ''}`; /* #182 dh below the row: full width, not squeezed by the Building… button */
   const seg = `<span class="seg">${SK.map((s, i) => `<button class="${i === to ? 'on' : ''}" ${i < Math.max(k, 0) ? 'disabled' : ''} title="${i > k ? 'Move up: shows this stage\'s full list' : 'Current stage'}" onclick="RELTO[cur]=${i}; drawRight()">${STAGES[s].replace('Release candidate', 'RC')}</button>`).join('')}</span>`;
   const gi = GHI[pid]?.g, v = (c.version || '').replace(/^v/, '');
   // #265 build in flight → say so (was an enabled-looking button under "Ready to build!")
@@ -218,9 +213,11 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
   // Release = publish v<version> (that version's build files) on GitHub + set the stage; grayed out till every check is green
   const rel = RELBUSY[pid] ? `<button class="btn sm primary block" disabled><i class="spin"></i>Publishing…</button>` : `<button class="btn sm primary block" ${why ? `disabled title="${esc(why)}"` : ''} onclick="relRelease(${to}, this${sv ? `, '${esc(sv)}'` : ''})">${icon('rocket')}Release v${esc(rv)} as ${STAGES[SK[to]]}</button>`; /* #122 RELBUSY survives redraws */
   const act = stg.length ? `<div class="relsplit">${rel}<button class="btn sm primary relarr${stg.length > 1 ? ' pulse' : ''}" title="${stg.length} staged release${stg.length > 1 ? 's' : ''}: pick one" onclick="relMenu(this)">${icon('down')}</button></div>` : rel;
-  return stHead('Release', (left ? `<span class="pill dim">${items.length - left}/${items.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re) + `<div class="row" style="gap:8px;align-items:center;margin-bottom:8px"><span class="dim">Stage:</span>${seg}</div>
-    <div>${items.map(row).join('')}</div>
-    <div class="nextstep"><p>${why ? esc(why) : 'Ready to release!'}</p>${act}</div><div class="btnrow col" style="margin-top:8px">${ask}</div>`; /* #237 header = Stage + switcher only; ask under the Release box */ // #232 Release button in the next-step box
+  const bok = !!bi?.ok, done = !!tv && !stg.length && !bok; // released = nothing built or staged past the last tag
+  return {sok: !sleft, bok, bi: bi && row({...bi, id: '', go: ''}), stg: stg.length, done,
+    stage: stHead('Stage', (sleft ? `<span class="pill dim">${si.length - sleft}/${si.filter(x => !x.ai).length}</span>` : '<span class="pill">ready</span>') + re) + `<div class="row tgtrow" style="gap:8px;margin-bottom:8px"><span class="dim" data-tip="Stage">${icon('layers')}</span>${seg}</div>
+    <div>${si.map(row).join('')}</div>`,
+    rel: stHead('Release') + `<div class="nextstep" style="margin-top:0"><p>${done ? `${esc(c.tag)} released, build v${esc(v)} to release it next` : why ? esc(why) : 'Ready to release!'}</p>${act}</div><div class="btnrow col" style="margin-top:8px">${ask}</div>`};
 }
 /* #123 recheck CI while a run is in flight (one timer per project; only while Build & Release shows it) */
 const CIPOLL = {};
@@ -230,15 +227,18 @@ const relNext = p => { const k = p.stage ? SK.indexOf(p.stage) : -1; return k < 
 const relRefresh = () => { TABREF.build(); drawRight(); };
 // #360 one-click AI fixes = headless claude -p (lib rel_fix), never a chat prompt; reply → log note + Claude row, toast
 async function bgAI(pid, label, text) {
-  try { const r = await call('rel_fix', {pid, prompt: text}); addEntry(pid, {kind: 'note', text: `${label}: done in the background`, ts: Date.now()}); addEntry(pid, {kind: 'claude', text: r, ts: Date.now()}); toast(`${label}: done`, 'ok', 0, true, () => openProject(pid)); }
-  catch (e) { toast(`${label}: ${e}`, 'err'); }
+  try { const r = await call('rel_fix', {pid, prompt: text}); addEntry(pid, {kind: 'note', text: `${label}: done in the background`, ts: Date.now()}); addEntry(pid, {kind: 'claude', text: r, ts: Date.now()}); toast(`${label}: done`, 'ok', 0, true, () => openProject(pid)); return true; }
+  catch (e) { toast(`${label}: ${e}`, 'err'); return false; }
 }
 // #413 Markdown row Fix: LICENSE.md (GitHub licence text) + CREDITS.md (scan data) by code, no tokens; README prose → AI only if needed
-async function relDocs(b) { b.disabled = true; const pid = cur, c = RELC[pid]?.c || {};
-  try { if (!licOk(c, P(pid).license)) addEntry(pid, {kind: 'note', text: 'License written: ' + (await call('lic_write', {pid})).join(', ')});
-    if (!c.credits || c.credits_miss?.length) await call('lic_credits', {pid}); } catch (e) { toast(String(e), 'err'); }
-  if (c.readme < 10 || c.readme_old) return relAsk('readme');
-  if (RELC[pid]) RELC[pid].t = 0; drawRight(); }
+async function relDocs() { const pid = cur, c = RELC[pid]?.c || {}, rd = c.readme < 10 || c.readme_old;
+  if (DOCFIX[pid] || rd && !await sure(`Run in the background?\n\n${RELAI.readme}\n${estTok()}`, 'Run')) return;
+  const st = DOCFIX[pid] = {}, put = (k, v) => { if (v) st[k] = v; else delete st[k]; if (pid === cur && tab === 'build') drawRight(); };
+  const job = (k, on, fn) => on && (put(k, 'run'), fn().then(r => put(k, r !== false && 'ok'), e => { put(k); toast(String(e), 'err'); }));
+  await Promise.all([job('lic', !licOk(c, P(pid).license), () => call('lic_write', {pid}).then(r => addEntry(pid, {kind: 'note', text: 'License written: ' + r.join(', ')}))),
+    job('credits', !c.credits || c.credits_miss?.length, () => call('lic_credits', {pid})),
+    job('readme', rd, () => bgAI(pid, 'README.md', RELAI.readme))]);
+  delete DOCFIX[pid]; if (RELC[pid]) RELC[pid].t = 0; if (pid === cur && tab === 'build') drawRight(); }
 async function relAsk(id) {
   const c = RELC[cur]?.c || {}, open = relItems(c, P()).filter(x => !x.ai && !x.ok).map(x => x.t).join(', ');
   const text = id === 'summary' ? `Release prep: in a few lines, what this project is and does, then what's missing for ${relNext(P())} (that stage's checklist; open checks: ${open || 'none'}). Plan only, don't change files.` : RELAI[id];
@@ -261,7 +261,7 @@ async function relRelease(to, btn, sv) { // sv = staged version (#266): its copi
     const u = (String(url).match(/https?:\S+/) || [])[0];
     dlg(`<h2>${icon('rocket')}Released v${esc(v)}</h2><p class="hint">Published on GitHub as ${st}.</p><div class="btns"><button class="btn ghost" onclick="closeDlg()">Close</button>${u ? `<button class="btn primary" data-url="${esc(u)}" onclick="closeDlg()">Open release page</button>` : ''}</div>`);
     if (P(pid).stage !== SK[to]) await call('update_project', {pid: pid, changes: {stage: SK[to]}});
-    if (P(pid).build.deploy) call('run_step', {pid: pid, step: 'deploy'}); // #34: deploy = part of Release (guessed by build_guess or set in the project)
+    if (P(pid).build.deploy) call('run_step', {pid: pid, step: 'deploy'}); // #34: deploy = part of Release (set in the project, or read by the AI: build_ai)
     delete RELBUSY[pid]; delete RELTO[pid]; delete RELC[pid]; ghiStale(pid); await refresh(); pid === cur && drawRight(true); ciPoll(pid, 15e3); /* #123 tag → CI run */
   } catch (e) { addEntry(pid, {kind: 'note', text: `Release failed: ${e}`}); delete RELBUSY[pid]; if (pid === cur && tab === 'build') drawRight(); }
 }
@@ -390,6 +390,8 @@ async function tgtFlip(id) {
   drawRight();
 }
 // Build tab body. live=false → cache only (no git/gh calls), live=true → refetch what's stale (force → all)
+const REOPEN = {}; // pid → Build & Release step numbers opened again after they were done (until the app restarts)
+const stepReopen = n => { const r = REOPEN[cur] ||= new Set(); r.has(n) ? r.delete(n) : r.add(n); drawRight(); };
 async function buildHtml(p, has, live, force) {
   const pid0 = cur;
   if (live && MAC[pid0] === undefined) MAC[pid0] = await call('ships_mac', {pid: pid0}).catch(() => false);
@@ -400,14 +402,21 @@ async function buildHtml(p, has, live, force) {
   const mac = macOn(p, pid0);
   let c = GHI[pid0];
   if (live && (force === true || !c || Date.now() - c.t > 30000)) { const g = await call('gh_info', {pid: pid0}).catch(() => null); if (g) { ghiSet(pid0, g); c = GHI[pid0]; } }
-  // #232 stepper ① targets ② manual build ③ release (+ next-step box w/ Release); #34: no Deploy button ∵ Release runs the deploy command after publishing
-  return `<ol class="stepper ghsteps"><li><span class="sn">1</span>${tgtHtml(p)}</li>
-    <li><span class="sn">2</span>${stHead('Manual build', `<button class="ib" title="Edit commands (tasks build by themselves: see Then on the GitHub tab)" onclick="buildSet()">${icon('pen')}</button>`)}${has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
+  // stepper ① targets ② stage checklist ③ build ④ release (enabled once built, or while staged builds wait); #34: no Deploy button ∵ Release runs the deploy command after publishing
+  const w = live || RELC[pid0] ? await relWizard(p, live && force === true, !live) : null, t = p.targets || [], due = has && w && !w.bok && !builds[cur]?.busy;
+  // a step is usable once the ones before it are done; a done step locks until its check is clicked (REOPEN). Release also opens while staged builds wait.
+  const ok = [t.length && t.every(id => tgtReady(p, id)), w?.sok, has && p.build.build && w?.bok, w?.done], re = REOPEN[pid0] ||= new Set();
+  const li = (n, body, open = ok.slice(0, n - 1).every(Boolean)) => { const d = ok[n - 1] && !re.has(n);
+    return `<li class="${ok[n - 1] ? 'done' : ''}${!open || d ? ' off' : ''}">${ok[n - 1] ? `<button class="sn" data-tip="${d ? 'Done: click to change it again' : 'Lock it again'}" onclick="stepReopen(${n})">${icon('check')}</button>` : `<span class="sn">${n}</span>`}${body}</li>`; };
+  const nd = ok.findIndex(x => !x);
+  return stepBox('st-build', nd < 0 ? 'All 4 steps done' : `Step ${nd + 1} of 4: ${['Targets', 'Stage', 'Build', 'Release'][nd]}`, nd < 0, `<ol class="stepper ghsteps tsteps">${li(1, tgtHtml(p))}
+    ${li(2, w ? w.stage : stHead('Stage') + skel(70, 45))}
+    ${li(3, stHead('Build', `<button class="ib" title="Edit commands (tasks build by themselves: see Then on the GitHub tab)" onclick="buildSet()">${icon('pen')}</button>`) + (w?.bi || '') + (has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
-          : `<button class="btn" ${p.build[s] ? '' : 'disabled'} onclick="${s === 'build' ? 'buildNow()' : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
-        : live || GUESS[pid0] ? await guessHtml() : skel('b45')}</li>
-    <li><span class="sn">3</span>${live || RELC[pid0] ? await relWizard(p, live && force === true, !live) : stHead('Release') + skel(70, 45, 'b100')}</li></ol>`
+          : `<button class="btn${s === 'build' && due ? ' due' : ''}" ${p.build[s] ? '' : 'disabled'} ${s === 'build' && due ? 'title="This version is not built yet" ' : ''}onclick="${s === 'build' ? (due ? 'relBuild()' : 'buildNow()') : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
+        : guessHtml()))}
+    ${li(4, w ? w.rel : stHead('Release') + skel('b100'), ok.slice(0, 3).every(Boolean) || !!w?.stg)}</ol>`)
       + actHtml()
       + (!svcOf(p).includes('macsign') && mac
         ? sec('Mac builds', `<p class="hint">Unsigned, testers get an "unidentified developer" block. An Apple Developer account fixes that.</p>
@@ -441,10 +450,10 @@ async function drawRight(force) {
   if (tab === 'svc') return drawServices();
   if (tab === 'build') {
     /* 2 passes like GHI: cached-only render at once (stale ok, missing → "Checking…"), then fetch what's stale
-       (build_guess/ships_mac/release_check 60s/gh_info 30s) + re-render, keeping inputs the user changed meanwhile */
+       (ships_mac/release_check 60s/gh_info 30s) + re-render, keeping inputs the user changed meanwhile */
     const has = p.build.build || p.build.run || p.build.deploy, pid0 = cur, ok = () => cur === pid0 && tab === 'build' && !$('right').hidden && !RC();
     const old = (o, ms) => !o || Date.now() - o.t > ms;
-    const stale = force === true || (!has && !GUESS[pid0]) || MAC[pid0] === undefined || old(RELC[pid0], 60e3) || old(GHI[pid0], 30e3);
+    const stale = force === true || MAC[pid0] === undefined || old(RELC[pid0], 60e3) || old(GHI[pid0], 30e3);
     box.innerHTML = await buildHtml(p, has, false);
     if (!stale) return;
     const before = formVals(box), h = await buildHtml(p, has, true, force);
@@ -477,7 +486,7 @@ const formEl = (box, k) => k.startsWith('v:') ? [...box.querySelectorAll('input[
 function drawGh(g, busy) {
   if (qDragging) return; // #193 a rebuild mid-drag orphans Sortable's row/clone
   $('rhead').lastChild?.classList.toggle('upd', !!busy); // the tab menu (Refresh) pulses while fetching
-  const box = $('rbody'), p = P(), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}">#${x.number} ${esc(x.title)}</a>
+  const box = $('rbody'), p = P(), item = (x, kind) => `<div class="item"><a data-url="${esc(x.url)}" data-tip="${esc('#' + x.number + ' ' + x.title)}">#${x.number} ${esc(x.title)}</a>
     <div class="row dim" style="font-size:12px"><span class="grow">@${esc(x.author?.login)}</span><button class="btn ghost sm" onclick='draft(${JSON.stringify(kind)}, ${esc(JSON.stringify(x))})'>Ask Clauracle</button></div></div>`;
   const list = (xs, kind) => xs?.length ? `<div class="list">${xs.map(x => item(x, kind)).join('')}</div>` : empty('None open');
   box.innerHTML = sec('Repository', g.repo ? `<div class="row"><a class="grow" data-url="${esc(g.repo.url)}" style="color:var(--accent);cursor:pointer">${esc(g.repo.nameWithOwner)}</a><span class="pill dim">@${esc(p.gh)}</span></div>`

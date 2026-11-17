@@ -43,7 +43,7 @@ function panelTab(k) { UI.pc = false; UI.pt = k; applyView(); }
 const ETABS = {};
 function etabs(pid = cur) { if (!ETABS[pid]) { let o = {}; try { o = JSON.parse(localStorage['etabs:' + pid] || '{}'); } catch {}
   const tabs = (o.rels || []).map(rel => ({rel, name: rel.split('/').pop()})); ETABS[pid] = {tabs, on: Math.max(0, tabs.findIndex(t => t.rel === o.on))}; } return ETABS[pid]; }
-function evKeep(pid = cur) { const E = ETABS[pid]; if (E) try { localStorage['etabs:' + pid] = JSON.stringify({rels: E.tabs.filter(t => t.rel).map(t => t.rel), on: E.tabs[E.on]?.rel}); } catch {} }
+function evKeep(pid = cur) { const E = ETABS[pid]; if (E) try { localStorage['etabs:' + pid] = JSON.stringify({rels: E.tabs.filter(t => t.rel).map(t => t.rel), on: E.tabs[E.on]?.rel}); } catch {} if (pid === cur) fOpenMark(); }
 /* #435 flatten marks (box note text not kept: numbers only) → same format; gif/bmp can't be encoded by canvas. ponytail: bytes as JSON array, fine ≤ few MB */
 async function evSaveImg(t) { if (ED?.tab !== t) return; const ty = {png: 'png', jpg: 'jpeg', jpeg: 'jpeg', webp: 'webp'}[t.rel.split('.').pop().toLowerCase()];
   if (!ty) return toast('Only PNG, JPG and WebP can be saved', 'warn');
@@ -75,7 +75,7 @@ function evDraw(re) { if (view !== 'edit' || !cur) return;
     + `<button class="ib add" title="New tab" onclick="evNew()">${icon('plus')}</button>`;
   evBar(t); b.style.zoom = t?.img ? '' : UI.ez || 1;
   const ta = b.querySelector('.ecode textarea'); if (ta && b._t) Object.assign(b._t, {ss: ta.selectionStart, se: ta.selectionEnd, sy: b.firstChild.scrollTop}); // caret + scroll survive tab switches
-  if (ta && b._t === t && !re) return;
+  if ((ta || b.querySelector('.epv > .mdoc')) && b._t === t && !re) return; // keeps caret + undo of the open editor
   if (t?.img && b._t === t && ED?.tab === t && !re) return;
   edStash(); b._t = null;
   if (!t) { b.innerHTML = empty('No files open', `<button class="btn sm" onclick="evNew()">${icon('plus')}New file</button><button class="btn sm ghost" onclick="UI.lc = false; setSide('files')">${icon('folder')}Open from Files</button>`); return; }
@@ -86,7 +86,9 @@ function evDraw(re) { if (view !== 'edit' || !cur) return;
     edInit(t.img, t.ed, t); return; }
   if (t.text === undefined) { b.innerHTML = `<div style="flex:1;padding:14px">${skel(60)}</div>`; if (!t.loading) { t.loading = 1; evLoad(t, cur); } return; }
   if (evFm(t)) { let h; try { h = evPv(t) === 'md' ? `<div class="mdoc">${mdDoc(t.text)}</div>` : codeHtml(JSON.stringify(JSON.parse(t.text), null, 2), 'json', !!UI.ew).replace('class="code', 'class="code' + (hlOn() ? '' : ' plain')); } catch (e) { h = `<div class="dim">${esc(String(e))}</div>`; }
-    b.innerHTML = `<div class="epv">${h}</div>`; return; } /* #372 read-only preview; edits = View › Preview off */
+    b.innerHTML = `<div class="epv">${h}</div>`; if (evPv(t) !== 'md') return; /* JSON preview stays read-only */
+    b._t = t; const ed = b.querySelector('.mdoc'); document.execCommand('defaultParagraphSeparator', false, 'p');
+    mdEdit(ed, v => { t.text = v; $('etabs').querySelector('.et.on')?.classList.toggle('dirty', evDirty(t)); }, () => evSave(t)); ed.focus(); return; }
   // #329 Code-tab look: highlighted .code pre (codeHtml) under a transparent textarea, both sized by the pre ∴ one scroller, no scroll sync
   const ext = (t.rel || t.name).split('.').pop().toLowerCase(), hi = () => { b.querySelector('pre')?.remove(); b.querySelector('.ew').insertAdjacentHTML('afterbegin', codeHtml(t.text, ext).replace(/^<div[^>]*>|<\/div>$/g, '')); evMarks(t, 0); }; /* --lw on .code (CSS) ∴ textarea pads past the gutter */
   b.innerHTML = '<div class="code ecode' + (UI.ew ? ' wrap' : '') + (hlOn() ? '' : ' plain') + '"><div class="ew"><textarea spellcheck="false" autocomplete="off"></textarea></div></div>'; b._t = t;
@@ -98,6 +100,7 @@ function evDraw(re) { if (view !== 'edit' || !cur) return;
     if ((a.dataset.tip || '') !== tip) a.dataset.tip = tip; };
   evLint(t);
   a.onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); evSave(t); }
+    else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && 'biu'.includes(e.key) && isMd(t.rel || t.name)) { e.preventDefault(); evMd(1 + 'biu'.indexOf(e.key)); }
     else if (e.key === 'Tab' && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); document.execCommand('insertText', false, '\t'); } }; /* execCommand keeps native undo */
   if (t.ss != null) { a.setSelectionRange(t.ss, t.se); b.firstChild.scrollTop = t.sy; } a.focus(); }
 // #372 menu bar over the tabs: File/Edit/View dropdowns (menuAt) + quick toggles; items depend on the tab (text | md/json preview | image). UI.ew wrap, UI.ez zoom (CSS zoom on #ebody)
@@ -129,7 +132,7 @@ function evMarks(t, bar = 1) { const b = $('ebody'); if (b._t !== t) return; con
 function evGo(l) { const a = evTa(); if (!a) return; const p = a.value.split('\n').slice(0, l - 1).join('\n').length + (l > 1);
   a.focus(); a.setSelectionRange(p, p); $('ebody').querySelector('.ecode pre')?.children[l - 1]?.scrollIntoView({block: 'center'}); }
 const evProbs = (btn, t) => menuAt(btn, t.lint.map(x => ({label: `${x.l}: ${x.m}`.slice(0, 140), icon: x.s === 'e' ? 'x' : 'warn', run: () => evGo(x.l)})));
-function evCmd(c, v) { const a = evTa(); if (!a) return; a.focus(); document.execCommand(c, false, v); } /* execCommand keeps native undo */
+function evCmd(c, v) { const a = evTa() || $('ebody').querySelector('.mdoc[contenteditable=true]'); if (!a) return; a.focus(); document.execCommand(c, false, v); } /* execCommand keeps native undo */
 function evSet(k, v, re = true) { if (k) UI[k] = v; try { localStorage.ui = JSON.stringify(UI); } catch {} evDraw(re); if (re && tab === 'code') drawRight(); } // re = rebuild body (wrap/preview); zoom only restyles. #392 Code tab shares fmt/lint/wrap ∴ redrawn too
 const evImg = () => !!(cur && etabs().tabs[etabs().on]?.img && VZ?.k === 'img'); // #438 image tab: zoom = the image (VZ), never the UI
 const evZp = p => evImg() ? vZp(p) : evSet('ez', Math.min(300, Math.max(50, p)) / 100, false), evZoom = d => evImg() ? (d ? vZp(zStep(Math.round(VZ.s * 100), d)) : vZoom(0)) : evZp(d ? zStep(Math.round((UI.ez || 1) * 100), d) : 100);
@@ -148,7 +151,7 @@ function dragOn(e, move, end, cap = true) { if (e.button) return; e.preventDefau
   addEventListener('pointermove', mv); K.forEach(k => addEventListener(k, stop)); if (cap) g.addEventListener('lostpointercapture', stop);
   g.classList.add('on'); document.body.classList.add('dragging'); document.body.style.cursor = cur; }
 function zDrag(e, get, set) { const x0 = e.clientX, p0 = get(); dragOn(e, ev => set(p0 + Math.round(ev.clientX - x0)), null, false); }
-function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.text !== undefined, ed = tx && !evFm(t), pv = evPv(t);
+function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.text !== undefined, pv = evPv(t), ed = tx && (!evFm(t) || pv === 'md');
   const M = {
     file: [{label: 'New file', icon: 'plus', run: evNew}, {label: 'Open from Files', icon: 'folder', run: () => { UI.lc = false; setSide('files'); }}, '-',
       ...(tx || t?.img ? [{label: 'Save', icon: 'down', hint: 'Ctrl+S', run: () => evSave(t)}] : []), ...(t?.rel ? [{label: 'Open in Code tab', icon: 'code', run: () => previewFile(t.rel, true)}] : []),
@@ -156,9 +159,9 @@ function evMenu(k, btn) { const E = etabs(), t = E.tabs[E.on], tx = !!t && t.tex
     edit: ed ? [{label: 'Undo', icon: 'undo', hint: 'Ctrl+Z', run: () => evCmd('undo')}, {label: 'Redo', icon: 'redo', hint: 'Ctrl+Y', run: () => evCmd('redo')}, '-',
       {label: 'Cut', icon: 'cut', hint: 'Ctrl+X', run: () => evCmd('cut')}, {label: 'Copy', icon: 'copy', hint: 'Ctrl+C', run: () => evCmd('copy')},
       {label: 'Paste', icon: 'paste', hint: 'Ctrl+V', run: () => navigator.clipboard.readText().then(v => evCmd('insertText', v), () => toast('Clipboard blocked: use Ctrl+V', 'warn'))},
-      {label: 'Select all', icon: 'expand', hint: 'Ctrl+A', run: () => { evTa()?.focus(); evTa()?.select(); }},
+      {label: 'Select all', icon: 'expand', hint: 'Ctrl+A', run: () => evCmd('selectAll')},
       ...(pv === 'json' ? ['-', {label: 'Format JSON', icon: 'braces', run: () => { try { const v = JSON.stringify(JSON.parse(t.text), null, 2); evTa().select(); evCmd('insertText', v); } catch (e) { toast(String(e), 'err'); } }}] : [])]
-      : [{title: evFm(t) ? 'Formatted view: switch it off in View to edit' : 'Nothing to edit'}],
+      : [{title: evFm(t) ? 'JSON formatted view is read-only: switch it off in View to edit' : 'Nothing to edit'}],
     /* #382: order = evBar icon order (preview, highlight, lint, wrap) */
     view: [...(pv ? [{label: 'Formatted view' + (pv === 'json' ? ' (read-only)' : ''), icon: 'eye', check: evFm(t), run: () => { fmtFlip(t.rel || t.name); evSet(); }}] : []),
       ...(tx ? [{label: 'Syntax highlighting', icon: 'code', check: hlOn(), off: evFm(t) && pv === 'md', run: hlSet}, {label: 'Lint (errors and warnings)', icon: 'bug', check: !UI.nl, run: () => evSet('nl', !UI.nl)}, {label: 'Word wrap', icon: 'wrap', check: !!UI.ew, run: () => evSet('ew', !UI.ew)}] : []), ...(tx || pv ? ['-'] : []),
@@ -172,13 +175,35 @@ function evBar(t) { const pv = evPv(t), tx = t?.text !== undefined;
   // #447 a menu open → hovering another title switches to it (menu bar behaviour)
   $('emenu').innerHTML = ['File', 'Edit', 'View'].map(k => `<button class="mb" onclick="evMenu('${k.toLowerCase()}', this)" onmouseenter="MENU_A !== this && MENU_A?.closest('#emenu') && document.querySelector('.menu') && evMenu('${k.toLowerCase()}', this)">${k}</button>`).join('');
   if (t?.img) { if (ED?.tab === t) edCtx(); else $('ectx').innerHTML = ''; return; } // #439 image: edCtx fills #ectx once loaded
+  const md = tx && isMd(t.rel || t.name), ed = tx && (!evFm(t) || md), mb = `class="ib" onmousedown="event.preventDefault()"`; // mousedown kept off the textarea ∴ its selection stays
   $('ectx').innerHTML = !t || t.err || t.text === undefined ? '' : `<span class="vtn">${pv ? (evFm(t) ? 'Formatted' : 'Source') : 'Text'}</span><span class="sep"></span>`
-    + (pv ? `<button class="ib${evFm(t) ? ' on' : ''}" title="Formatted view" onclick="fmtFlip(etabs().tabs[etabs().on].rel || etabs().tabs[etabs().on].name); evSet()">${icon('eye')}</button>` : '')
+    + (md ? NFMT.map(([ic, l, , k], i) => `<button ${mb} title="${l}${k ? ' (' + k + ')' : ''}" onclick="evMd(${i}, this)">${icon(ic)}</button>`).join('') + (ed ? '<span class="sep"></span>' : '') : '')
+    + (ed ? `<button ${mb} title="Undo (Ctrl+Z)" onclick="evCmd('undo')">${icon('undo')}</button><button ${mb} title="Redo (Ctrl+Y)" onclick="evCmd('redo')">${icon('redo')}</button>` : '')
+    + '<span class="vur">' + (pv ?`<button class="ib${evFm(t) ? ' on' : ''}" title="Formatted view" onclick="fmtFlip(etabs().tabs[etabs().on].rel || etabs().tabs[etabs().on].name); evSet()">${icon('eye')}</button>` : '')
     + (tx ? hlBtn('', evFm(t) && pv === 'md') : '') /* #373 same toggle as the Code tab (localStorage.codeHl) */
     + (tx && !evFm(t) && !UI.nl && t.lint?.length ? `<button class="ib ez" title="Problems: click to jump" onclick="evProbs(this, etabs().tabs[etabs().on])">${['e', 'w'].map(s => { const n = t.lint.filter(x => x.s === s).length; return n ? `<span style="color:${s === 'e' ? 'var(--err)' : 'var(--warn)'}">${icon(s === 'e' ? 'x' : 'warn')}${n}</span>` : ''; }).join(' ')}</button>` : '')
     + (tx ? `<button class="ib${UI.nl ? '' : ' on'}" title="Lint: errors/warnings in the gutter (JS/HTML scripts via node or the project's eslint, Python, Rust on save, JSON)" onclick="evSet('nl', !UI.nl)">${icon('bug')}</button>` : '')
     + (tx ? `<button class="ib${UI.ew ? ' on' : ''}" title="Word wrap" onclick="evSet('ew', !UI.ew)">${icon('wrap')}</button>` : '')
-    + `<span class="vur">${zoomCtl('Math.round((UI.ez || 1) * 100)', 'evZp(p)', ', Ctrl+wheel')}</span>`; } /* #439 = image tab's bar layout: tool/mode name, toggles, zoom right */
+    + (tx ? '<span class="sep"></span>' : '') + `${zoomCtl('Math.round((UI.ez || 1) * 100)', 'evZp(p)', ', Ctrl+wheel')}</span>`; } /* left: mode name, formatting, undo/redo; right: view toggles + zoom */
+/* Markdown source formatting: the Notes bar's buttons (NFMT) written as Markdown into the textarea; evCmd's insertText keeps native undo.
+   Formatted view: the same buttons run as rich-text commands (mdFmt). Italic = _ so it never eats a ** of bold. */
+function evMd(i, btn) { const E = etabs(), t = E.tabs[E.on]; if (!t) return;
+  if (evFm(t)) return mdFmt(i, btn);
+  const [, , c, , v] = NFMT[i], a = evTa(); if (!a) return;
+  if (!c) return menuAt(btn, NHEAD.map(([, label], n) => ({label, run: () => evMdLine(() => n ? '#'.repeat(n) + ' ' : '', /^#{1,6} /)})));
+  const W = {bold: ['**'], italic: ['_'], underline: ['<u>', '</u>'], strikeThrough: ['~~']}[c];
+  if (W) return evMdWrap(...W);
+  if (v === 'pre') return a.value.slice(a.selectionStart, a.selectionEnd).includes('\n') ? evMdWrap('```\n', '\n```') : evMdWrap('`');
+  const L = /^\s*([-*+]|\d+\.) /;
+  evMdLine(...{insertUnorderedList: [() => '- ', L], insertOrderedList: [k => k + 1 + '. ', L], formatBlock: [() => '> ', /^> /]}[c]); }
+function evMdWrap(o, c = o) { const a = evTa(), s = a.value, i = a.selectionStart, j = a.selectionEnd;
+  if (s.slice(i - o.length, i) === o && s.slice(j, j + c.length) === c) { a.setSelectionRange(i - o.length, j + c.length); evCmd('insertText', s.slice(i, j)); return a.setSelectionRange(i - o.length, j - o.length); } // already wrapped → unwrap
+  evCmd('insertText', o + s.slice(i, j) + c); a.setSelectionRange(i + o.length, j + o.length); }
+// prefix every selected line with pre(k); all lines already carry it → removed (toggle). re = an older prefix of the same kind, replaced
+function evMdLine(pre, re) { const a = evTa(), s = a.value, st = s.lastIndexOf('\n', a.selectionStart - 1) + 1;
+  let en = s.indexOf('\n', Math.max(a.selectionStart, a.selectionEnd - (s[a.selectionEnd - 1] === '\n'))); if (en < 0) en = s.length;
+  const ls = s.slice(st, en).split('\n'), on = pre(0) && ls.every((l, k) => l.startsWith(pre(k))), out = ls.map((l, k) => on ? l.slice(pre(k).length) : pre(k) + l.replace(re, '')).join('\n');
+  a.setSelectionRange(st, en); evCmd('insertText', out); a.setSelectionRange(st, st + out.length); }
 $('ebody').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); evZoom(e.deltaY < 0 ? .1 : -.1); } }, {passive: false});
 // Shell tab: xterm.js (vendored in ui/xterm, MIT) loaded on first use; SH[pid] = {el, term, fit, dead}; one pty per project (lib shell_open)
 let XT; const SH = {};
@@ -302,8 +327,8 @@ function gtDraw(t) {
   const who = [...new Set(t.ms.flatMap(m => [m.from, m.to]))].filter(n => n !== 'Clauracle');
   t.el.querySelector('.gth').innerHTML = `<span class="gtav">${['Clauracle', ...who].map(gtAv).join('')}</span><b>${esc(['Clauracle', ...who].map(gtName).join(', '))}</b>`
     + `<span class="pill dim">${t.ms.length} message${t.ms.length === 1 ? '' : 's'}</span>${icon('chev')}`;
-  t.el.querySelector('.gml').innerHTML = t.ms.map(m => `<div class="gm${m.err ? ' err' : ''}">${gtAv(m.from)}<div class="grow"><div class="cm"><b>${esc(gtName(m.from))}</b><span>${esc(tm(m.ts))}</span></div>`
-    + `<div class="gmt" onclick="getSelection().isCollapsed && this.classList.toggle('full')"><span class="at">@${esc(gtName(m.to))}</span> ${md(m.text)}</div></div></div>`).join('');
+  t.el.querySelector('.gml').innerHTML = t.ms.map(m => `<div class="gm${m.err ? ' err' : ''}">${m.from === 'Clauracle' ? gtAv(m.from) : `<span data-ag="${esc(m.from)}">${gtAv(m.from)}</span>`}<div class="grow"><div class="cm"><b${m.from === 'Clauracle' ? '' : ` data-ag="${esc(m.from)}"`}>${esc(gtName(m.from))}</b><span>${esc(tm(m.ts))}</span></div>`
+    + `<div class="gmt" onclick="event.target.closest('a,button') || getSelection().toString() || this.classList.toggle('full')"><span class="at">@${esc(gtName(m.to))}</span> ${md(m.text)}</div></div></div>`).join('');
   t.el.querySelector('.gtat').innerHTML = ['Clauracle', ...who].map(n => `<button class="btn ghost sm" onclick="gtAt(this, '${esc(gtName(n))}')">@${esc(gtName(n))}</button>`).join('');
 }
 const gtAt = (b, n) => { const i = b.closest('.gtb').querySelector('input'); const o = gtNames().map(x => x[0]).find(r => i.value.startsWith('@' + r + ' '));

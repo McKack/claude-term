@@ -237,7 +237,8 @@ function edCtx() { const el = $(ED?.tab ? 'ectx' : 'vctx'); if (!el || !ED) retu
   const t = ED.tool === 'sel' && ks.size === 1 ? o0.t : ED.tool, one = t !== 'sel' && S.length > 0; // one = editing selected shapes of tool t
   const ds = one ? o0.ds || '' : edDS, lw = one ? o0.lw || 1 : edLW, w = Math.round(lw * 8), arr = one ? [o0.a0 ? 1 : 0, o0.a1 ? 1 : 0] : [...edArr], fl = one ? !!o0.fill : edFill, ts = one ? {b: o0.b, i: o0.i, u: o0.u, f: o0.f} : {...edTS};
   const [, ic, tip] = ETOOLS.find(x => x[0] === t), [nm, hint] = tip.split(': '), head = `<span class="vtn" role="img" aria-label="${nm}" data-tip="${nm}">${icon(ic)}</span><span class="sep"></span>`; // #453 tool icon (was #411 name); name = tip + aria
-  const ur = `<span class="vur">${VZ ? zoomCtl('Math.round(VZ.s * 100)', 'vZp(p)', ', wheel, Ctrl + / −. Middle-drag pans') + '<span class="sep"></span>' : ''}<button class="ib" data-u="0" title="Undo (Ctrl+Z)" onclick="edUndo()">${icon('undo')}</button><button class="ib" data-u="1" title="Redo (Ctrl+Y, Ctrl+Shift+Z)" onclick="edRedo()">${icon('redo')}</button></span>`; // #437
+  const ur = `<span class="sep"></span><button class="ib" data-u="0" title="Undo (Ctrl+Z)" onclick="edUndo()">${icon('undo')}</button><button class="ib" data-u="1" title="Redo (Ctrl+Y, Ctrl+Shift+Z)" onclick="edRedo()">${icon('redo')}</button>`
+    + `<span class="vur">${VZ ? zoomCtl('Math.round(VZ.s * 100)', 'vZp(p)', ', wheel, Ctrl + / −. Middle-drag pans') : ''}</span>`; // undo/redo after the tool settings, zoom right (= Editor bar)
   if (t === 'erase') { el.innerHTML = head + `<span class="faint">${hint}</span>` + ur; return edUR(); }
   if (t === 'sel') { // #452 mode only (mixed/empty selection); click-through toggle
     el.innerHTML = head + [['shape', 'cursor', 'Shape: click a shape to select it'], ['rect', 'marquee', 'Rectangle: drag a box over shapes'], ['lasso', 'lasso', 'Freehand: draw around shapes']].map(([k, i, n]) => `<button class="ib${edSM === k ? ' on' : ''}" data-sm="${k}" data-tip="${n}">${icon(i)}</button>`).join('')
@@ -339,6 +340,9 @@ function send() {
   const ed = editing[cur]; delete editing[cur];
   $('prompt').value = ed ? ed.prev.text : ''; atts[cur] = ed ? ed.prev.atts : []; grow(); drawAtts(); drawEditBar();
   const pid = cur;
+  // a queued ask edited after filing: the edit goes into its local ask file (wins over the issue) + a note for the session
+  const en = ed && +(t.match(FILED_RE)?.[1] || 0);
+  if (en && bare(t).trim() !== bare(ed.m.text).trim()) { t = t.replace(/\s*\(Edited by the user after it was filed[^\n]*/g, '') + `\n\n(Edited by the user after it was filed as #${en}: the edited words are in its ask file; update the issue's summary to match, neutral wording.)`; call('ask_edit', {pid, n: en, text: bare(t)}).catch(() => {}); }
   // #56: every direct ask (issue mode) is filed by Clauracle before it goes anywhere ∴ never lost, never unfiled.
   // Chained per project → order kept while gh runs. Edited queued ones were filed already (text carries the note)
   // #93: a plain question (ends "?", not "can you…/please"; or "btw …") → not filed: answered + ```tasks cards (sugCards)

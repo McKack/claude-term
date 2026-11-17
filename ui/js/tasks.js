@@ -109,7 +109,7 @@ function issueQ(pid) {
 const marq = h => `<span class="tick"><span>${h}</span></span>`;
 const issueHtml = (x, tk) => { const t = (x.number ? `<a class="inum" data-url="${esc(x.url)}">#${x.number}</a> ` : '<span class="faint">#…</span> ') + (tk ? marq(esc(x.title)) : esc(x.title)),
   l = x.labels.filter(l => l.name !== 'clauracle'), L = l.map(l => `<i style="--lc:#${esc(l.color || '888')}"></i>`).join('');
-  return `<span class="tc"${x.number ? ` data-n="${x.number}"` : ''}>${t}</span>${L ? `<span class="ldots" title="${esc(l.map(l => l.name).join(', '))}">${L}</span>` : ''}`; };
+  return `<span class="tc"${x.number ? ` data-n="${x.number}"` : ''} data-tip="${esc((x.number ? '#' + x.number + ' ' : '') + x.title)}">${t}</span>${L ? `<span class="ldots" title="${esc(l.map(l => l.name).join(', '))}">${L}</span>` : ''}`; };
 document.addEventListener('click', e => { if (e.target.closest('input, a, button:not(.qpen), .qdrag, dialog')) return;
   const n = e.target.closest('.ti')?.querySelector('.tc[data-n]')?.dataset.n; if (n && $('right')?.contains(e.target)) editIssue(+n); });
 // after the drag queue: suggestions (Accept/Dismiss), others' issues (who), new-issue field
@@ -127,11 +127,11 @@ function ghSteps(iq, qRows, t, open, fin, dn) {
   const now = [...open.map(y => tli(esc(y.status === 'in_progress' && y.activeForm || y.content), {cls: y.status})), ...fin.slice(-3).map(y => tli(esc(y.content), {done: 1, cls: 'completed', tip: y.content}))].join('')
     + dn.map(y => tli(esc(y), {done: 1, cls: 'completed', tip: y})).join('');
   const nw = teamTasks(cur).filter(isWait).length, ns = teamTasks(cur).filter(isIdea).length;
-  return `<ol class="stepper ghsteps tsteps">
+  return stepBox('st-gh', iq.length ? `${iq.length} task${iq.length > 1 ? 's' : ''} queued` : 'No tasks queued', false, `<ol class="stepper ghsteps tsteps">
     <li><span class="sn">1</span>${stHead('Tasks', (iq.length ? `<span class="pill dim">${iq.length}</span>` : '') + (iq.length > 1 ? `<button class="ib" title="Clean up: Clauracle merges related tasks, drops stale ones, re-prioritises (you confirm first)\n${estTok()}" onclick="cleanPlan()">${icon('sparkle')}</button>` : ''))}
       ${iq.length || busy[cur] ? `<div class="qbox">${qRows}</div>` : `<div class="nextstep" style="margin:4px 0 8px"><p><span class="nw">No tasks! Set up Services?</span><span class="nn">Next step:</span></p><button class="btn sm primary block" onclick="rightTab('svc')"><span class="nw">Next step:&nbsp;</span>Services ${icon('go')}</button></div>`}${x.add}</li>
     ${iq.length || busy[cur] ? `<li><span class="sn">2</span>${stHead('Run the task list')}${runStep(p, n)}</li>
-    <li><span class="sn">3</span>${thenRow(p)}</li>` : ''}</ol>`
+    <li><span class="sn">3</span>${thenRow(p)}</li>` : ''}</ol>`)
     + (nw ? fold('w-wait', `Waiting on you${infoI(WAIT_TIP)}`, L(x.wait), nw) : '')
     + (ns ? fold('w-sug', 'Suggestions', L(x.sug), ns) : '')
     + (x.others ? fold('w-others', 'Taken by others', L(x.others)) : '')
@@ -159,7 +159,7 @@ function tasksHtml() {
   const me = (t.me || '').toLowerCase();
   // one row per task: title on the left, who / what you can do on the right
   const row = x => { const who = x.assignees.map(a => a.login), mine = who.some(l => l.toLowerCase() === me);
-    return tli(`<a data-url="${esc(x.url)}">#${x.number}</a> ${esc(x.title)}`, {cls: isDoing(x) ? 'in_progress' : '', end:
+    return tli(`<a data-url="${esc(x.url)}">#${x.number}</a> ${esc(x.title)}`, {cls: isDoing(x) ? 'in_progress' : '', tip: `#${x.number} ${x.title}`, end:
       mine ? `<button class="btn ghost sm" onclick="taskDo('release', ${x.number})">Release</button><button class="btn sm" onclick="taskDo('done', ${x.number})">Done</button>`
         : isDoing(x) ? `<span class="pill">${esc(who.join(', ') || 'in progress')}</span>` : `<button class="btn sm" onclick="taskStart(${x.number})">Start</button>`}); };
   const ts = teamTasks(cur), doing = ts.filter(isDoing).length;
@@ -270,22 +270,27 @@ async function drawFiles(rel = filesAt[cur] ?? '') {
       return `<div class="${codeAt[cur]?.file === path ? 'on' : ''}" data-p="${esc(path)}" onclick="${i.dir ? 'filesGo' : 'previewFile'}(this.dataset.p, event.ctrlKey || event.metaKey)" title="${esc(fTip(i))}">${i.dir ? icon('folder') : ftIcon(i.name)}<span class="fn">${esc(i.name)}</span>${fDet(i)}</div>`; }).join('')
       || empty('Empty folder', `<button class="btn sm" onclick="setView('edit'); evNew()">${icon('plus')}New file</button>`)}</div>`;
   const c = box.querySelector('.pathbar .crumbs'); c.scrollLeft = c.scrollWidth;
-  badgeFiles();
+  badgeFiles(); fOpenMark();
 }
+// files open in the Editor view get an accent tint (class op); called again whenever its tabs change (evKeep)
+const fOpenMark = () => { const rels = new Set(cur ? etabs().tabs.map(t => t.rel) : []); $('files')?.querySelectorAll('.tree > div[data-p]').forEach(d => d.classList.toggle('op', rels.has(d.dataset.p))); };
 /* #377 sidebar '…' = menu (rule: '…' opens a menu, gear opens Settings). UI.fs sort name|type|date|size, UI.fv list|icons;
    dirs always first; Rust list_dir gives name order + t (mtime s) + size */
 const FSORT = [['name', 'Name'], ['type', 'Type'], ['date', 'Date modified'], ['size', 'Size']];
-const fsort = xs => { const k = UI.fs, ext = n => n.includes('.') ? n.split('.').pop().toLowerCase() : '';
-  return k && k !== 'name' ? [...xs].sort((a, b) => b.dir - a.dir || (k === 'type' ? ext(a.name).localeCompare(ext(b.name)) : k === 'date' ? b.t - a.t : b.size - a.size)) : xs; }; // stable ∴ ties keep name order
-// #396 row tooltip = size + mtime; faint right detail follows the sort (name → none)
+// UI.fo = asc|desc (Arrange); unset = A to Z for name/type, newest/largest first for date/size
+const fOrd = () => UI.fo || (['date', 'size'].includes(UI.fs) ? 'desc' : 'asc');
+const fsort = xs => { const k = UI.fs || 'name', s = fOrd() === 'desc' ? -1 : 1, ext = n => n.includes('.') ? n.split('.').pop().toLowerCase() : '';
+  return xs.map((x, i) => [x, i]).sort(([a, i], [b, j]) => b.dir - a.dir || s * (k === 'type' ? ext(a.name).localeCompare(ext(b.name)) : k === 'date' ? a.t - b.t : k === 'size' ? a.size - b.size : i - j) || i - j).map(([x]) => x); }; // ties keep name order
+// #396 row tooltip = size + mtime; faint right detail follows the sort (name: first letter; folders: / for type and size)
 const fDate = t => t ? new Date(t * 1000).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}) : '';
 const fTip = i => [i.name, i.dir ? '' : mb(i.size || 0), i.t ? 'Modified ' + fDate(i.t) : '', i.dir || view !== 'edit' ? '' : 'Ctrl+click: open in the Code tab on the side'].filter(Boolean).join('\n');
-const fDet = i => { const k = UI.fs, n = i.name, d = k === 'type' ? (i.dir ? 'folder' : n.lastIndexOf('.') >= 0 ? n.slice(n.lastIndexOf('.')).toLowerCase() : 'file')
-  : k === 'size' ? (i.dir ? '' : mb(i.size || 0)) : k === 'date' && i.t ? new Date(i.t * 1000).toLocaleDateString() : '';
+const fDet = i => { const k = UI.fs || 'name', n = i.name, d = k === 'name' ? n[0].toUpperCase() : k === 'type' ? (i.dir ? '/' : n.lastIndexOf('.') >= 0 ? n.slice(n.lastIndexOf('.')).toLowerCase() : 'file')
+  : k === 'size' ? (i.dir ? '/' : mb(i.size || 0)) : k === 'date' && i.t ? new Date(i.t * 1000).toLocaleDateString() : '';
   return d && UI.fv !== 'icons' ? `<span class="fd">${esc(d)}</span>` : ''; };
 const fset = (k, v) => { UI[k] = v; layout(); if (UI.st === 'files') drawFiles(); };
 const sideItems = () => [{icon: 'folder', label: 'Project manager…', run: () => openManager()}, '-', {title: 'Sort Files by'},
-  ...FSORT.map(([k, l]) => ({label: l, check: (UI.fs || 'name') === k, run: () => fset('fs', k)})), '-', {title: 'View'},
+  ...FSORT.map(([k, l]) => ({label: l, check: (UI.fs || 'name') === k, run: () => fset('fs', k)})), '-', {title: 'Arrange'},
+  ...[['asc', 'Ascending'], ['desc', 'Descending']].map(([k, l]) => ({label: l, check: fOrd() === k, run: () => fset('fo', k)})), '-', {title: 'View'},
   {label: 'List', check: UI.fv !== 'icons', run: () => fset('fv', 'list')}, {label: 'Icons', check: UI.fv === 'icons', run: () => fset('fv', 'icons')}];
 const sideMenu = b => menuAt(b, sideItems()); // #404 also = Files empty-space right-click
 // Files tree badges: files Claude edited (live, this app run). < 1 min: folders show how many files inside, files a dot;
@@ -370,8 +375,7 @@ async function drawCode() {
   const wrap = !!UI.ew, ext = file.split('.').pop().toLowerCase(), img = /\.(png|jpe?g|gif|webp|bmp)$/i.test(file), fm = fmtOn(file), pv = fmtKind(file); // #392 same toggles + state as the Edit view bar (evSet redraws both)
   /* #443 light File viewer: plain name header (tab-label layout, no tab look) + .vctx context bar (= evBar layout: mode name, toggles, zoom right) + .cvs scroller */
   const head = `<div class="cview"><div class="cvh" title="${esc(file)}">${ftIcon(file)}<span class="vname">${esc(file.split('/').pop())}</span><button class="ib x" title="Close" onclick="codeClose()">${icon('x')}</button><span class="grow"></span>${img ? '' : `<button class="ib" title="Open in file viewer" onclick="codeView()">${icon('expand')}</button>`}</div>
-    <div class="vctx">${pv ? `<button class="ib${fm ? ' on' : ''}" title="Formatted view" onclick="fmtFlip(codeAt[cur].file); evSet()">${icon('eye')}</button>` : ''}${hlBtn('', fm && isMd(file))}${LINTX.test(ext) ? `<button class="ib${UI.nl ? '' : ' on'}" title="Lint: errors/warnings in the gutter" onclick="evSet('nl', !UI.nl)">${icon('bug')}</button>` : ''}<button class="ib${wrap ? ' on' : ''}" title="Word wrap" onclick="evSet('ew', !UI.ew)">${icon('wrap')}</button>
-    <span class="vur">${zoomCtl('Math.round((UI.cz || 1) * 100)', 'czp(p)', ', Ctrl+wheel')}</span></div>`;
+    <div class="vctx">${fm && isMd(file) ? `<button class="ib" title="Formatting" onmousedown="event.preventDefault()" onclick="codeFmt(this)">${icon('fbold')}</button><span class="sep"></span>${['undo', 'redo'].map(c => `<button class="ib" title="${c[0].toUpperCase() + c.slice(1)} (Ctrl+${c === 'undo' ? 'Z' : 'Y'})" onmousedown="event.preventDefault()" onclick="mdCmd(mdEd(this), '${c}')">${icon(c)}</button>`).join('')}` : ''}<span class="vur">${pv ? `<button class="ib${fm ? ' on' : ''}" title="Formatted view" onclick="fmtFlip(codeAt[cur].file); evSet()">${icon('eye')}</button>` : ''}${hlBtn('', fm && isMd(file))}${LINTX.test(ext) ? `<button class="ib${UI.nl ? '' : ' on'}" title="Lint: errors/warnings in the gutter" onclick="evSet('nl', !UI.nl)">${icon('bug')}</button>` : ''}<button class="ib${wrap ? ' on' : ''}" title="Word wrap" onclick="evSet('ew', !UI.ew)">${icon('wrap')}</button><span class="sep"></span>${zoomCtl('Math.round((UI.cz || 1) * 100)', 'czp(p)', ', Ctrl+wheel')}</span></div>`; // toggles beside the zoom, right (= Editor bar)
   if (img) { // #446 image = read-only view: name row + image, no context/tool bar; Ctrl+wheel zoom (UI.cz)
     const b = await call('read_image', {path: P().path.replace(/[\/\\]+$/, '') + '/' + file}).catch(e => e); if (codeAt[cur]?.file !== file) return;
     if (typeof b === 'string') { box.innerHTML = head.replace(/<div class="vctx">[^]*$/, '') + `<p class="dim" style="padding:12px 14px">${esc(b)}</p></div>`; return; }
@@ -383,9 +387,14 @@ async function drawCode() {
   codeAt[cur].text = text;
   box.innerHTML = head + `<div class="cvs" style="zoom:${UI.cz || 1}">${docHtml(text, file, wrap)}</div></div>`;
   box.querySelector('.cvs').onwheel = e => { if (!e.ctrlKey) return; e.preventDefault(); e.stopPropagation(); czp(zStep(Math.round((UI.cz || 1) * 100), e.deltaY < 0 ? 1 : -1)); };
+  if (fm && isMd(file)) { const pid = cur, c = codeAt[pid], w = () => { clearTimeout(c.st); c.st = 0; return call('write_file', {pid, rel: file, text: c.text}).catch(e => toast('Not saved: ' + e, 'err')); };
+    document.execCommand('defaultParagraphSeparator', false, 'p'); // edits autosave like Notes (0.8 s), Ctrl+S at once
+    mdEdit(box.querySelector('.cvs .mdoc'), v => { c.text = v; clearTimeout(c.st); c.st = setTimeout(w, 800); }, () => w().then(() => toast('Saved ' + file.split('/').pop(), 'ok'))); }
   if (UI.nl || fm || !LINTX.test(ext)) return; const r = await lintOf(file, text), rows = box.querySelector('.code pre')?.children; // #392 lint marks, message = row tip
   if (codeAt[cur]?.file === file && rows) for (const x of r) { const d = rows[x.l - 1]; if (d) { d.classList.add(x.s === 'e' ? 'le' : 'lw'); d.dataset.tip = (d.dataset.tip ? d.dataset.tip + '\n' : '') + (x.s === 'e' ? 'Error: ' : 'Warning: ') + x.m; } }
 }
+// Code tab formatted .md: the Notes/Editor formatting buttons as one menu (the narrow bar has no room for nine)
+const codeFmt = btn => menuAt(btn, NFMT.map(([ic, l, c, k, v], i) => ({icon: ic, label: l, hint: k, ...(c ? {run: () => mdCmd(mdEd(btn), c, v)} : {items: NHEAD.map(([tag, label]) => ({label, run: () => mdCmd(mdEd(btn), 'formatBlock', tag)}))})})));
 // #443 Code tab zoom (own UI.cz, 50–300%): restyle only, no re-read
 function czp(p) { UI.cz = Math.min(300, Math.max(50, p)) / 100; try { localStorage.ui = JSON.stringify(UI); } catch {} const s = $('rbody').querySelector('.cvs'), z = $('rbody').querySelector('.zctl .zp');
   if (s) s.style.zoom = UI.cz; if (z) z.textContent = Math.round(UI.cz * 100) + '%'; }
@@ -399,7 +408,12 @@ function toggleLeft() { UI.lc = !UI.lc; layout('l'); }
 // #421 icon bar click: active icon of an open panel → collapse, else open on it
 function barL(s) { if (!LC() && s === UI.st) return toggleLeft(); UI.lc = false; setSide(s); }
 function barR(t) { if (!RC() && t === tab) return toggleRight(); UI.tab = t; expandRight(t); }
+// open project's name in the window title and under the sidebar brand; nothing at Home
+function brandProj() { const n = (cur && P()?.name) || '', t = n ? 'Clauracle - ' + n : 'Clauracle';
+  $('bproj').textContent = n; $('brand').classList.toggle('wp', !!n); $('wtitle').textContent = t;
+  if (document.title !== t) { document.title = t; window.__TAURI__?.window.getCurrentWindow().setTitle(t).catch(() => {}); } }
 function drawSide() {
+  brandProj();
   const t = ['files', 'notes'].includes(UI.st) ? UI.st : 'projects'; // old saved 'tasks'/'graph' tab (removed; #370 Hot → GitHub tab fold) → projects
   document.querySelectorAll('#stabs button').forEach(b => b.classList.toggle('on', !LC() && b.dataset.s === t));
   tabHead($('lhead'), document.querySelector(`#stabs [data-s="${t}"] span`).textContent, 'sideMenu(this)',
@@ -471,6 +485,42 @@ function htmlMd(root) {
     flush(); return out; };
   const md = blk(root).join('\n\n'); return md ? md + '\n' : '';
 }
+/* Editable formatted Markdown (Editor view, Code tab): the Notes editor's mdDoc in / htmlMd out, plus live formatting:
+   Enter at the end of a line renders the Markdown typed on it. All changes go through execCommand ∴ native undo/redo covers them. */
+const MDB = /^(#{1,6}\s|\s*([-*+]|\d+[.)])\s|>|\s*([-*_])(\s*\3){2,}\s*$)/, MDI = /(\*\*|__|~~|`)\S.*?\1|(^|[^\w*])[*_][^*_\s][^*_]*?[*_](?![\w*])|\]\(https?:|<u>.+<\/u>/;
+function mdEdit(ed, put, save) { ed.contentEditable = 'true'; ed.spellcheck = true;
+  ed.querySelectorAll('input[type=checkbox]').forEach(x => x.disabled = false);
+  ed.oninput = ed.onchange = () => put(htmlMd(ed));
+  ed.onpaste = e => { e.preventDefault(); document.execCommand('insertText', false, e.clipboardData.getData('text/plain')); };
+  ed.onkeydown = e => { const s = getSelection(), n = s.anchorNode, el = n && (n.nodeType === 1 ? n : n.parentElement), pre = el?.closest('pre');
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save?.(); }
+    else if (e.key === 'Tab' && !e.ctrlKey && pre) { e.preventDefault(); document.execCommand('insertText', false, '\t'); }
+    else if (e.key === 'Tab' && !e.ctrlKey && el?.closest('li')) { e.preventDefault(); document.execCommand(e.shiftKey ? 'outdent' : 'indent'); }
+    else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && s.isCollapsed && el && ed.contains(el)) mdEnter(ed, e, s, el, pre); }; }
+function mdEnter(ed, e, s, el, pre) { const tail = b => { const r = s.getRangeAt(0).cloneRange(); r.setEnd(b, b.childNodes.length); return r.toString(); };
+  const cmd = (c, v) => document.execCommand(c, false, v);
+  if (pre) { e.preventDefault(); const r = s.getRangeAt(0).cloneRange(), d = document.createElement('div'); r.setStart(pre, 0); d.append(r.cloneContents()); const before = d.innerHTML;
+    if (tail(pre) || !(before === '' || /(<br>|\n)$/.test(before))) return cmd('insertText', '\n'); // code: Enter = new line, Shift+Enter = blank line
+    if (before) cmd('delete'); // Enter on an empty last line leaves the code block
+    const box = pre.closest('.code') || pre; let nx = box.nextElementSibling; // caret to the line after the block (an empty one added when it's last)
+    if (!nx || nx.tagName !== 'P') { nx = document.createElement('p'); nx.append(document.createElement('br')); box.after(nx); }
+    return s.collapse(nx, 0); }
+  const b = el.closest('h1,h2,h3,h4,h5,h6,p,li,div'); if (!b || b === ed || !ed.contains(b) || tail(b).trim()) return; // only at a line end
+  const top = /^(P|DIV)$/.test(b.tagName) && b.parentElement === ed, tx = b.textContent, f = top && tx.match(/^\s*(```|~~~)\s*(\S*)\s*$/);
+  if (f) { e.preventDefault(); s.getRangeAt(0).selectNode(b); cmd('insertHTML', `<div class="code" data-lang="${esc(f[2])}"><pre style="padding:8px 12px" data-new="1"><br></pre></div>`);
+    const p = ed.querySelector('pre[data-new]'); if (p) { p.removeAttribute('data-new'); s.collapse(p, 0); } return; }
+  if (!(top && MDB.test(tx)) && !MDI.test(tx) || b.querySelector('input')) return; // nothing to format: plain Enter
+  // the next line goes in with the same insert, empty: insertParagraph would carry bold/italic over to it
+  e.preventDefault(); const md = htmlMd({childNodes: [b]}).trim(), nx = '<br data-new="1">', li = b.tagName === 'LI';
+  let h = mdDoc(md); h = li ? `<li>${h.replace(/^<p>|<\/p>$/g, '')}</li><li>${nx}</li>` : /<\/[uo]l>$/.test(h) ? h.replace(/<\/([uo]l)>$/, `<li>${nx}</li></$1>`) : h + `<p>${nx}</p>`;
+  s.getRangeAt(0).selectNode(b); cmd('insertHTML', h);
+  const n = ed.querySelector('br[data-new]'); if (n) { const p = n.parentElement; n.removeAttribute('data-new'); s.collapse(p, 0); } }
+let MDSEL = null; // selection kept while a heading menu is open
+const mdEd = btn => btn?.closest('.cview')?.querySelector('[contenteditable=true]') || $('ebody').querySelector('.mdoc[contenteditable=true]');
+function mdFmt(i, btn) { const ed = mdEd(btn), [, , c, , v] = NFMT[i]; if (!ed) return; if (c) return mdCmd(ed, c, v);
+  const s = getSelection(); MDSEL = s.rangeCount && ed.contains(s.anchorNode) ? s.getRangeAt(0).cloneRange() : null;
+  menuAt(btn, NHEAD.map(([tag, label]) => ({label, run: () => mdCmd(ed, 'formatBlock', tag)}))); }
+function mdCmd(ed, c, v) { ed.focus(); if (MDSEL) { const s = getSelection(); s.removeAllRanges(); s.addRange(MDSEL); MDSEL = null; } document.execCommand(c, false, v); }
 function notesPut(v) { const pid = cur; NOTETXT[pid] = v; clearTimeout(NOTEST[pid]);
   NOTEST[pid] = setTimeout(() => call('notes', {pid, text: v}).catch(e => toast('Notes not saved: ' + e, 'err')), 800); }
 // file_heat cache per project (search, @/slash, recent-files rail): {t, d: {files: [[path, bytes, churn, …]], commits}}
@@ -543,8 +593,8 @@ const APIS = {'run.googleapis.com': 'Cloud Run', 'cloudbuild.googleapis.com': 'C
   'gmail.googleapis.com': 'Gmail', 'drive.googleapis.com': 'Drive', 'calendar-json.googleapis.com': 'Calendar'};
 // #161 host steps code does: fillStep = key dialog, autoStep = store-side action (lib site_auto) → ticks the step; above SERVICES ∵ TDZ
 // #164 same for services: svc = SERVICES id the step lives in (supabase/firebase → site_auto arms too)
-const fillStep = (k, svc = 'website') => ({t: `Fill **${k}**`, k, a: () => `<button class="btn sm" onclick="fillKeys('${svc}', ['${k}'])">${icon('key')}Fill in</button>`});
-const autoStep = (h, t, b, k, svc = 'website') => ({t, h, k, a: () => `<button class="btn sm primary" onclick="siteAuto('${h}', this, '${svc}')">${icon('sparkle')}${b}</button>`});
+const fillStep = (k, svc = 'website') => ({n: k, t: `Fill **${k}**`, k, a: () => `<button class="btn sm" onclick="fillKeys('${svc}', ['${k}'])">${icon('key')}Fill in</button>`});
+const autoStep = (h, t, b, k, svc = 'website') => ({n: b, t, h, k, a: () => `<button class="btn sm primary" onclick="siteAuto('${h}', this, '${svc}')">${icon('sparkle')}${b}</button>`});
 async function siteAuto(h, b, svc = 'website') {
   b.disabled = true; b.innerHTML = '<span class="spin"></span>' + b.textContent;
   try { const v = await call('site_auto', {pid: cur, host: h});

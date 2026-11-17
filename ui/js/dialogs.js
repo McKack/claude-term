@@ -22,6 +22,9 @@ const HOTF = new Set(['w-wait', 'w-sug', 'changes']); // counts that wait on the
 const fold = (key, title, body, count = 0, actions = '', open = !!count) => `<details class="sec fold" data-f="${key}" ${(folds[key] ?? open) ? 'open' : ''}>
   <summary class="sh" onclick="setTimeout(() => { folds['${key}'] = this.parentNode.open; try { localStorage.folds = JSON.stringify(folds); } catch {} })">${icon('chev')}<span class="label">${title}</span>
   ${count ? `<span class="pill${HOTF.has(key) ? '' : ' dim'}">${count}</span>` : ''}<span onclick="event.preventDefault()">${actions}</span></summary><div class="sc">${body}</div></details>`;
+// a step list in a card with a fold header (the Services look); all done → folded until opened
+const stepBox = (key, label, done, body) => { const open = folds[key] ?? !done;
+  return `<div class="sc stbox"><button class="stdone${open ? ' open' : ''}${done ? '' : ' todo'}" onclick="folds['${key}'] = ${!open}; try { localStorage.folds = JSON.stringify(folds); } catch {} drawRight()" title="${open ? 'Fold the steps' : 'Show the steps'}">${done ? icon('check') : ''}<span>${label}</span>${icon('down')}</button>${open ? body : ''}</div>`; };
 // #105 skeleton: skel(60, 40) = bars at those % widths; 'b60' = button-height bar
 const skel = (...ws) => ws.map(w => `<i class="sk${String(w)[0] === 'b' ? ' b' : ''}" style="width:${String(w).replace('b', '')}%"></i>`).join('');
 const sec = (title, body, actions = '') => `<section class="sec"><div class="sh"><span class="label">${title}</span>${actions}</div><div class="sc">${body}</div></section>`;
@@ -36,7 +39,7 @@ const startProj = `<button class="btn sm" onclick="menuAt(this, addItems())">${i
 const options = (map, val) => Object.entries(map).map(([k, l]) => `<option value="${esc(k)}" ${k === val ? 'selected' : ''}>${esc(l)}</option>`).join('');
 
 // Project manager: every project's own GitHub, connections, skills, build and token savers
-const setM = changes => ('license' in changes && delete RELC[mp], call('update_project', {pid: mp, changes}).then(() => openSettings('projects'))); // #412 licence change → dep fits stale
+const setM = changes => ('license' in changes && delete RELC[mp], call('update_project', {pid: mp, changes}).then(() => $('onb') ? refresh().then(onbDraw) : openSettings('projects'))); // #412 licence change → dep fits stale; #586 the setup wizard saves through it too
 function openManager(pid) {
   if (pid && pid !== mp) { mp = pid; $('dlg').querySelector('.body')?.scrollTo(0, 0); }
   return openSettings('projects');
@@ -61,17 +64,35 @@ function projAccts(p) {
   const add = `<button class="ib" title="Set up accounts" onclick="openSettings('gh')">${icon('plus')}</button>`;
   const kind = (t, cards) => `<div class="fl"><span>${t}</span><div class="idcards">${cards.join('') || add}</div></div>`;
   const tog = (k, v) => `onclick="setM({${k}: ${esc(JSON.stringify(p[k] === v && k !== 'account' ? '' : v))}})"`;
-  return kind('AI', S.accounts.map(a => acard('claude', 'Claude', a.nick, tog('account', a.id), a.id === p.account)))
+  return kind('AI', aiCards(p))
     + kind('GitHub', [...new Set(SET.gh_users)].map(u => acard('gh', 'GitHub', '@' + u, tog('gh', u), u === p.gh)))
     + (p.gh && mp === cur ? `<div class="btnrow"><button class="btn ghost sm" onclick="collabGo()">${icon('user')}Collaborators…</button></div>` : '' /* #113: lives in the GitHub tab (open project only) */)
-    + (GACC === false ? '' : kind('Google', (GACC || []).map(a => acard('google', 'Google', a, tog('gaccount', a), a === p.gaccount))));
+    + (GACC === false ? '' : kind('Google', (GACC || []).map(a => acard('google', 'Google', a, tog('gaccount', a), a === p.gaccount))))
+    + kind('Developer &amp; services', (S.devs || []).map(d => acard(DEVK[d.kind]?.ic || 'key', DEVK[d.kind]?.name || d.kind, d.name, `onclick="devPick('${esc(d.id)}')"`, (p.devs || []).includes(d.id))));
+}
+// the project's AI: one card per relay and per account outside a relay; the current one opens the picker (model, effort), another one switches to it (a relay = its first account, relay_route moves on)
+function aiCards(p) { const cur = S.accounts.find(x => x.id === p.account), seen = new Set();
+  return S.accounts.filter(x => !x.relay || !seen.has(x.relay) && seen.add(x.relay)).map(a => {
+    const on = cur && (a.relay ? cur.relay === a.relay : cur.id === a.id), k = a.relay && S.accounts.filter(x => x.relay === a.relay).length;
+    const click = on ? `onclick="acctMenu(this, P(mp), setM)"` : `onclick="setM({account: '${esc(a.id)}'})"`;
+    return a.relay ? acard('sparkle', `${k} model${k === 1 ? '' : 's'}`, a.relay, click, on) : acard(prov(a).i, prov(a).l, a.nick, click, on); }); }
+// one developer account per kind: picking copies its keys into .env and adds the Services that use them; clicking it again unassigns
+async function devPick(id) {
+  const p = P(mp), d = S.devs.find(x => x.id === id), k = DEVK[d.kind], on = (p.devs || []).includes(id);
+  if (on) return setM({devs: p.devs.filter(x => x !== id)});
+  try { const n = await call('dev_use', {pid: mp, id});
+    await setM({devs: [...(p.devs || []).filter(x => S.devs.find(y => y.id === x)?.kind !== d.kind), id], services: [...new Set([...svcOf(p), ...k.svc])]});
+    toast(`${d.name}: ${n} key${n === 1 ? '' : 's'} copied to ${p.name}'s .env`, 'ok'); }
+  catch (e) { toast(String(e), 'err'); }
 }
 function projectsPage() {
   if (!P(mp)) mp = cur || S.projects[0]?.id;
   const root = `<div class="grid2" style="grid-template-columns:120px 1fr;margin-top:0"><span>Projects folder</span><span class="row">
       <input class="grow mono" value="${esc(S.projects_dir)}" onchange="call('set_projects_dir', {dir:this.value.trim()}).then(refresh)"><button class="btn" onclick="pickRoot()">Choose…</button>
       <button class="btn" title="Sort folders into owner/repo and local/" onclick="menuAt(this, [{label: 'Organize the projects folder', run: () => organize('')}, {label: 'Scan another folder…', run: async () => { const d = await T.dialog.open({directory: true, title: 'Folder to organize'}); if (d) organize(d); }}])">${icon('brush')}Organize…</button></span>
-      <span></span><small class="dim" style="margin-top:-6px">Clones go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> in here, new projects to <span class="mono">local/</span>.</small></div>`;
+      <span></span><small class="dim" style="margin-top:-6px">Clones go to <span class="mono">&lt;owner&gt;/&lt;repo&gt;</span> in here, new projects to <span class="mono">local/</span>.</small>
+      <span>Models folder</span><span class="row"><input id="lmDir" class="grow mono" value="${esc(S.local_dir || '')}" onchange="localDir(this.value.trim())"><button class="btn" onclick="localDir()">Choose…</button></span>
+      <span></span><small class="dim" style="margin-top:-6px">Downloaded local models and their engine go here (several GB each). Empty = default.</small></div>`;
   if (!mp) return root + empty('No projects yet', startProj);
   const p = P(mp);
   const items = kind => cxList(kind, 'project:' + p.id, p);
@@ -80,8 +101,8 @@ function projectsPage() {
     <div><div class="row"><input value="${esc(p.name)}" onchange="this.value.trim() ? setM({name:this.value.trim()}) : (this.value = this.defaultValue)" title="Display name in Clauracle only; the folder and repo keep their names" placeholder="Project name" style="font-size:17px;font-weight:600" class="grow"></div>
     <small class="dim sel mono">${esc(p.path)}</small><div id="placeBox" class="row" style="gap:6px;margin:6px 0 0;min-height:30px"></div>
     ${projSteps(p)}
-    ${fold('p-acct', 'Accounts' + infoI('Click a card to assign it to this project, click it again to unassign it. The project keeps these whichever AI account runs it.'), projAccts(p),
-      [p.gh ? '@' + p.gh : 'no GitHub', S.accounts.find(a => a.id === p.account)?.nick, p.gaccount].filter(Boolean).join(' · '),
+    ${fold('p-acct', 'Accounts' + infoI('This project picks its own accounts: click a card to assign it. Click a GitHub, Google or developer card again to unassign it; the AI account is always one of the AI cards.'), projAccts(p),
+      [p.gh ? '@' + p.gh : 'no GitHub', (a => a && (a.relay || a.nick))(S.accounts.find(a => a.id === p.account)), p.gaccount].filter(Boolean).join(' · '),
       `<button class="ib" title="Set up accounts" onclick="event.preventDefault(); openSettings('gh')">${icon('plus')}</button>`, !p.gh)}
     ${fold('p-sess', 'Session', `<div class="grid2" style="margin-top:0">
       <span>Model</span><select onchange="setM({model:this.value})">${options(MODELS, p.model)}</select>
@@ -100,7 +121,9 @@ function projectsPage() {
       <span></span><label class="row">${sw(p.build.release, 'setBuild(\'release\', this.checked)')}<small>Release builds after tasks (slower: the full Build command)</small></label>
       <span>After each task</span><span>${thenBtn(p, 'm')}</span>
       <span></span><label class="row">${sw(p.build.fix, 'setBuild(\'fix\', this.checked)')}<small>A failed step goes back to Clauracle to fix</small></label></div>`,
-      ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3', '', !p.build.build)}
+      ['build', 'run', 'deploy'].filter(k => p.build[k]).length + '/3', `<button class="btn ghost sm" title="The AI reads the project's files and fills in the commands"${BAI[p.id] === 'busy' ? ' disabled' : ''} onclick="buildAi(mp, 1)">${icon('sparkle')}${BAI[p.id] === 'busy' ? 'Reading…' : 'Detect with AI'}</button>`, !p.build.build)}
+    ${fold('p-agents', 'Agents' + infoI('Helpers this project\'s agent hands work to, and the AI each one uses. Only for this project; new projects start from Settings > Agents.'), projAgents(p),
+      agGroups(agListed()).filter(g => g.some(x => !agOffOf(p).includes(x.name))).length + ' on', '', false)}
     ${(g => fold('p-lic', 'License' + infoI('What others may do with this project\'s code. The release checklist writes the LICENSE file from this.'), `<div class="row" style="gap:8px">
       <select onchange="setM({license:this.value})">${options({...(p.license ? {} : {'': 'Not picked'}), ...LICS}, p.license)}</select>
       ${!p.license && g ? `<button class="btn primary" onclick="setM({license:'${g}'})">${icon('check')}Confirm ${esc(LICS[g] || g)} (from its LICENSE file)</button>` : ''}<button class="btn" onclick="licHelp()">${icon('info')}Help me choose</button></div>
@@ -168,10 +191,16 @@ async function organize(dir) {
     if (errs.length) { $('orgMsg').textContent = errs.join('\n'); $('orgGo').textContent = 'Done with errors'; } else openSettings('projects');
   };
 }
-// Available projects (#36): folders in the projects folder not added yet; faded, folded; click adds it
+// Available projects (#36): folders in the projects folder not added yet, as a tree: local, then each owner folder,
+// then loose folders; SDKs and tools (dependencies) are left out. Faded, folded; click adds it
 async function availFill() {
-  const l = (await scanGet()).filter(x => !x.project), box = $('availBox'); if (!box) return;
-  box.innerHTML = l.length ? fold('p-avail', 'Available projects', l.map(x => `<button style="opacity:.55" title="${esc(x.path)}" onclick="availAdd('${esc(x.path.replace(/\\/g, '\\\\'))}')">${icon('folder')}<span>${esc(x.name)}</span></button>`).join(''), 0,
+  const seg = p => p.split(/[\\/]/), dep = x => seg(x.target).at(-2) === 'dependencies';
+  const l = (await scanGet()).filter(x => !x.project && !dep(x)), box = $('availBox'); if (!box) return;
+  const g = {}; for (const x of l) { const root = seg(x.target).slice(0, -2).join('/'), up = seg(x.path).slice(0, -1).join('/');
+    (g[samePath(up, root) ? '' : seg(x.path).at(-2)] ||= []).push(x); } // '' = straight in the projects folder
+  const ks = Object.keys(g).sort((a, b) => (b === 'local') - (a === 'local') || !a - !b || a.localeCompare(b));
+  const row = k => x => `<button${k ? ' class="avp"' : ''} style="opacity:.55" title="${esc(x.path)}" onclick="availAdd('${esc(x.path.replace(/\\/g, '\\\\'))}')">${icon('folder')}<span>${esc(x.name)}</span></button>`;
+  box.innerHTML = l.length ? fold('p-avail', 'Available projects', ks.map(k => (k ? `<div class="avown">${icon(k === 'local' ? 'folder' : 'gh')}<span>${esc(k)}</span></div>` : '') + g[k].map(row(k)).join('')).join(''), 0,
     `<span class="pill dim">${l.length}</span>`) : '';
 }
 async function availAdd(path) { const p = await call('add_project', {path}); SCAN = null; await refresh(); mp = p.id; openSettings('projects'); askProject(P(p.id)); }

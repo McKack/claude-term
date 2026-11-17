@@ -97,19 +97,20 @@ const agentsOf = pid => { const l = logs[pid] || [], turn = l.findLastIndex(e =>
     const rs = e.id ? l.filter(x => x.result_of === e.id) : [], bg = rs.length > 0 && rs.every(x => ASYNC.test(x.text || ''));
     return {type: d.subagent_type || 'general-purpose', desc: d.description || '', issue: n, running: !!e.id && (bg ? i > sess : !!busy[pid] && i > turn && !rs.length),
       err: !!e.id && l.some(x => x.result_of === e.id && x.kind === 'err'),
-      steps: sub.length, last: sub.at(-1)?.text.replace(/^↳ /, '')}; }); };
+      steps: sub.length, last: sub.at(-1)?.text.replace(/^↳ /, ''), t0: e.ts, t1: rs.at(-1)?.ts}; }); };
 // #atp = Plan block at the top of the GitHub tab, or the whole Agents tab (drawRight/drawGh create it; absent → no-op).
 // Plan: Suggestions → Claude's live list (open + last 3 done) → Queue (issues / PLAN.md, drag order) → Done lately
 // #248 no helpers started → the set-up agents, faded when off; top bar = switch (left) + settings (right)
 // #473 role names: edit ROLES to rename an agent; unknown ones get a name from keywords in their name/description
-const ROLES = {'general-purpose': 'The Generalist', claude: 'The All-Rounder', Explore: 'The Scout', Plan: 'The Architect', 'statusline-setup': 'The Decorator',
-  'web-fetch': 'The Courier', 'claude-code-guide': 'The Guide', 'output-style-setup': 'The Stylist'};
+// Three names on the surface (Clauracle's own agents in plugin/agents + Claude Code's built-ins by tier); several agents/models behind each
+const ROLES = {'clauracle:apprentice': 'The Apprentice', Explore: 'The Apprentice', 'claude-code-guide': 'The Apprentice', 'web-fetch': 'The Apprentice',
+  'clauracle:mentor': 'The Mentor', 'general-purpose': 'The Mentor', claude: 'The Mentor', 'clauracle:master': 'The Master', Plan: 'The Master'};
 const ROLEKW = [[/secur|vuln|audit/i, 'The Security Expert'], [/fix|debug|bug/i, 'The Fixer'], [/test|verif/i, 'The Tester'], [/review/i, 'The Reviewer'],
   [/build|deploy|\bci\b|pipeline|install/i, 'The Plumber'], [/research|search|explor/i, 'The Researcher'], [/plan|architect/i, 'The Architect'],
   [/design|\bui\b|css|style/i, 'The Designer'], [/\bdocs?\b|writ/i, 'The Writer'], [/data|sql/i, 'The Librarian'], [/fetch|web|url/i, 'The Courier']];
 const roleOf = a => ROLES[a.name] || ROLEKW.find(([r]) => r.test(a.name + ' ' + (a.description || '')))?.[1] || 'The ' + a.name.replace(/[-_]+/g, ' ').replace(/^\w/, c => c.toUpperCase());
 // face from the name's hash: mirrored 16x16 pixel creature (body, arms, feet, maybe antennas), eyes only; same name → same face
-function face(name, px = 32) {
+function face(name, px = 32) { name = ROLES[name] || name; // one face per surface name
   let h = 2166136261; for (const c of name) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
   const r = n => { h = Math.imul(h ^ h >>> 15, 2246822519) + 0x6D2B79F5 | 0; return ((h ^ h >>> 13) >>> 0) % n; };
   const hue = r(360), g = 1 + r(2), top = 3 + r(3), bot = 10 + r(3), base = 4 + r(3), shape = r(4), on = new Set();
@@ -134,35 +135,62 @@ function face(name, px = 32) {
   const sz = Math.max(1, Math.round(px * devicePixelRatio / 16)) * 20 / devicePixelRatio; // whole screen pixels per face pixel, nearest to the asked creature size; 2 pixels of padding all round (round background in CSS: .pxf)
   return `<svg class="pxf" width="${sz}" height="${sz}" viewBox="-2 -2 20 20" shape-rendering="crispEdges" aria-hidden="true" style="--d:-${d}s">
     <g class="bod" fill="hsl(${hue} 65% 66%)"><path d="${body}"/><path class="arms" d="${path(arms)}"/>
-    <g class="eyes" fill="#1d1d21"><rect x="${ex}" y="6" width="2" height="2"/><rect x="${16 - ex - 2}" y="6" width="2" height="2"/></g></g></svg>`;
+    <g class="eyes" fill="hsl(${hue} 30% 26%)"><rect x="${ex}" y="6" width="2" height="2"/><rect x="${16 - ex - 2}" y="6" width="2" height="2"/></g></g></svg>`;
 }
 // Agents tab: every enabled agent (own helpers + Claude Code's) with its state this session; ran-but-disabled ones too
 // an agent's description cut to its first clause: provider texts can run to a whole paragraph
 const agBrief = d => { const s = (d || '').split(/\.\s|:\s|\s\(/)[0]; return s.length > 80 ? s.slice(0, 79) + '…' : s; };
+// what each of the three roles says about itself on its idle row; other agents show their own description
+const QUOTE = {'The Apprentice': "“I'll look things up and run the checks, so you can keep your focus.”", 'The Mentor': "“Let's work through it together, step by step. I'll share what I learn.”",
+  'The Master': "“When it gets hard, I'll help you find a calm, clear way forward.”",
+  'The Manager': "“I read every message first: only a request for work becomes a task, questions and remarks are just answered.”"};
+// agents sharing a role name, grouped: Apprentice, Mentor, Master first, other roles after
+const AGRANK = ['The Apprentice', 'The Mentor', 'The Master'], agRank = g => (AGRANK.indexOf(roleOf(g[0])) + 4) % 4;
+const agGroups = xs => { const m = new Map(); for (const a of xs) { const k = roleOf(a); m.set(k, [...(m.get(k) || []), a]); } return [...m.values()].sort((x, y) => agRank(x) - agRank(y)); };
 const AGST = {busy: 'Working', fail: 'Last run failed', 'ready pul': 'Done, ready again', idle: 'Idle'};
+const MGR = {}; // #572 pid → what The Manager is checking now (set by the `manager` event)
+// The Manager's checks, kept per project for its activity log (the chat log has no entry for them)
+const MGRLOG = (() => { try { return JSON.parse(localStorage.mgrLog || '{}'); } catch { return {}; } })();
+function mgrLog(pid, doing) { const l = MGRLOG[pid] ||= [], last = l.at(-1), now = new Date().toISOString();
+  if (last && !last.t1) last.t1 = now;
+  if (doing) l.push({t0: now, desc: doing});
+  MGRLOG[pid] = l.slice(-200); try { localStorage.mgrLog = JSON.stringify(MGRLOG); } catch {} }
+// activity log window of one agent role: every start and finish with date and time, newest first (click on any [data-ag] face or name)
+function agentLog(name) { const role = roleOf({name});
+  const runs = [...agentsOf(cur).filter(r => roleOf({name: r.type}) === role), ...(role === 'The Manager' ? MGRLOG[cur] || [] : [])];
+  const ev = runs.flatMap(r => [[r.t0, 'Started', r], ...(r.t1 && !r.running ? [[r.t1, r.err ? 'Failed' : 'Finished', r]] : [])]).filter(x => x[0]).sort((a, b) => a[0] < b[0] ? 1 : -1);
+  const when = t => new Date(t).toLocaleString([], {dateStyle: 'medium', timeStyle: 'medium'});
+  dlg(`<h2 class="row" style="gap:8px">${face(AGENTS?.find(a => a.name === name)?.face || name, 24)}${esc(role)}</h2><div class="aglog">`
+    + (ev.length ? ev.map(([t, k, r]) => `<div class="row"><span class="dim">${when(t)}</span><b>${k}</b><span class="grow">${r.issue ? `<b class="inum">#${r.issue}</b> ` : ''}${esc(r.desc)}</span></div>`).join('') : empty('No activity in this project yet'))
+    + `</div><div class="btns"><button class="btn primary" onclick="$('dlg').close()">Close</button></div>`); }
+document.addEventListener('click', e => { const a = e.target.closest('[data-ag]'); if (a) { e.stopPropagation(); agentLog(a.dataset.ag); } });
 function agentIdle(ag = []) {
+  if (MGR[cur]) ag = [...ag, {type: 'manager', running: true, desc: MGR[cur]}];
   if (!AGENTS || !SET) { agentIdle.p ||= Promise.all([call('agents'), SET || call('settings')]).then(([a, s]) => { AGENTS = a; SET = s; agentIdle.p = null; drawAtp(); }); return skel(40); }
   const on = S.agents_on, off = SET.off.filter(i => i.startsWith('agent:')).map(i => i.slice(6)), mine = new Set(AGENTS.map(a => a.name.trim()));
   const cc = (CCAG || []).filter(a => !mine.has(a.name)), ccOn = cc.filter(a => !off.includes(a.name)), xs = [...AGENTS, ...cc];
   const extra = ag.filter((r, i) => !xs.some(a => a.name === r.type) && ag.findIndex(x => x.type === r.type) === i).map(r => ({name: r.type}));
-  const row = a => { const rs = ag.filter(r => r.type === a.name), run = rs.filter(r => r.running), last = rs.at(-1);
+  // agents sharing a role name show as one row: their runs, names and descriptions combined
+  const row = as => { as = [].concat(as); const a = as[0], rs = ag.filter(r => as.some(x => x.name === r.type)), run = rs.filter(r => r.running), last = rs.at(-1);
     const st = run.length ? 'busy' : last?.err ? 'fail' : last ? 'ready pul' : 'idle';
     const job = run.map(r => teamTasks(cur).find(x => x.number === r.issue)).find(Boolean); // on a task issue → "#N title" ticker in place of the description
-    const sub = run.length ? run.map(r => esc(r.desc + (r.last ? ': ' + r.last : ''))).join(' · ') : last ? esc(last.desc) + (last.err ? ' · failed' : ' · done') : esc(agBrief(a.description));
-    return `<div class="atrow"><span class="face">${face(a.face || a.name)}<span class="dot ${st === 'idle' ? '' : st}" data-tip="${AGST[st]}"></span></span><span class="grow" style="min-width:0"><b>${esc(roleOf(a))}</b>${run.length > 1 ? ` ×${run.length}` : ''} <small class="am">${esc(a.name)}${a.model ? ' · ' + esc(a.model) : ''}</small>
-      ${job ? `<small class="atk"><b class="inum">#${job.number}</b> ${marq(esc(job.title))}</small>` : `<small data-tip="${sub}">${sub}</small>`}</span></div>`; };
+    // speech bubble under the name: idle = the role's own line; working = "Working on:" + #N and its title ticker (or what it was asked to do)
+    const say = esc(QUOTE[roleOf(a)] || [...new Set(as.map(x => agBrief(x.description)).filter(Boolean))].join(' · ') || 'Ready when you are.');
+    const bub = run.length ? `<span class="bub"><small>Working on:</small><small class="atk" data-tip="${esc(job ? `#${job.number} ${job.title}` : run.map(r => r.desc).join(' · '))}">${job ? `<b class="inum">#${job.number}</b> ${marq(esc(job.title))}` : marq(run.map(r => esc(r.desc)).join(' · '))}</small></span>` : `<span class="bub"><span class="say">${say}</span></span>`;
+    return `<div class="atrow"><span class="face" data-ag="${esc(a.name)}">${face(a.face || a.name)}<span class="dot ${st === 'idle' ? '' : st}" data-tip="${AGST[st]}"></span></span><span class="grow" style="min-width:0"><b data-ag="${esc(a.name)}">${esc(roleOf(a))}</b>${run.length > 1 ? ` ×${run.length}` : ''}${bub}</span></div>`; };
   // a section's X/Y pill is highlighted (HOTF) while its switch is on; the switch's label stops the click so the fold doesn't toggle
   // count = running / enabled; highlighted only while one of them runs
-  const runs = new Set(ag.filter(r => r.running).map(r => r.type)), nRun = xs => xs.filter(a => runs.has(a.name)).length;
+  const runs = new Set(ag.filter(r => r.running).map(r => r.type)), nRun = gs => gs.filter(g => g.some(a => runs.has(a.name))).length;
+  const ccG = agGroups([...ccOn, ...extra, {name: 'manager'}]); // #572 the built-in classifier is always listed
   const sect = (key, title, isOn, tip, change, list, n, total, none = '', dis = false) => { HOTF[n ? 'add' : 'delete'](key);
     return fold(key, title, `<div class="agl">${list || none}</div>`, `${n}/${total}`, `<span data-tip="${tip}" onclick="event.stopPropagation()">${sw(isOn, change, dis)}</span>`, true); };
   // Clauracle agents = the fixed ones the AI provider brings (CCAG, never hard-coded); Custom agents = made by the user, always listed (empty state links to Settings)
   const own = AGENTS.filter(a => !on || a.on);
   return sect('ag-cc', 'Clauracle agents', ccOn.length > 0, ccOn.length ? 'Switch Clauracle agents off' : 'Switch Clauracle agents on', 'agentsCc(this.checked)',
-      [...ccOn, ...extra].map(row).join(''), nRun([...ccOn, ...extra]), ccOn.length || cc.length,
+      ccG.map(row).join(''), nRun(ccG), ccG.length || agGroups(cc).length,
       empty(cc.length ? 'Clauracle agents are off' : 'Listed once a project\'s session has started'))
     + sect('ag-own', 'Custom agents', on && AGENTS.length > 0, !AGENTS.length ? 'Add a custom agent first' : on ? 'Switch custom agents off' : 'Switch custom agents on', "call('set_agents', {agents: AGENTS, on: this.checked}).then(refresh)",
-      own.map(a => on ? row(a) : `<div class="agoff" style="opacity:.5">${row(a)}</div>`).join(''), on ? nRun(own) : 0, own.length || AGENTS.length,
+      own.map(a => on ? row(a) : `<div class="agoff" style="opacity:.5">${row(a)}</div>`).join(''), on ? nRun(own.map(a => [a])) : 0, own.length || AGENTS.length,
       empty('No custom agents yet', `<button class="btn sm" onclick="openSettings('cx').then(() => jumpTo('[data-f=g-own]'))">${icon('plus')}Add custom agents</button>`), !AGENTS.length);
 }
 // Clauracle agents switch: every provider agent on or off at once (global cfg.off "agent:<name>")
@@ -171,6 +199,7 @@ async function agentsCc(on) {
   for (const a of (CCAG || []).filter(a => !mine.has(a.name))) if (SET.off.includes('agent:' + a.name) === on) await setGlobalOff('agent:' + a.name, !on);
   drawAtp();
 }
+const LAND = {}; // closed task → when its row started landing
 function drawAtp() {
   const el = $('atp'); if (!el || !cur) return;
   const iq = issueQ(cur); // issue mode: Queue/suggestions = GitHub issues; PLAN.md items left = "not filed yet"
@@ -179,15 +208,18 @@ function drawAtp() {
   const open = t.filter(x => x.status !== 'completed'), fin = t.filter(x => x.status === 'completed');
   const w = workOf(cur), closing = busy[cur] && w && !iq.some(x => x.number === w); // #41 closed but turn still verifying
   if (w && iq?.some(x => x.number === w)) WSEEN.add(w); // #56: seen open → its absence = closed; never seen = just filed, list not refreshed
-  const L = a => `<div class="tlist">${a.join('')}</div>`;
-  const qRows = L([...(closing ? [tli(`<span class="inum">#${w}</span> ${WSEEN.has(w) ? 'Finishing up' : 'Working on'}…`, {done: WSEEN.has(w), cls: 'working'})] : []),
-          ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur)})] : []), ...q.map((x, i) => { const by = iq && run.find(a => a.issue === iq[i].number), wk = by || busy[cur] && (iq ? iq[i].number === w : !i);
-            return tli(iq ? issueHtml(iq[i], wk) : esc(x), {on: `planCheck(${i}, this)`, cls: wk ? 'working' : '', lead: by && `<span class="aface" data-tip="${esc(roleOf({name: by.type}))} works on this">${face(by.type, 16)}</span>`,
-            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button><button class="ib qedit" title="Start this task now (or next, if Clauracle is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button></span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'} · right-click: Move to top/bottom"></button></span>`}); })]).replace('class="tlist"', 'class="tlist" id="qlist"');
+  const L = a => `<div class="tlist">${a.join('')}</div>`, me = '<span class="aface me" data-tip="Clauracle works on this"><svg class="av"><use href="#i-logo"/></svg></span>';
+  // a closed task keeps Clauracle's logo 1.5 s, then fades down towards Activity (CSS .landing); the negative delay survives redraws
+  const lt = closing && WSEEN.has(w) ? LAND[w] ||= Date.now() : 0, la = lt ? Date.now() - lt : 0;
+  if (la && la < 2000) { clearTimeout(LAND.t); LAND.t = setTimeout(drawAtp, 2020 - la); }
+  const qRows = L([...(closing && la < 2000 ? [tli(`<span class="inum">#${w}</span> ${WSEEN.has(w) ? 'Finishing up' : 'Working on'}…`, {done: WSEEN.has(w), cls: 'working' + (la ? ' landing' : ''), lead: me}).replace('class="ti', `style="animation-delay:-${la}ms" class="ti`)] : []),
+          ...(busy[cur] && !w && askOf(cur) ? [tli(`<b>Your ask:</b> ${esc(askOf(cur).split(/\s+/).slice(0, 14).join(' '))}`, {cls: 'working', tip: askOf(cur), lead: me})] : []), ...q.map((x, i) => { const by = iq && run.find(a => a.issue === iq[i].number), wk = by || busy[cur] && (iq ? iq[i].number === w : !i);
+            return tli(iq ? issueHtml(iq[i], wk) : esc(x), {tip: iq ? '' : x, on: `planCheck(${i}, this)`, cls: wk ? 'working' : '', lead: by ? `<span class="aface" data-tip="${esc(roleOf({name: by.type}))} works on this">${face(by.type, 16)}</span>` : wk && me,
+            end: '<span class="qpill">' + (iq ? `<span class="qbtns"><button class="ib qedit qpen" title="Edit issue" tabindex="-1">${icon('pen')}</button>${wk ? `<button class="ib qedit" title="Stop working on this task" onclick="event.stopPropagation(); call('interrupt', {pid: cur})">${icon('stop')}</button>` : `<button class="ib qedit" title="Start this task now (or next, if Clauracle is busy)" onclick="event.stopPropagation(); playTask(${iq[i].number})">${icon('play')}</button>`}</span>` : '') + `<button class="qdrag" title="Drag to reorder${iq ? '' : ' (writes PLAN.md)'} · right-click: Move to top/bottom"></button></span>`}); })]).replace('class="tlist"', 'class="tlist" id="qlist"');
   const wt = iq ? teamTasks(cur).filter(isIdea).map(x => `#${x.number} ${x.title}`) : S.waits?.[cur] || [];
-  const tasks = ((wt.length && !iq ? `${stHead('Suggestions', '', `${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: Clauracle noted these; they need your yes`)}` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug',
+  const tasks = ((wt.length && !iq ? `${stHead('Suggestions', '', `${iq ? 'GitHub issues labelled suggestion' : 'PLAN.md › Waiting on the user'}: Clauracle noted these; they need your yes`)}` + L(wt.map((x, i) => tli(hl(x), {cls: 'sug', tip: x,
         end: `<span class="qpill"><span class="qbtns"><button class="ib qedit" title="Accept: move to the Queue" onclick="planWait(${i}, true)">${icon('check')}</button><button class="ib qedit" title="Dismiss: ${iq ? 'close the issue' : 'remove from PLAN.md'}" onclick="planWait(${i}, false)">${icon('x')}</button></span></span>`}))) : '')
-    + (t.length ? stHead('Now') + L([...open.map(x => tli(esc(x.status === 'in_progress' && x.activeForm || x.content), {cls: x.status})),
+    + (t.length ? stHead('Now') + L([...open.map(x => tli(esc(x.status === 'in_progress' && x.activeForm || x.content), {cls: x.status, tip: x.content})),
         ...fin.slice(-3).map(x => tli(esc(x.content), {done: 1, cls: 'completed', tip: x.content}))]) : '')
     + (iq || pl.some(o => o.items.length) ? `<div class="sh"><span class="label">${iq ? 'Next' : 'Plan'}</span>
         <button class="ib" title="Where these tasks come from" onclick="menuAt(this, [{title: 'Read from'}, ...(issueQ(cur) ? [{label: 'GitHub issues (clauracle)', hint: issueQ(cur).length + ' open', run: () => expandRight('gh')}] : []), ...S.plans[cur].filter(o => !issueQ(cur) || o.items.length).map(o => ({label: o.file, hint: o.items.length + ' open', run: () => previewFile(o.file)}))])">${icon('info')}</button>
@@ -197,7 +229,7 @@ function drawAtp() {
           : !iq && P().gh && q.length ? `<button class="ib" title="File the queue as GitHub issues (Team tasks)" onclick="queueToTeam(this)">${icon('gh')}</button>` : ''}</div>`
         + qRows
         + (iq ? issuesRest(tab === 'gh' ? thenRow(P()) : '') : '')
-        + pl.slice(1).map(o => stHead(`${esc(o.file)}${iq ? ' · not issues yet' : ''}`) + L(o.items.map(x => tli(esc(x))))).join('') : '')
+        + pl.slice(1).map(o => stHead(`${esc(o.file)}${iq ? ' · not issues yet' : ''}`) + L(o.items.map(x => tli(esc(x), {tip: x})))).join('') : '')
     + (dn.length ? stHead('Done lately') + L(dn.map(x => tli(esc(x), {done: 1, cls: 'completed', tip: x}))) : ''))
     || empty(`Clauracle's task list and ${iq ? 'open task issues' : "PLAN.md's queue"} show here`, `<button class="btn sm" onclick="putPrompt('${iq ? 'Plan this as GitHub task issues: ' : 'Plan this in PLAN.md: '}')">${icon('list')}Plan with Clauracle</button>`);
   const agents = tab === 'agents' ? agentIdle(ag) : '';

@@ -29,8 +29,11 @@ function drawProjects() {
 function drawChrome() {
   drawRails();
   const p = P();
-  $('pname').textContent = p.name;
+  $('pname').textContent = p.name; brandProj();
   $('tCont').title = 'Clear & continue: ' + MODES[p.cont][0];
+  $('tCont').classList.toggle('on', p.cont !== 'off');
+  $('tSkill').classList.toggle('on', !!p.ponytail || (p.on || []).some(id => id.startsWith('skill:') && !id.startsWith('skill:clauracle:'))); // any skill picked for this project
+  $('tWeb').hidden = !webFor(p.account);
   $('tWeb').classList.toggle('on', S.web !== false);
   $('tWeb').title = `Web search: ${S.web !== false ? 'on' : 'off'}, in every project (click to switch)`;
   const next = nextUp(cur);
@@ -59,7 +62,7 @@ function drawChrome() {
     sk.hidden = false; if (stick) toEnd(true); }
   sk.hidden = !skOn;
   workTick();
-  $('status').innerHTML = `<button onclick="menuAt(this, acctItems())" title="AI account, model and effort: ${esc(mName(p.model))}${p.effort ? ', ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}">${icon('user')}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(mName(p.model))}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) : ''}</span>${icon('down')}</button>`
+  $('status').innerHTML = `<button onclick="acctMenu(this)" title="AI account, model and effort: ${esc(ownModel(p) || mName(p.model) + (p.effort ? ', ' + (EFFORTS[p.effort] || p.effort) + ' effort' : ''))}">${icon(prov(S.accounts.find(a => a.id === p.account)).i)}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(ownModel(p) || mName(p.model) + (p.effort ? ' · ' + (EFFORTS[p.effort] || p.effort) : ''))}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${PERM_C[permN(p.mode) - 1] ? icon('shield').replace('<svg', `<svg style="color:${PERM_C[permN(p.mode) - 1]}"`) : icon('shield')}<span class="lb">${PERM_S[p.mode] || p.mode}</span><span class="ab">${permN(p.mode)}</span></button>`
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
   drawGbar();
@@ -172,17 +175,23 @@ new MutationObserver(ms => { for (const {target: n, attributeName: k} of ms) {
   if (n === tipEl || (n.dataset.tip && tipOver?.isConnected && tipOver.closest('[data-tip]') === n)) tipFor(n);
 } }).observe(document.documentElement, {subtree: true, attributes: true, attributeFilter: ['title', 'data-tip']});
 ['mousedown', 'wheel', 'keydown'].forEach(t => document.addEventListener(t, hideTip, true));
-// accounts; each row has two labelled click dropdowns: model (sparkle), effort (brain); picking one also picks that account.
-// model/effort are project-level (kept on account switch) → every row shows the project's current values
-const acctItems = () => [...S.accounts.map(a => { const on = P().account === a.id, m = P().model || '', ef = P().effort || '';
-  return {check: on, label: a.nick, hint: usageText(a.id), run: () => setP({account: a.id}), acts: [
-    {icon: 'sparkle', label: mName(m), tip: 'Model', items: [{title: 'Model'},
-      ...mList().map(([k, l, d]) => ({check: m === k, label: l, hint: d, run: () => setP({account: a.id, model: k})}))]},
-    {icon: 'brain', label: EFFORTS[ef] || ef, tip: 'Effort', items: [{title: 'Effort'},
-      ...effOf(m).map(k => ({check: ef === k, label: EFFORTS[k] || k, run: () => setP({account: a.id, effort: k})}))]}]}; }), '-',
-  {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}];
+/* the project's AI: the shared picker (aiMenu), relay members only under Relays; a relay pick = its first account (relay_route moves on).
+   A model picked in a cloud provider becomes that account's model. Claude accounts without their own model get Model and Effort at the bottom. */
+// a pick of a Claude account (it has Model and Effort) keeps the menu open: only the submenu closes, those two rows light up
+function acctMenu(b, p = P(), set = setP, hot) { const a = S.accounts.find(x => x.id === p.account), m = p.model || '', ef = p.effort || '';
+  // Claude accounts are remembered in Recent with the model and effort they were used with
+  const pin = id => { const x = S.accounts.find(y => y.id === id); return x && !x.model && prov(x) === PROVS.claude; };
+  const used = ch => { aiUsed('acct:' + p.account, {m: ch.model ?? m, e: ch.effort ?? ef}); set(ch); };
+  const tail = pin(p.account) ? ['-',
+    {icon: 'sparkle', label: 'Model', hint: mName(m), hot, items: mList().map(([k, l, d]) => ({check: m === k, label: l, hint: d, run: () => used({model: k})}))},
+    {icon: 'brain', label: 'Effort', hint: EFFORTS[ef] || ef, hot, items: effOf(m).map(k => ({check: ef === k, label: EFFORTS[k] || k, run: () => used({effort: k})}))}] : [];
+  aiMenu(b, a?.relay ? 'relay:' + a.relay : 'acct:' + p.account, (v, r) => { const [k, id] = v.split(/:(.*)/), [ai, mo] = id.split('#');
+    if (k === 'relay') return set({account: S.accounts.find(x => x.relay === id).id});
+    if (r?.m != null) return set({account: ai, model: r.m, effort: r.e || ''});
+    const at = anchorOf(b), go = () => set({account: ai}).then(refresh).then(() => pin(ai) && acctMenu(at, P(p.id), set, true)); mo ? ollamaReady(S.accounts.find(x => x.id === ai).provider, mo).then(() => call('update_account', {id: ai, changes: {model: mo}})).then(go, e => sure(String(e), 'OK', '')) : go(); },
+    {solo: true, mx: v => pin(v.slice(5)) ? {m, e: ef} : undefined, tail: [...tail, '-', {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}]}); }
 const permItems = () => [{title: 'Permissions (level)'}, ...Object.entries(PERMS).map(([k, l], i) => ({check: P().mode === k, label: `${i + 1}  ${l}`, run: () => setP({mode: k})}))];
-const usageText = id => { const u = S.usage[id] || {}; return [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
+const usageText = id => { const u = S.usage[id] || {}; return localUse(u) || [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
 
 const LOADED = new Set(); // pids whose transcript is in logs[]
 /* #243 the page's log on disk (log_save → open_project `saved`) ∵ transcripts lack UI-only notes (task reports…) + only 2 sessions.

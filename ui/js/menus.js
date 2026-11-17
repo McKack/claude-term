@@ -6,14 +6,15 @@ function menuAt(anchor, items) {
   buildMenu(items, anchor.getBoundingClientRect(), false);
   setTimeout(() => document.addEventListener('mousedown', outside), 0);
 }
-// item: '-' | {and: text} (divider with a word) | {label, hint, icon, check, run, sub (indented), title (caption, not clickable), items (› submenu on hover)}
+// item: '-' | {and: text} (divider with a word) | {label, hint, icon, check, run, sub (indented), hot (accent hint), title (caption, not clickable), items (› submenu on hover)}
 function buildMenu(items, r, side, level = 0) {
   document.querySelectorAll('.menu').forEach(x => +x.dataset.level >= level && x.remove());
   const m = document.createElement('div');
   m.className = MENU_TUI ? 'menu tui' : 'menu glass'; m.dataset.level = level; m.popover = 'manual'; // top layer, opened last → over Settings/dialogs
-  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.and ? `<div class="mand">${esc(it.and)}</div>` : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub ? ' class="sub"' : ''}${it.off ? ' disabled' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? icon('check') : ''}</span>${it.icon ? icon(it.icon) : ''}` : it.icon ? icon(it.icon) : ''}
-    <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact${a.label ? ' lab' : ''}" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}${a.label ? `${esc(a.label)}${icon('down')}` : ''}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
-  (document.querySelector('dialog:modal') || document.body).appendChild(m); m.showPopover(); // inside a modal: else inert
+  m.innerHTML = items.map((it, i) => it === '-' ? '<hr>' : it.search !== undefined ? `<input type="search" class="msearch" placeholder="${esc(it.search)}" value="${esc(it.value || '')}">` : it.and ? `<div class="mand">${esc(it.and)}</div>` : it.title ? `<div class="mcap">${esc(it.title)}</div>` : `<button data-i="${i}"${it.sub || it.hot ? ` class="${it.sub ? 'sub' : ''}${it.hot ? ' hot' : ''}"` : ''}${it.off ? ' disabled' : ''}>${it.check !== undefined ? `<span class="chk">${it.check ? icon('check') : ''}</span>${it.icon ? icon(it.icon) : ''}` : it.icon ? icon(it.icon) : ''}
+    <span class="grow">${esc(it.label)}${it.hint ? `<small>${esc(it.hint)}</small>` : ''}</span>${(it.acts || []).map((a, j) => `<span class="mact${a.label ? ' lab' : ''}${a.items ? '' : ' fix'}" data-a="${j}" title="${esc(a.tip)}">${icon(a.icon)}${a.label ? `${esc(a.label)}${a.items ? icon('down') : ''}` : ''}</span>`).join('')}${it.items ? `<span class="mchev">${icon('chev')}</span>` : ''}</button>`).join('');
+  // inside the anchor's modal (else the topmost one): a menu in a modal under another one is inert, so nothing in it clicks
+  (MENU_A?.closest?.('dialog:modal') || [...document.querySelectorAll('dialog:modal')].pop() || document.body).appendChild(m); m.showPopover();
   m.style.maxHeight = innerHeight - 16 + 'px'; m.style.overflowY = 'auto';
   const h = m.offsetHeight, w = m.offsetWidth;
   // below the anchor, else above; neither fits → beside it (left when the anchor is in the right half, else right),
@@ -33,6 +34,9 @@ function buildMenu(items, r, side, level = 0) {
     m.style.top = (below ? r.bottom + 6 : r.top - h - 6) + 'px';
   }
   if (!level) MENU_A?.classList?.toggle('mup', !side && !below && above); // #450 chevron flips when the menu sits above
+  const sr = m.querySelector('.msearch'), si = items.find(it => it.search !== undefined); // search box: typing rebuilds the menu, Enter picks the first result
+  if (sr) { sr.oninput = () => si.input(sr.value); sr.onkeydown = e => { if (e.key === 'Enter') m.querySelector('hr ~ button[data-i]')?.click();
+    if (e.key === 'Escape') { e.preventDefault(); const a = MENU_A; closeMenu(); a?.focus?.(); } }; }
   m.querySelectorAll('[data-i]').forEach(b => { const it = items[b.dataset.i];
     b.onmouseenter = () => it.items ? buildMenu(it.items, b.getBoundingClientRect(), true, level + 1) : document.querySelectorAll('.menu').forEach(x => +x.dataset.level > level && !x.dataset.click && x.remove()); // click-opened: stays till a click/another submenu
     // acts = click-only dropdowns (hover ones overlapped each other); labelled act → opens below it like a select
@@ -44,12 +48,39 @@ const outside = e => { if (!e.target.closest('.menu')) closeMenu(); };
 let CTXP = null, CTXD = false; // #390 pending editable right-click / Rust holds a spelling deferral (closed w/o pick → release it)
 function closeMenu() { if (CTXD) setTimeout(() => CTXD && (CTXD = false, call('ctx_pick', {id: -1}))); if (document.querySelector('.menu')) MENU_T = Date.now(); document.querySelectorAll('.menu').forEach(x => x.remove()); document.querySelectorAll('.mup').forEach(x => x.classList.remove('mup')); document.removeEventListener('mousedown', outside); }
 // #450 every <select> opens the app menu, never the native square popup; pick → value + 'change' (inline onchange keeps working)
-// optgroup → caption + indented items; keyboard ↑↓ still steps the value natively (no popup)
-function selMenu(s) { const o2i = o => ({label: o.text, check: o.selected, off: o.disabled, sub: o.parentElement.tagName === 'OPTGROUP', run: () => { s.value = o.value; s.dispatchEvent(new Event('change', {bubbles: true})); }});
-  const it = [...s.children].flatMap(c => c.tagName === 'OPTGROUP' ? [{title: c.label}, ...[...c.children].map(o2i)] : c.hidden ? [] : [o2i(c)]);
+// optgroup → › submenu (ticked when it holds the current value); keyboard ↑↓ still steps the value natively (no popup)
+function selMenu(s) { const o2i = o => ({label: o.text, hint: o.dataset.tag, check: o.selected, off: o.disabled, run: () => { s.value = o.value; s.dispatchEvent(new Event('change', {bubbles: true})); }});
+  const it = [...s.children].flatMap(c => c.tagName === 'OPTGROUP' ? [{label: c.label, check: [...c.children].some(o => o.selected), items: [...c.children].map(o2i)}] : c.hidden ? [] : [o2i(c)]);
   s.focus(); menuAt(s, it); const m = document.querySelector('.menu'); if (m) m.style.minWidth = s.offsetWidth + 'px'; }
 document.addEventListener('mousedown', e => { const s = e.target.closest?.('select:not([multiple],[size])'); if (!s || e.button || s.disabled) return; e.preventDefault(); if (MENU_A === s && document.querySelector('.menu')) return closeMenu(); selMenu(s); }, true);
 document.addEventListener('keydown', e => { const s = e.target; if (s.tagName !== 'SELECT' || s.multiple || !(e.key === ' ' || e.key === 'Enter' || e.altKey && /^Arrow(Down|Up)$/.test(e.key) || e.key === 'F4')) return; e.preventDefault(); selMenu(s); }, true);
+// input[data-list] = combo box: its <datalist> (id in data-list) opens in the app menu, typing filters, any typed value stays
+// Fuzzy match: the letters of q in order inside t; returns the number of skipped letters (lower = better), -1 = no match
+function fuzzy(q, t) { let at = -1, gaps = 0; for (const c of q.replace(/\s+/g, '')) { const j = t.indexOf(c, at + 1); if (j < 0) return -1; if (at >= 0) gaps += j - at - 1; at = j; } return gaps; }
+let FREEONLY = false; // model picker "Free only", for this run
+/* Model lists (options carry data-g maker, data-s score) get a search box, a Free only toggle when some are free,
+   Top picks (best of each maker) and a › submenu per maker; a search lists every match, hidden low-score ones included. Plain lists stay a filtered list. */
+function listMenu(i, q = '', fromSearch) { q = q.trim().toLowerCase();
+  const all = [...($(i.dataset.list)?.options || [])], scored = all.some(o => o.dataset.g), anyFree = all.some(o => 'free' in o.dataset);
+  const item = o => ({label: o.value, hint: [o.dataset.s > 0 && 'score ' + o.dataset.s, o.label !== o.value && o.label].filter(Boolean).join(' · '), check: o.value === i.value, run: () => { i.value = o.value; i.dispatchEvent(new Event('change', {bubbles: true})); }});
+  const byScore = (a, b) => (b.dataset.s || 0) - (a.dataset.s || 0);
+  let os = all.filter(o => !(FREEONLY && scored && !('free' in o.dataset)));
+  if (q) os = os.map(o => [o, fuzzy(q, `${o.dataset.g || ''}/${o.value}`.toLowerCase())]).filter(x => x[1] >= 0).sort((a, b) => a[1] - b[1] || byScore(a[0], b[0])).map(x => x[0]).slice(0, 60);
+  else if (scored) os = os.filter(o => !('hide' in o.dataset));
+  if (!scored) { if (!os.length) return closeMenu(); MENU_T = 0; menuAt(i, os.map(item)); }
+  else {
+    const groups = Map.groupBy(os, o => o.dataset.g), head = [{search: 'Search models', value: q, input: v => listMenu(i, v, true)},
+      ...anyFree ? [{label: 'Free only', check: FREEONLY, run: () => { FREEONLY = !FREEONLY; listMenu(i, q, true); }}] : [], '-'];
+    const body = !os.length ? [{title: 'No match'}] : q || os.length <= 12 || groups.size < 2 ? os.sort(q ? () => 0 : byScore).map(item)
+      : [{title: 'Top picks'}, ...[...groups.values()].map(l => l.toSorted(byScore)[0]).sort(byScore).slice(0, 8).map(item), '-',
+        ...[...groups].sort((a, b) => a[0].localeCompare(b[0])).map(([g, l]) => ({label: g, hint: l.length + (l.length > 1 ? ' models' : ' model'), check: l.some(o => o.value === i.value), items: l.sort(byScore).map(item)}))];
+    MENU_T = 0; menuAt(i, [...head, ...body]);
+    const s = document.querySelector('.menu .msearch'); if (s && (fromSearch || !q)) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+  }
+  const m = document.querySelector('.menu'); if (m) m.style.minWidth = i.offsetWidth + 'px'; }
+document.addEventListener('mousedown', e => { const i = e.target.closest?.('input[data-list]'); if (!i || e.button) return; if (MENU_A === i && document.querySelector('.menu')) return closeMenu(); setTimeout(() => listMenu(i)); }, true);
+document.addEventListener('input', e => e.target.matches?.('input[data-list]') && listMenu(e.target, e.target.value));
+document.addEventListener('keydown', e => { if (e.target.matches?.('input[data-list]') && e.key === 'ArrowDown' && !document.querySelector('.menu')) { e.preventDefault(); listMenu(e.target); } }, true);
 // right-click: own menu on chat msgs, tool rows, Files tree, projects; WebView default only in inputs / over a selection
 const copy = t => navigator.clipboard.writeText(t);
 const absOf = rel => { const b = P().path.replace(/[\\/]+$/, ''), s = b.includes('\\') ? '\\' : '/'; return b + s + rel.replace(/\//g, s); };
@@ -149,7 +180,7 @@ function skillItems() { const p = P(), last = i => i.label.split(':').pop(), sk 
   const groups = {}; rest.forEach(i => (groups[folder(i)] ||= []).push(i));
   return [{title: 'Clauracle'}, ...own, ...(rest.length ? ['-'] : []),
     ...Object.keys(groups).sort((a, b) => (a === 'Your skills') - (b === 'Your skills') || a.localeCompare(b))
-      .map(k => ({check: false, icon: 'folder', label: k, hint: `${groups[k].filter(i => skillOn(p, i.id)).length} of ${groups[k].length} on`, items: groups[k].map(row)})),
+      .map(k => { const n = groups[k].filter(i => skillOn(p, i.id)).length; return {check: n > 0, icon: 'folder', label: k, hint: `${n} of ${groups[k].length} on`, hot: n > 0, items: groups[k].map(row)}; }),
     '-', {check: false, icon: 'search', label: 'Find more skills…', run: () => openSettings('cx').then(() => jumpTo('[data-f=g-find]'))}]; }
 async function skillMenu(btn) { if (!cur) return; SET ||= await call('settings'); menuAt(btn, skillItems()); }
 const contItems = () =>Object.entries(MODES).map(([k, [l, h]]) => ({check: P().cont === k, label: l, hint: h, run: () => setP({cont: k})}));

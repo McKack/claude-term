@@ -1,7 +1,7 @@
 // ---- account card (bottom-left): the open project's AI + GitHub account, others as a stack ----
 // GitHub avatars from github.com/<user>.png; Claude accounts have no pictures → initials in the mascot colours
 // AI accounts: the service's mark (all Claude for now) in its brand colour
-const avAI = (a, cls = '') => `<span class="av ai ${cls}" title="${esc(a.nick)}"><svg><use href="#i-claude"/></svg></span>`;
+const avAI = (a, cls = '') => `<span class="av ai ${cls}" title="${esc(a.nick)}"><svg><use href="#i-${prov(a).i}"/></svg></span>`;
 // avatars: one preloaded Image per user, kept alive → the page's image cache draws re-rendered cards instantly (no reload flash)
 /* avatars: Rust `avatar` (disk cache 1d) → blob URL once per run; imgs drawn before it lands get data-av and are filled in.
    fail → plain github URL (onerror → letter) */
@@ -107,7 +107,7 @@ function smTab(k, side) {
 }
 function smFind(q) {
   q = q.toLowerCase(); const out = [], pid = cur, has = s => String(s).toLowerCase().includes(q);
-  const row = (ic, name, sub, size, date, js) => out.push(`<div class="srow" tabindex="0" onclick="${esc(js)}">${icon(ic)}<span class="grow"><b>${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${size ? `<small>${size}</small>` : ''}${date ? `<small class="sd">${date}</small>` : ''}</div>`);
+  const row = (ic, name, sub, size, date, js) => out.push(`<div class="srow" tabindex="0" onclick="${esc(js)}">${icon(ic)}<span class="grow"><b data-tip="${esc(name)}">${esc(name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${size ? `<small>${size}</small>` : ''}${date ? `<small class="sd">${date}</small>` : ''}</div>`);
   const day = t => new Date(t * 1e3).toLocaleDateString(undefined, {day: 'numeric', month: 'short'});
   SMTABS().filter(t => has(t[2])).forEach(t => row(t[1], t[2], 'Tab', '', '', `smTab('${t[0]}', '${t[3]}')`));
   Object.entries(PAGES).filter(([, v]) => has(v[1].replace('&amp;', '&'))).forEach(([k, v]) => row(v[0], v[1].replace('&amp;', '&'), 'Settings', '', '', `document.querySelector('.smenu')?.hidePopover(); openSettings('${k}')`));
@@ -148,16 +148,16 @@ function startMenu(btn) {
   setTimeout(() => inp.focus(), 0);
 }
 const limTip = v => +v ? `Hand over at ${v}%: when context reaches this, Clauracle writes the handover, clears and continues in a fresh session` : 'Hand over: off (0 = never clear & continue)';
-// #195 merged AI card, lower half: account/model/effort (→ acctItems menu), context (+ hand-over), usage, session timers (#stime, live via drawTimes)
+// #195 merged AI card, lower half: account/model/effort (→ acctMenu), context (+ hand-over), usage, session timers (#stime, live via drawTimes)
 function statsHtml(p) {
   const u = S.usage[p.account] || {}, a = S.accounts.find(x => x.id === p.account), c = ctx[cur], n = tk(cur).now;
   // #200 one Usage section: label row, full-width bar under it; 5h + weekly share a line (reset → tooltip)
   const half = (k, l, ic) => `<div class="grow" style="font-size:12px" data-tip=""${l} usage: ${u[k] ?? '?'}%${resetIn(p.account, k) ? '\n' + resetIn(p.account, k) : ''}"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span>${u[k] ?? '?'}%</div><div class="ubar"><i style="width:${u[k] || 0}%"></i></div></div>`;
-  return `<h5>AI Account</h5><button class="pick" id="scAcct" title="AI account, model and effort"><span class="grow">${esc(nick(p.account))}<small class="dim" style="display:block">${esc(mName(p.model))}${p.effort ? ' · ' + esc(EFFORTS[p.effort] || p.effort) + ' effort' : ''}</small></span>${icon('down')}</button>
+  return `<h5>AI Account</h5><button class="pick" id="scAcct" title="AI account, model and effort"><span class="grow">${esc(nick(p.account))}<small class="dim" style="display:block">${esc(ownModel(p) || mName(p.model) + (p.effort ? ' · ' + (EFFORTS[p.effort] || p.effort) + ' effort' : ''))}</small></span>${icon('down')}</button>
     <h5>Usage</h5><div style="font-size:12px"><div class="row" style="gap:6px">${icon('doc')}<span class="grow">Context <span id="scLimV" class="faint"></span></span>${c ?? '?'}%${n ? ` (${kt(n)})` : ''}</div>
       <div class="ubar"><i style="width:${c || 0}%"></i><input id="scLim" type="range" min="0" max="95" value="${p.context_limit}" title="${limTip(p.context_limit)}"></div></div>
     ${tk(cur).saved ? `<div class="row faint" style="font-size:11px;gap:6px" title="Clear-continue: each turn after a clear would otherwise re-read the cleared context. Counted once per turn (tool calls re-read it too), so the real saving is higher.">${icon('loop')}<span class="grow">Saved by Clauracle (est.)</span>${kt(tk(cur).saved)} tokens</div>` : ''}
-    <div class="row" style="gap:12px;align-items:flex-start">${half('five_hour', '5-hour', 'clock')}${half('seven_day', 'Weekly', 'cal')}</div>
+    ${localUse(u) ? `<div class="row" style="gap:6px;font-size:12px">${icon('clock')}<span class="grow">Used</span>${localUse(u)}</div>` : `<div class="row" style="gap:12px;align-items:flex-start">${half('five_hour', '5-hour', 'clock')}${half('seven_day', 'Weekly', 'cal')}</div>`}
     <div id="stime"></div>
     <div class="btnrow"><button class="btn sm" id="scReset">Start timers over</button></div>`;
 }
@@ -177,7 +177,7 @@ function drawGbar() {
   const lead = wk.length ? `<i class="gdot"></i><span class="gt">${wk.length > 1 ? `Clauracle working in ${wk.length} projects` : `<b>${esc(wk[0].name)}</b>${nag ? ` +${nag}` : ''} · ${esc(what(wk[0]))}`}</span>${wk.length > 1 && nag ? `<span>${icon('bot')}${nag}</span>` : ''}`
     : wait.length ? `${icon('sparkle')}<span class="gt">${wait.length > 1 ? `${wait.length} projects waiting on you` : `<b>${esc(wait[0].name)}</b> · ${esc(wait[0].why)}`}</span>`
     : `${icon('sparkle')}<span class="gt">Clauracle idle</span>`;
-  const ai = `<button class="stats" onclick="gCard(this, 'ai')" title="AI: activity, account, context, usage and session time">${lead}${p ? `<span>${icon('doc')}${ctx[cur] ?? '?'}%</span>` : ''}${meter('five_hour', '5-hour', 'clock')}${meter('seven_day', 'Weekly', 'cal')}</button>`;
+  const ai = `<button class="stats" onclick="gCard(this, 'ai')" title="AI: activity, account, context, usage and session time">${lead}${p ? `<span>${icon('doc')}${ctx[cur] ?? '?'}%</span>` : ''}${localUse(u) ? `<span title="Local model used ${localUse(u)}">${icon('clock')}${u.day_h} h · ${u.week_h} h</span>` : meter('five_hour', '5-hour', 'clock') + meter('seven_day', 'Weekly', 'cal')}</button>`;
   const bl = bd.length ? `<button onclick="gCard(this, 'build')" title="Builds in progress"><span class="spin"></span><span class="gt">Building ${bd.length > 1 ? bd.length + ' projects' : `<b>${esc(bd[0].name)}</b>`}</span></button>`
     : last ? `<button onclick="gCard(this, 'build')" title="Last build"><span class="${last.b.ok ? 'ok' : 'bad'}">${icon(last.b.ok ? 'check' : 'x')}</span><span class="gt">${last.b.ok ? 'Built' : 'Build failed'} <b>${esc(last.p.name)}</b> · ${gago(last.b.at)}</span></button>`
     : `<button onclick="gCard(this, 'build')" title="Builds">${icon('hammer')}<span class="gt">No builds</span></button>`;
@@ -202,15 +202,24 @@ function gCard(btn, kind) {
   const row = (pid, lead, name, tail = '') => `<div class="row" style="gap:6px;cursor:pointer" onclick="${go(pid)}">${lead}<span class="grow">${esc(name)}</span>${tail}</div>`;
   if (kind === 'ai') {
     // #201 short state (Working…/Ready/Idle), full command in the tooltip; acts() re-run each second while open (only on change)
-    const acts = () => { const wk = gbusy(), wt = gwait(), why = Object.fromEntries(wt.map(x => [x.id, x.why]));
+    // rows share one grid (dot, avatar, name, what it works on, stop) so avatars and texts line up; a task shows as "#N title" ticker
+    // tips that change every second (current command, agent's last tool) go in T and are set in place, so the ticker isn't re-rendered
+    let T = [];
+    const tip = s => `data-gt="${T.push(s) - 1}"`, task = (pid, n) => teamTasks(pid).find(t => t.number === n);
+    const tk = (n, title, fb) => n && title ? `<b class="inum">#${n}</b>${marq(esc(title))}` : marq(esc(fb));
+    const acts = () => { T = []; const wk = gbusy(), wt = gwait(), why = Object.fromEntries(wt.map(x => [x.id, x.why]));
       // #200 ONE activity list: current project first, then working, then waiting; status on the right; no Continue (the dock has it)
       const ls = [...new Set([...(cur ? [P()] : []), ...wk, ...wt.map(x => S.projects.find(p => p.id === x.id))])].sort((a, b) => (b.id === cur) - (a.id === cur));
-      return ls.map(x => { const on = busy[x.id], ag = on ? agentsOf(x.id).filter(a => a.running) : [], w = WORK[x.id];
-        return row(x.id, (on ? '<i class="gdot"></i>' : why[x.id] ? icon('sparkle') : '<i class="gdot" style="background:var(--line2);animation:none"></i>') + gtAv('Clauracle'), x.name, `<span class="dim" style="white-space:nowrap"${on ? ` data-tip="${esc(doing[x.id]?.text || 'Thinking')}"` : ''}>${w && on ? '#' + w + ' · ' : ''}${on ? 'Working…' : why[x.id] ? (why[x.id] === 'ready to continue' ? 'Ready' : esc(why[x.id])) : 'Idle'}</span>`
-          + (on ? `<button class="ib" title="Stop" onclick="event.stopPropagation(); call('interrupt', {pid: '${x.id}'}); ${close}">${icon('stop')}</button>` : ''))
-          + ag.map(a => `<div class="row gav" style="gap:6px;font-size:12px;margin:-4px 0 0 13px">${gtAv(a.type)}<b>${esc(roleOf({name: a.type}))}</b><span class="dim grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" data-tip="${esc(a.desc + (a.last ? ': ' + a.last : ''))}">${esc(a.desc)}${a.last ? ' · ' + esc(a.last) : ''}</span></div>`).join(''); }).join('') || '<p class="dim">Nothing running</p>'; };
+      return ls.map(x => { const on = busy[x.id], ag = on ? agentsOf(x.id).filter(a => a.running) : [], w = WORK[x.id], t = on && w && task(x.id, w);
+        return `<div class="gar" onclick="${go(x.id)}">${on ? '<i class="gdot"></i>' : why[x.id] ? icon('sparkle') : '<i class="gdot" style="background:var(--line2);animation:none"></i>'}${gtAv('Clauracle')}<span class="gn" ${on ? tip(doing[x.id]?.text || 'Thinking') : ''}>${esc(x.name)}</span>`
+          + `<span class="gd"${t ? ` data-tip="${esc('#' + w + ' ' + t.title)}"` : ''}>${on ? tk(w, t?.title, w ? '#' + w + ' · Working…' : 'Working…') : why[x.id] ? (why[x.id] === 'ready to continue' ? 'Ready' : esc(why[x.id])) : 'Idle'}</span>`
+          + (on ? `<button class="ib" title="Stop" onclick="event.stopPropagation(); call('interrupt', {pid: '${x.id}'}); ${close}">${icon('stop')}</button>` : '') + '</div>'
+          + ag.map(a => { const j = a.issue && task(x.id, a.issue), full = j ? `#${j.number} ${j.title}` : a.desc;
+            return `<div class="gar sub"><span data-ag="${esc(a.type)}">${gtAv(a.type)}</span><span class="gn" data-ag="${esc(a.type)}">${esc(roleOf({name: a.type}))}</span><span class="gd" ${tip(full + (a.last ? ': ' + a.last : ''))}>${tk(j?.number, j?.title, a.desc)}</span></div>`; }).join(''); }).join('') || '<p class="dim">Nothing running</p>'; };
     card.innerHTML = `<h5>Activity</h5><div id="gacts">${acts()}</div>` + (cur ? statsHtml(P()) : '');
-    const ga = card.querySelector('#gacts'), iv = setInterval(() => { if (!card.isConnected) return clearInterval(iv); const h = acts(); if (ga._h !== h) ga.innerHTML = ga._h = h; }, 1000); ga._h = acts();
+    const ga = card.querySelector('#gacts'), tips = () => ga.querySelectorAll('[data-gt]').forEach(e => e.dataset.tip = T[e.dataset.gt]);
+    const iv = setInterval(() => { if (!card.isConnected) return clearInterval(iv); const h = acts(); if (ga._h !== h) { ga.innerHTML = ga._h = h; tickers(ga); } tips(); }, 1000); ga._h = acts(); tips();
+    requestAnimationFrame(() => tickers(ga)); // needs layout: the card is shown below
   } else if (kind === 'notes') {
     NUNREAD = 0; NOTES.forEach(n => n.seen = 1); window.NSNAP = NOTES.slice(); /* indices stable while card open */ notesSave(); drawGbar();
     card.innerHTML = `<div class="row"><h5 class="grow">Notifications</h5>`
@@ -241,6 +250,6 @@ function gCard(btn, kind) {
   if (q('scLim')) { q('scLim').oninput = e => { e.target.title = limTip(e.target.value); q('scLimV').textContent = '· hand over ' + (+e.target.value ? e.target.value + '%' : 'off'); };
     q('scLim').onchange = e => { q('scLimV').textContent = ''; setP({context_limit: Math.max(0, Math.min(95, +e.target.value || 0))}).then(refresh); };
     q('scReset').onclick = () => { TIMES[cur] = {start: Date.now(), you: 0, ai: 0, any: 0}; drawTimes(); };
-    q('scAcct').onclick = e => { const b = e.currentTarget.getBoundingClientRect(); card.hidePopover(); menuAt({getBoundingClientRect: () => b}, acctItems()); }; }
+    q('scAcct').onclick = e => { const b = e.currentTarget.getBoundingClientRect(); card.hidePopover(); acctMenu({getBoundingClientRect: () => b}); }; }
   card.style.left = Math.max(8, Math.min(r.left, innerWidth - card.offsetWidth - 8)) + 'px'; card.style.top = Math.max(8, r.top - card.offsetHeight - 8) + 'px';
 }

@@ -3,65 +3,66 @@
 const SERVICES = {
   google: {name: 'Google', note: 'Cloud project, APIs, billing, Sign in with Google', keys: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']},
   apple: {name: 'Sign in with Apple', note: 'Apple Developer account', keys: ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY'],
-    steps: ['Make an App ID with Sign in with Apple ticked', 'Make a Services ID with your web domain and return URL: that ID is the client ID', 'Make a key with Sign in with Apple and download the .p8 (only once)'],
+    steps: ['App ID|Make an App ID with Sign in with Apple ticked', 'Services ID|Make a Services ID with your web domain and return URL: that ID is the client ID', 'Key|Make a key with Sign in with Apple and download the .p8 (only once)'],
     links: [['App IDs', 'https://developer.apple.com/account/resources/identifiers/list'], ['Services IDs', 'https://developer.apple.com/account/resources/identifiers/list/serviceId'], ['Keys', 'https://developer.apple.com/account/resources/authkeys/list']]},
   github: {name: 'Sign in with GitHub', note: 'OAuth app', keys: ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
-    steps: ['New OAuth App, with your callback URL', 'Generate a client secret'], links: [['OAuth apps', 'https://github.com/settings/developers']]},
+    steps: ['OAuth app|New OAuth App, with your callback URL', 'Client secret|Generate a client secret'], links: [['OAuth apps', 'https://github.com/settings/developers']]},
   microsoft: {name: 'Sign in with Microsoft', note: 'Entra app registration', keys: ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET', 'MICROSOFT_TENANT_ID'],
-    steps: ['New registration, with a Web redirect URI', 'Certificates & secrets: new client secret'], links: [['App registrations', 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade']]},
+    steps: ['App registration|New registration, with a Web redirect URI', 'Client secret|Certificates & secrets: new client secret'], links: [['App registrations', 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade']]},
   discord: {name: 'Sign in with Discord', note: 'Discord application', keys: ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET'],
-    steps: ['New Application', 'OAuth2: add a redirect, copy the client ID and secret'], links: [['Applications', 'https://discord.com/developers/applications']]},
+    steps: ['Application|New Application', 'OAuth2|OAuth2: add a redirect, copy the client ID and secret'], links: [['Applications', 'https://discord.com/developers/applications']]},
   auth0: {name: 'Auth0', note: 'Hosted sign-in', keys: ['AUTH0_DOMAIN', 'AUTH0_CLIENT_ID', 'AUTH0_CLIENT_SECRET'], links: [['Dashboard', 'https://manage.auth0.com/']]},
   clerk: {name: 'Clerk', note: 'Hosted sign-in', keys: ['CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY'], links: [['Dashboard', 'https://dashboard.clerk.com/']]},
   supabase: {name: 'Supabase', note: 'Database, auth, storage', keys: ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'],
-    steps: ['Make a project (pick the one to use by filling **SUPABASE_URL** if you have several)', '**Account** › **Access Tokens** › **Generate new token**', fillStep('SUPABASE_ACCESS_TOKEN', 'supabase'),
+    steps: ['Project|Make a project (pick the one to use by filling **SUPABASE_URL** if you have several)', 'Access token|**Account** › **Access Tokens** › **Generate new token**', fillStep('SUPABASE_ACCESS_TOKEN', 'supabase'),
       autoStep('supabase', 'Clauracle reads the URL and keys with that token', 'Fill URL & keys', 'SUPABASE_SERVICE_ROLE_KEY', 'supabase')],
     links: [['Projects', 'https://supabase.com/dashboard/projects'], ['Access tokens', 'https://supabase.com/dashboard/account/tokens']]},
   firebase: {name: 'Firebase', note: 'Auth, Firestore, hosting', keys: ['FIREBASE_API_KEY', 'FIREBASE_AUTH_DOMAIN', 'FIREBASE_PROJECT_ID', 'FIREBASE_APP_ID'],
-    steps: ['Pick the Google account and Cloud project under the **Google** service', autoStep('firebase', 'Clauracle adds Firebase and a web app to that project and fills its config', 'Fill config', 'FIREBASE_APP_ID', 'firebase')],
+    steps: ['Google project|Pick the Google account and Cloud project under the **Google** service', autoStep('firebase', 'Clauracle adds Firebase and a web app to that project and fills its config', 'Fill config', 'FIREBASE_APP_ID', 'firebase')],
     links: [['Console', 'https://console.firebase.google.com/']]},
   stripe: {name: 'Stripe', note: 'Payments', keys: ['STRIPE_PUBLISHABLE_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'],
-    steps: ['Copy the API keys (test mode first)', fillStep('STRIPE_SECRET_KEY', 'stripe'),
+    steps: ['API keys|Copy the API keys (test mode first)', fillStep('STRIPE_SECRET_KEY', 'stripe'),
       autoStep('stripe', 'Clauracle adds a webhook endpoint at **your website address**/api/stripe/webhook and fills its signing secret', 'Make webhook', 'STRIPE_WEBHOOK_SECRET', 'stripe')], links: [['API keys', 'https://dashboard.stripe.com/apikeys'], ['Webhooks', 'https://dashboard.stripe.com/webhooks']]},
-  resend: {name: 'Resend', note: 'Email', keys: ['RESEND_API_KEY'], steps: ['Verify your domain', 'Make an API key'], links: [['Domains', 'https://resend.com/domains'], ['API keys', 'https://resend.com/api-keys']]},
+  resend: {name: 'Resend', note: 'Email', keys: ['RESEND_API_KEY'], steps: ['Domain|Verify your domain', 'API key|Make an API key'], links: [['Domains', 'https://resend.com/domains'], ['API keys', 'https://resend.com/api-keys']]},
   sentry: {name: 'Sentry', note: 'Error tracking', keys: ['SENTRY_DSN'], links: [['Projects', 'https://sentry.io/organizations/']]},
   vercel: {name: 'Vercel', note: 'Hosting', keys: ['VERCEL_TOKEN'], links: [['Tokens', 'https://vercel.com/account/tokens'], ['Dashboard', 'https://vercel.com/dashboard']]},
   // steps: string | {t, a: () => action html}; **x** = UI name on the other site (bold); gh:'step' = Send button lives in a step
   macsign: {name: 'Mac signing', note: 'Developer ID: Mac builds open without the "unidentified developer" block', gh: 'step',
     keys: ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_TEAM_ID', 'APPLE_ID', 'APPLE_PASSWORD'],
-    get steps() { return [{t: 'Make the signing request: **devid.csr** lands in your **Downloads** and Apple\'s page opens', a: () => `<button class="btn sm primary" onclick="appleCsr()">Make signing request</button>`,
+    get steps() { return [{n: 'Signing request', t: 'Make the signing request: **devid.csr** lands in your **Downloads** and Apple\'s page opens', a: () => `<button class="btn sm primary" onclick="appleCsr()">Make signing request</button>`,
         u: s => s.csr ? `<div class="under dim mono" title="Copy" style="cursor:pointer" onclick="copy(this.textContent)">${esc(s.csr)}</div>` : ''},
-      {t: 'At Apple pick **Developer ID Application**, then **G2 Sub-CA** › **Continue**, choose **devid.csr** › **Continue** › **Download**', a: () => `<button class="btn sm" data-url="${APPLE_CERTS}">Certificates</button>`},
-      {t: 'Clauracle picks the downloaded **.cer** up from **Downloads** by itself and fills the first four keys', a: () => `<button class="btn sm" onclick="appleCer()">Load .cer…</button><small class="dim" id="cerWait"></small>`},
-      {t: 'Make an **App-Specific Password** (under **Sign-In and Security**), then fill **APPLE_ID** (your Apple account email) and **APPLE_PASSWORD**',
+      {n: 'Certificate', t: 'At Apple pick **Developer ID Application**, then **G2 Sub-CA** › **Continue**, choose **devid.csr** › **Continue** › **Download**', a: () => `<button class="btn sm" data-url="${APPLE_CERTS}">Certificates</button>`},
+      {n: 'Load the certificate', t: 'Clauracle picks the downloaded **.cer** up from **Downloads** by itself and fills the first four keys', a: () => `<button class="btn sm" onclick="appleCer()">Load .cer…</button><small class="dim" id="cerWait"></small>`},
+      {n: 'App-specific password', t: 'Make an **App-Specific Password** (under **Sign-In and Security**), then fill **APPLE_ID** (your Apple account email) and **APPLE_PASSWORD**',
         a: () => `<button class="btn sm" data-url="https://account.apple.com/account/manage">App-specific password</button><button class="btn sm" onclick="fillKeys('macsign', ['APPLE_ID', 'APPLE_PASSWORD'])">${icon('key')}Fill in</button>`},
       /* #267 CI off (default) → local/Network Mac builds sign from .env (relItems sign row): no secrets step */
-      S.ci_builds ? {t: 'Send to GitHub: CI then signs and notarizes Mac builds', a: () => `<button class="btn sm" onclick="toSecrets('macsign', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets</button><small class="dim" id="sec-macsign"></small><p class="err" id="secErr-macsign" style="font-size:13px"></p>`}
-        : 'Done: local Mac builds sign and notarize with these keys from **.env** (CI builds are off, so nothing goes to GitHub)',
-      {t: 'Optional: register the **App ID** only if the app uses capabilities like iCloud or push', u: () => bundleRow(true) + `<div class="btnrow"><button class="btn sm" data-url="https://developer.apple.com/account/resources/identifiers/add/bundleId">Register App ID</button></div>`}]; }}, /* getter ∵ S.ci_builds read at draw time (#267) */
+      S.ci_builds ? {n: 'Send to GitHub', t: 'Send to GitHub: CI then signs and notarizes Mac builds', a: () => `<button class="btn sm" onclick="toSecrets('macsign', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets</button><small class="dim" id="sec-macsign"></small><p class="err" id="secErr-macsign" style="font-size:13px"></p>`}
+        : 'Done|Local Mac builds sign and notarize with these keys from **.env** (CI builds are off, so nothing goes to GitHub)',
+      {n: 'App ID', t: 'Optional: register the **App ID** only if the app uses capabilities like iCloud or push', u: () => bundleRow(true) + `<div class="btnrow"><button class="btn sm" data-url="https://developer.apple.com/account/resources/identifiers/add/bundleId">Register App ID</button></div>`}]; }}, /* getter ∵ S.ci_builds read at draw time (#267) */
   appstore: {name: 'App Store Connect', note: 'iOS / macOS releases', keys: ['ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_PRIVATE_KEY'],
-    steps: ['Identifiers › + › App IDs › App: Explicit, paste the Bundle ID below, tick the capabilities the app uses', 'Certificates › + › Apple Distribution (iOS) or Mac App Distribution + Mac Installer Distribution (macOS)',
-      'Profiles › + › App Store Connect: pick the App ID and certificate, download the profile', 'Make the app record with the same Bundle ID', 'Integrations: make an API key (for uploads from CI)'],
+    steps: ['App ID|Identifiers › + › App IDs › App: Explicit, paste the Bundle ID below, tick the capabilities the app uses', 'Certificates|Certificates › + › Apple Distribution (iOS) or Mac App Distribution + Mac Installer Distribution (macOS)',
+      'Profile|Profiles › + › App Store Connect: pick the App ID and certificate, download the profile', 'App record|Make the app record with the same Bundle ID', 'API key|Integrations: make an API key (for uploads from CI)'],
     links: [['Register App ID', 'https://developer.apple.com/account/resources/identifiers/add/bundleId'], ['Certificates', 'https://developer.apple.com/account/resources/certificates/add'], ['Profiles', 'https://developer.apple.com/account/resources/profiles/add'],
       ['Apps', 'https://appstoreconnect.apple.com/apps'], ['API keys', 'https://appstoreconnect.apple.com/access/integrations/api']]},
   play: {name: 'Google Play', note: 'Android releases', keys: ['PLAY_SERVICE_ACCOUNT_JSON'],
-    steps: ['Make the app', 'Pick the Google account and Cloud project under the **Google** service',
+    steps: ['App|Make the app', 'Google project|Pick the Google account and Cloud project under the **Google** service',
       autoStep('play', 'Clauracle makes a service account in that project and fills its JSON key', 'Make service account', 'PLAY_SERVICE_ACCOUNT_JSON', 'play'),
-      'Play Console › **Users and permissions** › **Invite new users**: paste the service account email (copied), give it release rights'],
+      'Invite the service account|Play Console › **Users and permissions** › **Invite new users**: paste the service account email (copied), give it release rights'],
     links: [['Play Console', 'https://play.google.com/console']]},
   // #40: keys/steps/links follow the picked host (HOSTS) → getters; host/domain/pages live in p.site (siteHtml)
   website: {name: 'Website', note: 'Landing page, privacy policy and terms on your domain',
     get keys() { return HOSTS[siteOf().host]?.keys || []; },
-    get steps() { const h = HOSTS[siteOf().host]; return h && [...h.steps, `Point **${siteOf().domain || 'your subdomain'}** at it in your DNS: ${h.dns}. On Cloudflare keep it proxied (orange cloud) for free HTTPS`]; },
+    get steps() { const h = HOSTS[siteOf().host]; return h && [...h.steps, ...h.dns === '' ? [] : [`DNS|Point **${siteOf().domain || 'your subdomain'}** at it in your DNS: ${h.dns}. On Cloudflare keep it proxied (orange cloud) for free HTTPS`]]; }, // dns '' = the host's own steps do DNS
     get links() { const h = HOSTS[siteOf().host]; return h && [...h.links, ['Cloudflare DNS', 'https://dash.cloudflare.com/']]; }},
   steam: {name: 'Steam', note: 'Game releases', keys: ['STEAM_APP_ID', 'STEAM_WEB_API_KEY'],
-    steps: ['Pay the app fee and make the app in Steamworks', 'Get a Web API key'], links: [['Steamworks', 'https://partner.steamgames.com/apps'], ['Web API key', 'https://steamcommunity.com/dev/apikey']]},
+    steps: ['App|Pay the app fee and make the app in Steamworks', 'Web API key|Get a Web API key'], links: [['Steamworks', 'https://partner.steamgames.com/apps'], ['Web API key', 'https://steamcommunity.com/dev/apikey']]},
 };
 // #40 website hosts: fields (.env keys) + easiest setup path per kind. ponytail: static list, add one = an entry
 // #166 KEYSTEP = lib site_auto sshkey (ssh-keygen → SITE_SSH_PRIVATE/PUBLIC_KEY, rerun = copy pubkey again); keyInstall = password once → authorized_keys
+const CF_TOKEN_URL = 'https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=' + encodeURIComponent('[{"key":"zone_dns","type":"edit"},{"key":"zone","type":"read"}]') + '&accountId=*&zoneId=all&name=Clauracle%20DNS';
 const SSHK = ['SITE_SSH_HOST', 'SITE_SSH_USER', 'SITE_SSH_PRIVATE_KEY', 'SITE_PATH'], A_REC = 'an **A** record to the server\'s IP (shown in the panel)';
 const KEYSTEP = autoStep('sshkey', 'Clauracle makes a deploy key and copies its **public key** (click again to copy it again)', 'Make deploy key', 'SITE_SSH_PRIVATE_KEY');
-const SSHFILL = what => ({t: `Fill host = your server name, user = ${what}, path = SITE_PATH`, k: 'SITE_SSH_HOST', a: () => `<button class="btn sm" onclick="fillKeys('website', ['SITE_SSH_HOST', 'SITE_SSH_USER', 'SITE_PATH'])">${icon('key')}Fill in</button>`});
+const SSHFILL = what => ({n: 'SSH login', t: `Fill host = your server name, user = ${what}, path = SITE_PATH`, k: 'SITE_SSH_HOST', a: () => `<button class="btn sm" onclick="fillKeys('website', ['SITE_SSH_HOST', 'SITE_SSH_USER', 'SITE_PATH'])">${icon('key')}Fill in</button>`});
 function keyInstall() {
   dlg(`<h2>Install the deploy key${infoI('Logs in once with the server password to add the key. The password is not saved.')}</h2>
     ${field('Password', `<input id="kiPw" type="password" onkeydown="event.key=='Enter'&&keyInstallGo()">`)}<p id="kiMsg" class="err" style="font-size:13px"></p>
@@ -76,26 +77,33 @@ async function keyInstallGo() {
 }
 const HOSTS = {
   cpanel: {name: 'cPanel', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
-    steps: ['In cPanel: **Domains** › **Create a New Domain** with your subdomain; its document root is **SITE_PATH** (like public_html/app)',
-      KEYSTEP, '**SSH Access** › **Manage SSH Keys** › **Import Key**: paste the public key, then **Authorize** it', SSHFILL('cPanel username')]},
-  directadmin: {name: 'DirectAdmin', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
-    steps: ['**Subdomain Management**: add the subdomain; folder = **SITE_PATH** (like domains/example.com/public_html/app)',
-      KEYSTEP, '**SSH Keys** › **Paste key**: the public key (no SSH menu? ask your host to enable SSH)', SSHFILL('DirectAdmin username')]},
+    steps: ['Subdomain|In cPanel: **Domains** › **Create a New Domain** with your subdomain; its document root is **SITE_PATH** (like public_html/app)',
+      KEYSTEP, 'Authorize the key|**SSH Access** › **Manage SSH Keys** › **Import Key**: paste the public key, then **Authorize** it', SSHFILL('cPanel username')]},
+  // the arctim.no way: DirectAdmin API with a Login Key (no SSH), DNS on Cloudflare; everything after the two logins is done by Clauracle
+  directadmin: {name: 'DirectAdmin + Cloudflare DNS', how: `the DirectAdmin API: a deploy script that POSTs the files multipart to $DA_URL/CMD_API_FILE_MANAGER (action=upload, path=$SITE_PATH plus the sub folder, file1..fileN; basic auth DA_USER:DA_KEY; one call per folder; success = "error=0" in the reply; on Git Bash set MSYS_NO_PATHCONV=1)`,
+    keys: ['DA_URL', 'DA_USER', 'DA_KEY', 'CLOUDFLARE_API_TOKEN', 'SITE_PATH'], dns: '', links: [],
+    steps: [{n: 'DirectAdmin login', k: 'DA_KEY', t: 'In DirectAdmin: **Login Keys** › **Create key**, allowing at least **CMD_API_SHOW_DOMAINS**, **CMD_API_SUBDOMAINS**, **CMD_API_SSL** and **CMD_API_FILE_MANAGER**. Then add it here once: every project can reuse it',
+        a: () => `<button class="btn sm" onclick="devFor(this, 'directadmin')">${icon('key')}Pick or add login</button>`},
+      {n: 'Cloudflare token', k: 'CLOUDFLARE_API_TOKEN', t: 'The button opens Cloudflare with the token filled in (**DNS: Edit**, **Zone: Read**): press **Continue to summary** › **Create Token**, then add it here',
+        a: () => `<button class="btn sm" data-url="${CF_TOKEN_URL}">Make token</button><button class="btn sm" onclick="devFor(this, 'cloudflare')">${icon('key')}Pick or add token</button>`},
+      autoStep('dasub', 'Clauracle makes the subdomain on the server and fills **SITE_PATH** (skipped when it exists)', 'Make subdomain', 'SITE_PATH'),
+      autoStep('cfdns', 'Clauracle adds the **A** record on Cloudflare, pointing at the server (DNS only, so the server can get its certificate)', 'Add DNS record'),
+      autoStep('dassl', 'Clauracle turns on **HTTPS** (Let\'s Encrypt) once the address answers. A new name can take a few minutes', 'Turn on HTTPS')]},
   plesk: {name: 'Plesk', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
-    steps: ['**Websites & Domains** › **Add Subdomain**; its document root is **SITE_PATH**', '**Web Hosting Access**: set SSH access to /bin/bash', KEYSTEP, '**SSH Keys** › **Add**: paste the public key', SSHFILL('the subscription system user')]},
+    steps: ['Subdomain|**Websites & Domains** › **Add Subdomain**; its document root is **SITE_PATH**', 'SSH access|**Web Hosting Access**: set SSH access to /bin/bash', KEYSTEP, 'Add the key|**SSH Keys** › **Add**: paste the public key', SSHFILL('the subscription system user')]},
   ssh: {name: 'SSH / SFTP server (VPS)', how: 'rsync over SSH into SITE_PATH (served by the web server there)', keys: SSHK, dns: A_REC, links: [],
-    steps: ['Make a web root for the subdomain on the server (like /var/www/app) and a server block / vhost for it with HTTPS (Caddy does it by itself)', SSHFILL('your login on it'), KEYSTEP,
-      {t: 'Clauracle installs the key with your server password (asked once, not saved)', h: 'keyinst', a: () => `<button class="btn sm primary" onclick="keyInstall()">${icon('key')}Install key</button>`}]},
+    steps: ['Web root|Make a web root for the subdomain on the server (like /var/www/app) and a server block / vhost for it with HTTPS (Caddy does it by itself)', SSHFILL('your login on it'), KEYSTEP,
+      {n: 'Install the key', t: 'Clauracle installs the key with your server password (asked once, not saved)', h: 'keyinst', a: () => `<button class="btn sm primary" onclick="keyInstall()">${icon('key')}Install key</button>`}]},
   cfpages: {name: 'Cloudflare Pages', how: 'wrangler pages deploy', keys: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'], dns: 'add it under the Pages project › **Custom domains** (Cloudflare makes the CNAME)',
-    steps: ['**My Profile** › **API Tokens** › **Create Token** with **Cloudflare Pages: Edit**', fillStep('CLOUDFLARE_API_TOKEN'), autoStep('cfpages', 'Clauracle reads your **Account ID** with that token', 'Get Account ID', 'CLOUDFLARE_ACCOUNT_ID')],
+    steps: ['API token|**My Profile** › **API Tokens** › **Create Token** with **Cloudflare Pages: Edit**', fillStep('CLOUDFLARE_API_TOKEN'), autoStep('cfpages', 'Clauracle reads your **Account ID** with that token', 'Get Account ID', 'CLOUDFLARE_ACCOUNT_ID')],
     links: [['API tokens', 'https://dash.cloudflare.com/profile/api-tokens']]},
   netlify: {name: 'Netlify', how: 'netlify deploy --prod', keys: ['NETLIFY_AUTH_TOKEN', 'NETLIFY_SITE_ID'], dns: 'a **CNAME** to <site>.netlify.app (Domain management shows it)',
-    steps: ['**User settings** › **Applications** › **New access token**', fillStep('NETLIFY_AUTH_TOKEN'), autoStep('netlify', 'Clauracle makes the site and fills its **Site ID**', 'Make site', 'NETLIFY_SITE_ID')],
+    steps: ['Access token|**User settings** › **Applications** › **New access token**', fillStep('NETLIFY_AUTH_TOKEN'), autoStep('netlify', 'Clauracle makes the site and fills its **Site ID**', 'Make site', 'NETLIFY_SITE_ID')],
     links: [['Sites', 'https://app.netlify.com/'], ['Tokens', 'https://app.netlify.com/user/applications#personal-access-tokens']]},
   vercel: {name: 'Vercel', how: 'vercel deploy --prod', keys: ['VERCEL_TOKEN'], dns: 'a **CNAME** to cname.vercel-dns.com (Project › Domains)',
-    steps: ['**Account Settings** › **Tokens** › **Create**', 'Fill the key'], links: [['Tokens', 'https://vercel.com/account/tokens']]},
+    steps: ['Token|**Account Settings** › **Tokens** › **Create**', 'Key|Fill the key'], links: [['Tokens', 'https://vercel.com/account/tokens']]},
   ghpages: {name: 'GitHub Pages', how: 'a GitHub Actions Pages workflow with a CNAME file', keys: [], dns: 'a **CNAME** to <owner>.github.io',
-    steps: [autoStep('ghpages', 'Turn on **Pages** with source **GitHub Actions** (repo must be on GitHub)', 'Turn on Pages'), 'Optional: tick **Enforce HTTPS** once the domain check passes'], links: [['Pages docs', 'https://docs.github.com/pages']]},
+    steps: [autoStep('ghpages', 'Turn on **Pages** with source **GitHub Actions** (repo must be on GitHub)', 'Turn on Pages'), 'HTTPS|Optional: tick **Enforce HTTPS** once the domain check passes'], links: [['Pages docs', 'https://docs.github.com/pages']]},
 };
 const SITEPG = {landing: ['Landing page', '/'], privacy: ['Privacy Policy', '/privacy'], terms: ['Terms of Service', '/terms']};
 const siteOf = (p = P()) => ({pages: Object.keys(SITEPG), ...(p.site || {})});
@@ -147,13 +155,14 @@ const svcItems = () => [{icon: 'key', label: 'Secrets (.env)', run: () => jumpTo
 function svcMenu(el) {
   const left = id => SERVICES[id] && !svcOf(P()).includes(id), it = id => ({label: SERVICES[id].name, hint: SERVICES[id].note, run: () => svcAdd(id)});
   const seen = new Set(Object.values(SVCTYPE).flatMap(t => Object.values(t).flat()));
-  const types = {...SVCTYPE, Other: {'': Object.keys(SERVICES).filter(id => !seen.has(id))}};
-  const menu = Object.entries(types).map(([t, pr]) => {
+  // app stores come with a developer account (Settings › Accounts › Other accounts), picked per project
+  const {'App stores': _, ...rest} = SVCTYPE, types = {...rest, Other: {'': Object.keys(SERVICES).filter(id => !seen.has(id))}};
+  const menu = [...Object.entries(types).map(([t, pr]) => {
     // provider w/ ≥2 left → caption + indented rows; 1 → plain row
     const items = Object.entries(pr).flatMap(([n, ids]) => { ids = ids.filter(left);
       return n && ids.length > 1 ? [{title: n}, ...ids.map(id => ({...it(id), sub: 1}))] : ids.map(it); });
     return items.length && {label: t, items};
-  }).filter(Boolean);
+  }), {label: 'App stores', hint: 'Apple, Google Play, Steam: a developer account', run: () => openSettings('gh')}].filter(Boolean);
   menuAt(el, menu.length ? menu : [{title: 'All services added'}]);
 }
 let envKeys = {files: [], have: new Set()};
@@ -232,7 +241,9 @@ function stepSync(id) { // → true if new steps got ticked (persisted)
   return true;
 }
 // required = not "Optional…"; all ticked → service's steps count as done
-const stepReq = steps => steps.map((x, i) => i).filter(i => !/^Optional/.test(steps[i].t || steps[i]));
+// step = 'Title|text' or {n: title, t: text, …}; the title shows beside the number, the text full width below it
+const stepParts = x => { const t = x.t || x, i = t.indexOf('|'); return x.n ? [x.n, t] : i < 0 ? ['', t] : [t.slice(0, i), t.slice(i + 1)]; };
+const stepReq = steps => steps.map((x, i) => i).filter(i => !/^Optional/.test(stepParts(steps[i])[1]));
 const stepsDone = id => { const st = SERVICES[id].steps; return !st || (stepSync(id), stepReq(st).every(i => stepOf(id).d.includes(i))); };
 const siteReady = () => { const s = siteOf(); return !!(HOSTS[s.host] && s.domain); };
 const svcDone = id => (id !== 'website' || siteReady()) && stepsDone(id) && SERVICES[id].keys.every(k => envKeys.have.has(k));
@@ -242,9 +253,9 @@ function stepper(id, steps) {
   const head = done ? `<button class="stdone${s.open ? ' open' : ''}" onclick="stepOpen('${id}')" title="${s.open ? 'Fold the steps' : 'Show the steps'}">${icon('check')}<span>All ${stepReq(steps).length} steps done</span>${icon('down')}</button>` : '';
   if (done && !s.open) return head;
   return head + (s.d.length || s.csr ? `<div class="streset"><button class="btn sm ghost" onclick="stepReset('${id}')">Reset steps</button></div>` : '')
-    + `<ol class="stepper">${steps.map((x, i) => { const on = s.d.includes(i);
-      return `<li${on ? ' class="done"' : ''}><button class="sn" onclick="stepTog('${id}', ${i})" title="${on ? 'Mark not done' : 'Mark done'}">${on ? icon('check') : i + 1}</button>`
-        + `<span>${esc(x.t || x).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}</span>${x.a ? `<div class="btnrow">${x.a()}</div>` : ''}${x.u ? x.u(s) : ''}</li>`; }).join('')}</ol>`;
+    + `<ol class="stepper tsteps">${steps.map((x, i) => { const [ti, tx] = stepParts(x); const on = s.d.includes(i), shut = stepReq(steps).some(j => j < i && !s.d.includes(j)); // locked until the required steps before it are done
+      return `<li class="${on ? 'done' : ''}${shut ? ' off' : ''}"><button class="sn" onclick="stepTog('${id}', ${i})" title="${on ? 'Mark not done' : 'Mark done'}">${on ? icon('check') : i + 1}</button>`
+        + stHead(esc(ti)) + `<span>${esc(tx).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}</span>${x.a ? `<div class="btnrow">${x.a()}</div>` : ''}${x.u ? x.u(s) : ''}</li>`; }).join('')}</ol>`;
 }
 // Bundle ID row: current value (copy) + Change (edit dialog w/ live check, suggestion = com.<gh owner>.<app>)
 function bundleRow(stack) {
