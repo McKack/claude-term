@@ -579,7 +579,25 @@ const PW_AGENTS = () => { if (odemo() || !wizP()) return wizDemo('Agents'); cons
 const PW_BUILD = () => { if (odemo() || !wizP()) return wizDemo('Build and run'); const p = wizP();
   if (BAI[p.id] == null && !p.build.build && !p.build.run) buildAi(p.id);
   return `<h1>Build and run</h1><p class="dim">The AI reads ${esc(p.name)}'s files for these. Change anything that looks wrong.</p>${buildRows(p)}`; };
-const PW = [PW_AI, PW_MAIN, PW_AGENTS, PW_BUILD];
+// #604 which of your usual setups is this: #603 answers pre-filled, one change allowed; "Use this setup" copies the result into the project (services, host, DNS, platforms, saved logins' keys)
+const WIZS = {}; // pid → draft answers (the project keeps its own copy once applied)
+const wizH = p => WIZS[p.id] ||= {...hab(), makes: [...(hab().makes || [])], release: [...(hab().release || [])], applied: 0};
+const wizSet = ch => { Object.assign(wizH(wizP()), ch, {applied: 0}); onbDraw(); };
+const wizTog = (k, v, on) => { const a = wizH(wizP())[k] || []; wizSet({[k]: on ? [...new Set([...a, v])] : a.filter(x => x !== v)}); };
+const wizSum = h => { const m = (h.makes || []).map(k => HMAKE[k]).filter(Boolean), w = (h.makes || []).includes('websites');
+  return [m.join(', '), w && h.web && h.web !== 'none' ? 'on ' + HWEB[h.web].replace(/^A /, 'a ') : '', w && h.domains === 'cloudflare' ? 'DNS on Cloudflare' : '', habApps(h) && (h.release || []).length ? 'for ' + h.release.map(tgtName).join(', ') : ''].filter(Boolean).join(', ') || 'Nothing picked'; };
+async function wizApply() { const p = wizP(), h = wizH(p), web = (h.makes || []).includes('websites'), sv = [], ch = {};
+  if (web && h.web && h.web !== 'none') { sv.push('website'); ch.site = {...siteOf(p), host: h.web, dns: h.domains === 'cloudflare' ? 'cloudflare' : h.domains === 'other' ? 'manual' : siteOf(p).dns}; }
+  if (web && h.domains === 'cloudflare') sv.push('dns');
+  if (habApps(h)) { ch.targets = h.release || []; if ((h.release || []).some(x => x === 'ios' || x === 'macos')) sv.push('appstore'); if ((h.release || []).includes('macos')) sv.push('macsign'); if ((h.release || []).includes('android')) sv.push('play'); }
+  try { await call('update_project', {pid: p.id, changes: {...ch, services: [...new Set([...svcOf(p), ...sv])]}}); await refresh();
+    for (const [k] of habNeeds(h)) { const d = k !== 'gh' && (S.devs || []).find(x => x.kind === k); if (d) await devUseIn(p.id, d.id); }
+    h.applied = 1; onbDraw(); } catch (e) { toast(String(e), 'err'); } }
+const PW_SETUP = () => { if (odemo() || !wizP()) return wizDemo('Your usual setup'); const p = wizP(), h = wizH(p), n = habNeeds(h).filter(([k]) => k !== 'gh'), miss = n.filter(([k]) => !(S.devs || []).some(d => d.kind === k));
+  return `<h1>Is this one of your usual setups?</h1><p class="dim">${esc(p.name)}: <b>${esc(wizSum(h))}</b>. Change what is different, then use it. ${esc(p.name)} keeps its own copy: Settings changes later don't alter it.</p>${habitsHtml(h, 'wizSet', 'wizTog')}
+    <div class="btnrow"><button class="btn primary" onclick="wizApply()"${h.applied ? ' disabled' : ''}>${icon('check')}${h.applied ? 'Applied' : 'Use this setup'}</button></div>
+    ${h.applied ? `<p class="hint">Services added: ${esc(svcOf(P(p.id)).map(i => SERVICES[i].name).join(', ') || 'none')}.${miss.length ? ` Still to sign in (Settings > Accounts): ${esc(miss.map(([k]) => DEVK[k].name).join(', '))}.` : ''}</p>` : ''}`; };
+const PW = [PW_AI, PW_MAIN, PW_AGENTS, PW_SETUP, PW_BUILD];
 const PW_DONE = () => `${icon('check').replace('class="i"', 'class="i ologo"')}<h1>${esc(wizP()?.name || 'Project')} is set up</h1><p class="dim">Next you pick what Clauracle may use in it. All of this stays under Settings > Projects.</p>`;
 function projWiz(pid) { WIZP = mp = pid; onbOpen('proj', [ONB_PROJ, ...PW, PW_DONE]); }
 // #586 agents for one project: switch + AI per role (Clauracle's own roles until a session has listed the CLI's agents)
@@ -621,13 +639,13 @@ async function habSet(ch) { if (odemo()) { Object.assign(HABD, ch); return onbDr
   await call('set_habits', {habits: {...hab(), ...ch}}); await refresh(); $('onb') ? onbDraw() : reloadSettings(); }
 const habTog = (k, v, on) => { const a = hab()[k] || []; return habSet({[k]: on ? [...new Set([...a, v])] : a.filter(x => x !== v)}); };
 const habApps = h => (h.makes || []).some(x => x === 'apps' || x === 'games');
-function habitsHtml() { const h = hab(), m = h.makes || [];
-  return `<h3>What do you usually make?</h3><div class="box">${Object.entries(HMAKE).map(([k, l]) => optRow(l, '', sw(m.includes(k), `habTog('makes', '${k}', this.checked)`))).join('')}</div>`
-    + (m.includes('websites') ? field('Where do your websites usually live?', `<select onchange="habSet({web: this.value})">${options({'': 'Pick…', ...HWEB}, h.web || '')}</select>`)
-      + field('Who handles your domains?', `<select onchange="habSet({domains: this.value})">${options({'': 'Pick…', ...HDOM}, h.domains || '')}</select>`) : '')
-    + (habApps(h) ? `<h3>Where do you release apps?</h3><div class="box">${TGT.flatMap(g => g[2]).map(([id, , n, d]) => optRow(n, d, sw((h.release || []).includes(id), `habTog('release', '${id}', this.checked)`))).join('')}</div>` : ''); }
+function habitsHtml(h = hab(), set = 'habSet', tog = 'habTog') { const m = h.makes || [];
+  return `<h3>What do you usually make?</h3><div class="box">${Object.entries(HMAKE).map(([k, l]) => optRow(l, '', sw(m.includes(k), `${tog}('makes', '${k}', this.checked)`))).join('')}</div>`
+    + (m.includes('websites') ? field('Where do your websites usually live?', `<select onchange="${set}({web: this.value})">${options({'': 'Pick…', ...HWEB}, h.web || '')}</select>`)
+      + field('Who handles your domains?', `<select onchange="${set}({domains: this.value})">${options({'': 'Pick…', ...HDOM}, h.domains || '')}</select>`) : '')
+    + (habApps(h) ? `<h3>Where do you release apps?</h3><div class="box">${TGT.flatMap(g => g[2]).map(([id, , n, d]) => optRow(n, d, sw((h.release || []).includes(id), `${tog}('release', '${id}', this.checked)`))).join('')}</div>` : ''); }
 // accounts these answers need: [DEVK kind | 'gh', why]
-function habNeeds() { const h = hab(), r = h.release || [], web = (h.makes || []).includes('websites'), n = [];
+function habNeeds(h = hab()) { const r = h.release || [], web = (h.makes || []).includes('websites'), n = [];
   if (web && h.web === 'directadmin') n.push(['directadmin', 'Your web hotel']);
   if (web && h.web === 'vercel') n.push(['vercel', 'Hosting']);
   if (web && h.web === 'ghpages') n.push(['gh', 'GitHub Pages']);
