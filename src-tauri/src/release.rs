@@ -322,26 +322,33 @@ pub(crate) fn site_auto(st: St, pid: String, host: String) -> R<String> {
             } // ponytail: new DirectAdmin layout (own docroot); older subdomains living in <zone>/public_html/<sub> need SITE_PATH edited by hand
             fill("SITE_PATH", &format!("/domains/{d}/public_html"))
         }
-        "cfdns" => { // A record → the DirectAdmin server's IP, DNS only (Let's Encrypt on the server needs the real IP)
-            let (d, zone) = da_site(&p, &get)?;
-            let host = get("DA_URL")?.split("//").last().unwrap_or("").split([':', '/']).next().unwrap_or("").to_string();
-            let ip = std::net::ToSocketAddrs::to_socket_addrs(&(host.as_str(), 443)).map_err(|e| format!("can't resolve {host}: {e}"))?
-                .find(|a| a.is_ipv4()).ok_or(format!("{host} has no IPv4 address"))?.ip().to_string();
+        "cfdns" => { // DNS record on Cloudflare for the website address (#602: any host, or none: the target is typed). DNS only, so the host can get its certificate
+            let d = p.site["domain"].as_str().filter(|d| !d.is_empty()).ok_or("set the website address first")?.to_string();
+            let (ty, content) = dns_target(p.site["host"].as_str().unwrap_or(""), p.site["target"].as_str().unwrap_or(""), &|| {
+                let host = get("DA_URL")?.split("//").last().unwrap_or("").split([':', '/']).next().unwrap_or("").to_string();
+                Ok(std::net::ToSocketAddrs::to_socket_addrs(&(host.as_str(), 443)).map_err(|e| format!("can't resolve {host}: {e}"))?
+                    .find(|a| a.is_ipv4()).ok_or(format!("{host} has no IPv4 address"))?.ip().to_string())
+            })?;
             let tok = format!("Bearer {}", get("CLOUDFLARE_API_TOKEN")?);
             let cf = |m: &str, path: &str, body: Option<Value>| -> R<Value> {
                 let rq = ureq::request(m, &format!("https://api.cloudflare.com/client/v4/{path}")).set("Authorization", &tok);
                 let rs = match body { Some(b) => rq.set("Content-Type", "application/json").send_string(&b.to_string()), None => rq.call() };
                 rs.map_err(err)?.into_string().map_err(|e| e.to_string()).and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()))
             };
-            let z = cf("GET", &format!("zones?name={zone}"), None).map_err(|e| format!("Cloudflare: {e} (the token needs Zone › DNS › Edit and Zone › Zone › Read)"))?;
-            let zid = z["result"][0]["id"].as_str().ok_or(format!("{zone} isn't on this Cloudflare account (or the token can't see it)"))?.to_string();
+            // the zone = the longest tail of the address that is a zone on this account (app.example.com → example.com)
+            let mut zid = None;
+            for z in dns_zones(&d) {
+                let r = cf("GET", &format!("zones?name={z}"), None).map_err(|e| format!("Cloudflare: {e} (the token needs Zone › DNS › Edit and Zone › Zone › Read)"))?;
+                if let Some(id) = r["result"][0]["id"].as_str() { zid = Some(id.to_string()); break; }
+            }
+            let zid = zid.ok_or(format!("{d} isn't on this Cloudflare account (or the token can't see it)"))?;
             let r = cf("GET", &format!("zones/{zid}/dns_records?name={d}"), None)?;
             if let Some(x) = r["result"].as_array().and_then(|a| a.first()) {
-                if x["type"] == "A" && x["content"] == ip.as_str() { return Ok(format!("{d} → {ip} (already there)")); }
+                if x["type"] == ty && x["content"] == content.as_str() { return Ok(format!("{d} → {content} (already there)")); }
                 return Err(format!("{d} already has a {} record to {}: change or delete it in Cloudflare first", x["type"].as_str().unwrap_or("?"), x["content"].as_str().unwrap_or("?")));
             }
-            cf("POST", &format!("zones/{zid}/dns_records"), Some(serde_json::json!({"type": "A", "name": d, "content": ip, "ttl": 1, "proxied": false, "comment": "Clauracle website"})))?;
-            Ok(format!("{d} → {ip}"))
+            cf("POST", &format!("zones/{zid}/dns_records"), Some(serde_json::json!({"type": ty, "name": d, "content": content, "ttl": 1, "proxied": false, "comment": "Clauracle website"})))?;
+            Ok(format!("{d} → {content}"))
         }
         "dassl" => { // Let's Encrypt for the whole domain, every name that resolves; only once the new name answers
             let (d, zone) = da_site(&p, &get)?;
@@ -364,6 +371,24 @@ pub(crate) fn site_auto(st: St, pid: String, host: String) -> R<String> {
         }
         _ => Err("nothing to automate for this host".into()),
     }
+}
+
+/// Record the website address needs: (type, content). A typed target wins (IPv4 → A, a name → CNAME); else the host knows it
+/// (DirectAdmin: A to the server, found by `da_ip`; Vercel: its CNAME); else the user has to type it.
+fn dns_target(host: &str, typed: &str, da_ip: &dyn Fn() -> R<String>) -> R<(&'static str, String)> {
+    let t = typed.trim().trim_end_matches('.');
+    if !t.is_empty() { return Ok(if t.parse::<std::net::Ipv4Addr>().is_ok() { ("A", t.to_string()) } else { ("CNAME", t.to_string()) }); }
+    match host {
+        "directadmin" => da_ip().map(|ip| ("A", ip)),
+        "vercel" => Ok(("CNAME", "cname.vercel-dns.com".into())),
+        _ => Err("type where the address should point (an IP address or a host name) under DNS › Points to".into()),
+    }
+}
+
+/// Candidate zones for an address, longest first (never a bare TLD): a.b.example.com → a.b.example.com, b.example.com, example.com
+fn dns_zones(d: &str) -> Vec<String> {
+    let l: Vec<&str> = d.split('.').collect();
+    (0..l.len().saturating_sub(1)).map(|i| l[i..].join(".")).collect()
 }
 
 /// The website address and the DirectAdmin domain it belongs to (the domain itself or a subdomain of it).
@@ -422,6 +447,17 @@ fn b64e(b: &[u8]) -> String {
 
 #[cfg(test)]
 mod da_tests {
+    use super::{dns_target, dns_zones};
+    #[test]
+    fn dns_targets() {
+        let ip = || Ok("1.2.3.4".to_string());
+        assert_eq!(dns_target("directadmin", "", &ip).unwrap(), ("A", "1.2.3.4".into()));
+        assert_eq!(dns_target("directadmin", "9.9.9.9", &ip).unwrap(), ("A", "9.9.9.9".into()), "typed wins");
+        assert_eq!(dns_target("", "me.github.io.", &ip).unwrap(), ("CNAME", "me.github.io".into()));
+        assert_eq!(dns_target("vercel", "", &ip).unwrap().1, "cname.vercel-dns.com");
+        assert!(dns_target("netlify", "", &ip).is_err() && dns_target("", "", &ip).is_err());
+        assert_eq!(dns_zones("a.b.example.com"), ["a.b.example.com", "b.example.com", "example.com"]);
+    }
     #[test]
     fn da_helpers() {
         assert_eq!(super::da_list("list[]=caldar&list[]=heiby"), ["caldar", "heiby"]);

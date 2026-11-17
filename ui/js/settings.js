@@ -475,9 +475,9 @@ const DEVK = {
   vercel: {name: 'Vercel', ic: 'cloud', svc: ['vercel'], url: 'https://vercel.com/account/tokens', keys: ['VERCEL_TOKEN'], hint: 'Hosting'},
   supabase: {name: 'Supabase', ic: 'layers', svc: ['supabase'], url: 'https://supabase.com/dashboard/account/tokens', keys: ['SUPABASE_ACCESS_TOKEN'], hint: 'Database'},
   stripe: {name: 'Stripe', ic: 'shield', svc: ['stripe'], url: 'https://dashboard.stripe.com/apikeys', keys: ['STRIPE_PUBLISHABLE_KEY', 'STRIPE_SECRET_KEY'], hint: 'Payments'},
-  // web hosting over the DirectAdmin API (Login Key) + DNS on Cloudflare: Website › DirectAdmin does the rest by itself
+  // web hosting over the DirectAdmin API (Login Key); DNS on Cloudflare is its own service (#602)
   directadmin: {name: 'DirectAdmin', ic: 'globe', svc: ['website'], url: 'https://docs.directadmin.com/directadmin/customizing-workflow/api-all-about.html#creating-a-login-key', keys: ['DA_URL', 'DA_USER', 'DA_KEY'], hint: 'Web hosting'},
-  cloudflare: {name: 'Cloudflare', ic: 'cloud', svc: ['website'], url: CF_TOKEN_URL, keys: ['CLOUDFLARE_API_TOKEN'], hint: 'DNS'}};
+  cloudflare: {name: 'Cloudflare', ic: 'cloud', svc: ['dns'], url: CF_TOKEN_URL, keys: ['CLOUDFLARE_API_TOKEN'], hint: 'DNS'}};
 // in a step: pick a saved account of this kind for the open project, or add one (saved, then used right away)
 const devFor = (el, kind) => menuAt(el, [...(S.devs || []).filter(d => d.kind === kind).map(d => ({label: d.name, icon: DEVK[kind].ic, run: () => devUseIn(cur, d.id)})),
   ...((S.devs || []).some(d => d.kind === kind) ? ['-'] : []), {label: `New ${DEVK[kind].name} login…`, icon: 'plus', run: () => devDlg(kind, '', cur)}]);

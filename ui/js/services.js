@@ -52,8 +52,13 @@ const SERVICES = {
   // #40: keys/steps/links follow the picked host (HOSTS) → getters; host/domain/pages live in p.site (siteHtml)
   website: {name: 'Website', note: 'Landing page, privacy policy and terms on your domain',
     get keys() { return HOSTS[siteOf().host]?.keys || []; },
-    get steps() { const h = HOSTS[siteOf().host]; return h && [...h.steps, ...h.dns === '' ? [] : [`DNS|Point **${siteOf().domain || 'your subdomain'}** at it in your DNS: ${h.dns}. On Cloudflare keep it proxied (orange cloud) for free HTTPS`]]; }, // dns '' = the host's own steps do DNS
-    get links() { const h = HOSTS[siteOf().host]; return h && [...h.links, ['Cloudflare DNS', 'https://dash.cloudflare.com/']]; }},
+    get steps() { return HOSTS[siteOf().host]?.steps; }, // DNS is its own service below
+    get links() { return HOSTS[siteOf().host]?.links; }},
+  // #602 DNS works alone or with any host: Cloudflare (Clauracle adds the record, target from the host or typed) or by hand (the exact record shown)
+  dns: {name: 'DNS', note: 'Points your address at the website',
+    get keys() { return siteOf().dns === 'cloudflare' ? ['CLOUDFLARE_API_TOKEN'] : []; },
+    get steps() { return dnsSteps(); },
+    get links() { return siteOf().dns === 'cloudflare' ? [['Cloudflare DNS', 'https://dash.cloudflare.com/']] : []; }},
   steam: {name: 'Steam', note: 'Game releases', keys: ['STEAM_APP_ID', 'STEAM_WEB_API_KEY'],
     steps: ['App|Pay the app fee and make the app in Steamworks', 'Web API key|Get a Web API key'], links: [['Steamworks', 'https://partner.steamgames.com/apps'], ['Web API key', 'https://steamcommunity.com/dev/apikey']]},
 };
@@ -79,16 +84,13 @@ const HOSTS = {
   cpanel: {name: 'cPanel', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
     steps: ['Subdomain|In cPanel: **Domains** › **Create a New Domain** with your subdomain; its document root is **SITE_PATH** (like public_html/app)',
       KEYSTEP, 'Authorize the key|**SSH Access** › **Manage SSH Keys** › **Import Key**: paste the public key, then **Authorize** it', SSHFILL('cPanel username')]},
-  // the arctim.no way: DirectAdmin API with a Login Key (no SSH), DNS on Cloudflare; everything after the two logins is done by Clauracle
-  directadmin: {name: 'DirectAdmin + Cloudflare DNS', how: `the DirectAdmin API: a deploy script that POSTs the files multipart to $DA_URL/CMD_API_FILE_MANAGER (action=upload, path=$SITE_PATH plus the sub folder, file1..fileN; basic auth DA_USER:DA_KEY; one call per folder; success = "error=0" in the reply; on Git Bash set MSYS_NO_PATHCONV=1)`,
-    keys: ['DA_URL', 'DA_USER', 'DA_KEY', 'CLOUDFLARE_API_TOKEN', 'SITE_PATH'], dns: '', links: [],
+  // the arctim.no way, hosting half: DirectAdmin API with a Login Key (no SSH). DNS is the DNS service (Cloudflare or by hand)
+  directadmin: {name: 'DirectAdmin', how: `the DirectAdmin API: a deploy script that POSTs the files multipart to $DA_URL/CMD_API_FILE_MANAGER (action=upload, path=$SITE_PATH plus the sub folder, file1..fileN; basic auth DA_USER:DA_KEY; one call per folder; success = "error=0" in the reply; on Git Bash set MSYS_NO_PATHCONV=1)`,
+    keys: ['DA_URL', 'DA_USER', 'DA_KEY', 'SITE_PATH'], dns: 'an **A** record to the server\'s IP (the host in the DirectAdmin address)', links: [],
     steps: [{n: 'DirectAdmin login', k: 'DA_KEY', t: 'In DirectAdmin: **Login Keys** › **Create key**, allowing at least **CMD_API_SHOW_DOMAINS**, **CMD_API_SUBDOMAINS**, **CMD_API_SSL** and **CMD_API_FILE_MANAGER**. Then add it here once: every project can reuse it',
         a: () => `<button class="btn sm" onclick="devFor(this, 'directadmin')">${icon('key')}Pick or add login</button>`},
-      {n: 'Cloudflare token', k: 'CLOUDFLARE_API_TOKEN', t: 'The button opens Cloudflare with the token filled in (**DNS: Edit**, **Zone: Read**): press **Continue to summary** › **Create Token**, then add it here',
-        a: () => `<button class="btn sm" data-url="${CF_TOKEN_URL}">Make token</button><button class="btn sm" onclick="devFor(this, 'cloudflare')">${icon('key')}Pick or add token</button>`},
       autoStep('dasub', 'Clauracle makes the subdomain on the server and fills **SITE_PATH** (skipped when it exists)', 'Make subdomain', 'SITE_PATH'),
-      autoStep('cfdns', 'Clauracle adds the **A** record on Cloudflare, pointing at the server (DNS only, so the server can get its certificate)', 'Add DNS record'),
-      autoStep('dassl', 'Clauracle turns on **HTTPS** (Let\'s Encrypt) once the address answers. A new name can take a few minutes', 'Turn on HTTPS')]},
+      autoStep('dassl', 'Clauracle turns on **HTTPS** (Let\'s Encrypt) once the address answers in DNS: until the DNS service has pointed it here it says so. A new name can take a few minutes', 'Turn on HTTPS')]},
   plesk: {name: 'Plesk', how: 'SSH (rsync/scp) into the subdomain\'s folder', keys: SSHK, dns: A_REC, links: [],
     steps: ['Subdomain|**Websites & Domains** › **Add Subdomain**; its document root is **SITE_PATH**', 'SSH access|**Web Hosting Access**: set SSH access to /bin/bash', KEYSTEP, 'Add the key|**SSH Keys** › **Add**: paste the public key', SSHFILL('the subscription system user')]},
   ssh: {name: 'SSH / SFTP server (VPS)', how: 'rsync over SSH into SITE_PATH (served by the web server there)', keys: SSHK, dns: A_REC, links: [],
@@ -109,7 +111,8 @@ const SITEPG = {landing: ['Landing page', '/'], privacy: ['Privacy Policy', '/pr
 const siteOf = (p = P()) => ({pages: Object.keys(SITEPG), ...(p.site || {})});
 const siteUrl = (pg, p) => `https://${siteOf(p).domain}${SITEPG[pg][1]}`;
 async function siteSet(ch) {
-  if ('host' in ch) stepReset('website'); // other host = other steps
+  if ('host' in ch) { stepReset('website'); stepReset('dns'); } // other host = other steps (and another DNS target)
+  if ('dns' in ch) stepReset('dns');
   if ('domain' in ch) { ch.domain = ch.domain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''); delete BUNDLE[cur]; delete RELC[cur]; }
   await setP({site: {...siteOf(), ...ch}}); await refresh(); drawServices();
 }
@@ -122,6 +125,22 @@ function siteHtml() {
       sw(s.pages.includes(k), `siteTog('${k}', this.checked)`))).join('')}</div>`
     + (s.domain ? bundleRow() + '<p class="hint">Bundle ID suggestion follows this address, reversed</p>' : '')
     + (h && s.domain && s.pages.length ? `<button class="btn primary block" onclick="siteMake()">${icon('sparkle')}Make &amp; deploy the website</button>` : '');
+}
+// #602 hosts whose DNS target Clauracle knows (A record to the server / the host's CNAME); others need it typed
+const DNS_AUTO = ['directadmin', 'vercel'];
+function dnsSteps() {
+  const s = siteOf(), h = HOSTS[s.host], d = `**${s.domain || 'your subdomain'}**`, to = s.target ? `**${s.target}**` : h?.dns || 'the address your host gives you';
+  if (s.dns === 'manual') return [`Add the record|At your DNS provider add ${d} → ${to}. Keep it DNS only (not proxied) if the host makes its own certificate`];
+  if (s.dns !== 'cloudflare') return [];
+  return [{n: 'Cloudflare token', k: 'CLOUDFLARE_API_TOKEN', t: 'The button opens Cloudflare with the token filled in (**DNS: Edit**, **Zone: Read**): press **Continue to summary** › **Create Token**, then add it here',
+      a: () => `<button class="btn sm" data-url="${CF_TOKEN_URL}">Make token</button><button class="btn sm" onclick="devFor(this, 'cloudflare')">${icon('key')}Pick or add token</button>`},
+    autoStep('cfdns', `Clauracle adds the record for ${d} on Cloudflare (${s.target ? 'to ' + s.target : DNS_AUTO.includes(s.host) ? 'to the server' : 'type where it points below'}; DNS only, so the host can get its certificate)`, 'Add DNS record', undefined, 'dns')];
+}
+function dnsHtml() {
+  const s = siteOf();
+  return field('DNS', `<select onchange="siteSet({dns:this.value})">${options({'': 'Pick how the name is pointed…', cloudflare: 'Cloudflare: Clauracle adds the record', manual: 'I do it myself: show me the record'}, s.dns || '')}</select>`)
+    + (s.dns && !DNS_AUTO.includes(s.host) ? field('Points to', `<input class="mono" placeholder="IP address or host name" value="${esc(s.target || '')}" onchange="siteSet({target:this.value.trim()})">`) : '')
+    + (s.dns && !s.domain ? '<p class="hint">Set the address under Website first</p>' : '');
 }
 function sitePrompt() {
   const s = siteOf(), h = HOSTS[s.host], pg = s.pages.map(k => `${SITEPG[k][0]} (${SITEPG[k][1]})`).join(', ');
@@ -139,7 +158,7 @@ async function svcRemove(id) { if (!await sure(`Remove ${SERVICES[id].name} from
 // #162 type › provider › service; an id may sit in several types; provider '' = no caption; unlisted ids → Other
 const SVCTYPE = {'Sign-in': {Google: ['google', 'firebase'], Apple: ['apple'], GitHub: ['github'], Microsoft: ['microsoft'], Discord: ['discord'], Auth0: ['auth0'], Clerk: ['clerk'], Supabase: ['supabase']},
   Database: {Supabase: ['supabase'], Google: ['firebase']}, Payments: {Stripe: ['stripe']}, Email: {Resend: ['resend']},
-  Hosting: {'': ['website'], Vercel: ['vercel'], Google: ['firebase']}, Monitoring: {Sentry: ['sentry']},
+  Hosting: {'': ['website', 'dns'], Vercel: ['vercel'], Google: ['firebase']}, Monitoring: {Sentry: ['sentry']},
   'App stores': {Apple: ['appstore', 'macsign'], Google: ['play'], Valve: ['steam']}, Cloud: {Google: ['google']}};
 // #247 services that are features inside the app (≠ hosting/stores/cloud) → svcWire: AI checks the code, files `needs-user` tasks for unused ones
 const svcFeats = ids => ids.filter(id => ['Sign-in', 'Database', 'Payments', 'Email', 'Monitoring'].some(t => Object.values(SVCTYPE[t]).flat().includes(id)));
@@ -180,14 +199,14 @@ async function drawServices() {
   }
   box.innerHTML = ids.map(id => { const x = SERVICES[id], miss = x.keys.filter(k => !envKeys.have.has(k));
     return sec(esc(x.name), (id === 'google' ? '<div id="gcloud" class="sc" style="padding:0;border:0;gap:10px">' + skel(60, 'b100') + '</div>' : '')
-      + (id === 'website' ? siteHtml() : '')
+      + (id === 'website' ? siteHtml() : id === 'dns' ? dnsHtml() : '')
       + (x.steps ? stepper(id, x.steps) : '')
       + (x.links ? `<div class="btnrow">${x.links.map(([l, u]) => `<button class="btn sm" data-url="${esc(u)}">${esc(l)}</button>`).join('')}</div>` : '')
       + (id === 'appstore' ? bundleRow() : '')
       + `<div class="keys">${x.keys.map(k => `<div><span>${k}</span>${envKeys.have.has(k) ? '<small class="ok">set</small>' : '<small class="faint">missing</small>'}</div>`).join('')}</div>`
       + (miss.length ? `<button class="btn primary block" onclick="fillKeys('${id}')">${icon('key')}Fill in ${miss.length} key${miss.length > 1 ? 's' : ''}</button>` : '')
       + (x.gh === true && S.ci_builds /* #267 local builds read .env */ ? `<button class="btn block" onclick="toSecrets('${id}', this)" title="Copies these keys from .env to the repo's Actions secrets">${icon('gh')}Send to GitHub secrets <small class="dim" id="sec-${id}"></small></button><p class="err" id="secErr-${id}" style="font-size:13px"></p>` : ''),
-      (id === 'website' && !siteReady() ? '<span class="pill dim">set up</span>'
+      (id === 'website' && !siteReady() || id === 'dns' && !siteOf().dns ? '<span class="pill dim">set up</span>'
         : `<span class="pill${miss.length ? ' dim' : ''}">${miss.length ? `${x.keys.length - miss.length}/${x.keys.length}` : 'ready'}</span>`)
       + `<button class="ib" title="Remove from this project" onclick="svcRemove('${id}')">${icon('trash')}</button>`); }).join('')
     + secretsFold(files)
@@ -225,7 +244,7 @@ function stepAuto(id) {
   const h = k => envKeys.have.has(k), all = SERVICES[id].keys.every(h), st = SERVICES[id].steps || [];
   if (id !== 'macsign') {
     // every key filled means the steps that produce them are done; the website's DNS step can't be read from keys
-    if (all && id !== 'website') return stepReq(st);
+    if (all && id !== 'website' && id !== 'dns') return stepReq(st);
     return st.flatMap((x, i) => x.k && h(x.k) ? [i] : []); // a step's own key set means that step is done
   }
   const sec = SECRETS[cur];
@@ -246,7 +265,7 @@ const stepParts = x => { const t = x.t || x, i = t.indexOf('|'); return x.n ? [x
 const stepReq = steps => steps.map((x, i) => i).filter(i => !/^Optional/.test(stepParts(steps[i])[1]));
 const stepsDone = id => { const st = SERVICES[id].steps; return !st || (stepSync(id), stepReq(st).every(i => stepOf(id).d.includes(i))); };
 const siteReady = () => { const s = siteOf(); return !!(HOSTS[s.host] && s.domain); };
-const svcDone = id => (id !== 'website' || siteReady()) && stepsDone(id) && SERVICES[id].keys.every(k => envKeys.have.has(k));
+const svcDone = id => (id !== 'website' || siteReady()) && (id !== 'dns' || !!siteOf().dns) && stepsDone(id) && SERVICES[id].keys.every(k => envKeys.have.has(k));
 function stepOpen(id) { const s = stepOf(id); s.open = !s.open; try { localStorage.steps = JSON.stringify(STEPS); } catch {} drawServices(); }
 function stepper(id, steps) {
   stepSync(id); const s = stepOf(id), done = stepsDone(id);
