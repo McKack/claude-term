@@ -11,6 +11,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot, Notify};
 mod backend;
+mod opencode;
 pub(crate) use backend::Backend;
 mod turn;
 pub use turn::*;
