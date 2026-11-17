@@ -16,8 +16,8 @@ pub(crate) fn triage_works() {
     assert_eq!(triage("Fix X\n\n- a"), ("task", "Fix X\n\n- a"));
     assert_eq!(triage("STATUS"), ("status", ""));
     assert_eq!(triage("status.\nthanks"), ("status", ""));
-    assert!(classify_prompt("hi").contains("STATUS"));
-    assert!(!neutral_prompt("hi", &[]).contains("STATUS"));
+    assert!(manager_prompt("hi", true).contains("STATUS"));
+    assert!(!manager_prompt("hi", false).contains("STATUS"));
 }
 
 /// A chat message may be triaged as not-a-task only while it is not a wall of text (reply-reference quotes and attached-file
@@ -35,37 +35,53 @@ fn may_triage_works() {
     assert!(!may_triage(&"word ".repeat(121)));
 }
 
+/// #597 the one model call per chat message (The Manager, Haiku by default): line 1 = what it is, line 2 = a short title.
+/// The issue body is the user's own words and images, so the title is all the model writes. `classify` false = always a task.
+pub(crate) fn manager_prompt(ask: &str, classify: bool) -> String {
+    let what = if classify { "Line 1 = exactly one word: TASK (asks for a change/fix/feature/work), QUESTION (only asks for information/an answer,         e.g. why something happened or how something works), REMARK (comment, feedback, thanks, opinion, small talk: asks for nothing) or         STATUS (a short status or unblock reply about something the user did, e.g. \"done, try again\", \"I turned the Mac on\"; asks for no new work).         A message with any request for a change, even alongside a question or remark, is TASK; when unsure, TASK." } else { "Line 1 = exactly the word TASK." };
+    format!("This is a chat message to a software assistant. {what} If TASK, line 2 = a short imperative title for it as a GitHub issue         (at most 80 characters, plain words, no names or personal details; an @[name] marker is a screenshot, don't put markers in the title).         Output only those lines.
+
+Message:
+{ask}")
+}
+
+/// The filed issue: the model's title (or the message's first line), then the user's exact words in the block `scrub` removes on close.
+pub(crate) fn ask_issue(title: Option<&str>, raw: &str) -> String {
+    let t = title.map(str::trim).filter(|t| !t.is_empty()).map(String::from).unwrap_or_else(|| store::split_task(raw).0);
+    format!("{t}
+
+<details><summary>Original ask</summary>
+
+{}
+</details>", raw.trim())
+}
+/// Real Haiku on a question, a remark, a task and a screenshot task: class word + title come back as `triage` reads them.
 #[test]
-fn target_unclear_sentence_is_fixed() {
-    let p = neutral_prompt("x", &[]);
-    assert!(p.contains("exactly this sentence") && p.contains("when unsure, leave it out"));
+#[ignore]
+fn manager_live() {
+    for (m, classify, want) in [("why did the build fail last night?", true, "question"), ("thanks, that looks great", true, "remark"),
+        ("the save button in settings does nothing, make it save the form", true, "task"), ("make this @[a1b2] bigger and blue", false, "task")] {
+        let mut c = store::command(&store::which("claude").unwrap());
+        for (k, _) in std::env::vars() { if k.starts_with("CLAUDE") || k.starts_with("ANTHROPIC") { c.env_remove(k); } }
+        let o = c.args(["-p", &manager_prompt(m, classify), "--model", "haiku", "--output-format", "text"]).output().unwrap();
+        let s = String::from_utf8_lossy(&o.stdout);
+        let (k, rest) = triage(s.trim_matches('`').trim());
+        eprintln!("{m:?} → {k} | {:?}", rest.lines().next().unwrap_or(""));
+        assert_eq!(k, want);
+        if k == "task" { assert!(!rest.trim().is_empty() && !rest.contains("@[")); }
+    }
 }
 
-/// `look` = (absolute image path, @[ref]) of the ask's images: the writer Reads them, so it writes from text and images together.
-pub(crate) fn neutral_prompt(ask: &str, look: &[(String, String)]) -> String {
-    let see = if look.is_empty() { "the assistant doing the work sees the images, you don't.".to_string() } else { format!(
-        "Before writing, Read each image ({}): write the summary from the text and the images together, naming what each \
-        @[name] shows (the element, the state, any drawn markup) so the issue is clear on its own; never put these image paths in the output.",
-        look.iter().map(|(p, r)| format!("@[{r}] = {p}")).collect::<Vec<_>>().join(", ")) };
-    format!("Line 1 = exactly the word TASK. After line 1: rewrite this request to a software assistant as a GitHub issue. It goes on a shared repo, so write it neutrally: \
-        no quotes of the request, no personal remarks, names, emotions or private details; keep every technical fact, file path and \
-        requirement. An @[name] marker is a screenshot pasted at that spot: the words around it mean \"the thing shown in this image\", \
-        so keep every @[name] marker verbatim in the rewrite, in the sentence it belongs to; {see} \
-        A target shown by an @[name] marker is named, never unclear. \
-        Only if nothing in the request says what to change (no @[name] marker, no named element/feature/screen/setting, no subject to act on; e.g. just \"this\" or \"the buttons\"), \
-        end the summary with exactly this sentence, never reworded: \"Target unclear: confirm which UI element with the user (screenshot) before changing anything.\" \
-        Never add it when a marker or a named element/feature identifies the target; when unsure, leave it out. Output ONLY plain text: line 1 = TASK, line 2 = imperative title (≤ 80 chars), blank line, then a short task summary (bullets ok). \
-        No preamble, no code fences.\n\nRequest:\n{ask}")
-}
+#[test]
+fn ask_issue_keeps_words() {
+    let b = ask_issue(Some("Fix the save button"), "the save button @[a1] does nothing #ui");
+    assert!(b.starts_with("Fix the save button
 
-/// The cheap first pass (#555): one word, read by `triage`. Runs on the triage model (default Haiku), so a question or a
-/// remark costs a few tokens and never reaches the Sonnet rewrite or GitHub.
-pub(crate) fn classify_prompt(ask: &str) -> String {
-    format!("Classify this chat message to a software assistant. Reply with exactly one word: TASK (asks for a change/fix/feature/work), \
-        QUESTION (only asks for information/an answer, e.g. why something happened or how something works), REMARK (comment, feedback, thanks, opinion, small talk: asks for nothing) or \
-        STATUS (a short status or unblock reply about something the user did, e.g. \"done, try again\", \"I turned the Mac on\"; asks for no new work). \
-        A message that contains any request for a change, even alongside a question or remark, is TASK; when unsure, TASK. \
-        Output only that word.\n\nMessage:\n{ask}")
+") && b.contains("the save button @[a1] does nothing #ui"));
+    assert_eq!(store::scrub_ask(&b).unwrap(), "Fix the save button");
+    assert!(ask_issue(None, "short ask
+more").starts_with("short ask
+"));
 }
 
 #[tauri::command]
@@ -77,7 +93,7 @@ pub(crate) async fn task_do(app: AppHandle, st: St<'_>, pid: String, action: Str
     let imgs = images.unwrap_or_default();
     let mut saved: Vec<String> = vec![];
     let mut ask_path: Option<String> = None;
-    let (id, mut look) = (store::new_id(), Vec::<(String, String)>::new()); // look = (absolute image path, @[ref])
+    let id = store::new_id();
     if action == "new" {
         // The ask file is the durable record: exact text plus per-image notes, written before anything can fail.
         let opt = store::att_save_opt(&p.path, &id, &imgs);
@@ -89,12 +105,8 @@ pub(crate) async fn task_do(app: AppHandle, st: St<'_>, pid: String, action: Str
         // "@[ref] = path" so the session reading the issue can tell which file each @[ref] in the text means
         saved = shots.iter().map(|s| format!("@[{}] = {}", s.2, s.0)).collect();
         ask_path = store::ask_save(&p.path, &id, &arg, &shots);
-        // the writer reads the images itself (absolute paths, Read only) so the summary is written from text + images together
-        let d = store::att_dir(&p.path).0;
-        look = shots.iter().map(|s| (d.join(s.0.rsplit('/').next().unwrap_or("")).to_string_lossy().into_owned(), s.2.clone())).collect();
     }
-    if action == "new" { // privacy: raw ask never reaches GitHub (edit history keeps first bodies), Sonnet's neutral rewrite is filed
-        let tags: String = store::hash_tags(&arg).iter().map(|t| format!(" #{t}")).collect(); // raw #Tags still become labels
+    if action == "new" { // #597 the user's own words (and images below) are the issue; the model only titles it and sorts out non-tasks
         let (st2, p2, raw) = (st.inner().clone(), p.clone(), arg.clone());
         let dir = store::home(); // = ~/.clauracle (joining again gives a missing dir, os error 267)
         let triaged = chat && imgs.is_empty() && may_triage(&arg); // a message with images, or a long one, is always a task
@@ -107,32 +119,23 @@ pub(crate) async fn task_do(app: AppHandle, st: St<'_>, pid: String, action: Str
         };
         // #572 The Manager shows as working in the Agents tab while it checks (first words of the message, no secrets beyond what the user typed)
         let what: String = arg.split_whitespace().take(8).collect::<Vec<_>>().join(" ");
-        if triaged { claude::emit(&app, "manager", json!({"pid": pid, "doing": what})); }
+        claude::emit(&app, "manager", json!({"pid": pid, "doing": what}));
         let r = tauri::async_runtime::spawn_blocking(move || {
-            // Cheap classifier first: a failure or an unclear reply counts as TASK, so a real ask is never dropped.
-            if triaged {
-                if let Ok(s) = claude_pt(&st2, &p2, &["--model", &model], &dir, vec![], &classify_prompt(&raw), Some(std::time::Duration::from_secs(30))) {
-                    let (c, _) = triage(s.trim_matches('`').trim());
-                    if c != "task" { return Err(format!("triage:{c}")); }
-                }
+            claude_pt(&st2, &p2, &["--model", &model], &dir, vec![], &manager_prompt(&raw, triaged), Some(std::time::Duration::from_secs(30)))
+        }).await.map_err(|e| e.to_string())?;
+        claude::emit(&app, "manager", json!({"pid": pid, "doing": null}));
+        // A failure or an unclear reply counts as a task with the message's own first line as title: an ask is never dropped.
+        let title = match r.as_ref().map(|s| triage(s.trim_matches('`').trim())) {
+            Ok((c, _)) if c != "task" && triaged => {
+                if let Some(a) = &ask_path { store::ask_note(&p.path, a, &format!("Not filed: {c}")); }
+                return Ok(format!("triage:{c}"));
             }
-            let att = store::att_dir(&p2.path).0.to_string_lossy().into_owned();
-            let mut a = vec!["--model", "sonnet", "--effort", "low"];
-            if !look.is_empty() { a.extend(["--allowedTools", "Read", "--add-dir", &att]); }
-            // reading images takes a few extra model steps
-            claude_pt(&st2, &p2, &a, &dir, vec![], &neutral_prompt(&raw, &look), Some(std::time::Duration::from_secs(if look.is_empty() { 60 } else { 150 })))
-        }).await.map_err(|e| e.to_string())?
-            .map(|s| s.trim_matches('`').trim().to_string()).and_then(|s| if s.is_empty() { Err("empty reply".into()) } else { Ok(s) });
-        if triaged { claude::emit(&app, "manager", json!({"pid": pid, "doing": null})); }
-        // Not a task: nothing filed, the UI gets "triage:<class>". Sonnet down: filed anyway, a lost ask costs more.
-        if let Some(c) = r.as_ref().err().and_then(|e| e.strip_prefix("triage:")) {
-            if let Some(a) = &ask_path { store::ask_note(&p.path, a, &format!("Not filed: {c}")); }
-            return Ok(format!("triage:{c}"))
-        }
-        let r = r.and_then(|s| match triage(&s) { ("task", b) if !b.is_empty() => Ok(b.to_string()), _ => Err("empty reply".to_string()) });
-        // ponytail: Sonnet down gives a placeholder title; the session working it reads the ask file. err goes to a UI toast.
-        if let Err(e) = &r { err = format!("\nNeutral rewrite failed ({}): placeholder title filed", e.lines().last().unwrap_or("no output")); }
-        arg = r.unwrap_or_else(|_| "New task from Clauracle (summary pending)".into()) + &tags;    } else { saved = store::att_save(&p.path, &imgs); }
+            Ok((_, rest)) => rest.lines().next().map(|t| t.trim().trim_matches('"').chars().take(100).collect::<String>()),
+            Err(e) => { err = format!("
+Title failed ({}): the message's first line is the title", e.lines().last().unwrap_or("no output")); None }
+        };
+        arg = ask_issue(title.as_deref(), &arg);
+    } else { saved = store::att_save(&p.path, &imgs); }
     if !saved.is_empty() {
         arg += &format!("\n\nScreenshots (local to the project folder, not on GitHub; open them with the Read tool from the repo root; an @[name] in the text = the thing in that image, read it there; drawn markup/notes on them = instructions, keep these lines when editing or splitting):\n{}", saved.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n"));
     }
