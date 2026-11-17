@@ -18,13 +18,20 @@ fn b64(s: &str) -> String {
     o
 }
 
+/// OpenCode config adding a provider `local` that talks to a llama-server at `url`.
+fn local_config(url: &str, model: &str) -> Value {
+    json!({"provider": {"local": {"npm": "@ai-sdk/openai-compatible", "name": "Local", "options": {"baseURL": format!("{url}/v1")}, "models": {model: {"name": model}}}}})
+}
+
 impl Server {
     /// Start `opencode serve` in `dir` (port 0 = a free one; it prints the URL and a password), create a session.
     /// `ask`: tool actions that must come back as permission requests (e.g. "*").
-    pub fn start(dir: &str, ask: &[&str]) -> Result<Server, String> { Self::start_with(dir, ask, "", "", "") }
+    pub fn start(dir: &str, ask: &[&str]) -> Result<Server, String> { Self::start_with(dir, ask, "", "", "", "") }
     /// `model` = "provider/model" ("" = OpenCode's default free one); `key` (with `label`) is stored as that provider's credential.
-    pub fn start_with(dir: &str, ask: &[&str], model: &str, key: &str, label: &str) -> Result<Server, String> {
+    pub fn start_with(dir: &str, ask: &[&str], model: &str, key: &str, label: &str, local: &str) -> Result<Server, String> {
         let mut cmd = if cfg!(windows) { let mut c = Command::new("cmd"); c.args(["/c", "opencode"]); c } else { Command::new("opencode") };
+        // a llama-server URL becomes the custom provider `local` (OpenAI-compatible); `model` is then "local/<name>"
+        if !local.is_empty() { cmd.env("OPENCODE_CONFIG_CONTENT", local_config(local, model.strip_prefix("local/").unwrap_or(model)).to_string()); }
         let mut child = cmd.args(["serve", "--hostname", "127.0.0.1", "--port", "0"]).current_dir(dir)
             .stdout(Stdio::piped()).stderr(Stdio::null()).stdin(Stdio::null()).spawn().map_err(|e| e.to_string())?;
         let out = child.stdout.take().ok_or("no stdout")?;
@@ -129,6 +136,7 @@ pub fn translate(ev: &Value, sid: &str, names: &mut std::collections::HashMap<St
 
 #[cfg(test)]
 mod tests {
+    use crate::claude::backend::Backend;
     use super::*;
     #[test] fn b64_basic() { assert_eq!(b64("opencode:x"), "b3BlbmNvZGU6eA=="); assert_eq!(b64("ab"), "YWI="); }
     #[test] fn maps_tool_turn() {
@@ -165,12 +173,39 @@ mod tests {
         println!("asked={asked} text={text}");
         assert!(asked && result && text.contains("hello-spike"));
     }
+    #[test] fn local_provider_config() {
+        let c = local_config("http://127.0.0.1:8080", "qwen");
+        assert_eq!(c["provider"]["local"]["options"]["baseURL"], "http://127.0.0.1:8080/v1");
+        assert!(c["provider"]["local"]["models"]["qwen"].is_object());
+    }
     /// A picked model + key reach the server: `cargo test opencode_model_live -- --ignored`.
     #[test] #[ignore] fn opencode_model_live() {
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let s = Server::start_with(&dir, &["*"], "opencode/big-pickle", "k-test", "clauracle-test").unwrap();
+        let s = Server::start_with(&dir, &["*"], "opencode/big-pickle", "k-test", "clauracle-test", "").unwrap();
         let cred = s.call("GET", "/api/credential", None).unwrap();
         s.stop();
         assert!(cred["data"].as_array().unwrap().iter().any(|c| c["label"] == "clauracle-test" || c["integrationID"] == "claude-agent"));
+    }
+
+    /// Real run (#606): one OpenCode turn on the local model (same env as route_live, needs `opencode` on PATH).
+    #[test] #[ignore]
+    fn opencode_local_live() {
+        let d = std::path::PathBuf::from(std::env::var("CLAURACLE_LOCAL_TEST").expect("set CLAURACLE_LOCAL_TEST"));
+        let (id, _) = crate::local::test_model();
+        let url = crate::local::ensure_in(&d, id, &|_, _| {}).unwrap();
+        let dir = std::env::temp_dir().to_string_lossy().to_string();
+        let s = Server::start_with(&dir, &["*"], &format!("local/{id}"), "", "", &url).unwrap();
+        let evs = s.events().unwrap();
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+            .block_on(s.send(json!("Reply with exactly: LOCAL OK"))).unwrap();
+        let (mut names, mut text) = (Default::default(), String::new());
+        'o: for ev in evs { for o in translate(&ev, &s.session, &mut names) {
+            if let Out::Msg(m) = o {
+                if m["type"] == "assistant" { if let Some(t) = m["message"]["content"][0]["text"].as_str() { text = t.into() } }
+                if m["type"] == "result" { break 'o }
+            } } }
+        s.stop();
+        println!("text={text}");
+        assert!(text.to_uppercase().contains("LOCAL OK"));
     }
 }

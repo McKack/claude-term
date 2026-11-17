@@ -231,7 +231,7 @@ fn mem_gb(pid: u32) -> f64 {
     o / 1e9
 }
 
-fn ensure_in(d: &Path, model: &str, note: &dyn Fn(&str, bool)) -> R<String> {
+pub(crate) fn ensure_in(d: &Path, model: &str, note: &dyn Fn(&str, bool)) -> R<String> {
     let mut s = SERVER.lock().unwrap();
     if let Some((m, url, ch)) = s.as_mut() {
         if m == model && ch.try_wait().ok().flatten().is_none() { return Ok(url.clone()); }
@@ -314,7 +314,7 @@ fn ollama_cloud_names() {
 
 /// Model the live tests run: $CLAURACLE_LOCAL_MODEL (an id from MODELS, e.g. one already downloaded), else the smallest.
 #[cfg(test)]
-fn test_model() -> (&'static str, &'static str) {
+pub(crate) fn test_model() -> (&'static str, &'static str) {
     let want = std::env::var("CLAURACLE_LOCAL_MODEL").unwrap_or_default();
     MODELS.iter().find(|m| m.0 == want).or(MODELS.first()).map(|m| (m.0, m.2)).unwrap()
 }
@@ -378,3 +378,4 @@ fn route_live() {
     assert!(o.status.success(), "the session itself ran through the router");
     assert!(crate::route::HITS.load(std::sync::atomic::Ordering::SeqCst) > 0, "the agent's calls went to the local model");
 }
+

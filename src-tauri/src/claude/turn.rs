@@ -30,8 +30,14 @@ async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<
     let dir = p.path.clone();
     let acc = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).cloned().unwrap_or_default();
     let key = store::get_token(&acc.id).filter(|t| t != "none").unwrap_or_default();
-    let (model, label) = (acc.model.clone(), format!("clauracle-{}", acc.id));
-    let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start_with(&dir, &["*"], &model, &key, &label)).await.map_err(|e| e.to_string())??);
+    let (mut model, label) = (acc.model.clone(), format!("clauracle-{}", acc.id));
+    let mut local = String::new();
+    if acc.provider == "local" { // load the model first (can take a while), then OpenCode gets it as provider `local`
+        let (m, app2, pid2) = (acc.model.clone(), app.clone(), pid.to_string());
+        local = tokio::task::spawn_blocking(move || crate::local::ensure_noting(&app2, &pid2, &m)).await.map_err(|e| e.to_string())??;
+        model = format!("local/{}", acc.model);
+    }
+    let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start_with(&dir, &["*"], &model, &key, &label, &local)).await.map_err(|e| e.to_string())??);
     *live.oc.lock().unwrap() = Some(srv.clone());
     let (tx, mut evs) = mpsc::unbounded_channel::<Value>();
     let s2 = srv.clone();
@@ -150,7 +156,7 @@ pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
 pub(crate) async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
     let p = st.project(pid).ok_or("project removed")?;
     let acc = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).cloned().unwrap_or_default();
-    if acc.provider == "opencode" { return serve_opencode(app, st, pid, live).await }
+    if acc.provider == "opencode" || (acc.provider == "local" && store::which("opencode").is_some()) { return serve_opencode(app, st, pid, live).await }
     let claude = store::which("claude").ok_or("Claude Code isn't installed (Settings › Install)")?;
     if acc.provider == "local" { // load the local model first (can take a while) so a failure shows its real reason
         let (m, app2, pid2) = (acc.model.clone(), app.clone(), pid.to_string());
