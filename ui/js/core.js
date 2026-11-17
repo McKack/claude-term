@@ -59,7 +59,7 @@ const mList = () => CMODELS?.length ? CMODELS.map(x => [x.value === 'default' ? 
 const mName = k => mList().find(x => x[0] === (k || ''))?.[1] || MODELS[k] || k;
 // the model an account pins (local, OpenRouter…: model/effort picks don't apply there), short name; else null
 // local accounts: hours used instead of limit windows (Rust usage: day_h, week_h)
-const localUse = u => u.day_h == null ? '' : `${u.day_h} h in 24 h | ${u.week_h} h in 7 days`;
+const localUse = u => u.day_k != null ? `${u.day_k}k tokens in 24 h | ${u.week_k}k in 7 days` : u.day_h == null ? '' : `${u.day_h} h in 24 h | ${u.week_h} h in 7 days`;
 const ownModel = p => S.accounts.find(a => a.id === p.account)?.model?.split('/').pop() || null;
 const effOf = k => ['', ...(mList().find(x => x[0] === (k || ''))?.[3] || Object.keys(EFFORTS).filter(Boolean))];
 // short forms for the status row; full names in the menus. PERMS order = level 1..4 (least → most freedom)

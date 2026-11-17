@@ -230,6 +230,8 @@ pub struct Config {
     pub projects: Vec<Project>,
     pub accounts: Vec<Account>,
     pub usage: HashMap<String, HashMap<String, Window>>,
+    #[serde(default)]
+    pub oc_use: HashMap<String, Vec<(f64, f64)>>, // OpenCode accounts: (time, tokens of one step), last 7 days
     pub local_use: HashMap<String, Vec<(f64, f64)>>, // local accounts have no limits: (turn end, seconds busy), last 7 days
     pub active: Option<String>,
     pub default_account: String,
@@ -695,6 +697,14 @@ pub fn record_local(cfg: &mut Config, account: &str, secs: f64) {
     e.push((t, secs));
 }
 
+/// Tokens an OpenCode step used, kept for a week.
+pub fn record_tokens(cfg: &mut Config, account: &str, n: f64) {
+    let t = now();
+    let e = cfg.oc_use.entry(account.into()).or_default();
+    e.retain(|(at, _)| t - at < 7.0 * 86400.0);
+    e.push((t, n));
+}
+
 /// Live % per window ("five_hour", "seven_day"), windows that already reset count as 0.
 /// Local accounts get "day_h" / "week_h" instead: hours used in the last 24 hours / 7 days.
 pub fn usage(cfg: &Config, account: &str) -> HashMap<String, f64> {
@@ -708,6 +718,11 @@ pub fn usage(cfg: &Config, account: &str) -> HashMap<String, f64> {
         let hours = |span: f64| (l.iter().filter(|(at, _)| t - at < span).map(|(_, s)| s).sum::<f64>() / 360.0).round() / 10.0;
         u.insert("day_h".into(), hours(86400.0));
         u.insert("week_h".into(), hours(7.0 * 86400.0));
+    }
+    if let Some(l) = cfg.oc_use.get(account) {
+        let k = |span: f64| (l.iter().filter(|(at, _)| t - at < span).map(|(_, n)| n).sum::<f64>() / 1000.0).round();
+        u.insert("day_k".into(), k(86400.0));
+        u.insert("week_k".into(), k(7.0 * 86400.0));
     }
     u
 }
@@ -836,6 +851,15 @@ pub fn push_phone(topic: &str, title: &str, body: &str) {
 #[cfg(test)]
 mod tests {
     /// #166: deploy key → both .env keys, multi-line private key round-trips, rerun = same pubkey
+    #[test]
+    fn oc_tokens_in_usage() {
+        let mut cfg = Config::default();
+        record_tokens(&mut cfg, "O", 1500.0);
+        record_tokens(&mut cfg, "O", 1000.0);
+        cfg.oc_use.get_mut("O").unwrap().push((now() - 3.0 * 86400.0, 4000.0));
+        let u = usage(&cfg, "O");
+        assert_eq!((u["day_k"], u["week_k"]), (3.0, 7.0));
+    }
     #[test]
     fn deploy_key_fills_env_once() {
         if super::which("ssh-keygen").is_none() { return; }

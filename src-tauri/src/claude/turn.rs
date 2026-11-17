@@ -393,6 +393,12 @@ pub(crate) fn show(app: &AppHandle, st: &State, pid: &str, acct: &str, m: &Value
                 }
             }
         }
+        Some("oc_usage") => {
+            let mut cfg = st.cfg.lock().unwrap();
+            store::record_tokens(&mut cfg, acct, m["tokens"].as_f64().unwrap_or(0.0));
+            store::save(&cfg);
+            emit(app, "usage", json!({"account": acct, "usage": store::usage(&cfg, acct)}));
+        }
         Some("rate_limit_event") => {
             // #111: spawn-time account, ≠ p.account ∵ a relay switch changes p.account before the reconnect
             let mut cfg = st.cfg.lock().unwrap();

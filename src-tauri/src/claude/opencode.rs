@@ -127,6 +127,7 @@ pub fn translate(ev: &Value, sid: &str, names: &mut std::collections::HashMap<St
             action: d["action"].as_str().unwrap_or("").into(),
             resources: d["resources"].as_array().into_iter().flatten().filter_map(|x| x.as_str().map(String::from)).collect(),
         }],
+        "session.usage.updated" => { let t = &d["tokens"]; let n: f64 = ["input", "output", "reasoning"].iter().filter_map(|k| t[*k].as_f64()).sum(); m(json!({"type": "oc_usage", "tokens": n, "cost": d["cost"]})) }
         "session.execution.succeeded" => m(json!({"type": "result", "subtype": "success", "is_error": false, "session_id": sid})),
         "session.execution.failed" | "session.execution.interrupted" =>
             m(json!({"type": "result", "subtype": "error_during_execution", "is_error": true, "session_id": sid, "result": d["error"]})),
@@ -172,6 +173,10 @@ mod tests {
         s.stop();
         println!("asked={asked} text={text}");
         assert!(asked && result && text.contains("hello-spike"));
+    }
+    #[test] fn maps_usage() {
+        let o = translate(&json!({"type": "session.usage.updated", "data": {"sessionID": "s", "cost": 0, "tokens": {"input": 10, "output": 5, "reasoning": 1, "cache": {"read": 99}}}}), "s", &mut Default::default());
+        assert_eq!(o, vec![Out::Msg(json!({"type": "oc_usage", "tokens": 16.0, "cost": 0}))]);
     }
     #[test] fn local_provider_config() {
         let c = local_config("http://127.0.0.1:8080", "qwen");
