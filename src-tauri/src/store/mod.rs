@@ -568,6 +568,8 @@ pub fn perms_probe() -> bool {
     ok
 }
 
+pub fn get_token(id: &str) -> Option<String> { keyring::Entry::new(KEYRING, id).ok().and_then(|e| e.get_password().ok()) }
+
 pub fn set_token(id: &str, token: &str) {
     if let Ok(e) = keyring::Entry::new(KEYRING, id) {
         let _ = e.set_password(token.trim());

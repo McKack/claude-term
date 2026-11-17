@@ -825,7 +825,7 @@ function addAcctDlg() {
     <p id="loginMsg" class="hint"></p><div class="btns"><button class="btn ghost" onclick="$('dlg2').close()">Cancel</button></div></div>`;
   dlgShell(d.firstElementChild); provPick('claude'); d.showModal(); $('nick').focus(); // opened after Settings → the topmost modal, so it's the active one
 }
-async function addOpenCode() { try { await call('claude_add_token', {nick: $('nick').value, token: '', provider: 'opencode'}); $('dlg2').close(); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; } }
+async function addOpenCode() { try { await call('claude_add_token', {nick: $('nick').value, token: $('ocKey').value, provider: 'opencode', model: $('ocModel').value.trim()}); $('dlg2').close(); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; } }
 let PV = '', ORFREE = null; // picked provider; OpenRouter's models with tool use, fetched once per run
 function provPick(k) { PV = k; $('loginMsg').textContent = '';
   const b = $('pvBox'), full = 'style="width:100%;justify-content:center"';
@@ -835,7 +835,10 @@ function provPick(k) { PV = k; $('loginMsg').textContent = '';
   if (k === 'ckey') return b.innerHTML = `<p class="hint">Pay as you go with a key from the Claude Console; billed per token, not from a subscription. <a href="#" data-url="https://platform.claude.com/settings/keys">Get an API key</a></p>
     <div class="row"><input id="token" type="password" class="grow mono" placeholder="sk-ant-api03-…"><button class="btn primary" onclick="pasteClaude()">Add</button></div>`;
   const x = PROVS[k];
-  if (x.oc) return b.innerHTML = `<p class="hint">${esc(x.h)}</p><button class="btn primary" ${full} onclick="addOpenCode()">Add OpenCode</button>`;
+  if (x.oc) return b.innerHTML = `<p class="hint">${esc(x.h)}</p>
+    <input id="ocModel" class="mono" style="width:100%" placeholder="Your own model: provider/model, e.g. openrouter/deepseek-v4 (empty = free model)">
+    <input id="ocKey" type="password" class="mono" style="width:100%;margin-top:6px" placeholder="API key of that provider (empty = free model)">
+    <button class="btn primary" ${full} style="margin-top:6px;width:100%;justify-content:center" onclick="addOpenCode()">Add OpenCode</button>`;
   b.innerHTML = `<p class="hint">${esc(x.h)}${x.key ? ` <a href="#" data-url="${x.key}">${x.free ? 'Get a free API key' : 'Get an API key'}</a>` : ''}</p>` + (x.local ? '<div id="pvLocal"></div>' : `
     ${k === 'custom' ? '<select id="pvApi" style="width:100%;margin-bottom:6px"><option value="">Speaks the Anthropic API (/v1/messages)</option><option value="openai">Speaks the OpenAI API (/chat/completions)</option></select>' : ''}
     <input id="baseUrl" class="mono" style="width:100%"${x.url ? ' hidden' : ''} placeholder="Base URL, e.g. https://gateway.example.com or http://localhost:1234/v1">

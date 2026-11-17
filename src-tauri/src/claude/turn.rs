@@ -28,7 +28,10 @@ pub(crate) async fn run(app: AppHandle, st: Arc<State>, pid: String, live: Arc<L
 async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
     let p = st.project(pid).ok_or("project removed")?;
     let dir = p.path.clone();
-    let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start(&dir, &["*"])).await.map_err(|e| e.to_string())??);
+    let acc = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).cloned().unwrap_or_default();
+    let key = store::get_token(&acc.id).filter(|t| t != "none").unwrap_or_default();
+    let (model, label) = (acc.model.clone(), format!("clauracle-{}", acc.id));
+    let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start_with(&dir, &["*"], &model, &key, &label)).await.map_err(|e| e.to_string())??);
     *live.oc.lock().unwrap() = Some(srv.clone());
     let (tx, mut evs) = mpsc::unbounded_channel::<Value>();
     let s2 = srv.clone();

@@ -21,7 +21,9 @@ fn b64(s: &str) -> String {
 impl Server {
     /// Start `opencode serve` in `dir` (port 0 = a free one; it prints the URL and a password), create a session.
     /// `ask`: tool actions that must come back as permission requests (e.g. "*").
-    pub fn start(dir: &str, ask: &[&str]) -> Result<Server, String> {
+    pub fn start(dir: &str, ask: &[&str]) -> Result<Server, String> { Self::start_with(dir, ask, "", "", "") }
+    /// `model` = "provider/model" ("" = OpenCode's default free one); `key` (with `label`) is stored as that provider's credential.
+    pub fn start_with(dir: &str, ask: &[&str], model: &str, key: &str, label: &str) -> Result<Server, String> {
         let mut cmd = if cfg!(windows) { let mut c = Command::new("cmd"); c.args(["/c", "opencode"]); c } else { Command::new("opencode") };
         let mut child = cmd.args(["serve", "--hostname", "127.0.0.1", "--port", "0"]).current_dir(dir)
             .stdout(Stdio::piped()).stderr(Stdio::null()).stdin(Stdio::null()).spawn().map_err(|e| e.to_string())?;
@@ -37,7 +39,19 @@ impl Server {
         let rules: Vec<Value> = ask.iter().map(|a| json!({"action": a, "resource": "*", "effect": "ask"})).collect();
         let r = s.call("POST", "/api/session", Some(json!({"permissions": rules})))?;
         s.session = r["data"]["id"].as_str().ok_or("no session id")?.to_string();
+        if let Some((prov, id)) = model.split_once('/') {
+            if !key.is_empty() { s.set_key(prov, key, label)?; }
+            s.call("POST", &format!("/api/session/{}/model", s.session), Some(json!({"model": {"id": id, "providerID": prov}})))?;
+        }
         Ok(s)
+    }
+    /// The provider's API key as a credential, replacing the one this account made before.
+    fn set_key(&self, prov: &str, key: &str, label: &str) -> Result<(), String> {
+        let old = self.call("GET", "/api/credential", None)?;
+        for c in old["data"].as_array().into_iter().flatten().filter(|c| c["label"] == label) {
+            if let Some(id) = c["id"].as_str() { let _ = self.call("DELETE", &format!("/api/credential/{id}"), None); }
+        }
+        self.call("POST", "/api/credential", Some(json!({"integrationID": prov, "label": label, "value": {"type": "key", "key": key}, "activate": true}))).map(|_| ())
     }
     fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
         let req = ureq::request(method, &format!("{}{path}", self.base)).set("authorization", &self.auth);
@@ -150,5 +164,13 @@ mod tests {
         s.stop();
         println!("asked={asked} text={text}");
         assert!(asked && result && text.contains("hello-spike"));
+    }
+    /// A picked model + key reach the server: `cargo test opencode_model_live -- --ignored`.
+    #[test] #[ignore] fn opencode_model_live() {
+        let dir = std::env::temp_dir().to_string_lossy().to_string();
+        let s = Server::start_with(&dir, &["*"], "opencode/big-pickle", "k-test", "clauracle-test").unwrap();
+        let cred = s.call("GET", "/api/credential", None).unwrap();
+        s.stop();
+        assert!(cred["data"].as_array().unwrap().iter().any(|c| c["label"] == "clauracle-test" || c["integrationID"] == "claude-agent"));
     }
 }
