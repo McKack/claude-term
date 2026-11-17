@@ -237,6 +237,7 @@ pub struct Config {
     pub catalog: Vec<Item>,
     pub off: Vec<String>, // switched off everywhere
     pub you: You,
+    pub habits: serde_json::Value, // #603 what the user makes and where it goes: {makes, web, domains, release}; UI-owned shape, app-wide
     pub lessons: Vec<String>, // never-again rules (mcp lesson tool / Settings › Accounts), in every session's prompt
     pub win: Option<[i32; 5]>, // main window at last close/restart: x, y, w, h (physical px), mode 0 windowed|1 maximized|2 fullscreen
     pub notify: Notify,

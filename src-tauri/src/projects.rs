@@ -14,7 +14,7 @@ pub(crate) fn state(st: St) -> Value {
         let busy: Vec<String> = st.live.lock().unwrap().iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k.clone()).collect();
         let paths: Vec<(String, String)> = cfg.projects.iter().map(|p| (p.id.clone(), p.path.clone())).collect();
         (json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "resets": resets, "active": cfg.active, "busy": busy,
-           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "agents_auto": cfg.agents_auto, "ci_builds": cfg.ci_builds, "mac": cfg.mac, "web": !cfg.off.iter().any(|x| x == "web"), "lessons": cfg.lessons, "devs": cfg.devs, "you": cfg.you, "notify": cfg.notify,
+           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "agents_auto": cfg.agents_auto, "ci_builds": cfg.ci_builds, "mac": cfg.mac, "web": !cfg.off.iter().any(|x| x == "web"), "lessons": cfg.lessons, "devs": cfg.devs, "you": cfg.you, "habits": cfg.habits, "notify": cfg.notify,
            "update_every": cfg.update_every.unwrap_or(24), "update_at": cfg.update_at,
            "projects_dir": store::projects_root(&cfg).to_string_lossy(), "local_dir": local::dir(&cfg), "agent_models": cfg.agent_models, "agent_effort": cfg.agent_effort}), paths)
     };
@@ -269,6 +269,14 @@ pub(crate) fn lan_ip() -> String {
 pub(crate) fn set_lessons(st: St, lessons: Vec<String>) {
     let mut cfg = st.cfg.lock().unwrap();
     cfg.lessons = lessons.into_iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+    store::save(&cfg);
+}
+
+/// #603 the onboarding answers (what the user makes, where websites live, who handles domains, release platforms).
+#[tauri::command]
+pub(crate) fn set_habits(st: St, habits: serde_json::Value) {
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.habits = habits;
     store::save(&cfg);
 }
 

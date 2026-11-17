@@ -431,6 +431,7 @@ function aiPage() {
     + `${fold('a-gh', 'Other accounts' + infoI('GitHub, Google, developer accounts (Apple, Google Play, Steam) and shared services (Vercel, Supabase, Stripe). Projects pick theirs in the project manager, and one account can serve any number of projects.'),
       `<div class="idcards accts">${otherCards() || empty('No other accounts yet', `<button class="ib" title="Add an account" onclick="otherAdd(this)">${icon('plus')}</button>`)}</div><p id="ghMsg" class="hint"></p>`,
       new Set(ghUsers).size + (GACC || []).length + (S.devs || []).length || '', `<button class="ib" title="Add an account" onclick="event.preventDefault(); otherAdd(this)">${icon('plus')}</button>`, true)}
+    ${fold('a-habits', 'How you work' + infoI('What you usually make and where it goes. Decides which accounts onboarding asks for, and pre-fills new projects.'), habitsHtml(), '', '', false)}
     ${fold('a-lessons', 'Lessons' + infoI('Never-again rules, one per line. Every session in every project gets them.'), `    <textarea id="lessons" class="mono" style="width:100%;min-height:90px;font-size:12px" placeholder="e.g. tauri build: cargo on PATH same cmd, else 'cargo metadata' fails"
       onchange="call('set_lessons', {lessons: this.value.split('\\n')}).then(refresh)">${esc((S.lessons || []).join('\n'))}</textarea>`, (S.lessons || []).filter(Boolean).length || '', '', false)}`;
 }
@@ -610,6 +611,37 @@ async function buildAi(pid, force) { if (BAI[pid] === 'busy') return; BAI[pid] =
     BAI[pid] = ks.some(k => g[k]) ? {} : {t: 'Nothing to build yet. Detect again once the project has files, or type the commands in.'}; }
   catch (e) { BAI[pid] = {t: String(e), err: 1}; }
   await refresh(); redraw(); }
+// #603 habits: what the user makes and where it goes. App-wide (config.habits), plain questions, no AI; Settings > Accounts keeps them editable, #604 pre-fills a new project's wizard
+const HABD = {makes: ['websites', 'apps'], web: 'directadmin', domains: 'cloudflare', release: ['windows', 'android']}; // demo answers
+const hab = () => odemo() ? HABD : S.habits || {};
+const HMAKE = {websites: 'Websites', apps: 'Apps', games: 'Games', tools: 'Tools and scripts'};
+const HWEB = {directadmin: 'A web hotel with DirectAdmin', cpanel: 'A web hotel with cPanel', ssh: 'My own server', ghpages: 'GitHub Pages', netlify: 'Netlify', vercel: 'Vercel', none: 'Nowhere yet'};
+const HDOM = {cloudflare: 'Cloudflare', other: 'Another company', none: 'I have no domain yet'};
+async function habSet(ch) { if (odemo()) { Object.assign(HABD, ch); return onbDraw(); }
+  await call('set_habits', {habits: {...hab(), ...ch}}); await refresh(); $('onb') ? onbDraw() : reloadSettings(); }
+const habTog = (k, v, on) => { const a = hab()[k] || []; return habSet({[k]: on ? [...new Set([...a, v])] : a.filter(x => x !== v)}); };
+const habApps = h => (h.makes || []).some(x => x === 'apps' || x === 'games');
+function habitsHtml() { const h = hab(), m = h.makes || [];
+  return `<h3>What do you usually make?</h3><div class="box">${Object.entries(HMAKE).map(([k, l]) => optRow(l, '', sw(m.includes(k), `habTog('makes', '${k}', this.checked)`))).join('')}</div>`
+    + (m.includes('websites') ? field('Where do your websites usually live?', `<select onchange="habSet({web: this.value})">${options({'': 'Pick…', ...HWEB}, h.web || '')}</select>`)
+      + field('Who handles your domains?', `<select onchange="habSet({domains: this.value})">${options({'': 'Pick…', ...HDOM}, h.domains || '')}</select>`) : '')
+    + (habApps(h) ? `<h3>Where do you release apps?</h3><div class="box">${TGT.flatMap(g => g[2]).map(([id, , n, d]) => optRow(n, d, sw((h.release || []).includes(id), `habTog('release', '${id}', this.checked)`))).join('')}</div>` : ''); }
+// accounts these answers need: [DEVK kind | 'gh', why]
+function habNeeds() { const h = hab(), r = h.release || [], web = (h.makes || []).includes('websites'), n = [];
+  if (web && h.web === 'directadmin') n.push(['directadmin', 'Your web hotel']);
+  if (web && h.web === 'vercel') n.push(['vercel', 'Hosting']);
+  if (web && h.web === 'ghpages') n.push(['gh', 'GitHub Pages']);
+  if (web && h.domains === 'cloudflare') n.push(['cloudflare', 'Your domains']);
+  if (habApps(h) && (r.includes('ios') || r.includes('macos'))) n.push(['apple', 'App Store and signing']);
+  if (habApps(h) && r.includes('android')) n.push(['play', 'Google Play']);
+  return n; }
+const ONB_HAB = () => `<h1>How do you work?</h1><p class="dim">Plain answers, no AI. They decide which accounts to set up next and pre-fill new projects. You can change them later in Settings > Accounts.</p>${habitsHtml()}`;
+const ONB_NEED = () => { const n = habNeeds(), h = hab(), web = (h.makes || []).includes('websites');
+  const card = ([k, why]) => { const have = k === 'gh' ? [...new Set(ghUsers || [])].map(ghCard) : odemo() ? [acard(DEVK[k]?.ic || 'gh', DEVK[k]?.name || 'GitHub', 'Example')] : (S.devs || []).filter(d => d.kind === k).map(devCard);
+    return `<h3>${esc(k === 'gh' ? 'GitHub' : DEVK[k].name)} <span class="pill dim">${esc(why)}</span></h3><div class="idcards">${have.join('')}<button class="btn" onclick="${odemo() ? 'onbDemo()' : k === 'gh' ? 'otherAdd(this)' : `devDlg('${k}')`}">${icon('plus')}${have.length ? 'Add another' : 'Add'}</button></div>`; };
+  const ssh = web && ['cpanel', 'ssh', 'netlify'].includes(h.web) ? `<p class="hint">${h.web === 'netlify' ? 'Netlify takes a token per project: the project\'s Services tab walks you through it.' : 'A server login uses an SSH key made per project: the project\'s Services tab walks you through it.'}</p>` : '';
+  return `<h1>Accounts you need</h1><p class="dim">Only what your answers call for. Skip anything for now: Settings > Accounts adds them later.</p>`
+    + (n.length ? n.map(card).join('') : '<div class="box"><p class="dim">Nothing more to add. Add your answers on the previous page and the matching accounts show up here.</p></div>') + ssh; };
 const ONBS = [
   () => `${icon('logo').replace('class="i"', 'class="i ologo"')}<h1>${odemo() ? 'Onboarding demo' : 'Welcome to Clauracle'}</h1><p class="dim">${odemo() ? 'Example data in every step. Click around and press Next any time: nothing you do here is saved.'
     : 'Build websites, software and games with Claude Code and GitHub. A few steps and you are ready; you can change all of it later in Settings.'}</p>`,
@@ -619,7 +651,7 @@ const ONBS = [
       : S.accounts.map(a => acard(prov(a).i, prov(a).l, a.nick)).join('')}<button class="btn" onclick="${odemo() ? 'onbDemo()' : 'addAcctDlg()'}">${icon('plus')}Add AI account</button></div>
     <h3>Other accounts <span class="pill">GitHub recommended</span></h3><div class="idcards">${odemo() ? acard('gh', 'GitHub', '@octocat') + acard('google', 'Google', 'alex@example.com')
       : otherCards()}<button class="btn" onclick="${odemo() ? 'onbDemo()' : 'otherAdd(this)'}">${icon('plus')}GitHub, Google…</button></div><p id="ghMsg" class="hint"></p>`,
-  ONB_PROJ, ...PW,
+  ONB_HAB, ONB_NEED, ONB_PROJ, ...PW,
   () => `${icon('check').replace('class="i"', 'class="i ologo"')}<h1>${odemo() ? 'End of the demo' : "You're set"}</h1><p class="dim">${odemo() ? 'That was every step. Redo onboarding in Settings > Accounts sets things up for real.'
     : 'Next you pick what Clauracle may use in your project. Accounts, agents and build settings stay under Settings.'}</p>`];
 function onbOpen(mode = '', pages = ONBS) {
