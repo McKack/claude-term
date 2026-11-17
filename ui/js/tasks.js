@@ -140,7 +140,7 @@ function ghSteps(iq, qRows, t, open, fin, dn) {
 function runStep(p, n) {
   const w = workOf(cur), q = p.questions.length;
   const last = (logs[cur] || []).findLast(e => e.kind === 'user' || e.kind === 'note' && /^(Paused:|Queue is empty)/.test(e.text));
-  const why = busy[cur] ? (w ? `Working on #${w}` : 'Working…') + (p.cont.startsWith('auto') ? ' · keeps going until a limit, a question or an empty list' : p.cont === 'manual' ? ' · then waits for you' : '')
+  const why = busy[cur] ? (w ? `Working on #${w}` : 'Working…') + (p.cont.startsWith('auto') ? ', keeps going until a limit, a question or an empty list' : p.cont === 'manual' ? ', then waits for you' : '')
     : q ? `Paused: ${q} question${q > 1 ? 's' : ''} for you` : p.cont !== 'off' && last?.kind === 'note' ? esc(last.text)
     : !n ? 'Nothing queued' : p.cont === 'off' ? 'Tasks run only when you ask' : `Next: #${n}`;
   const act = q && !busy[cur] ? `<button class="btn sm" onclick="hiddenQs[cur] = false; qsOpen[cur] = true; drawLog()">Answer</button>`
@@ -537,7 +537,7 @@ async function drawWeb() {
   const url = webUrl[cur] || (builds[cur]?.out.match(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?[^\s]*/g) || []).pop() || HOMEPG || 'http://localhost:3000';
   webUrl[cur] = url;
   const opts = BROWSERS.flatMap(b => (b.profiles.length ? b.profiles : [{dir: '', name: 'default'}]).map(p =>
-    `<option value='${esc(JSON.stringify([b.exe, p.dir]))}'>${esc(b.name)} · ${esc(p.name)}${p.user ? ' (' + esc(p.user) + ')' : ''}</option>`)).join('');
+    `<option value='${esc(JSON.stringify([b.exe, p.dir]))}'>${esc(b.name)} | ${esc(p.name)}${p.user ? ' (' + esc(p.user) + ')' : ''}</option>`)).join('');
   let phone = '';
   if (webPhone) { // the phone needs this PC's LAN address, not localhost (dev server must listen on 0.0.0.0, e.g. vite --host)
     LAN ??= await call('lan_ip');

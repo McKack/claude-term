@@ -55,7 +55,7 @@ pub fn catalog(plugin_dir: &Path, paths: &[String], old: &[Item]) -> Vec<Item> {
     plugins.sort();
     for k in plugins.into_iter().filter(|k| k != PONYTAIL_PLUGIN) {
         let name = k.split('@').next().unwrap_or(&k).to_string();
-        let note = if k.ends_with("@inline") { "mod".into() } else { format!("plugin · {}", k.split('@').nth(1).unwrap_or("")) };
+        let note = if k.ends_with("@inline") { "mod".into() } else { format!("plugin | {}", k.split('@').nth(1).unwrap_or("")) };
         items.push(Item { id: format!("plugin:{k}"), label: name, kind: "plugin".into(), note });
     }
     for (prefix, root) in roots {

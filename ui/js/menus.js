@@ -62,7 +62,7 @@ let FREEONLY = false; // model picker "Free only", for this run
    Top picks (best of each maker) and a › submenu per maker; a search lists every match, hidden low-score ones included. Plain lists stay a filtered list. */
 function listMenu(i, q = '', fromSearch) { q = q.trim().toLowerCase();
   const all = [...($(i.dataset.list)?.options || [])], scored = all.some(o => o.dataset.g), anyFree = all.some(o => 'free' in o.dataset);
-  const item = o => ({label: o.value, hint: [o.dataset.s > 0 && 'score ' + o.dataset.s, o.label !== o.value && o.label].filter(Boolean).join(' · '), check: o.value === i.value, run: () => { i.value = o.value; i.dispatchEvent(new Event('change', {bubbles: true})); }});
+  const item = o => ({label: o.value, hint: [o.dataset.s > 0 && 'score ' + o.dataset.s, o.label !== o.value && o.label].filter(Boolean).join(' | '), check: o.value === i.value, run: () => { i.value = o.value; i.dispatchEvent(new Event('change', {bubbles: true})); }});
   const byScore = (a, b) => (b.dataset.s || 0) - (a.dataset.s || 0);
   let os = all.filter(o => !(FREEONLY && scored && !('free' in o.dataset)));
   if (q) os = os.map(o => [o, fuzzy(q, `${o.dataset.g || ''}/${o.value}`.toLowerCase())]).filter(x => x[1] >= 0).sort((a, b) => a[1] - b[1] || byScore(a[0], b[0])).map(x => x[0]).slice(0, 60);
@@ -234,5 +234,5 @@ async function install(what, btn) {
 
 const projRow = p => `<div class="proj ${p.id === cur ? 'on' : ''}" data-id="${p.id}" onclick="openProject('${p.id}')" title="${esc(p.path)}">
     <span class="dot ${busy[p.id] ? 'busy' : p.ready ? 'ready' : ''}"></span><span class="grow" style="min-width:0"><div class="name">${esc(p.name)}</div>
-    <div class="who">${esc(nick(p.account))}${p.gh ? ' · @' + esc(p.gh) : ''}${p.shared ? ' · ' + esc(p.owner) + "'s" : ''}</div></span>
+    <div class="who">${esc(nick(p.account))}${p.gh ? ' | @' + esc(p.gh) : ''}${p.shared ? ' | ' + esc(p.owner) + "'s" : ''}</div></span>
     ${p.questions.length ? `<span class="pill">${p.questions.length}?</span>` : ''}</div>`;

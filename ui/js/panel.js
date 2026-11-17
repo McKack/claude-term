@@ -1,4 +1,4 @@
-// ---- right panel: GitHub · Build · .env · Code · Browser ----
+// ---- right panel: GitHub | Build | .env | Code | Browser ----
 function toggleRight() { UI.rc = !UI.rc; layout('r'); drawRight(); }
 /* #30 tab dots (tabs + collapsed rail, by data-t): gh = a turn is working (issue/task in progress); build = a build
    finished OK and Build & Release not opened since (BUILT); svc = a service step/key still open (SVCDOT, from env_list once) */
@@ -33,7 +33,7 @@ const LICINFO = {MIT: ['Permissive: very open', 'Anyone may use, change and sell
 const LICS_T = {bad: 'Not allowed under this project’s license', unk: 'License unknown: check by hand', note: 'Weak copyleft: ship it as a separate, unchanged library'};
 function licDeps(c, pid) {
   if (!c?.deps) return `<button class="btn" onclick="licScan('${pid}', this)">${icon('loop')}Check library licenses</button>`;
-  const d = c.deps, by = {}, row = x => `<span style="display:block">${esc(x.n)} ${esc(x.v)} <span class="dim">${esc(x.l || 'no license stated')} · ${x.e}${x.d ? '' : ', indirect'}</span></span>`;
+  const d = c.deps, by = {}, row = x => `<span style="display:block">${esc(x.n)} ${esc(x.v)} <span class="dim">${esc(x.l || 'no license stated')} | ${x.e}${x.d ? '' : ', indirect'}</span></span>`;
   d.forEach(x => by[x.l || '?'] = (by[x.l || '?'] || 0) + 1);
   const grp = ['bad', 'unk', 'note'].map(s => [s, d.filter(x => x.s === s)]).filter(g => g[1].length);
   return `<p class="dim" style="margin:4px 0;font-size:13px">${d.length ? `${d.length} libraries (Rust + npm), ${d.length - grp.reduce((n, g) => n + (g[0] === 'note' ? 0 : g[1].length), 0)} fine` : 'No Rust or npm libraries found (other ecosystems aren’t scanned yet)'}
@@ -80,7 +80,7 @@ function guessHtml() { const s = BAI[cur];
    target stage (stricter going up). Facts from release_check (plain code, cached 60s/project); Claude only writes/judges
    via a Fix prompt. Same stage = light update (tag + publish in GitHub tab); Move up = target's full list first. */
 const STAGES = {alpha: 'Alpha', beta: 'Beta', rc: 'Release candidate', published: 'Published'}, SK = Object.keys(STAGES);
-const RELC = {}, RELTO = {}, RELBUSY = {}, RELFIX = {}, DOCFIX = {}; // DOCFIX pid → {readme, lic, credits: 'run' | 'ok'} while the Markdown Fix runs (Build-step look: shimmer, then a check) // RELFIX pid → Set of row ids whose background Fix/Run (#360 rel_fix) is out // pid → {c, t} check cache · pid → target stage while moving up
+const RELC = {}, RELTO = {}, RELBUSY = {}, RELFIX = {}, DOCFIX = {}; // DOCFIX pid → {readme, lic, credits: 'run' | 'ok'} while the Markdown Fix runs (Build-step look: shimmer, then a check) // RELFIX pid → Set of row ids whose background Fix/Run (#360 rel_fix) is out // pid → {c, t} check cache | pid → target stage while moving up
 const RELAI = { // fix prompts: Claude writes/judges, never template
   // #357 one row = README (≥10 lines, touched since the last tag) + LICENSE (picked, present, id matches) + CREDITS.md
   get readme() { const c = RELC[cur]?.c || {}; return [ // #413 LICENSE.md + CREDITS = code (relDocs), README prose = AI
@@ -113,23 +113,23 @@ function relItems(c, p) {
       busy: !!DOCFIX[cur], ...(p.license ? {go: 'relDocs()'} : {go: 'licPick()', gl: c.license ? 'Confirm license' : 'Choose license'})},
     ...(c.deps ? [{s: 0, id: 'libs', t: 'Library licenses compatible', ok: licOkDeps(c), d: (b => b.length ? `${b.length} not allowed or unknown: ${b.slice(0, 5).map(x => x.n + ' (' + (x.l || '?') + ')').join(', ')}${b.length > 5 ? '…' : ''}` : '')(c.deps.filter(x => x.s === 'bad' || x.s === 'unk'))
       + (c.credits_miss?.length ? ` ${c.credits_miss.length} not credited in CREDITS.md` : '') || `${c.deps.length} libraries checked`, go: c.credits_miss?.length ? `licCredits(cur, this)` : `licPick()`, gl: c.credits_miss?.length ? 'Add credits' : 'Details'}] : []),
-    {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} · ${c.vfile}` + (tv ? ` · last released ${c.tag}` : ' · first release') : 'not found'},
+    {s: 0, id: 'version', t: 'Version set', ok: !!v, d: v ? `${v} | ${c.vfile}` + (tv ? ` | last released ${c.tag}` : ' | first release') : 'not found'},
     // #121: semver ≤ last tag → auto-bumped in relWizard; row stays only when that can't happen (non-semver) → AI fix
     ...(tv && !(v && vcmp(v, tv) > 0) ? [{s: 0, id: 'bump', t: 'Version newer than the last release', ok: false, d: `last released ${c.tag}`}] : []),
     {s: 0, id: 'clean', t: 'All changes saved to Git', ok: c.clean, go: `relCommit(this)`, gl: 'Commit'},
     {s: 1, id: 'changelog', t: 'Changelog', ok: c.changelog},
-    ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'Online build passed', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' · ' + ci.why : ''}` : 'no online builds yet',
+    ...(S.ci_builds ? [{s: 1, id: 'ci', t: 'Online build passed', ok: ci?.conclusion === 'success', d: !c.remote ? 'not on GitHub' : ci ? `${ci.workflowName}: ${ci.conclusion || ci.status}${ci.why ? ' | ' + ci.why : ''}` : 'no online builds yet',
       go: !c.remote ? `rightTab('gh')` : '', url: ci?.bill || ci?.url}] : []),
     // #237 required file: icon source SVG or PNG ≥1024px (stores: 512 Play / 1024 App Store; `tauri icon` wants 1024)
-    {s: 1, id: 'icon', t: 'App icon (SVG or PNG ≥ 1024 px)', ok: !!c.icon && (c.icon_px == null || c.icon_px >= 1024), d: !c.icon ? 'none found' : c.icon_px ? `${c.icon} · ${c.icon_px} px` : c.icon},
+    {s: 1, id: 'icon', t: 'App icon (SVG or PNG ≥ 1024 px)', ok: !!c.icon && (c.icon_px == null || c.icon_px >= 1024), d: !c.icon ? 'none found' : c.icon_px ? `${c.icon} | ${c.icon_px} px` : c.icon},
     ...(macOn(p, cur) ? [{s: 2, id: 'sign', t: S.ci_builds ? 'Mac signing keys on GitHub' : 'Mac signing keys saved', d: 'so Macs trust and open the app', ok: sign, go: `svcAdd('macsign').then(() => rightTab('svc'))`}] : []),
     // #40 stores (Play/App Store) want privacy + terms URLs: RC up, mobile targets only; c.site = HTTP statuses (relWizard)
     ...((p.targets || []).some(x => x === 'ios' || x === 'android') ? [{s: 2, id: 'site_legal', t: 'Privacy policy and terms online',
-      ok: !!c.site && c.site.every(x => x >= 200 && x < 400), d: siteOf(p).domain ? ['privacy', 'terms'].map((k, i) => `${SITEPG[k][1]} ${c.site?.[i] || 'unreachable'}`).join(' · ') : 'no website yet',
+      ok: !!c.site && c.site.every(x => x >= 200 && x < 400), d: siteOf(p).domain ? ['privacy', 'terms'].map((k, i) => `${SITEPG[k][1]} ${c.site?.[i] || 'unreachable'}`).join(' | ') : 'no website yet',
       ...(siteReady() ? {} : {go: `svcAdd('website').then(() => rightTab('svc'))`, gl: 'Set up'})}] : []),
     {s: 2, id: 'review', t: 'Release review by AI', ai: true},
     {s: 3, id: 'store', t: 'Store and compliance check', ai: true},
-    ...((un => un.length ? [{s: 0, id: 'targets', t: 'Every picked platform can be built', ok: false, d: un.map(x => `${tgtName(x)}: ${tgtWhy(p, x)[0]}`).join(' · '), go: tgtWhy(p, un[0])[1]}] : [])((p.targets || []).filter(x => !(S.ci_builds && miss.includes(x)) && !tgtReady(p, x)))),
+    ...((un => un.length ? [{s: 0, id: 'targets', t: 'Every picked platform can be built', ok: false, d: un.map(x => `${tgtName(x)}: ${tgtWhy(p, x)[0]}`).join(' | '), go: tgtWhy(p, un[0])[1]}] : [])((p.targets || []).filter(x => !(S.ci_builds && miss.includes(x)) && !tgtReady(p, x)))),
     ...(miss.length && S.ci_builds ? [{s: 0, id: 'ci_targets', t: 'GitHub builds the other platforms', ok: false, d: `GitHub can't build: ${miss.map(tgtName).join(', ')}`}] : []),
     {s: 0, id: 'build', t: 'Build new version', ok: files.length > 0 && !lack.length && !stale.length, ...relBuildD(c, files, stale, lack, cit, v),
       go: p.build.build ? 'relBuild(this)' : 'openManager(cur)', gl: p.build.build ? 'Build' : 'Set up', dh: builds[cur]?.busy ? bfiles(p, files) : ''},
@@ -182,7 +182,7 @@ async function relWizard(p, force, cached) { // cached → draw RELC as is (call
     if (siteOf(p).domain && (p.targets || []).some(x => x === 'ios' || x === 'android')) c.site = await call('site_check', {urls: ['privacy', 'terms'].map(k => siteUrl(k, p))}).catch(() => null);
     const was = RELC[pid]?.c?.ci, now = c.ci; RELC[pid] = {c, t: Date.now()};
     if (was && now?.status === 'completed' && (was.status !== 'completed' || was.databaseId !== now.databaseId)) { // #123 CI run ended (or a new one already did)
-      toast(`CI ${now.workflowName}: ${now.conclusion}${now.why ? ' · ' + now.why : ''}`, now.conclusion === 'success' ? 'ok' : 'err', 0, true, () => openProject(pid).then(() => rightTab('build'))); ghiStale(pid); }
+      toast(`CI ${now.workflowName}: ${now.conclusion}${now.why ? ' | ' + now.why : ''}`, now.conclusion === 'success' ? 'ok' : 'err', 0, true, () => openProject(pid).then(() => rightTab('build'))); ghiStale(pid); }
     if (now && now.status !== 'completed') ciPoll(pid, 30e3);
     if (macOn(p, pid) && c.remote && !SECRETS[pid]) SECRETS[pid] = await call('gh_secrets', {pid}).catch(() => null);
   }
@@ -284,7 +284,7 @@ async function relStage(pid) {
 const RELSV = {};
 function relMenu(btn) {
   const pid = cur, stg = (RELC[pid]?.c?.staged || []).slice().sort((a, b) => vcmp(a.v, b.v)), sel = (stg.find(x => x.v === RELSV[pid]) || stg[0])?.v;
-  menuAt(btn, [{title: 'Staged releases'}, ...stg.map(x => ({check: x.v === sel, label: 'v' + x.v, hint: `${x.files.length} file${x.files.length > 1 ? 's' : ''} · built ${gago(x.t * 1e3)}${x.sha ? ' · ' + x.sha.slice(0, 7) : ''}`,
+  menuAt(btn, [{title: 'Staged releases'}, ...stg.map(x => ({check: x.v === sel, label: 'v' + x.v, hint: `${x.files.length} file${x.files.length > 1 ? 's' : ''} | built ${gago(x.t * 1e3)}${x.sha ? ' | ' + x.sha.slice(0, 7) : ''}`,
     run: () => { RELSV[pid] = x.v; drawRight(); }, acts: [{icon: 'trash', tip: 'Skip', items: [{label: `Skip v${x.v} (deletes its built files)`, run: () => relSkip(x.v)}]}]}))]);
 }
 async function relSkip(v) {
@@ -330,11 +330,11 @@ function tgtWhy(p, id) { // '' = ready, else [why, fix js]
   const miss = tgtLocal(id) && DEPSC ? Object.keys(DEPS).filter(k => DEPSC.d[k] === false && DEPS[k][1].includes(id)) : [];
   if (miss.length) return [`Needs ${miss.map(k => DEPS[k][0]).join(', ')} on this computer`, `openSettings('build').then(() => jumpTo('[data-dep=${miss[0]}]'))`];
   const c = RELC[cur]?.c; // #123 CI-built targets: facts from release_check (none yet → no verdict)
-  if (!tgtLocal(id) && !S.ci_builds) return [`Not buildable on this computer · CI builds are off (Settings › Build & Release)`, `openSettings('build').then(() => jumpTo('#set-ci'))`]; // #126
+  if (!tgtLocal(id) && !S.ci_builds) return [`Not buildable on this computer, CI builds are off (Settings › Build & Release)`, `openSettings('build').then(() => jumpTo('#set-ci'))`]; // #126
   if (!tgtLocal(id) && c && !c.err) {
     if (!c.remote) return ['Built by CI only: put this project on GitHub first', `rightTab('gh')`];
     if (!(c.ci_os || []).includes(id)) return ['Not built on this computer and no CI job builds it', `tgtFlip('${id}').then(() => relAsk('ci_targets'))`];
-    if (c.ci?.why) return [`CI can't run: ${c.ci.why}${c.ci.bill ? ' · click to fix billing' : ''}`, `T.opener.openUrl('${c.ci.bill || c.ci.url}')`]; // #133
+    if (c.ci?.why) return [`CI can't run: ${c.ci.why}${c.ci.bill ? ', click to fix billing' : ''}`, `T.opener.openUrl('${c.ci.bill || c.ci.url}')`]; // #133
   }
   const s = TGTSVC[id];
   if (s && strictStage(p) && !(svcOf(p).includes(s) && (svcDone(s) || (s === 'macsign' && SECRETS[cur]?.includes('APPLE_CERTIFICATE')))))
@@ -357,7 +357,7 @@ const tgtReady = (p, id) => !tgtWhy(p, id);
 const tgtHtml = p => { const t = p.targets || [];
   return stHead('Target platforms', t.length ? `<span class="pill dim">${t.filter(id => tgtReady(p, id)).length}/${t.length}</span>` : '') + ((t.length ? '' : '<p class="hint">Not picked yet: tap what this project ships to.</p>')
     + TGT.map(([gi, g, xs]) => `<div class="row tgtrow" style="gap:8px;margin-bottom:6px"><span class="dim" data-tip="${g}">${icon(gi)}</span><span class="seg">${xs.map(([id, ic, n, d]) => { const w = tgtWhy(p, id), on = t.includes(id);
-      return `<button class="${on ? 'on' : ''}" ${w ? 'style="opacity:.4"' : ''} data-tip="${esc(w ? w[0] + (on ? ' · click to unpick' : ' · click to fix') : d)}" onclick="${w && !on ? esc(w[1]) : `tgtFlip('${id}')`}">${icon(ic)}${n}</button>`; }).join('')}</span></div>`).join('')
+      return `<button class="${on ? 'on' : ''}" ${w ? 'style="opacity:.4"' : ''} data-tip="${esc(w ? w[0] + (on ? ', click to unpick' : ', click to fix') : d)}" onclick="${w && !on ? esc(w[1]) : `tgtFlip('${id}')`}">${icon(ic)}${n}</button>`; }).join('')}</span></div>`).join('')
     + (t.some(id => !tgtReady(p, id)) ? `<p style="margin:4px 0 6px;font-size:13px">${icon('info')} Not ready, Release is blocked till fixed or unpicked: ${t.filter(id => !tgtReady(p, id)).map(tgtName).join(', ')} (hover for why)</p>` : '')
     + '<small class="dim">* optional for Alpha and Beta; Release candidate and up need it (Services)</small>');
 };
@@ -377,10 +377,10 @@ const actHtml = () => { const a = ACTU[cur]?.v, c = RELC[cur]?.c; if (!S.ci_buil
   const body = a.err ? `<small class="dim">${esc(a.err)}</small>`
     : a.scope ? `<p class="hint">Seeing ${a.org ? `${esc(a.owner)}'s` : 'your'} Actions minutes needs ${a.org ? 'org admin rights and ' : ''}the GitHub <b>user</b> permission. Sign in again as <b>${esc(P().gh)}</b> to add it.</p>
         <button class="btn" onclick="actScope()">${icon('gh')}Grant usage access</button> <span id="ghMsg" class="dim" style="font-size:13px"></span>`
-    : (u => { const inc = ACTINC[a.plan]; return `<p style="margin:0 0 4px;font-size:13px"><b>${Math.round(u.min).toLocaleString()}</b> min this month${inc ? ` · ${inc.toLocaleString()} included (${esc(a.plan)})` : ''}${u.net > 0 ? ` · <b>billed $${u.net.toFixed(2)}</b>` : ''}</p>`
-        + (Object.keys(u.sku).length ? `<small class="dim">${Object.entries(u.sku).map(([k, m]) => `${esc(k)} ${Math.round(m)}`).join(' · ')} · macOS counts 10×, Windows 2×</small>` : ''); })(a.u);
-  return fold('p-actions', 'GitHub Actions', (lim ? `<p class="err" style="margin:0 0 6px;font-size:13px">${icon('info')} Limit reached: ${esc(c.ci.why)}${c.ci.bill ? ' · ' + link('Fix billing', c.ci.bill) : ''}</p>` : '') + body
-    + (bill ? `<div style="margin-top:6px;font-size:13px">${link('Usage', bill + '/usage')} · ${link('Spending limit', bill + '/budgets')}</div>` : ''), lim ? 1 : 0,
+    : (u => { const inc = ACTINC[a.plan]; return `<p style="margin:0 0 4px;font-size:13px"><b>${Math.round(u.min).toLocaleString()}</b> min this month${inc ? ` | ${inc.toLocaleString()} included (${esc(a.plan)})` : ''}${u.net > 0 ? ` | <b>billed $${u.net.toFixed(2)}</b>` : ''}</p>`
+        + (Object.keys(u.sku).length ? `<small class="dim">${Object.entries(u.sku).map(([k, m]) => `${esc(k)} ${Math.round(m)}`).join(' | ')} | macOS counts 10×, Windows 2×</small>` : ''); })(a.u);
+  return fold('p-actions', 'GitHub Actions', (lim ? `<p class="err" style="margin:0 0 6px;font-size:13px">${icon('info')} Limit reached: ${esc(c.ci.why)}${c.ci.bill ? ' | ' + link('Fix billing', c.ci.bill) : ''}</p>` : '') + body
+    + (bill ? `<div style="margin-top:6px;font-size:13px">${link('Usage', bill + '/usage')} | ${link('Spending limit', bill + '/budgets')}</div>` : ''), lim ? 1 : 0,
     lim ? '<span class="pill err">limit</span>' : '');
 };
 async function tgtFlip(id) {
@@ -414,7 +414,7 @@ async function buildHtml(p, has, live, force) {
     ${li(3, stHead('Build', `<button class="ib" title="Edit commands (tasks build by themselves: see Then on the GitHub tab)" onclick="buildSet()">${icon('pen')}</button>`) + (w?.bi || '') + (has ? `<div class="btnrow">${[['build', 'hammer'], ['run', 'play']].map(([s, ic]) => s === 'run' && builds[cur]?.live
           ? `<button class="btn" onclick="builds[cur].live=false; call('stop_run', {pid:cur}).then(drawRight)">${icon('stop')}Stop</button>` /* Run ⇄ Stop while the app runs */
           : s === 'build' && builds[cur]?.busy ? buildingBtn()
-          : `<button class="btn${s === 'build' && due ? ' due' : ''}" ${p.build[s] ? '' : 'disabled'} ${s === 'build' && due ? 'title="This version is not built yet" ' : ''}onclick="${s === 'build' ? (due ? 'relBuild()' : 'buildNow()') : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} · <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
+          : `<button class="btn${s === 'build' && due ? ' due' : ''}" ${p.build[s] ? '' : 'disabled'} ${s === 'build' && due ? 'title="This version is not built yet" ' : ''}onclick="${s === 'build' ? (due ? 'relBuild()' : 'buildNow()') : `call('run_step', {pid:cur, step:'${s}'})`}">${icon(ic)}${s[0].toUpperCase() + s.slice(1)}</button>`).join('')}</div><div class="bbar${bBusy(cur) ? ' on' : ''}" title="${builds[cur]?.busy ? 'Building…' : ciBusy(cur) ? 'CI building…' : 'No build running'}"></div>${ciBusy(cur) ? `<small class="dim"><i class="spin"></i> CI: ${esc(RELC[cur].c.ci.workflowName)} ${esc(RELC[cur].c.ci.status)} | <a data-url="${esc(RELC[cur].c.ci.url)}" style="cursor:pointer">view run</a></small>` : ''}`
         : guessHtml()))}
     ${li(4, w ? w.rel : stHead('Release') + skel('b100'), ok.slice(0, 3).every(Boolean) || !!w?.stg)}</ol>`)
       + actHtml()
@@ -432,7 +432,7 @@ function thenMenu(el, w) { // w: 'm' = Settings project (mp), else the open proj
   const p = w === 'm' ? P(mp) : P(), {b, t} = aft(p.build.after);
   const put = (b, t) => { const v = !b ? '' : b === 'smart' && !t ? 'smart_build' : b + (t ? '_' + t : '');
     w === 'm' ? setBuild('after', v) : setP({build: {...P().build, after: v}}).then(() => drawRight()); };
-  menuAt(el, [{label: 'Do nothing', hint: 'after each task', check: !b, run: () => put('', '')}, '-', {title: '1 · Build'}, ...[['build', 'Build', 'every task'], ['smart', 'Smart build', 'only on big changes / fixes']].map(([k, l, h]) => ({label: l, hint: h, check: b === k, run: () => put(b === k ? '' : k, t)})),
+  menuAt(el, [{label: 'Do nothing', hint: 'after each task', check: !b, run: () => put('', '')}, '-', {title: '1 | Build'}, ...[['build', 'Build', 'every task'], ['smart', 'Smart build', 'only on big changes / fixes']].map(([k, l, h]) => ({label: l, hint: h, check: b === k, run: () => put(b === k ? '' : k, t)})),
     {and: 'and'}, ...Object.entries(THEN).map(([k, l]) => ({label: l, check: t === k, run: () => put(b || 'build', t === k ? '' : k)}))]);
 }
 const thenRow = p => `${stHead('Then', '', 'Runs in plain code when Clauracle finishes a task' + (p.path && /claude-term|clauracle/i.test(p.path) ? '. Clauracle itself: a good build restarts into it' : ''))}${thenBtn(p).replace('"selbtn"', '"selbtn qw"')}`; // #192 under the NEXT list, styled as its label

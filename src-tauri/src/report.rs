@@ -147,7 +147,7 @@ header{{display:flex;gap:14px;align-items:center;border-bottom:3px solid #D77655
 header svg{{width:48px;height:48px}}h1{{margin:0;font-size:20pt}}header small{{color:#777}}
 h2{{color:#D77655;font-size:13pt;margin:20px 0 6px}}h3{{font-size:11.5pt;margin:12px 0 2px}}table{{border-collapse:collapse;width:100%}}td,th{{border-bottom:1px solid #eee;padding:4px 6px;text-align:left}}
 code{{background:#f4f1ef;padding:0 4px;border-radius:3px}}</style>
-<header>{logo}<div><small>Clauracle · {kind}</small><h1>{n}</h1><small>{date}</small></div></header>{body}"#,
+<header>{logo}<div><small>Clauracle | {kind}</small><h1>{n}</h1><small>{date}</small></div></header>{body}"#,
         n = html_esc(&p.name), kind = if week { "7-day report" } else { "Task report" });
     let stem = format!("{}-{}", if week { "7-day" } else { "task" }, (store::now()) as u64);
     let hf = d.join(format!("{stem}.html"));

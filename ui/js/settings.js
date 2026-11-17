@@ -1,4 +1,4 @@
-// ---- settings: Accounts (AI + GitHub) · Projects | Extensions (cx, agents, deps) · Appearance · Notifications ----
+// ---- settings: Accounts (AI + GitHub) | Projects | Extensions (cx, agents, deps) | Appearance | Notifications ----
 // #38 order: who + what | what Clauracle gets + Clauracle itself (divider before cx)
 // #59: GitHub folded into Accounts, Agents into Extensions; old page keys still open their new home
 const PAGES = {ai: ['user', 'Accounts'], projects: ['folder', 'Projects'], build: ['hammer', 'Build &amp; Release'], cx: ['plug', 'Extensions'], look: ['sliders', 'Appearance'], notify: ['bell', 'Notifications']};
@@ -30,12 +30,12 @@ const sTxt = e => [...e.childNodes].filter(n => n.nodeName !== 'BUTTON').map(n =
 function sidxFill() { const dl = $('sidx'); if (!dl || dl.options.length) return; const seen = new Set();
   dl.innerHTML = Object.entries(SPG).flatMap(([k, f]) => { const t = document.createElement('template'); try { t.innerHTML = f(); } catch { return []; }
     return [...t.content.querySelectorAll(SSEL)].map(sTxt).filter(x => x.length > 1 && x.length < 60 && !seen.has(k + x) && seen.add(k + x))
-      .map(x => `<option value="${esc(x + ' · ' + PAGES[k][1].replace('&amp;', '&'))}"></option>`); }).join(''); }
+      .map(x => `<option value="${esc(x + ' | ' + PAGES[k][1].replace('&amp;', '&'))}"></option>`); }).join(''); }
 // #450 suggestions = app menu (native datalist popup = square WebView box); datalist stays the index
 function sSug(i) { sidxFill(); const q = i.value.trim().toLowerCase(); if (!q) return closeMenu();
   const m = [...$('sidx').options].map(o => o.value).filter(v => v.toLowerCase().includes(q)).slice(0, 12);
   if (!m.length) return closeMenu(); MENU_T = 0; menuAt(i, m.map(v => ({label: v, run: () => { i.value = v; sFind(i); }}))); }
-function sFind(i) { const m = i.value.match(/^(.*) · ([^·]+)$/), k = m && Object.keys(PAGES).find(k => PAGES[k][1].replace('&amp;', '&') === m[2]); i.value = '';
+function sFind(i) { const m = i.value.match(/^(.*) \| ([^|]+)$/), k = m && Object.keys(PAGES).find(k => PAGES[k][1].replace('&amp;', '&') === m[2]); i.value = '';
   if (k) openSettings(k).then(() => jumpTo(() => [...$('dlg').querySelectorAll('.prefs .body ' + SSEL.split(', ').join(', .prefs .body '))].find(e => sTxt(e) === m[1]))); }
 // #215 footer: Jump to = the page's section titles (folds + secs), live from the DOM; FOOT[page] = contextual actions
 const sjumpEls = () => [...$('dlg').querySelectorAll('.prefs .body :is(details.fold, section.sec)')].filter(e => !e.parentElement.closest('details.fold, section.sec'));
@@ -79,7 +79,7 @@ async function cxAll(el, kind, scope, on) {
 // (CLI can't run their OAuth headless), others via /mcp in an interactive CLI. Rescan after.
 const cxBad = i => i.kind === 'mcp' && !/^connected$/i.test(i.note);
 const cxNote = i => esc(i.note) + (!cxBad(i) ? '' : /^claude\.ai /.test(i.label)
-  ? ` · <a href="#" data-url="https://claude.ai/settings/connectors">Authenticate</a>, then Rescan` : ' · run /mcp in the Terminal tab, then Rescan');
+  ? `, <a href="#" data-url="https://claude.ai/settings/connectors">Authenticate</a>, then Rescan` : ', run /mcp in the Terminal tab, then Rescan');
 const cxList = (kind, scope, x) => (scope.startsWith('project:') && kind === 'mcp' && cxItems(kind, scope).some(i => cxBad(i) && onOf(x).includes(i.id))
   ? `<p class="hint">${icon('info')} Some picked connections aren't connected: Clauracle can't use them until they are.</p>` : '') + cxItems(kind, scope).map(i =>
   optRow(esc(i.label), cxNote(i), scope === 'global' ? sw(!SET.off.includes(i.id), `cxLive(this); setGlobalOff('${esc(i.id)}', !this.checked)`)
@@ -151,7 +151,7 @@ const extDraw = () => { const el = $('exr'); if (el) el.innerHTML = extRows(); }
 async function extFind() {
   EXF.k = $('exk').value; EXF.q = $('exq').value.trim(); EXF.r = null; EXF.busy = {}; if (!EXF.q) return extDraw(); extDraw();
   try { const j = await call('ext_find', {kind: EXF.k, q: EXF.q});
-    EXF.r = EXF.k === 'skill' ? (j.skills || []).map(x => ({name: x.name, note: `${x.source} · ${(x.installs || 0).toLocaleString()} installs`, a: x.source, b: x.skillId, url: 'https://skills.sh/' + x.id}))
+    EXF.r = EXF.k === 'skill' ? (j.skills || []).map(x => ({name: x.name, note: `${x.source} | ${(x.installs || 0).toLocaleString()} installs`, a: x.source, b: x.skillId, url: 'https://skills.sh/' + x.id}))
       : (j.servers || []).filter(x => x._meta?.['io.modelcontextprotocol.registry/official']?.isLatest !== false).map(({server: s}) => { const [b, why] = mcpHow(s);
           return {name: s.name.split('/').pop(), note: s.description || '', a: b && s.name, b, why, url: s.repository?.url || s.websiteUrl}; });
   } catch (e) { EXF.r = {err: String(e)}; }
@@ -183,7 +183,7 @@ function buildPage() {
   return sec('CI', `<div class="box" id="set-ci">${optRow('CI builds', 'Let GitHub Actions build the other platforms (costs Actions minutes).', sw(S.ci_builds, `call('set_ci_builds', {on: this.checked}).then(refresh)`))}</div>`)
     + `
     ${fold('g-deps', 'Dependencies (this computer, WSL for Linux)' + infoI('Tools this computer needs to build the platforms your projects pick.'),`<div id="depsBox">${skel(90, 60, 'b100', 'b100', 'b100')}</div>`, 0, `<button class="ib" title="Check again" onclick="DEPSC=null; depsFill()">${icon('loop')}</button>`)}
-    ${sec('Mac signing (Apple Developer ID)', `<div class="box">${p ? optRow(esc(p.name), !mac ? 'Not set up: Mac builds stay unsigned' : keys.includes('APPLE_SIGNING_IDENTITY') ? 'Keys in .env: ' + keys.join(', ') : 'Set up · signing keys not in .env yet',
+    ${sec('Mac signing (Apple Developer ID)', `<div class="box">${p ? optRow(esc(p.name), !mac ? 'Not set up: Mac builds stay unsigned' : keys.includes('APPLE_SIGNING_IDENTITY') ? 'Keys in .env: ' + keys.join(', ') : 'Set up | signing keys not in .env yet',
       `<button class="btn sm" onclick="closeDlg(); ${go}">${icon('apple')}${mac ? 'Open' : 'Set up'}</button>`) : empty('Open a project to set up its Mac signing', startProj)}</div>`)}
     ${sec('Network Mac' + infoI('Build, sign and notarize macOS apps on a Mac on your network over SSH.'), macHtml())}`;
 }
@@ -194,7 +194,7 @@ function macHtml() {
   const t = MACT, chk = (n, v, hint) => optRow(n, v ? esc(v) : hint, v ? `<span class="ok">${icon('check')}</span>` : `<span class="faint">missing</span>`);
   return `<div class="box" id="set-mac">
     ${optRow('1. Turn on Remote Login on the Mac', 'System Settings › General › Sharing › Remote Login', '')}
-    ${S.mac?.host && !MACF ? optRow('2. SSH login', esc(macTo()) + (t?.ok ? ' · key login works' : ''), `<button class="btn sm" onclick="MACF=1; $('set-mac').outerHTML = macHtml()">Change</button>`)
+    ${S.mac?.host && !MACF ? optRow('2. SSH login', esc(macTo()) + (t?.ok ? ', key login works' : ''), `<button class="btn sm" onclick="MACF=1; $('set-mac').outerHTML = macHtml()">Change</button>`)
       : optRow('2. Set up SSH', 'The Mac\'s name or IP and your login. The password is not saved.',
         `<div style="display:flex;flex-direction:column;gap:6px;width:260px"><input id="macf-host" value="${esc(S.mac?.host || '')}" placeholder="mac-mini.local">
           <div style="display:flex;gap:6px"><input id="macf-user" value="${esc(S.mac?.user || '')}" placeholder="Mac username" style="width:100%"><input id="macf-pw" type="password" placeholder="Mac password" style="width:100%" onkeydown="event.key === 'Enter' && macKey()"></div>
@@ -344,7 +344,7 @@ async function aiMenu(b, cur, pick, o = {}, q = '') { q = q.trim().toLowerCase()
   const go = (v, r) => v.startsWith('local:') ? call('local_add', {nick: v.split(':')[2], model: v.split(':')[1]}).then(a => refresh().then(() => go('acct:' + a.id)), e => sure(String(e), 'OK', ''))
     : (aiUsed(v, r || o.mx?.(v)), pick(v, r));
   const it = x => ({...x, check: cur === x.v, run: () => go(x.v)});
-  const acct = a => it({label: a.nick, v: 'acct:' + a.id, hint: [a.model?.split('/').pop(), a.relay].filter(Boolean).join(' · '), icon: prov(a).i});
+  const acct = a => it({label: a.nick, v: 'acct:' + a.id, hint: [a.model?.split('/').pop(), a.relay].filter(Boolean).join(' | '), icon: prov(a).i});
   const claude = S.accounts.filter(a => prov(a) === PROVS.claude && mine(a)), local = S.accounts.filter(a => isLocal(a) && mine(a)), cloud = S.accounts.filter(a => prov(a) !== PROVS.claude && !isLocal(a) && mine(a));
   const ks = [...new Set(cloud.map(a => a.provider))], ms = await Promise.all(ks.map(k => modelsFor(k).catch(() => []))), lm = await localModels();
   const dl = lm.models.filter(m => m.have && m.fits && !S.accounts.some(a => a.provider === 'local' && a.model === m.id))
@@ -360,7 +360,7 @@ async function aiMenu(b, cur, pick, o = {}, q = '') { q = q.trim().toLowerCase()
   const sub = (label, items, x = {}) => items.length ? [{label, check: items.some(x => x.check), items, ...x}] : [];
   const hits = q && all.map(x => [x, fuzzy(q, (x.label + ' ' + (x.hint || '')).toLowerCase())]).filter(x => x[1] >= 0).sort((a, b) => a[1] - b[1]).map(x => x[0]);
   const recent = aiRecent().map(r => { const x = all.find(y => y.v === r.v); return x && (r.m == null ? x
-    : {...x, hint: [mName(r.m), r.e && EFFORTS[r.e], x.hint].filter(Boolean).join(' · '), check: false, run: () => go(r.v, r)}); }).filter(Boolean);
+    : {...x, hint: [mName(r.m), r.e && EFFORTS[r.e], x.hint].filter(Boolean).join(' | '), check: false, run: () => go(r.v, r)}); }).filter(Boolean);
   MENU_T = 0; menuAt(b, [{search: 'Search accounts and models', value: q, input: v => aiMenu(b, cur, pick, o, v)}, '-', ...(q ? (hits.length ? hits : [{title: 'No match'}])
     : [...(recent.length ? [{title: 'Recent'}, ...recent, '-'] : []), ...sub('Accounts', accts), ...sub('Relays', relays),
        ...sub('Cloud', provs, {check: provs.some(p => p.items.some(x => x.check))}), ...sub('Local', locals), ...(o.tail || [])])]);
@@ -387,7 +387,7 @@ function youHtml() {
       <span>Interests</span><div><input placeholder="Search or add your own (Enter)" style="width:100%;margin-bottom:6px" oninput="youFind(this)" onkeydown="if (event.key === 'Enter' && this.value.trim()) youTag(this.value.trim())">
         <div class="chips">${all.map(t => `<span class="pill${tags.includes(t) ? ' on' : ''}" onclick="youTag(${esc(JSON.stringify(t))})">${esc(t)}</span>`).join('')}</div></div>
       <span>Preferences</span><textarea style="width:100%;min-height:60px;font-size:13px" placeholder="e.g. TypeScript over JS, short answers, explain like I'm new to Rust, dark UIs" onchange="you({prefs: this.value})">${esc(y.prefs || '')}</textarea>
-    </div></div>`, [y.nick, tags.length && tags.length + ' interests', y.prefs && 'preferences'].filter(Boolean).join(' · ') || 'optional', '', false);
+    </div></div>`, [y.nick, tags.length && tags.length + ' interests', y.prefs && 'preferences'].filter(Boolean).join(' | ') || 'optional', '', false);
 }
 /* #257 Accounts 1-2-3 while setup is missing (AI login + GitHub); step 3 (You) optional → never keeps it up */
 function acctSteps() {
@@ -415,7 +415,7 @@ const relaySort = () => $('dlg').querySelectorAll('.rl').forEach(l => Sortable.c
 function aiPage() {
   RLS = relays();
   const meter = (v, l) => v == null ? '' : `<small class="dim">${l} <span class="bar"><i style="width:${v}%"></i></span> ${v}%</small>`;
-  const row = (a, n) => { const u = S.usage[a.id] || {}, sub = [a.id === 'Main' ? 'Claude Code login' : a.base_url ? esc(prov(a) === PROVS.claude ? a.base_url : prov(a).l + (a.model ? ' · ' + a.model : '')) : 'setup-token', !n && a.id === S.default_account && 'default'].filter(Boolean).join(' · ');
+  const row = (a, n) => { const u = S.usage[a.id] || {}, sub = [a.id === 'Main' ? 'Claude Code login' : a.base_url ? esc(prov(a) === PROVS.claude ? a.base_url : prov(a).l + (a.model ? ' | ' + a.model : '')) : 'setup-token', !n && a.id === S.default_account && 'default'].filter(Boolean).join(' | ');
     return `<details class="acct" data-id="${esc(a.id)}"><summary>${n ? `<span class="ord" title="Order in this relay">#${n}</span>` : ''}
       ${icon(prov(a).i)}<span class="who"><small>${sub}</small><b>${esc(a.nick)}</b></span>
       <span class="um">${localUse(u) ? `<small class="dim">${icon('clock')} ${localUse(u)}</small>` : meter(u.five_hour, '5h') + meter(u.seven_day, 'week') || '<small class="dim">No usage yet</small>'}</span></summary>
@@ -433,7 +433,7 @@ function aiPage() {
         ${a.id === 'Main' ? '' : `<button class="btn ghost" onclick="rmClaude('${esc(a.id)}')">Remove</button>`}</div></div></details>`; };
   const list = !RLS.length ? `<div class="accts">${S.accounts.map(a => row(a)).join('')}</div>` :[...RLS, ''].map((r, i) => { const as = S.accounts.filter(a => (a.relay || '') === r);
     return `<div class="relay"><div class="rh">${r ? `<input class="rname" value="${esc(r)}" title="Rename this relay" onchange="relayRename(${i}, this.value)">` : '<b>Not in a relay</b>'}
-      <small class="dim">${as.length} account${as.length === 1 ? '' : 's'}${r && as.length > 1 ? ' · first with room is used' : ''}</small><span class="grow"></span>${r && !as.length ? `<button class="ib" title="Remove this empty relay" onclick="relayDrop(${i})">${icon('trash')}</button>` : ''}</div>
+      <small class="dim">${as.length} account${as.length === 1 ? '' : 's'}${r && as.length > 1 ? ', first with room is used' : ''}</small><span class="grow"></span>${r && !as.length ? `<button class="ib" title="Remove this empty relay" onclick="relayDrop(${i})">${icon('trash')}</button>` : ''}</div>
       <div class="accts rl" data-r="${r ? i : ''}">${as.map((a, k) => row(a, r && k + 1)).join('')}</div></div>`; }).join('');
   return acctSteps() + youHtml() + sec('AI accounts' + infoI('Accounts in one relay take over from each other when one hits its limit, in their order: the first one with room is used, and a backup hands back as soon as an account above it has room again. Add other providers or a model on this computer to a relay to use them as backups.' + (RLS.length ? ' Drag an account by its title to reorder it or move it to another relay.' : '')),
     list, `<button class="btn sm" title="Add relay" onclick="relayAdd()">${icon('plus')}Relay</button><button class="btn sm" title="Add account" onclick="addAcctDlg()">${icon('plus')}Account</button>`)
@@ -468,7 +468,7 @@ function ghCard(u) {
   const a = GHA[u] instanceof Promise ? null : GHA[u], e = esc(u), org = !SET.off.includes('ghorg:' + u);
   const info = !a ? '<small class="dim">Loading…</small>' : [a.repos != null && `${a.repos} repo${a.repos === 1 ? '' : 's'}`, a.last && 'active ' + new Date(a.last).toLocaleDateString(undefined, {day: 'numeric', month: 'short'}),
     a.orgs?.length && `${a.orgs.length} org${a.orgs.length === 1 ? '' : 's'}`].filter(Boolean).map(t => `<small class="dim">${t}</small>`).join('') || '<small class="dim">No details</small>';
-  return `<details class="acct" data-gh="${e}"><summary>${icon('gh')}<span class="who"><small>GitHub${a?.name ? ' · ' + esc(a.name) : ''}</small><b>@${e}</b></span><span class="um">${info}</span></summary>
+  return `<details class="acct" data-gh="${e}"><summary>${icon('gh')}<span class="who"><small>GitHub${a?.name ? ' | ' + esc(a.name) : ''}</small><b>@${e}</b></span><span class="um">${info}</span></summary>
     <div><div class="grid2"><span>Organizations</span><span>${a?.orgs?.length ? a.orgs.map(o => `<span class="pill dim">${esc(o)}</span>`).join(' ') : '<span class="hint">None</span>'}</span>
       <span>Organization repos</span><label class="row"><input type="checkbox" ${org ? 'checked' : ''} onchange="setGlobalOff('ghorg:${e}', !this.checked); delete REPOS['${e}']"> Show them when cloning a repo</label></div>
       <div class="btns"><button class="btn" data-url="https://github.com/${e}">Open profile</button><button class="btn ghost" onclick="rmGh('${e}')">Log out</button></div></div></details>`;
@@ -767,7 +767,7 @@ const saveNotify = c => call('set_notify', {notify: {...S.notify, ...c}}).then(r
 let CS = {scope: 'user'};
 function csAcct(id) {
   const d = $('dlg2'), a = S.accounts.find(x => x.id === id);
-  d.innerHTML = `<div class="small-dlg" style="width:min(640px,92vw)"><h2>Advanced AI settings · ${esc(a.nick)}</h2>
+  d.innerHTML = `<div class="small-dlg" style="width:min(640px,92vw)"><h2>Advanced AI settings: ${esc(a.nick)}</h2>
     <div id="csBody">${skel(40, 'b100', 'b100', 'b100', 'b100')}</div><div class="btns"><button class="btn ghost" onclick="$('dlg2').close()">Close</button></div></div>`;
   dlgShell(d.firstElementChild); d.showModal(); CS = {scope: 'account:' + id, acct: id}; csLoad();
 }
@@ -885,7 +885,7 @@ async function localList() {
   $('pvLocal').innerHTML = `<div class="sysd"><div><small>Memory</small><b>${r.ram} GB</b></div><div><small>Graphics memory</small><b>${r.vram ? r.vram + ' GB' : '–'}</b><small>${esc(be)}</small></div><div><small>CPU threads</small><b>${r.cpu || '?'}</b></div>
     ${(r.drives || []).map(v => `<div><small>Drive ${esc(v.name)}</small><b>${v.free} GB free</b><span class="ubar"><i style="width:${v.total ? Math.round(100 - v.free * 100 / v.total) : 0}%"></i></span><small>of ${v.total} GB</small></div>`).join('')}</div>
     <div class="row" style="margin:8px 0"><input id="lmDir2" class="grow mono" value="${esc(r.dir)}" title="Where models are saved" onchange="localDir(this.value.trim())"><button class="btn" onclick="localDir()">Browse…</button></div>`
-    + r.models.map(m => `<div class="row" style="margin-top:4px"><span class="grow${m.fits ? '' : ' dim'}">${esc(m.name)} <small class="dim">${m.gb} GB${m.fits ? ` · score ${m.score}` : ` · needs ${m.need} GB memory`}${m.id === best ? ' · suggested' : ''}</small></span>
+    + r.models.map(m => `<div class="row" style="margin-top:4px"><span class="grow${m.fits ? '' : ' dim'}">${esc(m.name)} <small class="dim">${m.gb} GB${m.fits ? ` | score ${m.score}` : ` | needs ${m.need} GB memory`}${m.id === best ? ' | suggested' : ''}</small></span>
       <button class="btn${m.id === best ? ' primary' : ''}" data-lm onclick="localAdd('${m.id}')">${m.have ? 'Add' : 'Download'}</button></div>`).join('');
 }
 async function localDir(d) { d ??= await T.dialog.open({directory: true, title: 'Folder for local models'}); if (d == null) return; await call('local_dir_set', {dir: d}); await refresh(); if ($('pvLocal')) localList(); else if ($('lmDir')) openSettings('projects'); }

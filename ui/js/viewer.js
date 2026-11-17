@@ -213,7 +213,7 @@ function edNotes(focus) {
     const d = Object.assign(document.createElement('div'), {className: 'ednote' + (o.col ? ' col' : '')});
     d.style.left = o.x * s + 'px'; d.style.top = (o.y + o.h) * s + 6 + 'px'; d.style.borderColor = o.color;
     if (o.col) { d.innerHTML = icon('doc'); d.title = o.n + '. ' + (o.note || 'Empty note'); d.onclick = () => { o.col = false; edNotes(o); }; return W.append(d); }
-    d.innerHTML = `<textarea rows="1" placeholder="${o.n}. Note (Ctrl+Enter folds)" title="Enter = new line · ✓ or Ctrl+Enter = done (folds it to an icon)"></textarea><button class="ib" title="Done">${icon('check')}</button>`;
+    d.innerHTML = `<textarea rows="1" placeholder="${o.n}. Note (Ctrl+Enter folds)" title="Enter = new line, ✓ or Ctrl+Enter = done (folds it to an icon)"></textarea><button class="ib" title="Done">${icon('check')}</button>`;
     const t = d.querySelector('textarea'), fit = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }; // #232 grows on soft wraps too
     t.value = o.note; t.onfocus = () => ED.act = o; t.oninput = () => { o.note = t.value; fit(); edDirty(); };
     t.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); o.col = o.ok = true; edNotes(); }

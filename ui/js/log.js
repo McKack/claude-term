@@ -71,7 +71,7 @@ async function evSave(t) { if (!t) return;
     t.orig = t.text; evDraw(); evLint(t, 1); toast('Saved ' + t.name, 'ok'); } catch (e) { toast(String(e), 'err'); } }
 function evDraw(re) { if (view !== 'edit' || !cur) return;
   const E = etabs(), t = E.tabs[E.on], b = $('ebody');
-  $('etabs').innerHTML = E.tabs.map((x, i) => `<div class="et${i === E.on ? ' on' : ''}${evDirty(x) ? ' dirty' : ''}" title="${esc(x.rel || x.name)}${x.rel ? ' · Ctrl+click: also open in the side Code tab' : ''}" onclick="(event.ctrlKey || event.metaKey) && ${!!x.rel} ? previewFile(${esc(JSON.stringify(x.rel || ''))}, true) : evPick(${i})" onauxclick="if (event.button === 1) evClose(${i})">${icon(/\.(png|jpe?g|gif|webp|bmp)$/i.test(x.rel || '') ? 'image' : 'file')}${esc(x.name)}<button class="ib x" title="Close" onclick="event.stopPropagation(); evClose(${i})">${icon('x')}</button></div>`).join('')
+  $('etabs').innerHTML = E.tabs.map((x, i) => `<div class="et${i === E.on ? ' on' : ''}${evDirty(x) ? ' dirty' : ''}" title="${esc(x.rel || x.name)}${x.rel ? ', Ctrl+click: also open in the side Code tab' : ''}" onclick="(event.ctrlKey || event.metaKey) && ${!!x.rel} ? previewFile(${esc(JSON.stringify(x.rel || ''))}, true) : evPick(${i})" onauxclick="if (event.button === 1) evClose(${i})">${icon(/\.(png|jpe?g|gif|webp|bmp)$/i.test(x.rel || '') ? 'image' : 'file')}${esc(x.name)}<button class="ib x" title="Close" onclick="event.stopPropagation(); evClose(${i})">${icon('x')}</button></div>`).join('')
     + `<button class="ib add" title="New tab" onclick="evNew()">${icon('plus')}</button>`;
   evBar(t); b.style.zoom = t?.img ? '' : UI.ez || 1;
   const ta = b.querySelector('.ecode textarea'); if (ta && b._t) Object.assign(b._t, {ss: ta.selectionStart, se: ta.selectionEnd, sy: b.firstChild.scrollTop}); // caret + scroll survive tab switches
@@ -138,7 +138,7 @@ const evImg = () => !!(cur && etabs().tabs[etabs().on]?.img && VZ?.k === 'img');
 const evZp = p => evImg() ? vZp(p) : evSet('ez', Math.min(300, Math.max(50, p)) / 100, false), evZoom = d => evImg() ? (d ? vZp(zStep(Math.round(VZ.s * 100), d)) : vZoom(0)) : evZp(d ? zStep(Math.round((UI.ez || 1) * 100), d) : 100);
 /* #393 one zoom control [−] N% [+]: ± snap to next multiple of 10 (66 → 70 → 80), drag on % = 1%/px, dblclick = 100%. get/set = JS exprs (set gets p = absolute %) ∵ bars re-render mid-drag */
 const zStep = (p, d) => d > 0 ? Math.floor(p / 10 + 1e-6) * 10 + 10 : Math.ceil(p / 10 - 1e-6) * 10 - 10;
-const zoomCtl = (get, set, tip = '') => `<span class="zctl"><button class="ib" title="Zoom out" onclick="(p => ${set})(zStep(${get}, -1))">${icon('minus')}</button><span class="zp" data-tip="Drag left/right to zoom${tip} · double-click: 100%" onpointerdown="zDrag(event, () => ${get}, p => ${set})" ondblclick="(p => ${set})(100)">${(0, eval)(get)}%</span><button class="ib" title="Zoom in" onclick="(p => ${set})(zStep(${get}, 1))">${icon('plus')}</button></span>`;
+const zoomCtl = (get, set, tip = '') => `<span class="zctl"><button class="ib" title="Zoom out" onclick="(p => ${set})(zStep(${get}, -1))">${icon('minus')}</button><span class="zp" data-tip="Drag left/right to zoom${tip} | double-click: 100%" onpointerdown="zDrag(event, () => ${get}, p => ${set})" ondblclick="(p => ${set})(100)">${(0, eval)(get)}%</span><button class="ib" title="Zoom in" onclick="(p => ${set})(zStep(${get}, 1))">${icon('plus')}</button></span>`;
 /* #399 ONE drag model for every divider/handle: press → move(ev) follows pointer x/y wherever it is (window listeners + capture)
    → stops on release/cancel/lost capture/buttons 0/window blur/pointer outside the window. cap false = handle re-renders mid-drag (capture would drop).
    Handle gets .on (hover-style highlight) + body.dragging (cursor = handle's, no text select, iframes inert); tooltip hidden for the drag */
@@ -453,7 +453,7 @@ function entry(e) {
   else if (e.pill) d.innerHTML = `<span class="npill${e.rb ? ' on' : builds[cur]?.busy && e === logs[cur]?.findLast(x => x.pill && !x.rb) ? ' on' : ''}">${icon(e.pill)}${esc(e.text)}</span>`; // #244 Thinking-pill look; shimmer while its build runs (#247 rb = report being written)
   else { d.textContent = e.text; if (e.kind === 'note' && !e.act && !e.rid) d._txt = e.text; } // #463 _txt = collapsible repeat key
   if (e.kind === 'user' && e.texts?.length) { // big pastes stay chips in the bubble (texts saved in the log entry → open after a restart too)
-    d.insertAdjacentHTML('beforeend', `<div class="tpills">${e.texts.map((x, k) => `<button class="rpill tchip" data-k="${k}">${icon('doc')}${esc(stem(x.name))} · ${tsize(x.text)}</button>`).join('')}</div>`);
+    d.insertAdjacentHTML('beforeend', `<div class="tpills">${e.texts.map((x, k) => `<button class="rpill tchip" data-k="${k}">${icon('doc')}${esc(stem(x.name))} | ${tsize(x.text)}</button>`).join('')}</div>`);
     d.querySelectorAll('.tpills .tchip').forEach(b => b.onclick = () => textView(stem(e.texts[+b.dataset.k].name), e.texts[+b.dataset.k].text)); }
   // #169 ticks after the chain: as its own if, its `else` overwrote md() replies with plain text
   if (e.kind === 'user' && e.st && view === 'chat') USEREL.set(e, d); // #248 tick sits after the timestamp (row head), not in the bubble
@@ -470,7 +470,7 @@ function entry(e) {
 }
 // note buttons (#170 Built! / Build failed): label, handler (cur = the project shown)
 const NOTEACT = {run: [icon('play') + 'Run', "call('run_step', {pid: cur, step: 'run'})"], restart: ['Restart into it', "call('restart_into', {pid: cur})"], rep: [icon('list') + 'See report', 'repOpen(this.parentElement.dataset.rid)'], out: ['See output', "rightTab('build'); setTimeout(() => $('buildOut')?.scrollIntoView({block: 'nearest'}))"]};
-// chat look: avatar (Clauracle's icon | your GitHub picture) + name · time over the bubble
+// chat look: avatar (Clauracle's icon | your GitHub picture) + name | time over the bubble
 const tm = ts => { const d = ts ? new Date(ts) : null; if (!d || isNaN(d)) return '';
   const t = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
   return d.toDateString() === new Date().toDateString() ? t : d.toLocaleDateString([], {day: 'numeric', month: 'short'}) + ', ' + t; };
@@ -615,17 +615,17 @@ async function repOpen(rid, tb = 'done') {
   const tile = (n, l, i) => `<div class="rtile" title="${n} ${l}">${icon(i)}<b>${n}</b></div>`;
   const body = tb === 'done' ? `<div class="rtiles">${tile(dur(r.ms), 'worked', 'timer')}${tile(ok.filter(o => o.cmd).length, 'commands', 'term')}${tile(Object.keys(files).length, 'files', 'file')}${tile(closed.length, 'issues closed', 'check')}</div>
       ${ok.filter(o => o.cmd).map(o => `<div class="rrow">${icon('check')}<code class="grow">${esc(o.cmd.split('\n')[0])}</code><small class="faint">${tm(o.ts)}</small></div>`).join('') || '<p class="dim">No commands run.</p>'}
-      ${Object.keys(counts).length ? `<p class="faint" style="margin:6px 0">${Object.entries(counts).map(([t, n]) => `${esc(t)} ×${n}`).join(' · ')}</p>` : ''}
+      ${Object.keys(counts).length ? `<p class="faint" style="margin:6px 0">${Object.entries(counts).map(([t, n]) => `${esc(t)} ×${n}`).join(' | ')}</p>` : ''}
       ${Object.keys(files).length ? `<h3>Files touched</h3><div class="rfiles">${Object.entries(files).map(([f, x]) => `<button class="btn sm" data-rf="${esc(f)}">${icon(x.w ? 'file' : 'new')}${esc(f.split('/').pop())}${x.n > 1 ? ` <span class="pill">×${x.n}</span>` : ''}</button>`).join('')}</div><div id="rdiff"></div>` : ''}`
     : tb === 'fail' ? bad.map((o, k) => { const m = missOf(o.err); return `<div class="rfail">${icon('warn')}<div class="grow" style="min-width:0"><code>${esc((o.cmd || o.text).split('\n')[0])}</code>
         <pre class="diff errout">${esc(o.err.trim().split('\n').slice(-6).join('\n'))}</pre><div class="row" style="gap:6px;justify-content:flex-end;margin-top:10px">${m ? `<button class="btn sm primary" data-fix="${k}">${esc(m.label)}</button>` : ''}<button class="btn sm" data-ask="${k}">${icon('chat')}Ask Clauracle to fix</button></div></div></div>`; }).join('') || `<p class="dim">${icon('check')} Nothing failed.</p>`
     : `<div class="rtl">${[...r.segs.map(s => [s.ts, `<div class="rstep"><small class="mono faint">${tm(s.ts)}</small><i></i><div class="grow" style="min-width:0"><b>${esc(s.title)}</b>
-        <div class="faint" style="font-size:12px">${s.n} steps · ${s.files} files${s.closed.map(n => ` · <span class="pill dim">closed #${n}</span>`).join('')}${s.filed.map(n => ` · <span class="pill dim">filed #${n}</span>`).join('')}</div></div><small>${dur(s.ms)}</small></div>`]),
+        <div class="faint" style="font-size:12px">${s.n} steps | ${s.files} files${s.closed.map(n => ` | <span class="pill dim">closed #${n}</span>`).join('')}${s.filed.map(n => ` | <span class="pill dim">filed #${n}</span>`).join('')}</div></div><small>${dur(s.ms)}</small></div>`]),
         ...(r.notes || []).map(n => [n.ts, `<div class="rstep"><small class="mono faint">${tm(n.ts)}</small><i></i><span class="grow dim" style="font-size:12px">${esc(n.text)}</span></div>`])] /* #363 status notes */
         .sort((a, b) => Date.parse(a[0]) - Date.parse(b[0])).map(x => x[1]).join('')}
         <div class="rstep tot"><small class="mono faint">${tm(r.t1)}</small><i></i><b class="grow">Done</b><b>${dur(r.ms)}</b></div></div>`;
   const tabs = [['done', 'check', 'Completed', ok.length], ['fail', 'warn', 'Failed', bad.length], ['tl', 'clock', 'Timeline', '']];
-  dlg(`<div class="rhead"><h2>Done! Worked for ${dur(r.ms)}</h2><small class="dim">${esc(r.project || '')} · ${tm(r.t0)} – ${tm(r.t1)}</small>
+  dlg(`<div class="rhead"><h2>Done! Worked for ${dur(r.ms)}</h2><small class="dim">${esc(r.project || '')} | ${tm(r.t0)} – ${tm(r.t1)}</small>
       <div class="seg" style="margin-top:10px">${tabs.map(([k, i, l, n]) => `<button class="${k === tb ? 'on' : ''}" data-rt="${k}">${icon(i)}${l}${n !== '' ? ` <span class="pill dim">${n}</span>` : ''}</button>`).join('')}</div></div>
     <div class="dscroll wrap rbody">${body}</div>
     <div class="btns"><button class="btn rpdf" onclick="repPdf('${rid}')">${icon('sparkle')}Write a detailed report (.pdf)</button><button class="btn rpdf" onclick="repPdf()">${icon('cal')}Write a 7-day report (.pdf)</button><span class="grow"></span><button class="btn ghost" onclick="closeDlg()">Close</button></div>`, 'small-dlg wide');

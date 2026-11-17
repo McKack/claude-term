@@ -276,7 +276,7 @@ function bundleEdit() {
 function bidPrev() {
   const v = $('bidIn').value.trim(), ok = BID_OK(v), b = BUNDLE[cur] || {};
   $('bidMsg').className = ok ? 'dim' : 'err';
-  $('bidMsg').innerHTML = ok ? `Apple App ID <b>${esc(v)}</b> · written to <span class="mono">${esc(b.file || '(no config found)')}</span>` : 'Use letters, digits and -, split by dots, like com.you.app';
+  $('bidMsg').innerHTML = ok ? `Apple App ID <b>${esc(v)}</b> | written to <span class="mono">${esc(b.file || '(no config found)')}</span>` : 'Use letters, digits and -, split by dots, like com.you.app';
   $('bidSave').disabled = !ok || !b.file;
 }
 async function bundleSave() {

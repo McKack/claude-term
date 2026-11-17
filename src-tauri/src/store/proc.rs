@@ -219,7 +219,7 @@ pub fn git_branch(cwd: &str) -> String {
     let lines: Vec<&str> = o.stdout.lines().collect();
     let Some(first) = lines.first() else { return String::new() };
     let branch = first.trim_start_matches("## ").split("...").next().unwrap_or("").to_string();
-    if lines.len() > 1 { format!("{branch} · {} changed", lines.len() - 1) } else { branch }
+    if lines.len() > 1 { format!("{branch} | {} changed", lines.len() - 1) } else { branch }
 }
 
 /// owner, repo from a GitHub remote url (https or ssh)

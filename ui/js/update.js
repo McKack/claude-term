@@ -62,7 +62,7 @@ function drawChrome() {
     sk.hidden = false; if (stick) toEnd(true); }
   sk.hidden = !skOn;
   workTick();
-  $('status').innerHTML = `<button onclick="acctMenu(this)" title="AI account, model and effort: ${esc(ownModel(p) || mName(p.model) + (p.effort ? ', ' + (EFFORTS[p.effort] || p.effort) + ' effort' : ''))}">${icon(prov(S.accounts.find(a => a.id === p.account)).i)}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(ownModel(p) || mName(p.model) + (p.effort ? ' · ' + (EFFORTS[p.effort] || p.effort) : ''))}</span>${icon('down')}</button>`
+  $('status').innerHTML = `<button onclick="acctMenu(this)" title="AI account, model and effort: ${esc(ownModel(p) || mName(p.model) + (p.effort ? ', ' + (EFFORTS[p.effort] || p.effort) + ' effort' : ''))}">${icon(prov(S.accounts.find(a => a.id === p.account)).i)}<b class="lb">${esc(nick(p.account))}</b><span class="lb">${esc(ownModel(p) || mName(p.model) + (p.effort ? ' | ' + (EFFORTS[p.effort] || p.effort) : ''))}</span>${icon('down')}</button>`
     + `<button onclick="menuAt(this, permItems())" title="Permissions: level ${permN(p.mode)} of 5, ${esc(PERMS[p.mode] || p.mode)}">${PERM_C[permN(p.mode) - 1] ? icon('shield').replace('<svg', `<svg style="color:${PERM_C[permN(p.mode) - 1]}"`) : icon('shield')}<span class="lb">${PERM_S[p.mode] || p.mode}</span><span class="ab">${permN(p.mode)}</span></button>`
     + (p.questions.length ? `<button onclick="showQuestions(cur)" class="pill" style="color:var(--accent)" title="${p.questions.length} question${p.questions.length > 1 ? 's' : ''} waiting">${p.questions.length}?</button>` : '');
   drawGbar();
@@ -130,7 +130,7 @@ function workTick() {
     $('log').querySelectorAll('.tav.on').forEach(x => x !== av && x.classList.remove('on'));
     av?.classList.toggle('on', !!busy[cur]); if (av) av.dataset.t = mmss(now - (TURN0[cur] || d.t)); // #225 ring + turn timer whenever busy
     $('workpill').hidden = !busy[cur] || !$('handpill').hidden;
-    $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} · ${mmss(now - (TURN0[cur] || d.t))}`; jumpTxt(); }; // #260 pill = same turn total as the avatar badge, never resets per step
+    $('worktext').textContent = `${rows.length ? 'Thinking' : d.text} | ${mmss(now - (TURN0[cur] || d.t))}`; jumpTxt(); }; // #260 pill = same turn total as the avatar badge, never resets per step
   if (on && !workT) { draw(); workT = setInterval(draw, 1000); }
   if (!on && workT) { clearInterval(workT); workT = null; }
   if (on) draw(); else { $('log').querySelectorAll('.tl > div.run, .tav.on').forEach(x => x.classList.remove('run', 'on')); $('skel').classList.remove('hd'); $('log').querySelectorAll('.crow.stick').forEach(x => x.classList.remove('stick')); $('stickav')?.remove(); jumpTxt(); }
@@ -191,7 +191,7 @@ function acctMenu(b, p = P(), set = setP, hot) { const a = S.accounts.find(x => 
     const at = anchorOf(b), go = () => set({account: ai}).then(refresh).then(() => pin(ai) && acctMenu(at, P(p.id), set, true)); mo ? ollamaReady(S.accounts.find(x => x.id === ai).provider, mo).then(() => call('update_account', {id: ai, changes: {model: mo}})).then(go, e => sure(String(e), 'OK', '')) : go(); },
     {solo: true, mx: v => pin(v.slice(5)) ? {m, e: ef} : undefined, tail: [...tail, '-', {icon: 'gear', label: 'Manage accounts…', run: () => openSettings('ai')}]}); }
 const permItems = () => [{title: 'Permissions (level)'}, ...Object.entries(PERMS).map(([k, l], i) => ({check: P().mode === k, label: `${i + 1}  ${l}`, run: () => setP({mode: k})}))];
-const usageText = id => { const u = S.usage[id] || {}; return localUse(u) || [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' · ') || 'usage not seen yet'; };
+const usageText = id => { const u = S.usage[id] || {}; return localUse(u) || [u.five_hour != null && `5h ${u.five_hour}%`, u.seven_day != null && `week ${u.seven_day}%`].filter(Boolean).join(' | ') || 'usage not seen yet'; };
 
 const LOADED = new Set(); // pids whose transcript is in logs[]
 /* #243 the page's log on disk (log_save → open_project `saved`) ∵ transcripts lack UI-only notes (task reports…) + only 2 sessions.

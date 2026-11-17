@@ -102,14 +102,14 @@ function projectsPage() {
     <small class="dim sel mono">${esc(p.path)}</small><div id="placeBox" class="row" style="gap:6px;margin:6px 0 0;min-height:30px"></div>
     ${projSteps(p)}
     ${fold('p-acct', 'Accounts' + infoI('This project picks its own accounts: click a card to assign it. Click a GitHub, Google or developer card again to unassign it; the AI account is always one of the AI cards.'), projAccts(p),
-      [p.gh ? '@' + p.gh : 'no GitHub', (a => a && (a.relay || a.nick))(S.accounts.find(a => a.id === p.account)), p.gaccount].filter(Boolean).join(' · '),
+      [p.gh ? '@' + p.gh : 'no GitHub', (a => a && (a.relay || a.nick))(S.accounts.find(a => a.id === p.account)), p.gaccount].filter(Boolean).join(' | '),
       `<button class="ib" title="Set up accounts" onclick="event.preventDefault(); openSettings('gh')">${icon('plus')}</button>`, !p.gh)}
     ${fold('p-sess', 'Session', `<div class="grid2" style="margin-top:0">
       <span>Model</span><select onchange="setM({model:this.value})">${options(MODELS, p.model)}</select>
       <span>Permissions</span><select onchange="setM({mode:this.value})">${options(PERMS, p.mode)}</select>
       <span>Clear & continue</span><select onchange="setM({cont:this.value})">${options(Object.fromEntries(Object.entries(MODES).map(([k, v]) => [k, v[0]])), p.cont)}</select>
       <span>Hand over at</span><span class="row"><input type="number" min="0" max="95" value="${p.context_limit}" style="width:76px" onchange="setM({context_limit:+this.value})"><small class="dim">% of the context window (0 = never)</small></span>
-    </div>`, [p.model && mName(p.model), PERMS[p.mode]].filter(Boolean).join(' · '), '', false)}
+    </div>`, [p.model && mName(p.model), PERMS[p.mode]].filter(Boolean).join(' | '), '', false)}
     ${fold('p-save', 'Options', `<div class="box">
       ${optRow('Ponytail', 'The simplest code that works: no bloat, no speculative abstractions', sw(p.ponytail, 'setM({ponytail:this.checked})'))}
       ${(p.allow || []).length ? /* 3 rows: title / tags / description (#53) ∵ side-by-side squeezed the text */ `<div class="opt-row" style="display:block"><div>Always allowed</div><span class="row wrap" style="gap:4px;margin:6px 0">${p.allow.map(t => `<span class="pill" style="cursor:pointer" title="Ask again for ${esc(t)}" onclick="setM({allow: P(mp).allow.filter(x => x !== '${esc(t)}')})">${esc(t.replace(/@\d+$/, ' (24 h)'))} ${icon('x')}</span>`).join('')}</span><small class="dim">Tools this project runs without asking</small></div>` : ''}
@@ -139,7 +139,7 @@ async function drawDisk() {
   const l = await call('disk', {pid: mp}).catch(e => (box.textContent = e, null)); if (!l) return;
   box.innerHTML = l.length ? l.map(c => `<div class="row"><span class="mono grow">${esc(c.dir)}</span><span class="dim">${mb(c.size)}</span>
       <button class="btn" onclick="cleanDisk(['${esc(c.dir)}'])">Clean</button></div>`).join('')
-    + (l.length > 1 ? `<div class="btnrow"><button class="btn" onclick="cleanDisk([])">Clean all · ${mb(l.reduce((a, c) => a + c.size, 0))}</button></div>` : '')
+    + (l.length > 1 ? `<div class="btnrow"><button class="btn" onclick="cleanDisk([])">Clean all | ${mb(l.reduce((a, c) => a + c.size, 0))}</button></div>` : '')
     : '<p class="hint">Nothing to clean.</p>';
 }
 async function cleanDisk(dirs) {

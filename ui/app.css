@@ -344,7 +344,7 @@ pre.diff .ctx { color:var(--faint); }
 #log.term .msg.tool { white-space:pre-wrap; color:var(--t-tool); display:block; } #log.term .msg.tool::before { content:"● "; width:auto; height:auto; background:none; }
 #log.term .msg.out { color:var(--t-out); padding-left:2ch; border-left:2px solid var(--t-hover); max-height:320px; overflow:auto; }
 #log.term .msg.think { color:var(--t-dim); font-style:italic; } #log.term .msg.think::before { content:"∴ "; }
-#log.term .msg.note { color:var(--t-note); text-align:left; display:inline; } #log.term .msg.note + .msg.note::before { content:" · "; color:var(--t-faint); } /* #327 status notes in a row = one wrapped line */
+#log.term .msg.note { color:var(--t-note); text-align:left; display:inline; } #log.term .msg.note + .msg.note::before { content:" | "; color:var(--t-faint); } /* #327 status notes in a row = one wrapped line */
 #log.term .tools { gap:0; }
 /* #311 text-mode cards (questions, You answered, permissions): box-drawn frame, ( )/[ ] choices, [Buttons] */
 #log.term .card { color:inherit; font:inherit; background:none; border:0; outline:1px solid var(--t-rule); outline-offset:-1px; border-radius:0 !important; box-shadow:none; padding:0 1ch; } /* #327 outline = no layout px */
@@ -404,7 +404,7 @@ pre.diff .ctx { color:var(--faint); }
 #dock { padding:20px 24px 14px; margin-top:-20px; position:relative; z-index:2; pointer-events:none;
   background:linear-gradient(to bottom, transparent, var(--bg) 20px); } /* #232 overlap 40→20: less dead space under the last line */
 #dock .col > * { pointer-events:auto; }
-/* #251 one floating bottom pill: ↓ + live status (Thinking · 0:01 / New!) in the Thinking-pill look, above the composer (not over it) */
+/* #251 one floating bottom pill: ↓ + live status (Thinking | 0:01 / New!) in the Thinking-pill look, above the composer (not over it) */
 #jump { font-size:12.5px; padding:5px 14px; line-height:inherit; /* #416 = #workpill size (.npill 12px/2px 8px/20px; button ≠ inherit by default) */ position:absolute; bottom:100%; margin-bottom:4px; left:50%; transform:translateX(-50%); pointer-events:auto; cursor:pointer; color:var(--text); white-space:nowrap; box-shadow:var(--shadow-pop); font-variant-numeric:tabular-nums; } #jump[hidden] { display:none; } #jump:not([hidden]) { animation:jumpin .45s cubic-bezier(.34,1.56,.64,1); } @keyframes jumpin { from { opacity:0; translate:0 24px; } } /* #276 bounce up from below; replays on every unhide (display none→flex) */ #jump:hover { border-color:var(--accent); }
 #jump.on { color:var(--accent); background:linear-gradient(90deg, var(--side) 25%, var(--soft) 50%, var(--side) 75%) 0 0/200% 100%; animation:jumpin .45s cubic-bezier(.34,1.56,.64,1), shimmer 1.8s linear infinite; } #jump span:empty { display:none; }
 #workpill, #handpill, #suggest, .qp { animation:rise .22s ease-out; } @keyframes rise { from { opacity:0; translate:0 6px; } } #log { padding-bottom:28px; }
@@ -831,7 +831,7 @@ dialog::backdrop { background:#0000004d; backdrop-filter:blur(2px); }
 .plist button span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .small-dlg { width:min(520px,92vw); padding:20px; }
 .small-dlg h2 { font-size:17px; font-weight:600; margin:0 0 10px; } .small-dlg h2 .ib { vertical-align:middle; } .small-dlg .rhead h2 { margin:0; } /* the one dialog title */
-/* #408 modal shell (dlgShell): header + footer pinned, only .db scrolls; footer = .btns: extras · grow · Cancel/Close (ghost) · primary */
+/* #408 modal shell (dlgShell): header + footer pinned, only .db scrolls; footer = .btns: extras | grow | Cancel/Close (ghost) | primary */
 .small-dlg:has(> .db) { display:flex; flex-direction:column; max-height:88vh; box-sizing:border-box; } .small-dlg > :is(.dh, .btns) { flex:none; }
 .small-dlg > .db { flex:0 1 auto; min-height:0; overflow:auto; margin:0 -20px; padding:0 20px; }
 .check { display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); } .check:last-child { border:0; }

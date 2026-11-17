@@ -19,14 +19,14 @@ function drawAcct() {
   $('acctBtn').innerHTML = `<span class="stack">${avAI(a)}${gh ? avGh(gh) : ''}</span>
     <span class="nm grow">${esc(a.nick)}<small>${gh ? '@' + esc(gh) : 'no GitHub account'}</small></span>${icon('search').replace('class="i"', 'class="i sic"')}`;
 }
-// usage line: icon · title · bar · % on one row; the reset time on its own line underneath, aligned past the icon
+// usage line: icon | title | bar | % on one row; the reset time on its own line underneath, aligned past the icon
 const useRow = (v, l, ic, sub) => `<div style="font-size:12px"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span><span class="bar" style="width:90px"><i style="width:${v || 0}%"></i></span><span style="width:34px;text-align:right">${v == null ? '?%' : v + '%'}</span></div>${sub ? `<small class="faint" style="display:block;padding-left:22px">${sub}</small>` : ''}</div>`;
-// "Reset: 2h 14m · 14:30" for an account's usage window ('' when unknown)
+// "Reset: 2h 14m | 14:30" for an account's usage window ('' when unknown)
 function resetIn(id, k) {
   const r = S.resets?.[id]?.[k]; if (!r) return '';
   const ms = r * 1000 - Date.now(); if (ms <= 0) return 'reset, fresh quota';
   const h = Math.floor(ms / 36e5), m = Math.floor(ms % 36e5 / 6e4);
-  return `Reset: ${h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m}m`} · ${tm(new Date(r * 1000).toISOString())}`;
+  return `Reset: ${h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m}m`} | ${tm(new Date(r * 1000).toISOString())}`;
 }
 // a usage window that reset in the last 10 min → one toast (seen keys kept per page load)
 // #366 any passed reset → S.usage 0% locally (no provider call; Rust usage() does the same on state()), redraw once
@@ -114,7 +114,7 @@ function smFind(q) {
   S.projects.filter(p => has(p.name)).forEach(p => row('folder', p.name, 'Project', '', '', `document.querySelector('.smenu')?.hidePopover(); openProject('${p.id}')`));
   if (pid) {
     teamTasks(pid).filter(x => x.number && (has(x.title) || has('#' + x.number))).slice(0, 15).forEach(x => row('check2', '#' + x.number + ' ' + x.title, 'Task', '', '', `document.querySelector('.smenu')?.hidePopover(); editIssue(${x.number})`));
-    (SMENV[pid]?.keys || []).filter(([n]) => has(n)).forEach(([n, f]) => row('key', n, 'Secret · ' + f, '', '', `document.querySelector('.smenu')?.hidePopover(); envAt = ${JSON.stringify(f)}; expandRight('svc')`));
+    (SMENV[pid]?.keys || []).filter(([n]) => has(n)).forEach(([n, f]) => row('key', n, 'Secret | ' + f, '', '', `document.querySelector('.smenu')?.hidePopover(); envAt = ${JSON.stringify(f)}; expandRight('svc')`));
     (HEAT[pid]?.d.files || []).filter(f => has(f[0])).slice(0, 40).forEach(f => row('file', f[0].split('/').pop(), f[0].split('/').slice(0, -1).join('/'), mb(f[1]), f[4] ? day(f[4]) : '', `document.querySelector('.smenu')?.hidePopover(); previewFile(${JSON.stringify(f[0])})`));
   }
   return out.slice(0, 60).join('') || '<p class="dim" style="padding:8px">Nothing found.</p>';
@@ -153,7 +153,7 @@ function statsHtml(p) {
   const u = S.usage[p.account] || {}, a = S.accounts.find(x => x.id === p.account), c = ctx[cur], n = tk(cur).now;
   // #200 one Usage section: label row, full-width bar under it; 5h + weekly share a line (reset → tooltip)
   const half = (k, l, ic) => `<div class="grow" style="font-size:12px" data-tip=""${l} usage: ${u[k] ?? '?'}%${resetIn(p.account, k) ? '\n' + resetIn(p.account, k) : ''}"><div class="row" style="gap:6px">${icon(ic)}<span class="grow">${l}</span>${u[k] ?? '?'}%</div><div class="ubar"><i style="width:${u[k] || 0}%"></i></div></div>`;
-  return `<h5>AI Account</h5><button class="pick" id="scAcct" title="AI account, model and effort"><span class="grow">${esc(nick(p.account))}<small class="dim" style="display:block">${esc(ownModel(p) || mName(p.model) + (p.effort ? ' · ' + (EFFORTS[p.effort] || p.effort) + ' effort' : ''))}</small></span>${icon('down')}</button>
+  return `<h5>AI Account</h5><button class="pick" id="scAcct" title="AI account, model and effort"><span class="grow">${esc(nick(p.account))}<small class="dim" style="display:block">${esc(ownModel(p) || mName(p.model) + (p.effort ? ' | ' + (EFFORTS[p.effort] || p.effort) + ' effort' : ''))}</small></span>${icon('down')}</button>
     <h5>Usage</h5><div style="font-size:12px"><div class="row" style="gap:6px">${icon('doc')}<span class="grow">Context <span id="scLimV" class="faint"></span></span>${c ?? '?'}%${n ? ` (${kt(n)})` : ''}</div>
       <div class="ubar"><i style="width:${c || 0}%"></i><input id="scLim" type="range" min="0" max="95" value="${p.context_limit}" title="${limTip(p.context_limit)}"></div></div>
     ${tk(cur).saved ? `<div class="row faint" style="font-size:11px;gap:6px" title="Clear-continue: each turn after a clear would otherwise re-read the cleared context. Counted once per turn (tool calls re-read it too), so the real saving is higher.">${icon('loop')}<span class="grow">Saved by Clauracle (est.)</span>${kt(tk(cur).saved)} tokens</div>` : ''}
@@ -174,12 +174,12 @@ function drawGbar() {
   const wk = gbusy(), bd = gbuilds(), what = () => 'Working…' /* #203 short state only; command → card tooltip */, wait = gwait(), last = glast();
   // #195 ONE AI button (left): activity + context + usage; its card = activity, account/model, context, usage, timers
   const nag = wk.reduce((n, x) => n + agentsOf(x.id).filter(a => a.running).length, 0); // one project: +N after its name; several: a bot count
-  const lead = wk.length ? `<i class="gdot"></i><span class="gt">${wk.length > 1 ? `Clauracle working in ${wk.length} projects` : `<b>${esc(wk[0].name)}</b>${nag ? ` +${nag}` : ''} · ${esc(what(wk[0]))}`}</span>${wk.length > 1 && nag ? `<span>${icon('bot')}${nag}</span>` : ''}`
-    : wait.length ? `${icon('sparkle')}<span class="gt">${wait.length > 1 ? `${wait.length} projects waiting on you` : `<b>${esc(wait[0].name)}</b> · ${esc(wait[0].why)}`}</span>`
+  const lead = wk.length ? `<i class="gdot"></i><span class="gt">${wk.length > 1 ? `Clauracle working in ${wk.length} projects` : `<b>${esc(wk[0].name)}</b>${nag ? ` +${nag}` : ''} | ${esc(what(wk[0]))}`}</span>${wk.length > 1 && nag ? `<span>${icon('bot')}${nag}</span>` : ''}`
+    : wait.length ? `${icon('sparkle')}<span class="gt">${wait.length > 1 ? `${wait.length} projects waiting on you` : `<b>${esc(wait[0].name)}</b> | ${esc(wait[0].why)}`}</span>`
     : `${icon('sparkle')}<span class="gt">Clauracle idle</span>`;
-  const ai = `<button class="stats" onclick="gCard(this, 'ai')" title="AI: activity, account, context, usage and session time">${lead}${p ? `<span>${icon('doc')}${ctx[cur] ?? '?'}%</span>` : ''}${localUse(u) ? `<span title="Local model used ${localUse(u)}">${icon('clock')}${u.day_h} h · ${u.week_h} h</span>` : meter('five_hour', '5-hour', 'clock') + meter('seven_day', 'Weekly', 'cal')}</button>`;
+  const ai = `<button class="stats" onclick="gCard(this, 'ai')" title="AI: activity, account, context, usage and session time">${lead}${p ? `<span>${icon('doc')}${ctx[cur] ?? '?'}%</span>` : ''}${localUse(u) ? `<span title="Local model used ${localUse(u)}">${icon('clock')}${u.day_h} h | ${u.week_h} h</span>` : meter('five_hour', '5-hour', 'clock') + meter('seven_day', 'Weekly', 'cal')}</button>`;
   const bl = bd.length ? `<button onclick="gCard(this, 'build')" title="Builds in progress"><span class="spin"></span><span class="gt">Building ${bd.length > 1 ? bd.length + ' projects' : `<b>${esc(bd[0].name)}</b>`}</span></button>`
-    : last ? `<button onclick="gCard(this, 'build')" title="Last build"><span class="${last.b.ok ? 'ok' : 'bad'}">${icon(last.b.ok ? 'check' : 'x')}</span><span class="gt">${last.b.ok ? 'Built' : 'Build failed'} <b>${esc(last.p.name)}</b> · ${gago(last.b.at)}</span></button>`
+    : last ? `<button onclick="gCard(this, 'build')" title="Last build"><span class="${last.b.ok ? 'ok' : 'bad'}">${icon(last.b.ok ? 'check' : 'x')}</span><span class="gt">${last.b.ok ? 'Built' : 'Build failed'} <b>${esc(last.p.name)}</b> | ${gago(last.b.at)}</span></button>`
     : `<button onclick="gCard(this, 'build')" title="Builds">${icon('hammer')}<span class="gt">No builds</span></button>`;
   const bell = `<button onclick="gCard(this, 'notes')" title="Notifications${snoozed() ? ' (snoozed)' : ''}${NUNREAD ? ': ' + NUNREAD + ' new' : ''}" style="position:relative">${icon(snoozed() ? 'bell-off' : 'bell')}${NUNREAD ? '<i class="gdot" style="position:absolute;top:2px;right:3px;width:6px;height:6px;animation:none"></i>' : ''}</button>`;
   const clock = `<span title="${new Date().toLocaleDateString([], {weekday: 'long', day: 'numeric', month: 'long'})}">${new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})}</span>`; // locale picks 24h / AM-PM
@@ -212,7 +212,7 @@ function gCard(btn, kind) {
       const ls = [...new Set([...(cur ? [P()] : []), ...wk, ...wt.map(x => S.projects.find(p => p.id === x.id))])].sort((a, b) => (b.id === cur) - (a.id === cur));
       return ls.map(x => { const on = busy[x.id], ag = on ? agentsOf(x.id).filter(a => a.running) : [], w = WORK[x.id], t = on && w && task(x.id, w);
         return `<div class="gar" onclick="${go(x.id)}">${on ? '<i class="gdot"></i>' : why[x.id] ? icon('sparkle') : '<i class="gdot" style="background:var(--line2);animation:none"></i>'}${gtAv('Clauracle')}<span class="gn" ${on ? tip(doing[x.id]?.text || 'Thinking') : ''}>${esc(x.name)}</span>`
-          + `<span class="gd"${t ? ` data-tip="${esc('#' + w + ' ' + t.title)}"` : ''}>${on ? tk(w, t?.title, w ? '#' + w + ' · Working…' : 'Working…') : why[x.id] ? (why[x.id] === 'ready to continue' ? 'Ready' : esc(why[x.id])) : 'Idle'}</span>`
+          + `<span class="gd"${t ? ` data-tip="${esc('#' + w + ' ' + t.title)}"` : ''}>${on ? tk(w, t?.title, w ? '#' + w + ' | Working…' : 'Working…') : why[x.id] ? (why[x.id] === 'ready to continue' ? 'Ready' : esc(why[x.id])) : 'Idle'}</span>`
           + (on ? `<button class="ib" title="Stop" onclick="event.stopPropagation(); call('interrupt', {pid: '${x.id}'}); ${close}">${icon('stop')}</button>` : '') + '</div>'
           + ag.map(a => { const j = a.issue && task(x.id, a.issue), full = j ? `#${j.number} ${j.title}` : a.desc;
             return `<div class="gar sub"><span data-ag="${esc(a.type)}">${gtAv(a.type)}</span><span class="gn" data-ag="${esc(a.type)}">${esc(roleOf({name: a.type}))}</span><span class="gd" ${tip(full + (a.last ? ': ' + a.last : ''))}>${tk(j?.number, j?.title, a.desc)}</span></div>`; }).join(''); }).join('') || '<p class="dim">Nothing running</p>'; };
@@ -247,7 +247,7 @@ function gCard(btn, kind) {
   document.body.append(card); card.showPopover(); shutOn(card, kind); drawTimes();
   card.addEventListener('toggle', e => e.newState === 'closed' && card.remove());
   const q = id => card.querySelector('#' + id);
-  if (q('scLim')) { q('scLim').oninput = e => { e.target.title = limTip(e.target.value); q('scLimV').textContent = '· hand over ' + (+e.target.value ? e.target.value + '%' : 'off'); };
+  if (q('scLim')) { q('scLim').oninput = e => { e.target.title = limTip(e.target.value); q('scLimV').textContent = ', hand over ' + (+e.target.value ? e.target.value + '%' : 'off'); };
     q('scLim').onchange = e => { q('scLimV').textContent = ''; setP({context_limit: Math.max(0, Math.min(95, +e.target.value || 0))}).then(refresh); };
     q('scReset').onclick = () => { TIMES[cur] = {start: Date.now(), you: 0, ai: 0, any: 0}; drawTimes(); };
     q('scAcct').onclick = e => { const b = e.currentTarget.getBoundingClientRect(); card.hidePopover(); acctMenu({getBoundingClientRect: () => b}); }; }
