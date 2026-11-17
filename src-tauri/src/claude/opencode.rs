@@ -18,20 +18,29 @@ fn b64(s: &str) -> String {
     o
 }
 
-/// OpenCode config adding a provider `local` that talks to a llama-server at `url`.
-fn local_config(url: &str, model: &str) -> Value {
-    json!({"provider": {"local": {"npm": "@ai-sdk/openai-compatible", "name": "Local", "options": {"baseURL": format!("{url}/v1")}, "models": {model: {"name": model}}}}})
+/// OpenCode config: `local` = llama-server URL becomes the custom provider `local` (OpenAI-compatible, model "local/<name>");
+/// `mcp` = Clauracle's tools (`mcpserve`), which OpenCode names `clauracle_<tool>`.
+pub fn config(local: &str, model: &str, mcp: &str) -> Value {
+    let mut c = json!({});
+    if !local.is_empty() {
+        let m = model.strip_prefix("local/").unwrap_or(model);
+        c["provider"] = json!({"local": {"npm": "@ai-sdk/openai-compatible", "name": "Local", "options": {"baseURL": format!("{local}/v1")}, "models": {m: {"name": m}}}});
+    }
+    if !mcp.is_empty() { c["mcp"] = json!({"clauracle": {"type": "remote", "url": mcp, "enabled": true}}); }
+    c
 }
+
+/// OpenCode's name for one of Clauracle's MCP tools → the CLI's (`clauracle_ready` → `mcp__clauracle__ready`), which turn.rs knows.
+pub fn tool_name(n: &str) -> String { n.strip_prefix("clauracle_").map_or(n.to_string(), |t| format!("mcp__clauracle__{t}")) }
 
 impl Server {
     /// Start `opencode serve` in `dir` (port 0 = a free one; it prints the URL and a password), create a session.
     /// `ask`: tool actions that must come back as permission requests (e.g. "*").
-    pub fn start(dir: &str, ask: &[&str]) -> Result<Server, String> { Self::start_with(dir, ask, "", "", "", "") }
+    pub fn start(dir: &str, ask: &[&str]) -> Result<Server, String> { Self::start_with(dir, ask, "", "", "", &Value::Null) }
     /// `model` = "provider/model" ("" = OpenCode's default free one); `key` (with `label`) is stored as that provider's credential.
-    pub fn start_with(dir: &str, ask: &[&str], model: &str, key: &str, label: &str, local: &str) -> Result<Server, String> {
+    pub fn start_with(dir: &str, ask: &[&str], model: &str, key: &str, label: &str, cfg: &Value) -> Result<Server, String> {
         let mut cmd = if cfg!(windows) { let mut c = Command::new("cmd"); c.args(["/c", "opencode"]); c } else { Command::new("opencode") };
-        // a llama-server URL becomes the custom provider `local` (OpenAI-compatible); `model` is then "local/<name>"
-        if !local.is_empty() { cmd.env("OPENCODE_CONFIG_CONTENT", local_config(local, model.strip_prefix("local/").unwrap_or(model)).to_string()); }
+        if !cfg.is_null() { cmd.env("OPENCODE_CONFIG_CONTENT", cfg.to_string()); }
         let mut child = cmd.args(["serve", "--hostname", "127.0.0.1", "--port", "0"]).current_dir(dir)
             .stdout(Stdio::piped()).stderr(Stdio::null()).stdin(Stdio::null()).spawn().map_err(|e| e.to_string())?;
         let out = child.stdout.take().ok_or("no stdout")?;
@@ -109,13 +118,15 @@ pub fn translate(ev: &Value, sid: &str, names: &mut std::collections::HashMap<St
     match t {
         "session.execution.started" => m(json!({"type": "system", "subtype": "init", "session_id": sid})),
         "session.tool.input.started" => {
-            names.insert(d["id"].as_str().unwrap_or("").into(), d["name"].as_str().unwrap_or("tool").into());
+            names.insert(d["id"].as_str().unwrap_or("").into(), tool_name(d["name"].as_str().unwrap_or("tool")));
             vec![]
         }
         "session.text.ended" => m(json!({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": d["text"]}]}})),
         "session.tool.called" => {
             let id = d["id"].as_str().unwrap_or("");
-            let name = names.get(id).map(|s| s.as_str()).unwrap_or("tool");
+            // OpenCode runs MCP tools inside its `execute` tool as `tools.clauracle.<tool>(…)`: name the card after the tool
+            let wrapped = d["input"]["code"].as_str().and_then(|c| c.split_once("tools.clauracle.")).map(|(_, r)| r.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect::<String>());
+            let name = &match wrapped { Some(t) if !t.is_empty() => format!("mcp__clauracle__{t}"), _ => names.get(id).cloned().unwrap_or("tool".into()) };
             m(json!({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": id, "name": name, "input": d["input"]}]}}))
         }
         "session.tool.success" | "session.tool.failed" | "session.tool.error" => {
@@ -174,19 +185,28 @@ mod tests {
         println!("asked={asked} text={text}");
         assert!(asked && result && text.contains("hello-spike"));
     }
+    #[test] fn unwraps_mcp_execute() {
+        let mut n = std::collections::HashMap::new();
+        translate(&json!({"type": "session.tool.input.started", "data": {"sessionID": "s", "id": "t", "name": "execute"}}), "s", &mut n);
+        let o = translate(&json!({"type": "session.tool.called", "data": {"sessionID": "s", "id": "t", "input": {"code": "await tools.clauracle.ready();
+return 1"}}}), "s", &mut n);
+        assert!(matches!(&o[0], Out::Msg(m) if m["message"]["content"][0]["name"] == "mcp__clauracle__ready"));
+    }
     #[test] fn maps_usage() {
         let o = translate(&json!({"type": "session.usage.updated", "data": {"sessionID": "s", "cost": 0, "tokens": {"input": 10, "output": 5, "reasoning": 1, "cache": {"read": 99}}}}), "s", &mut Default::default());
         assert_eq!(o, vec![Out::Msg(json!({"type": "oc_usage", "tokens": 16.0, "cost": 0}))]);
     }
     #[test] fn local_provider_config() {
-        let c = local_config("http://127.0.0.1:8080", "qwen");
+        let c = config("http://127.0.0.1:8080", "local/qwen", "http://127.0.0.1:9/mcp");
+        assert_eq!(c["mcp"]["clauracle"]["url"], "http://127.0.0.1:9/mcp");
+        assert_eq!(tool_name("clauracle_ready"), "mcp__clauracle__ready");
         assert_eq!(c["provider"]["local"]["options"]["baseURL"], "http://127.0.0.1:8080/v1");
         assert!(c["provider"]["local"]["models"]["qwen"].is_object());
     }
     /// A picked model + key reach the server: `cargo test opencode_model_live -- --ignored`.
     #[test] #[ignore] fn opencode_model_live() {
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let s = Server::start_with(&dir, &["*"], "opencode/big-pickle", "k-test", "clauracle-test", "").unwrap();
+        let s = Server::start_with(&dir, &["*"], "opencode/big-pickle", "k-test", "clauracle-test", &Value::Null).unwrap();
         let cred = s.call("GET", "/api/credential", None).unwrap();
         s.stop();
         assert!(cred["data"].as_array().unwrap().iter().any(|c| c["label"] == "clauracle-test" || c["integrationID"] == "claude-agent"));
@@ -199,7 +219,7 @@ mod tests {
         let (id, _) = crate::local::test_model();
         let url = crate::local::ensure_in(&d, id, &|_, _| {}).unwrap();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let s = Server::start_with(&dir, &["*"], &format!("local/{id}"), "", "", &url).unwrap();
+        let s = Server::start_with(&dir, &["*"], &format!("local/{id}"), "", "", &config(&url, &format!("local/{id}"), "")).unwrap();
         let evs = s.events().unwrap();
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
             .block_on(s.send(json!("Reply with exactly: LOCAL OK"))).unwrap();

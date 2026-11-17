@@ -6,17 +6,7 @@ pub(crate) async fn control(app: &AppHandle, st: &Arc<State>, pid: &str, live: &
     let id = v["request_id"].clone();
     let resp = match req["subtype"].as_str() {
         Some("can_use_tool") => Ok(permission(app, st, pid, req).await),
-        // ui = async (waits on the page's reply) → handled here, not in sync mcp()
-        Some("mcp_message") if req["message"]["params"]["name"] == "ui" => {
-            let m = &req["message"];
-            let a = &m["params"]["arguments"];
-            // js runs with the page's full powers (every app command): only Clauracle's own repo gets it, for self-tests
-            let t = if !a["js"].is_null() && !own_repo(st, pid) {
-                "Refused: `js` only works in Clauracle's own project. Use sel/text/x,y to click and `show` to read.".to_string()
-            } else { ui_tool(app, a).await };
-            Ok(json!({"mcp_response": {"jsonrpc": "2.0", "id": m["id"], "result": {"content": [{"type": "text", "text": t}]}}}))
-        }
-        Some("mcp_message") => Ok(json!({"mcp_response": mcp(app, st, pid, live, &req["message"])})),
+        Some("mcp_message") => Ok(json!({"mcp_response": mcp_any(app, st, pid, live, &req["message"]).await})),
         Some("hook_callback") => Ok(json!({})),
         s => Err(format!("unsupported control request {s:?}")),
     };
@@ -25,6 +15,17 @@ pub(crate) async fn control(app: &AppHandle, st: &Arc<State>, pid: &str, live: &
         Err(e) => json!({"type": "control_response", "response": {"subtype": "error", "request_id": id, "error": e}}),
     };
     let _ = conn.write(&out).await;
+}
+
+/// One MCP message: `ui` waits on the page's reply (async), the rest is answered by the sync `mcp`.
+pub(crate) async fn mcp_any(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value) -> Value {
+    if m["params"]["name"] != "ui" { return mcp(app, st, pid, live, m) }
+    let a = &m["params"]["arguments"];
+    // js runs with the page's full powers (every app command): only Clauracle's own repo gets it, for self-tests
+    let t = if !a["js"].is_null() && !own_repo(st, pid) {
+        "Refused: `js` only works in Clauracle's own project. Use sel/text/x,y to click and `show` to read.".to_string()
+    } else { ui_tool(app, a).await };
+    json!({"jsonrpc": "2.0", "id": m["id"], "result": {"content": [{"type": "text", "text": t}]}})
 }
 
 pub(crate) async fn permission(app: &AppHandle, st: &Arc<State>, pid: &str, req: &Value) -> Value {
@@ -327,9 +328,10 @@ pub(crate) fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>,
                 let l = live.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                    let conn = l.conn.lock().unwrap().clone();
-                    if let (true, true, Some(c)) = (l.armed.load(SeqCst), l.busy.load(SeqCst), conn) {
-                        let _ = c.interrupt().await;
+                    let (conn, oc) = (l.conn.lock().unwrap().clone(), l.oc.lock().unwrap().clone());
+                    if l.armed.load(SeqCst) && l.busy.load(SeqCst) {
+                        if let Some(c) = conn { let _ = c.interrupt().await; }
+                        if let Some(o) = oc { let _ = o.interrupt().await; }
                     }
                 });
                 text("Armed. When this turn ends the context is cleared and a fresh session continues from the task list and HANDOVER.md. End the turn now.")

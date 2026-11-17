@@ -32,21 +32,25 @@ async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<
     let key = store::get_token(&acc.id).filter(|t| t != "none").unwrap_or_default();
     let (mut model, label) = (acc.model.clone(), format!("clauracle-{}", acc.id));
     let mut local = String::new();
+    let mcp = mcpserve::start(app, st, pid, live)?; // dropped (listener stopped) when this session ends
     if acc.provider == "local" { // load the model first (can take a while), then OpenCode gets it as provider `local`
         let (m, app2, pid2) = (acc.model.clone(), app.clone(), pid.to_string());
         local = tokio::task::spawn_blocking(move || crate::local::ensure_noting(&app2, &pid2, &m)).await.map_err(|e| e.to_string())??;
         model = format!("local/{}", acc.model);
     }
-    let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start_with(&dir, &["*"], &model, &key, &label, &local)).await.map_err(|e| e.to_string())??);
+    let cfg = opencode::config(&local, &model, &mcp.url);
+    let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start_with(&dir, &["*"], &model, &key, &label, &cfg)).await.map_err(|e| e.to_string())??);
     *live.oc.lock().unwrap() = Some(srv.clone());
     let (tx, mut evs) = mpsc::unbounded_channel::<Value>();
     let s2 = srv.clone();
     std::thread::spawn(move || { if let Ok(it) = s2.events() { for e in it { if tx.send(e).is_err() { break } } } });
     emit(app, "status", json!({"pid": pid, "busy": false, "connected": true}));
     let mut names = HashMap::new();
+    // OpenCode has no system-prompt flag: Clauracle's rules ride in front of the session's first message
+    let mut intro = Some(system_prompt(&store::proj_cfg(&st.cfg.lock().unwrap(), &p), &p).replace("mcp__clauracle__", "clauracle_"));
     loop {
         let content = match live.inbox.pop().await {
-            Input::Msg(t) => json!(t),
+            Input::Msg(t) => json!(match intro.take() { Some(i) => format!("{i}\n\n---\n\n{t}"), None => t }),
             Input::Rich(b) => b,
             Input::Reconnect => return Err("reconnect".into()),
         };
@@ -61,6 +65,7 @@ async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<
                 match o {
                     opencode::Out::Msg(m) => { show(app, st, pid, &p.account, &m); done |= m["type"] == "result"; }
                     opencode::Out::Ask { id, action, resources } => {
+                        let action = opencode::tool_name(&action);
                         let tool = match action.as_str() { "shell" | "bash" => "Bash", "edit" | "write" | "patch" => "Edit", a => a };
                         let input = json!({"command": resources.join(" "), "file_path": resources.first()});
                         let r = control::permission(app, st, pid, &json!({"tool_name": tool, "input": input})).await;
@@ -72,13 +77,16 @@ async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<
         }
         live.busy.store(false, SeqCst);
         st.with_project(pid, |p| p.working = false);
-        emit(app, "status", json!({"pid": pid, "busy": false}));
+        // same end of turn as the CLI path: `ready` armed → build steps, then clear-continue (Input::Reconnect = new session)
+        let armed = live.armed.load(SeqCst);
+        if !armed { emit(app, "status", json!({"pid": pid, "busy": false})); }
+        after_turn(app, st, pid, live, None).await;
+        if armed { emit(app, "status", json!({"pid": pid, "busy": false})); }
     }
 }
 
-pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
-    let cfg = store::proj_cfg(&st.cfg.lock().unwrap(), p);
-    let (deny, _) = store::restrictions(&cfg, p);
+/// What Clauracle adds to the engine's system prompt for this project (CLI: --append-system-prompt; OpenCode: first message).
+pub(crate) fn system_prompt(cfg: &Config, p: &Project) -> String {
     let mut append = format!("{APPEND}\n{}", if issue_mode(p) { ISSUE_RULES } else { HANDOVER_RULES });
     append += match p.cont.as_str() { "auto" => AUTO_RULES, "auto_answer" => AUTO_ANSWER_RULES, _ => "" };
     append += WORK_RULES;
@@ -112,6 +120,13 @@ pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
         append += "\n\n";
         append += md.splitn(3, "---").nth(2).unwrap_or(&md).trim();
     }
+    append
+}
+
+pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
+    let cfg = store::proj_cfg(&st.cfg.lock().unwrap(), p);
+    let (deny, _) = store::restrictions(&cfg, p);
+    let append = system_prompt(&cfg, p);
     let mcp = json!({"mcpServers": {"clauracle": {"type": "sdk", "name": "clauracle"}}});
     let mut a: Vec<String> = ["--output-format", "stream-json", "--verbose", "--input-format", "stream-json",
         "--include-partial-messages", "--permission-prompt-tool", "stdio"].iter().map(|s| s.to_string()).collect();
@@ -298,7 +313,7 @@ pub(crate) async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &st
         // queue; before ready it saw no Continue waiting → user msgs went into the OLD session instead of toTasks
         let armed = live.armed.load(SeqCst);
         if !armed { emit(app, "status", json!({"pid": pid, "busy": false})); }
-        after_turn(app, st, pid, live, &conn).await;
+        after_turn(app, st, pid, live, Some(&conn)).await;
         if armed { emit(app, "status", json!({"pid": pid, "busy": false})); }
     }
 }
@@ -436,7 +451,7 @@ pub fn summary(input: &Value) -> String {
 
 // ---- after a turn: continue, hand over, switch account, or stop ----------------------------------
 
-pub(crate) async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, conn: &Conn) {
+pub(crate) async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, conn: Option<&Conn>) {
     let Some(p) = st.project(pid) else { return };
     if !p.gh.is_empty() {
         // commits Claude made → pushed in the background (user: no Push button chores); GitHub tab refetches on `pushed`
@@ -535,7 +550,7 @@ pub(crate) async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live
     if !parked.is_empty() {
         live.inbox.push(Input::Msg(parked));
     }
-    if let Ok(r) = conn.request(json!({"subtype": "get_context_usage"}), 15).await {
+    if let Some(Ok(r)) = match conn { Some(c) => Some(c.request(json!({"subtype": "get_context_usage"}), 15).await), None => None } {
         let pct = r["percentage"].as_f64().unwrap_or(0.0);
         let max = r["totalTokens"].as_f64().filter(|_| pct > 0.0).map(|t| (t * 100.0 / pct).round()); // window size, for the saved-tokens cap
         emit(app, "status", json!({"pid": pid, "context": pct.round(), "tokens": r["totalTokens"], "max": max}));
