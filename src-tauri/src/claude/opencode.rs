@@ -178,7 +178,7 @@ mod tests {
         let e = |t: &str, d: Value| json!({"type": t, "data": d});
         assert!(translate(&e("session.tool.input.started", json!({"sessionID": "s", "id": "t1", "name": "shell"})), "s", &mut n).is_empty());
         let Out::Msg(v) = &translate(&e("session.tool.called", json!({"sessionID": "s", "id": "t1", "input": {"command": "ls"}})), "s", &mut n)[0] else { panic!() };
-        assert_eq!(v["message"]["content"][0]["name"], "shell");
+        assert_eq!(v["message"]["content"][0]["name"], "Bash");
         let o = translate(&e("permission.asked", json!({"sessionID": "s", "id": "p1", "action": "shell", "resources": ["ls"]})), "s", &mut n);
         assert_eq!(o, vec![Out::Ask { id: "p1".into(), action: "shell".into(), resources: vec!["ls".into()] }]);
         assert!(translate(&e("session.text.ended", json!({"sessionID": "other", "text": "x"})), "s", &mut n).is_empty());
