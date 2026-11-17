@@ -11,17 +11,24 @@ Nothing else to install: if `claude` or `gh` is missing, Clauracle offers to ins
   token kept in the OS keychain). Accounts in the same **pool** take over from each other when one hits its 5h/weekly limit.
 - **Several GitHub accounts** through `gh`, no GitHub app registration: each project gets its own `GH_TOKEN`
   (never `gh auth switch`). Clone any repo of any account; PRs and issues in the side panel.
+- **Other accounts** (Google, Apple Developer, Google Play, Steam, Vercel, Supabase, Stripe) are set up once in
+  Settings › Accounts; a project picks one and gets its keys in `.env`. First run is a short setup, one step at a time,
+  ending with your first project.
 - **Clear & continue:** *Manual* (stops when a task is done, you press Continue), *Auto* (clears and continues until a
   limit), *Auto + answers* (also answers recommended-type questions; real decisions wait). Handover lives in `HANDOVER.md`.
   Questions come as a numbered card with notes and an *Other* answer; in auto mode they push to desktop and phone (ntfy).
-- **Token savers:** Ponytail (simplest code that works), dense comments, helper **agents** on cheaper models
-  (Settings › Agents), `.env` hidden from Claude, build/run/deploy after each task done by code, not by the AI.
+  A command blocked by Claude Code's auto mode gets an Allow card: allow for 24 h or always, and Claude retries.
+- **Helper agents**, bundled: The Apprentice (Haiku: lookups, builds, tests), The Mentor (Sonnet: focused work, reviews)
+  and The Master (Opus: hard design, bugs, security). With agents on, up to three non-conflicting tasks run at once,
+  each claimed on GitHub. Add your own as custom agents; *Group thread* shows what they say to each other, `@name` to reply.
+- **Token savers:** Ponytail (simplest code that works), dense comments, the cheaper helper agents,
+  `.env` hidden from Claude, build/run/deploy after each task done by code, not by the AI.
 - **Side panel:** GitHub · Services (`.env` with masked values, OAuth presets) · Build & Release · Agents · Code
   (with Hot: files coloured by recent change) · Browser (open in a real browser profile).
-- **Chat / Terminal / Edit** views: Edit opens files as tabs with a Terminal and a real Shell below. Attach files or paste
-  images into the message box; `/model` and `/build` pick a model or a build target.
-- **Build & Release:** a per-stage checklist (alpha → published) with one-click fixes; finished builds are kept as staged
-  releases until you publish them on GitHub.
+- **Chat / Editor / Terminal** views: Editor opens files as tabs with a Terminal and a real Shell below; Markdown is edited
+  formatted. Attach files or paste images into the message box; `/model` and `/build` pick a model or a build target.
+- **Build & Release:** four checked steps (Targets, Stage alpha → published, Build, Release) with one-click fixes;
+  finished builds are kept as staged releases until you publish them on GitHub.
 
 ## Run / build
 

@@ -3,6 +3,63 @@
 User-facing changes, newest first.
 
 ## Unreleased
+- Settings > Agents: every agent has the model picker now, including custom agents and agents from other plugins or your agents folder.
+- Settings > Agents: each agent's model picker is now an AI card (icon, kind, name) like the project's AI cards.
+- The AI picker leaves out groups with nothing in them (e.g. Cloud and Local when all those accounts sit in relays) instead of showing them faded.
+- A project's Accounts section shows every relay and AI account again; click one to switch the project to it.
+- Hovering a task anywhere (task list, agent rows, GitHub tab, search, chat task tags) shows its full title.
+- Click an agent's picture or name to see its activity log: every start and finish with date and time.
+- While a local model loads, the chat shows its progress with the memory it uses out of the total.
+- Local models show hours used in the last 24 hours and 7 days on their account cards and in the status bar, instead of limit bars.
+- Agents tab: The Manager is listed with the other agents and shows the message it is checking while it works.
+- Built-in agents can run on an AI account or relay from another provider than the project: their calls go to that account, the rest of the session stays on its own.
+- Settings › Agents: The Manager replaces the "Message check" setting; it reads each chat message first and only a request for work becomes a task. Pick its model like the other built-in agents.
+- Account menu: local and other single-model accounts show their model by name, without model and effort dropdowns.
+- AI accounts can be dragged into, between and out of relays again.
+- Settings › Agents: each built-in agent (Apprentice, Mentor, Master) has a model dropdown: its default, another Claude tier, or an AI account or relay (Relays and Accounts submenus, search at the top).
+- Project accounts: AI accounts in a relay show as one relay card (sparkle icon, model count, relay name); picking it lets the relay choose the account.
+- AI accounts no longer have a "GitHub for new projects" setting: each project picks its AI and GitHub accounts in the project manager; a new project without a detected GitHub owner takes the latest project's.
+- AI accounts: provider accounts (OpenRouter, Ollama, …) get a Model box to switch model any time; Ollama lists its free cloud models without pulling them first.
+- Add AI account: the model field is a combo box in the app's own menu style (chevron, filter by typing, free/paid or local/cloud labels) instead of the native suggestion popup.
+- Add AI account, OpenRouter: the model list shows every model, free ones first, each labelled free or paid (like Ollama's local/cloud).
+- Add AI account, local models: the machine summary is a small dashboard (memory, graphics, CPU, every drive with free space) and the models folder is a path box with Browse….
+- Add AI account: providers with free models are labelled (OpenRouter, Gemini), and Ollama's model list marks each model local or cloud.
+- Add AI account: the provider picker works again (nothing could be picked with Settings open) and its groups open as sub-menus.
+- Works without any Anthropic model: ChatGPT, Grok and Gemini now use their own API keys, plus Ollama and any OpenAI-format endpoint (Custom); accounts on other endpoints send nothing to Anthropic, and without a Claude login new projects use the first account you add.
+- Add AI account: Claude Console API keys now work (sent as an API key, not as a sign-in token), plus Qwen, ChatGPT, Grok and Gemini (the last three through OpenRouter, newest model preselected).
+- Settings > Agents: "Auto-deploy agents" lets Clauracle hand later, independent tasks to fitting agents while it works.
+- Settings: choose where local models are downloaded; the model list suggests the best-scoring model this computer can run.
+- Relays have an order: drag accounts to set it. The first account with room is used, so other providers or a model on this computer can serve as backups and hand back as soon as the main account has room again.
+- AI accounts: "This computer" runs a free open model locally (llama.cpp, downloaded for your graphics card), with a model list ordered by what your computer can run; no Ollama or LM Studio needed.
+- Task summaries no longer get a "Target unclear" line when the request names what to change.
+- AI accounts: add OpenRouter (free models), DeepSeek, GLM (Z.ai), Kimi, MiniMax or any custom endpoint, each with a link to get its API key and a model field; they work like any other account, relays included.
+- Skills menu: folders with skills switched on get a check mark; the folder icon stays plain, the "N of M on" count stays coloured.
+- Composer: the Skills button shows a hammer-and-screwdriver icon; the AI account button shows the provider (Claude) icon.
+- Steps: smaller number circles; Services steps get titles with their text full width below; Build & Release row icons line up with the step numbers.
+- Build & Release, GitHub, Services: steps sit in a foldable card without connecting lines; a step stays locked until the ones before it are done, and a done step locks until you click its check (Release still opens while staged builds wait).
+- Tasks: the issue description for a message with screenshots is now written from the text and the images together; images and their ask file share one ID.
+- Chat: an ask sent while a task runs gets a short "Queued as #N" reply instead of a confusing "already filed" one.
+- Project manager: Available projects show as a tree (local, then each owner folder, with their projects inside); SDKs and tools in dependencies are left out.
+- Files: files open in the Editor view get an accent tint; the right-hand detail now follows every sort (first letter for Name, "/" for folders under Type and Size); new Arrange choice (Ascending/Descending). Agent speech bubbles lose their pointer and use the chat log's sharp-corner box.
+- Skills: the composer Skills button turns accent while any skill is on, and skill folders with skills on show their icon and count in accent.
+- Agents: each helper speaks in a small chat bubble ("Working on:" with the task ticker while busy); internal agent and model names are hidden, and Settings lists each helper once with one switch.
+- Agents tab: the Apprentice, Mentor and Master introduce themselves with a short line of their own instead of the long technical description.
+- Agents tab: agents with the same role name show as one combined row, ordered Apprentice, Mentor, Master.
+- The Clauracle logo wiggles its three stars while Clauracle is working: on the live chat avatar and on the task row it works on.
+- Task rows show Clauracle's logo while it works on them; a finished task fades out after 1.5 s. Agent faces on rows lose their circle and get softer eyes.
+- Settings › Accounts has "Redo onboarding…" (the setup again, filled with what you entered before; last button "Finish onboarding!") and "Demo onboarding…" (example data, Next any time, nothing saved, "End demo"). On macOS the setup starts with the permissions step (notifications, keychain, Desktop/Documents/Downloads) and waits until each is answered.
+- First-run setup has a "Your first project" step after accounts: new project, open folder, clone from GitHub, or skip. Skipping makes the first project you add open on its Accounts with a Next button to its connections.
+- Developer accounts (Apple Developer, Google Play, Steam) and shared services (Vercel, Supabase, Stripe) are set up once under Settings › Accounts › Other accounts; a project picks one in its Accounts and gets its keys in .env plus the matching store services. App stores left the Services menu.
+- Asks: long messages are always filed (never dropped as a remark), an edited queued ask updates its local record, a failed filing is noted, and a session can't hand over a closed task without checking every part of the ask was done.
+- Settings › Accounts: GitHub cards show repo count, last activity and organizations; click one to open it for its organizations, a switch to hide organization repos when cloning, Open profile and Log out.
+- Chat: when Claude Code's auto mode blocks a command, an Allow card appears under it: Allow and retry (24 h) or Always adds the rule to the project, Claude Code gets it too, and Claude is asked to try again.
+- Agents: three helpers on the surface, The Apprentice (Haiku: lookups, builds, tests), The Mentor (Sonnet: focused implementation, reviews) and The Master (Opus: hard design, bugs, security), bundled with Clauracle; Claude Code's own agents show under the same three names by tier, and the status-line/output-style set-up agents (The Decorator) are gone from the lists.
+- Markdown files can be edited in the formatted view (Editor and Code tab): Enter at the end of a line turns the Markdown typed on it (headings, lists, quotes, ---, bold, code fences…) into formatting; the formatting buttons, Ctrl+B/I/U, Undo/Redo and Ctrl+S work there too. Code tab edits save by themselves.
+- Editor: Markdown files get the Notes formatting buttons (heading, bold, italic, underline, strike, lists, quote, code; Ctrl+B/I/U too) plus Undo/Redo on the left of the bar; view toggles now sit on the right beside the zoom, in the File viewer and image editor too.
+- Asks with screenshots in mid-sentence: the filed task keeps each image reference where it was written, so the work starts from the right picture instead of "target unclear".
+- Composer: toggles that are on (web search, clear & continue) show an accent icon instead of a filled background; the toolbar icons are brighter and the same height as the account and permission buttons.
+- Build & Release: four checked steps (Targets, Stage, Build, Release); Build holds the build status with Build and Run under it, the Build button glows while this version is unbuilt, and Release waits for a build or staged builds.
+- Release: the stage switcher shows an icon instead of "Stage:" and its buttons fill and wrap like the target platform rows.
 - Every session now gets a built-in rule: work out unclear asks from their screenshots and notes, without remarking on the confusion.
 - Settings > Agents: Custom agents now comes before the Chat (Group thread) section.
 - Agents: background agents count as working until they actually finish; the status bar shows "+N" agents after the project name, and the Activity card lists each working agent with its face.

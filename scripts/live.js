@@ -8,7 +8,7 @@ if (!exprs.length) exprs.push("typeof send + ' ' + typeof fileAsk + ' ' + S.proj
 // Shells started by Claude Code carry CLAUDE* and NO_COLOR; the app must not inherit them
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE|NO_COLOR$)/.test(k)));
 env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=' + PORT; // ponytail: Windows (WebView2) only
-const app = spawn(path.join(__dirname, '../src-tauri/target/debug/clauracle.exe'), {env, stdio: 'ignore'});
+const app = spawn(path.join(__dirname, '../src-tauri/target/debug/clauracle.exe'), ['--debug'], {env, stdio: 'ignore'});
 const quit = code => { try { spawn('taskkill', ['/F', '/T', '/PID', String(app.pid)], {stdio: 'ignore'}); } catch {} process.exitCode = code; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
