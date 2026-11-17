@@ -19,6 +19,10 @@ pub(crate) async fn control(app: &AppHandle, st: &Arc<State>, pid: &str, live: &
 
 /// One MCP message: `ui` waits on the page's reply (async), the rest is answered by the sync `mcp`.
 pub(crate) async fn mcp_any(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value) -> Value {
+    if m["method"] == "tools/call" && m["params"]["name"] == "delegate" {
+        let t = delegate::run(app, st, pid, &m["params"]["arguments"]).await;
+        return json!({"jsonrpc": "2.0", "id": m["id"], "result": {"content": [{"type": "text", "text": t}]}});
+    }
     if m["params"]["name"] != "ui" { return mcp(app, st, pid, live, m) }
     let a = &m["params"]["arguments"];
     // js runs with the page's full powers (every app command): only Clauracle's own repo gets it, for self-tests
@@ -193,6 +197,11 @@ pub(crate) fn tool_list() -> Value {
           (or waits for the user's Continue).", "inputSchema": {"type": "object", "properties": {}}},
         {"name": "ask", "description": "Queue questions for the user (numbered in a card, options with your \
           recommendation, a note field each). Don't wait: the answers arrive later.", "inputSchema": q},
+        {"name": "delegate", "description": "Hand a self-contained task to the AI of another account (any provider: another Claude account, a free \
+          or paid model, a local one) and get its answer back, e.g. a cheap model for lookups or a second opinion. It starts fresh: the task text \
+          must carry everything it needs. Read-only unless `write` is true (then it may edit files in the project). `account` = the account's name \
+          as in Clauracle's account list; an unknown name returns the list.", "inputSchema": {"type": "object", "required": ["account", "task"],
+          "properties": {"account": {"type": "string"}, "task": {"type": "string"}, "write": {"type": "boolean"}}}},
         {"name": "lesson", "description": "Record a never-again rule after a mistake that cost time (yours or a tool's \
           quirk), so every future session avoids it. One line, compressed: fragments, symbols (→ = ≠ ∵), ≤ 120 chars. \
           Not for task notes or project facts.", "inputSchema": {"type": "object", "required": ["rule"],

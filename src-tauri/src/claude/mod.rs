@@ -13,6 +13,7 @@ use tokio::sync::{mpsc, oneshot, Notify};
 mod backend;
 mod opencode;
 mod mcpserve;
+mod delegate;
 pub(crate) use backend::Backend;
 mod turn;
 pub use turn::*;
@@ -28,7 +29,7 @@ const LESSONS_MAX: usize = 30; // ponytail: ~30 one-liners ≈ 1k tokens per ses
 const APPEND: &str = "You are running inside Clauracle, a desktop app around Claude Code that keeps long work going \
 across fresh sessions through a task list and HANDOVER.md. Its tools: mcp__clauracle__ready (the task is done and plan + \
 handover are written: Clauracle clears the context and continues) and mcp__clauracle__ask (questions for the user, queued; never \
-wait for them). Save tokens: hand searching, reading many files and running builds/tests to the helper agents \
+wait for them) and mcp__clauracle__delegate (hand a self-contained task to another account's AI, any provider, and get its answer back; read-only unless write is true). Save tokens: hand searching, reading many files and running builds/tests to the helper agents \
 (Task tool) when they fit, and keep your own replies short. Helpers come in three tiers: clauracle:apprentice (or Explore) \
 for cheap lookups, reads and running builds/tests; clauracle:mentor (or general-purpose) for focused implementation, tests \
 and reviews; clauracle:master (or Plan) only for hard design, stubborn bugs and security reviews.";

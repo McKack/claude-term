@@ -27,6 +27,17 @@ pub fn config(entry: Option<(&str, Value)>, mcp: &str) -> Value {
     c
 }
 
+/// Model id + custom provider for an account (see `account_entry`); `local` = (url, window) of the running llama-server for a local account.
+pub fn provider_for(a: &crate::store::Account, key: &str, local: Option<(&str, u64)>) -> Result<(String, Option<(&'static str, Value)>), String> {
+    if a.provider == "local" {
+        let (url, ctx) = local.ok_or("the local model isn't running")?;
+        Ok((format!("local/{}", a.model), Some(("local", local_entry(url, &a.model, ctx)))))
+    } else if a.provider != "opencode" {
+        let (m, e) = account_entry(a, key)?;
+        Ok((format!("clauracle/{m}"), Some(("clauracle", e))))
+    } else { Ok((a.model.clone(), None)) }
+}
+
 /// The built-in llama-server as an OpenAI-compatible provider; `ctx` = the window it really has (OpenCode compacts by it).
 pub fn local_entry(url: &str, model: &str, ctx: u64) -> Value {
     json!({"npm": "@ai-sdk/openai-compatible", "name": "Local", "options": {"baseURL": format!("{url}/v1")},
@@ -86,7 +97,8 @@ impl Server {
         }
         if base.is_empty() { let _ = child.kill(); return Err("opencode serve did not report its address".into()) }
         let mut s = Server { base, auth: format!("Basic {}", b64(&format!("opencode:{pw}"))), session: String::new(), resumed: false, child: std::sync::Mutex::new(child) };
-        let rules: Vec<Value> = ask.iter().map(|a| json!({"action": a, "resource": "*", "effect": "ask"})).collect();
+        // "!edit" = deny that action (a read-only helper), plain = ask
+        let rules: Vec<Value> = ask.iter().map(|a| match a.strip_prefix('!') { Some(d) => json!({"action": d, "resource": "*", "effect": "deny"}), None => json!({"action": a, "resource": "*", "effect": "ask"}) }).collect();
         // a session of an earlier server (they persist on disk, with their permission rules) continues; unknown id → a new one
         if !resume.is_empty() && s.call("GET", &format!("/api/session/{resume}"), None).is_ok_and(|r| r["data"]["id"] == resume) {
             s.session = resume.to_string();
@@ -121,6 +133,25 @@ impl Server {
             .filter_map(|l| l.strip_prefix("data: ").and_then(|d| serde_json::from_str::<Value>(d).ok())))
     }
     /// Answer a permission request: "once" | "always" | "reject".
+    /// One task on a fresh session, blocking: the last assistant text once the turn ends. Asks are refused (the helper has nobody to ask).
+    pub fn run_once(&self, task: &str, secs: u64) -> Result<String, String> {
+        let evs = self.events()?;
+        self.call("POST", &format!("/api/session/{}/prompt", self.session), Some(json!({"text": task})))?;
+        let (t0, mut out, mut names) = (std::time::Instant::now(), String::new(), std::collections::HashMap::new());
+        for ev in evs {
+            for o in translate(&ev, &self.session, &mut names) {
+                match o {
+                    Out::Ask { id, .. } => { let _ = self.reply(&id, "reject"); }
+                    Out::Msg(m) => {
+                        if m["type"] == "assistant" { if let Some(t) = m["message"]["content"][0]["text"].as_str() { out = t.into() } }
+                        if m["type"] == "result" { return if m["is_error"] == true { Err(format!("the helper failed: {}", m["result"])) } else { Ok(out) } }
+                    }
+                }
+            }
+            if t0.elapsed().as_secs() > secs { break }
+        }
+        Err("the helper took too long or stopped".into())
+    }
     pub fn reply(&self, req: &str, decision: &str) -> Result<(), String> {
         self.call("POST", &format!("/api/session/{}/permission/{req}/reply", self.session), Some(json!({"decision": decision}))).map(|_| ())
     }

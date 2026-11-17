@@ -32,21 +32,13 @@ async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<
     let mut key = store::get_token(&acc.id).filter(|t| t != "none").unwrap_or_default();
     let mcp = mcpserve::start(app, st, pid, live)?; // dropped (listener stopped) when this session ends
     let label = format!("clauracle-{}", acc.id);
-    let mut model = acc.model.clone();
-    let mut entry = None;
-    if acc.provider == "local" { // load the model first (can take a while), then OpenCode gets it as provider `local`
+    let local = if acc.provider == "local" { // load the model first (can take a while), then OpenCode gets it as provider `local`
         let (m, app2, pid2) = (acc.model.clone(), app.clone(), pid.to_string());
-        let (url, ctx) = tokio::task::spawn_blocking(move || crate::local::ensure_noting(&app2, &pid2, &m).map(|u| { let c = crate::local::ctx(&u); (u, c) }))
-            .await.map_err(|e| e.to_string())??;
-        entry = Some(("local", opencode::local_entry(&url, &acc.model, ctx)));
-        model = format!("local/{}", acc.model);
-        key.clear();
-    } else if acc.provider != "opencode" { // any other provider: its endpoint and key as a custom provider (the key rides in the config)
-        let (m, e) = opencode::account_entry(&acc, &key)?;
-        entry = Some(("clauracle", e));
-        model = format!("clauracle/{m}");
-        key.clear();
-    }
+        Some(tokio::task::spawn_blocking(move || crate::local::ensure_noting(&app2, &pid2, &m).map(|u| { let c = crate::local::ctx(&u); (u, c) }))
+            .await.map_err(|e| e.to_string())??)
+    } else { None };
+    let (model, entry) = opencode::provider_for(&acc, &key, local.as_ref().map(|(u, c)| (u.as_str(), *c)))?;
+    if entry.is_some() { key.clear(); } // a custom provider carries its key in the config
     let cfg = opencode::config(entry, &mcp.url);
     let resume = p.session.clone().filter(|s| s.starts_with("ses_")).unwrap_or_default(); // `fresh` clears it: only a reconnect resumes
     let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start_with(&dir, &["*"], &model, &key, &label, &cfg, &resume)).await.map_err(|e| e.to_string())??);
