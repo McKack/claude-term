@@ -813,9 +813,10 @@ async function csRaw() {
 }
 // Add account: a small window over Settings; one grouped picker (category → provider), the body shows only that method
 function addAcctDlg() {
-  const d = $('dlg2'), opt = ([k, x]) => `<option value="${k}"${x.tag ? ` data-tag="${x.tag}"` : ''}>${esc(x.l)}</option>`, keyed = Object.entries(PROVS).filter(([, x]) => !x.local && x !== PROVS.claude);
+  const d = $('dlg2'), opt = ([k, x]) => `<option value="${k}"${x.tag ? ` data-tag="${x.tag}"` : ''}>${esc(x.l)}</option>`, keyed = Object.entries(PROVS).filter(([, x]) => !x.local && !x.oc && x !== PROVS.claude);
   d.innerHTML = `<div class="small-dlg"><h2>Add an AI account</h2>
     <select id="pvSel" style="width:100%" onchange="provPick(this.value)">
+      <optgroup label="Free, no key"><option value="opencode">OpenCode (free model)</option></optgroup>
       <optgroup label="Subscription (OAuth)"><option value="claude">Claude: sign in</option><option value="ctoken">Claude: paste a setup-token</option></optgroup>
       <optgroup label="API key"><option value="ckey">Claude (Anthropic Console)</option>${keyed.map(opt).join('')}</optgroup>
       <optgroup label="Local model">${Object.entries(PROVS).filter(([, x]) => x.local).map(opt).join('')}</optgroup></select>
@@ -824,6 +825,7 @@ function addAcctDlg() {
     <p id="loginMsg" class="hint"></p><div class="btns"><button class="btn ghost" onclick="$('dlg2').close()">Cancel</button></div></div>`;
   dlgShell(d.firstElementChild); provPick('claude'); d.showModal(); $('nick').focus(); // opened after Settings → the topmost modal, so it's the active one
 }
+async function addOpenCode() { try { await call('claude_add_token', {nick: $('nick').value, token: '', provider: 'opencode'}); $('dlg2').close(); await askNewAccount(); } catch (e) { $('loginMsg').textContent = e; } }
 let PV = '', ORFREE = null; // picked provider; OpenRouter's models with tool use, fetched once per run
 function provPick(k) { PV = k; $('loginMsg').textContent = '';
   const b = $('pvBox'), full = 'style="width:100%;justify-content:center"';
@@ -833,6 +835,7 @@ function provPick(k) { PV = k; $('loginMsg').textContent = '';
   if (k === 'ckey') return b.innerHTML = `<p class="hint">Pay as you go with a key from the Claude Console; billed per token, not from a subscription. <a href="#" data-url="https://platform.claude.com/settings/keys">Get an API key</a></p>
     <div class="row"><input id="token" type="password" class="grow mono" placeholder="sk-ant-api03-…"><button class="btn primary" onclick="pasteClaude()">Add</button></div>`;
   const x = PROVS[k];
+  if (x.oc) return b.innerHTML = `<p class="hint">${esc(x.h)}</p><button class="btn primary" ${full} onclick="addOpenCode()">Add OpenCode</button>`;
   b.innerHTML = `<p class="hint">${esc(x.h)}${x.key ? ` <a href="#" data-url="${x.key}">${x.free ? 'Get a free API key' : 'Get an API key'}</a>` : ''}</p>` + (x.local ? '<div id="pvLocal"></div>' : `
     ${k === 'custom' ? '<select id="pvApi" style="width:100%;margin-bottom:6px"><option value="">Speaks the Anthropic API (/v1/messages)</option><option value="openai">Speaks the OpenAI API (/chat/completions)</option></select>' : ''}
     <input id="baseUrl" class="mono" style="width:100%"${x.url ? ' hidden' : ''} placeholder="Base URL, e.g. https://gateway.example.com or http://localhost:1234/v1">

@@ -31,6 +31,7 @@ const MODES = {off: ['Just chat', 'No task list: tasks run only when you ask'], 
 /* AI providers Claude Code can run on: each serves an Anthropic-compatible endpoint (url). key = where to get an API key,
    m = model every Claude Code role uses ('' = the provider maps Claude's names itself). Account.provider holds the key. */
 const PROVS = {claude: {l: 'Claude', i: 'claude'},
+  opencode: {l: 'OpenCode (free)', i: 'cloud', oc: 1, free: 1, tag: 'free, no key', h: 'Runs on OpenCode with its free model: no account and no key. Add your own provider keys or a local model later.'},
   openrouter: {l: 'OpenRouter', i: 'cloud', url: 'https://openrouter.ai/api', key: 'https://openrouter.ai/settings/keys', free: 1, tag: 'free models', or: ':free', h: 'Free models (ending in :free) with a free account; also GPT, Gemini, Llama and more, pay as you go.'},
   deepseek: {l: 'DeepSeek', i: 'cloud', url: 'https://api.deepseek.com/anthropic', key: 'https://platform.deepseek.com/api_keys', h: 'Low-cost pay as you go; DeepSeek picks its model for each Claude role.'},
   zai: {l: 'GLM (Z.ai)', i: 'cloud', url: 'https://api.z.ai/api/anthropic', key: 'https://z.ai/manage-apikey/apikey-list', m: 'glm-5.3', h: 'GLM Coding Plan subscription or pay as you go.'},

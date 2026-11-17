@@ -163,7 +163,9 @@ pub(crate) async fn claude_login(app: AppHandle, st: St<'_>, nick: String) -> R<
 #[tauri::command(async)]
 pub(crate) fn claude_add_token(st: St, nick: String, token: String, base_url: Option<String>, provider: Option<String>, model: Option<String>, api: Option<String>) -> R<Value> {
     let (base, api, model) = (base_url.unwrap_or_default(), api.unwrap_or_default(), model.unwrap_or_default());
-    if !base.is_empty() {
+    if provider.as_deref() == Some("opencode") {
+        // OpenCode's free model needs no key
+    } else if !base.is_empty() {
         // local servers (Ollama, LM Studio…) take any key
         if !base.trim().starts_with("http") || token.trim().is_empty() && !base.contains("://localhost") && !base.contains("://127.0.0.1") {
             return Err("Needs an http(s) base URL and an API key.".into());

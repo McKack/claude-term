@@ -449,6 +449,11 @@ pub fn load() -> Config {
         let nick = default_nick(&cfg, "claude");
         cfg.accounts.insert(0, Account { id: MAIN.into(), nick, ..Default::default() });
     }
+    // #605 near-zero setup: an OpenCode account (its free model, no key) always exists; with no Claude login it is the default
+    if !cfg.accounts.iter().any(|a| a.provider == "opencode") {
+        cfg.accounts.push(Account { id: "OpenCode".into(), nick: "OpenCode (free)".into(), provider: "opencode".into(), on: Some(vec![]), ..Default::default() });
+        if cfg.default_account.is_empty() && !main_signed_in() { cfg.default_account = "OpenCode".into(); }
+    }
     for a in cfg.accounts.iter_mut() {
         if a.provider.is_empty() {
             a.provider = "claude".into();
