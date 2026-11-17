@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 
-pub struct Server { pub base: String, auth: String, pub session: String, child: std::sync::Mutex<Child> }
+pub struct Server { pub base: String, auth: String, pub session: String, pub resumed: bool, child: std::sync::Mutex<Child> }
 
 fn b64(s: &str) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -31,14 +31,20 @@ pub fn config(local: &str, model: &str, mcp: &str) -> Value {
 }
 
 /// OpenCode's name for one of Clauracle's MCP tools → the CLI's (`clauracle_ready` → `mcp__clauracle__ready`), which turn.rs knows.
-pub fn tool_name(n: &str) -> String { n.strip_prefix("clauracle_").map_or(n.to_string(), |t| format!("mcp__clauracle__{t}")) }
+pub fn tool_name(n: &str) -> String {
+    match n {
+        "shell" | "bash" => "Bash".into(), "edit" | "patch" => "Edit".into(), "write" => "Write".into(), "read" => "Read".into(),
+        "grep" => "Grep".into(), "glob" => "Glob".into(), "webfetch" => "WebFetch".into(),
+        _ => n.strip_prefix("clauracle_").map_or(n.to_string(), |t| format!("mcp__clauracle__{t}")),
+    }
+}
 
 impl Server {
     /// Start `opencode serve` in `dir` (port 0 = a free one; it prints the URL and a password), create a session.
     /// `ask`: tool actions that must come back as permission requests (e.g. "*").
-    pub fn start(dir: &str, ask: &[&str]) -> Result<Server, String> { Self::start_with(dir, ask, "", "", "", &Value::Null) }
+    pub fn start(dir: &str, ask: &[&str]) -> Result<Server, String> { Self::start_with(dir, ask, "", "", "", &Value::Null, "") }
     /// `model` = "provider/model" ("" = OpenCode's default free one); `key` (with `label`) is stored as that provider's credential.
-    pub fn start_with(dir: &str, ask: &[&str], model: &str, key: &str, label: &str, cfg: &Value) -> Result<Server, String> {
+    pub fn start_with(dir: &str, ask: &[&str], model: &str, key: &str, label: &str, cfg: &Value, resume: &str) -> Result<Server, String> {
         let mut cmd = if cfg!(windows) { let mut c = Command::new("cmd"); c.args(["/c", "opencode"]); c } else { Command::new("opencode") };
         if !cfg.is_null() { cmd.env("OPENCODE_CONFIG_CONTENT", cfg.to_string()); }
         let mut child = cmd.args(["serve", "--hostname", "127.0.0.1", "--port", "0"]).current_dir(dir)
@@ -51,10 +57,16 @@ impl Server {
             if !base.is_empty() && !pw.is_empty() { break }
         }
         if base.is_empty() { let _ = child.kill(); return Err("opencode serve did not report its address".into()) }
-        let mut s = Server { base, auth: format!("Basic {}", b64(&format!("opencode:{pw}"))), session: String::new(), child: std::sync::Mutex::new(child) };
+        let mut s = Server { base, auth: format!("Basic {}", b64(&format!("opencode:{pw}"))), session: String::new(), resumed: false, child: std::sync::Mutex::new(child) };
         let rules: Vec<Value> = ask.iter().map(|a| json!({"action": a, "resource": "*", "effect": "ask"})).collect();
-        let r = s.call("POST", "/api/session", Some(json!({"permissions": rules})))?;
-        s.session = r["data"]["id"].as_str().ok_or("no session id")?.to_string();
+        // a session of an earlier server (they persist on disk, with their permission rules) continues; unknown id → a new one
+        if !resume.is_empty() && s.call("GET", &format!("/api/session/{resume}"), None).is_ok_and(|r| r["data"]["id"] == resume) {
+            s.session = resume.to_string();
+            s.resumed = true;
+        } else {
+            let r = s.call("POST", "/api/session", Some(json!({"permissions": rules})))?;
+            s.session = r["data"]["id"].as_str().ok_or("no session id")?.to_string();
+        }
         if let Some((prov, id)) = model.split_once('/') {
             if !key.is_empty() { s.set_key(prov, key, label)?; }
             s.call("POST", &format!("/api/session/{}/model", s.session), Some(json!({"model": {"id": id, "providerID": prov}})))?;
@@ -91,14 +103,24 @@ impl Server {
     }
 }
 
+/// Clauracle's content (a string, or Claude blocks: text and base64 images) → OpenCode's `text` + `files` (data URIs).
+fn prompt_parts(content: &Value) -> (String, Vec<Value>) {
+    let Some(blocks) = content.as_array() else { return (content.as_str().unwrap_or("").to_string(), vec![]) };
+    let text = blocks.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("
+");
+    let files = blocks.iter().filter(|b| b["type"] == "image").enumerate().filter_map(|(i, b)| {
+        let (mime, data) = (b["source"]["media_type"].as_str()?, b["source"]["data"].as_str()?);
+        Some(json!({"uri": format!("data:{mime};base64,{data}"), "name": format!("image-{}.{}", i + 1, mime.rsplit('/').next().unwrap_or("png"))}))
+    }).collect();
+    (text, files)
+}
+
 impl Backend for Server {
     async fn send(&self, content: Value) -> Result<(), String> {
-        // ponytail: text only; pasted images go through `files` once this is wired in
-        let text = match &content {
-            Value::String(s) => s.clone(),
-            v => v.as_array().into_iter().flatten().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("\n"),
-        };
-        self.call("POST", &format!("/api/session/{}/prompt", self.session), Some(json!({"text": text}))).map(|_| ())
+        let (text, files) = prompt_parts(&content);
+        let mut body = json!({"text": text});
+        if !files.is_empty() { body["files"] = json!(files); }
+        self.call("POST", &format!("/api/session/{}/prompt", self.session), Some(body)).map(|_| ())
     }
     async fn interrupt(&self) -> Result<(), String> {
         self.call("POST", &format!("/api/session/{}/interrupt", self.session), None).map(|_| ())
@@ -192,6 +214,35 @@ mod tests {
 return 1"}}}), "s", &mut n);
         assert!(matches!(&o[0], Out::Msg(m) if m["message"]["content"][0]["name"] == "mcp__clauracle__ready"));
     }
+    #[test] fn images_become_files() {
+        let (t, f) = prompt_parts(&json!([{"type": "text", "text": "look"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}}]));
+        assert_eq!(t, "look");
+        assert_eq!(f, vec![json!({"uri": "data:image/png;base64,AAAA", "name": "image-1.png"})]);
+        assert_eq!(prompt_parts(&json!("hi")), ("hi".to_string(), vec![]));
+    }
+    /// Pasted image + resume: `cargo test opencode_image_resume_live -- --ignored --nocapture` (needs `opencode`).
+    #[test] #[ignore] fn opencode_image_resume_live() {
+        let dir = std::env::temp_dir().to_string_lossy().to_string();
+        let s = Server::start(&dir, &["*"]).unwrap();
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC";
+        let evs = s.events().unwrap();
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+            .block_on(s.send(json!([{"type": "text", "text": "Reply with the word OK."}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": png}}]))).unwrap();
+        let (mut names, mut res) = (Default::default(), Value::Null);
+        let t0 = std::time::Instant::now();
+        'o: for ev in evs { if t0.elapsed().as_secs() > 60 { break } for o in translate(&ev, &s.session, &mut names) { if let Out::Msg(m) = o { if m["type"] == "result" { res = m; break 'o } } } }
+        let sid = s.session.clone();
+        let got = s.call("GET", &format!("/api/session/{sid}"), None);
+        println!("result={res} get={got:?}");
+        s.stop();
+        // a new server finds the old session
+        let s2 = Server::start(&dir, &["*"]).unwrap();
+        let again = s2.call("GET", &format!("/api/session/{sid}"), None);
+        println!("resumed get={again:?}");
+        s2.stop();
+        assert_eq!(res["is_error"], false);
+        assert!(again.is_ok());
+    }
     #[test] fn maps_usage() {
         let o = translate(&json!({"type": "session.usage.updated", "data": {"sessionID": "s", "cost": 0, "tokens": {"input": 10, "output": 5, "reasoning": 1, "cache": {"read": 99}}}}), "s", &mut Default::default());
         assert_eq!(o, vec![Out::Msg(json!({"type": "oc_usage", "tokens": 16.0, "cost": 0}))]);
@@ -200,13 +251,14 @@ return 1"}}}), "s", &mut n);
         let c = config("http://127.0.0.1:8080", "local/qwen", "http://127.0.0.1:9/mcp");
         assert_eq!(c["mcp"]["clauracle"]["url"], "http://127.0.0.1:9/mcp");
         assert_eq!(tool_name("clauracle_ready"), "mcp__clauracle__ready");
+        assert_eq!((tool_name("shell"), tool_name("edit")), ("Bash".to_string(), "Edit".to_string()));
         assert_eq!(c["provider"]["local"]["options"]["baseURL"], "http://127.0.0.1:8080/v1");
         assert!(c["provider"]["local"]["models"]["qwen"].is_object());
     }
     /// A picked model + key reach the server: `cargo test opencode_model_live -- --ignored`.
     #[test] #[ignore] fn opencode_model_live() {
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let s = Server::start_with(&dir, &["*"], "opencode/big-pickle", "k-test", "clauracle-test", &Value::Null).unwrap();
+        let s = Server::start_with(&dir, &["*"], "opencode/big-pickle", "k-test", "clauracle-test", &Value::Null, "").unwrap();
         let cred = s.call("GET", "/api/credential", None).unwrap();
         s.stop();
         assert!(cred["data"].as_array().unwrap().iter().any(|c| c["label"] == "clauracle-test" || c["integrationID"] == "claude-agent"));
@@ -219,7 +271,7 @@ return 1"}}}), "s", &mut n);
         let (id, _) = crate::local::test_model();
         let url = crate::local::ensure_in(&d, id, &|_, _| {}).unwrap();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let s = Server::start_with(&dir, &["*"], &format!("local/{id}"), "", "", &config(&url, &format!("local/{id}"), "")).unwrap();
+        let s = Server::start_with(&dir, &["*"], &format!("local/{id}"), "", "", &config(&url, &format!("local/{id}"), ""), "").unwrap();
         let evs = s.events().unwrap();
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
             .block_on(s.send(json!("Reply with exactly: LOCAL OK"))).unwrap();

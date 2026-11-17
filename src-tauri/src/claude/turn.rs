@@ -39,7 +39,8 @@ async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<
         model = format!("local/{}", acc.model);
     }
     let cfg = opencode::config(&local, &model, &mcp.url);
-    let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start_with(&dir, &["*"], &model, &key, &label, &cfg)).await.map_err(|e| e.to_string())??);
+    let resume = p.session.clone().filter(|s| s.starts_with("ses_")).unwrap_or_default(); // `fresh` clears it: only a reconnect resumes
+    let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start_with(&dir, &["*"], &model, &key, &label, &cfg, &resume)).await.map_err(|e| e.to_string())??);
     *live.oc.lock().unwrap() = Some(srv.clone());
     let (tx, mut evs) = mpsc::unbounded_channel::<Value>();
     let s2 = srv.clone();
@@ -47,7 +48,7 @@ async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<
     emit(app, "status", json!({"pid": pid, "busy": false, "connected": true}));
     let mut names = HashMap::new();
     // OpenCode has no system-prompt flag: Clauracle's rules ride in front of the session's first message
-    let mut intro = Some(system_prompt(&store::proj_cfg(&st.cfg.lock().unwrap(), &p), &p).replace("mcp__clauracle__", "clauracle_"));
+    let mut intro = Some(system_prompt(&store::proj_cfg(&st.cfg.lock().unwrap(), &p), &p).replace("mcp__clauracle__", "clauracle_")).filter(|_| !srv.resumed); // a resumed session has its rules already
     loop {
         let content = match live.inbox.pop().await {
             Input::Msg(t) => json!(match intro.take() { Some(i) => format!("{i}\n\n---\n\n{t}"), None => t }),
@@ -66,7 +67,7 @@ async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<
                     opencode::Out::Msg(m) => { show(app, st, pid, &p.account, &m); done |= m["type"] == "result"; }
                     opencode::Out::Ask { id, action, resources } => {
                         let action = opencode::tool_name(&action);
-                        let tool = match action.as_str() { "shell" | "bash" => "Bash", "edit" | "write" | "patch" => "Edit", a => a };
+                        let tool = match action.as_str() { "Write" => "Edit", a => a };
                         let input = json!({"command": resources.join(" "), "file_path": resources.first()});
                         let r = control::permission(app, st, pid, &json!({"tool_name": tool, "input": input})).await;
                         let _ = srv.reply(&id, if r["behavior"] == "allow" { "once" } else { "reject" });
