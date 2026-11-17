@@ -1,13 +1,12 @@
 //! OpenCode backend spike (#599): `opencode serve` (HTTP + SSE, basic auth) behind the `Backend` trait.
 //! Not wired into turn.rs yet (see HANDOVER / issue #599 for the mapping). `translate` turns OpenCode events into
 //! the stream-json shaped messages `turn::show` already consumes; `Server::events` is the blocking SSE reader.
-#![allow(dead_code)] // ponytail: spike, the per-account switch in connect_and_serve comes with the next migration steps
 use super::Backend;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 
-pub struct Server { pub base: String, auth: String, pub session: String, child: Child }
+pub struct Server { pub base: String, auth: String, pub session: String, child: std::sync::Mutex<Child> }
 
 fn b64(s: &str) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -34,7 +33,7 @@ impl Server {
             if !base.is_empty() && !pw.is_empty() { break }
         }
         if base.is_empty() { let _ = child.kill(); return Err("opencode serve did not report its address".into()) }
-        let mut s = Server { base, auth: format!("Basic {}", b64(&format!("opencode:{pw}"))), session: String::new(), child };
+        let mut s = Server { base, auth: format!("Basic {}", b64(&format!("opencode:{pw}"))), session: String::new(), child: std::sync::Mutex::new(child) };
         let rules: Vec<Value> = ask.iter().map(|a| json!({"action": a, "resource": "*", "effect": "ask"})).collect();
         let r = s.call("POST", "/api/session", Some(json!({"permissions": rules})))?;
         s.session = r["data"]["id"].as_str().ok_or("no session id")?.to_string();
@@ -55,9 +54,10 @@ impl Server {
     pub fn reply(&self, req: &str, decision: &str) -> Result<(), String> {
         self.call("POST", &format!("/api/session/{}/permission/{req}/reply", self.session), Some(json!({"decision": decision}))).map(|_| ())
     }
-    pub fn stop(&mut self) {
-        #[cfg(windows)] { let _ = Command::new("taskkill").args(["/F", "/T", "/PID", &self.child.id().to_string()]).output(); }
-        let _ = self.child.kill();
+    pub fn stop(&self) {
+        let mut c = self.child.lock().unwrap();
+        #[cfg(windows)] { let _ = Command::new("taskkill").args(["/F", "/T", "/PID", &c.id().to_string()]).output(); }
+        let _ = c.kill();
     }
 }
 
@@ -130,7 +130,7 @@ mod tests {
     /// Real turn: `cargo test opencode_live -- --ignored --nocapture` (needs `opencode` on PATH and its free model).
     #[test] #[ignore] fn opencode_live() {
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let mut s = Server::start(&dir, &["*"]).unwrap();
+        let s = Server::start(&dir, &["*"]).unwrap();
         let evs = s.events().unwrap();
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(s.send(json!("Run the shell command `echo hello-spike` and tell me its output."))).unwrap();

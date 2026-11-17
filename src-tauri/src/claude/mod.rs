@@ -242,6 +242,7 @@ pub struct Live {
     pub inbox: Inbox,
     pub busy: AtomicBool,
     pub conn: Mutex<Option<Arc<Conn>>>,
+    pub oc: Mutex<Option<Arc<opencode::Server>>>, // OpenCode accounts (provider "opencode"): the engine instead of a Conn
     pub armed: AtomicBool,        // ready was called this turn
     pub handing_over: AtomicBool, // Clauracle asked for a handover (context limit / Clear & continue)
     first_turn: AtomicBool,   // a fresh session already past the context limit must not hand over forever

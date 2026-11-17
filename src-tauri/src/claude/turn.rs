@@ -12,6 +12,7 @@ pub(crate) async fn run(app: AppHandle, st: Arc<State>, pid: String, live: Arc<L
         }
         if let Err(e) = connect_and_serve(&app, &st, &pid, &live).await {
             *live.conn.lock().unwrap() = None;
+            if let Some(o) = live.oc.lock().unwrap().take() { o.stop(); }
             live.busy.store(false, SeqCst);
             emit(&app, "status", json!({"pid": pid, "busy": false}));
             if e != "reconnect" {
@@ -19,6 +20,50 @@ pub(crate) async fn run(app: AppHandle, st: Arc<State>, pid: String, live: Arc<L
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
         }
+    }
+}
+
+/// OpenCode account: `opencode serve` instead of the CLI. Free model by default (no keys); asks come back through
+/// `control::permission` as the Bash/Edit-like tool names of the card. ponytail: no clauracle MCP, handover or images yet.
+async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
+    let p = st.project(pid).ok_or("project removed")?;
+    let dir = p.path.clone();
+    let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start(&dir, &["*"])).await.map_err(|e| e.to_string())??);
+    *live.oc.lock().unwrap() = Some(srv.clone());
+    let (tx, mut evs) = mpsc::unbounded_channel::<Value>();
+    let s2 = srv.clone();
+    std::thread::spawn(move || { if let Ok(it) = s2.events() { for e in it { if tx.send(e).is_err() { break } } } });
+    emit(app, "status", json!({"pid": pid, "busy": false, "connected": true}));
+    let mut names = HashMap::new();
+    loop {
+        let content = match live.inbox.pop().await {
+            Input::Msg(t) => json!(t),
+            Input::Rich(b) => b,
+            Input::Reconnect => return Err("reconnect".into()),
+        };
+        live.busy.store(true, SeqCst);
+        st.with_project(pid, |p| p.working = true);
+        emit(app, "status", json!({"pid": pid, "busy": true, "handover": false}));
+        srv.send(content).await?;
+        loop {
+            let ev = evs.recv().await.ok_or("opencode stopped")?;
+            let mut done = false;
+            for o in opencode::translate(&ev, &srv.session, &mut names) {
+                match o {
+                    opencode::Out::Msg(m) => { show(app, st, pid, &p.account, &m); done |= m["type"] == "result"; }
+                    opencode::Out::Ask { id, action, resources } => {
+                        let tool = match action.as_str() { "shell" | "bash" => "Bash", "edit" | "write" | "patch" => "Edit", a => a };
+                        let input = json!({"command": resources.join(" "), "file_path": resources.first()});
+                        let r = control::permission(app, st, pid, &json!({"tool_name": tool, "input": input})).await;
+                        let _ = srv.reply(&id, if r["behavior"] == "allow" { "once" } else { "reject" });
+                    }
+                }
+            }
+            if done { break }
+        }
+        live.busy.store(false, SeqCst);
+        st.with_project(pid, |p| p.working = false);
+        emit(app, "status", json!({"pid": pid, "busy": false}));
     }
 }
 
@@ -101,8 +146,9 @@ pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
 
 pub(crate) async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
     let p = st.project(pid).ok_or("project removed")?;
-    let claude = store::which("claude").ok_or("Claude Code isn't installed (Settings › Install)")?;
     let acc = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).cloned().unwrap_or_default();
+    if acc.provider == "opencode" { return serve_opencode(app, st, pid, live).await }
+    let claude = store::which("claude").ok_or("Claude Code isn't installed (Settings › Install)")?;
     if acc.provider == "local" { // load the local model first (can take a while) so a failure shows its real reason
         let (m, app2, pid2) = (acc.model.clone(), app.clone(), pid.to_string());
         tokio::task::spawn_blocking(move || crate::local::ensure_noting(&app2, &pid2, &m)).await.map_err(|e| e.to_string())??;

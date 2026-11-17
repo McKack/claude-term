@@ -615,7 +615,7 @@ fn main_signed_in() -> bool {
 
 /// "Claude 2": the AI's name plus the next number not taken by an account already named that way.
 pub fn default_nick(cfg: &Config, provider: &str) -> String {
-    let ai = match provider { "openrouter" => "OpenRouter", "deepseek" => "DeepSeek", "zai" => "GLM", "kimi" => "Kimi", "minimax" => "MiniMax", "qwen" => "Qwen", "chatgpt" => "ChatGPT", "grok" => "Grok", "gemini" => "Gemini", "local" => "Local", "ollama" => "Ollama", "custom" => "Custom", _ => "Claude" };
+    let ai = match provider { "openrouter" => "OpenRouter", "deepseek" => "DeepSeek", "zai" => "GLM", "kimi" => "Kimi", "minimax" => "MiniMax", "qwen" => "Qwen", "chatgpt" => "ChatGPT", "grok" => "Grok", "gemini" => "Gemini", "local" => "Local", "opencode" => "OpenCode", "ollama" => "Ollama", "custom" => "Custom", _ => "Claude" };
     let n = (1..).find(|i| !cfg.accounts.iter().any(|a| a.nick.eq_ignore_ascii_case(&format!("{ai} {i}")))).unwrap();
     format!("{ai} {n}")
 }

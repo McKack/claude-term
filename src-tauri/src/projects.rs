@@ -221,7 +221,8 @@ pub(crate) async fn send_mid(st: St<'_>, pid: String, text: String, work: Option
 
 #[tauri::command]
 pub(crate) async fn interrupt(st: St<'_>, pid: String) -> R<()> {
-    let conn = st.live.lock().unwrap().get(&pid).and_then(|l| l.conn.lock().unwrap().clone());
+    let (conn, oc) = st.live.lock().unwrap().get(&pid).map(|l| (l.conn.lock().unwrap().clone(), l.oc.lock().unwrap().clone())).unwrap_or_default();
+    if let Some(o) = oc { claude::Backend::interrupt(&*o).await?; }
     if let Some(c) = conn {
         claude::Backend::interrupt(&*c).await?;
     }
