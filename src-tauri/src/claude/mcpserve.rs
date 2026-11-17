@@ -93,7 +93,7 @@ connection: close
 {body}", body.len());
         });
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let s = crate::claude::opencode::Server::start_with(&dir, &["*"], "", "", "", &crate::claude::opencode::config("", "", &url), "").unwrap();
+        let s = crate::claude::opencode::Server::start_with(&dir, &["*"], "", "", "", &crate::claude::opencode::config(None, &url), "").unwrap();
         let evs = s.events().unwrap();
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
             .block_on(s.send(json!("Call the clauracle_ready tool now, then say done."))).unwrap();

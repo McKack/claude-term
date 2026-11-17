@@ -38,7 +38,7 @@ const PROVS = {claude: {l: 'Claude', i: 'claude'},
   kimi: {l: 'Kimi', i: 'cloud', url: 'https://api.moonshot.ai/anthropic', key: 'https://platform.kimi.ai/console/api-keys', m: 'kimi-k3', h: 'Kimi models from Moonshot, pay as you go.'},
   minimax: {l: 'MiniMax', i: 'cloud', url: 'https://api.minimax.io/anthropic', key: 'https://platform.minimax.io', m: 'MiniMax-M3.1-Flash', h: 'MiniMax plan or pay as you go.'},
   qwen: {l: 'Qwen', i: 'cloud', url: 'https://dashscope-intl.aliyuncs.com/apps/anthropic', key: 'https://modelstudio.console.alibabacloud.com/?tab=playground#/api-key', m: 'qwen3.7-max', h: 'Qwen from Alibaba Model Studio, pay as you go (international region key).'},
-  // OpenAI-format endpoints (oai): Clauracle translates for Claude Code (oai.rs); model ids suggested from OpenRouter's list without the vendor prefix
+  // OpenAI-format endpoints (oai): OpenCode talks to them directly (api "openai"); model ids suggested from OpenRouter's list without the vendor prefix
   chatgpt: {l: 'ChatGPT (OpenAI)', i: 'cloud', url: 'https://api.openai.com/v1', oai: 1, key: 'https://platform.openai.com/api-keys', or: 'openai/', h: 'OpenAI GPT models with an OpenAI API key, pay as you go. ChatGPT subscription sign-in is not supported.'},
   grok: {l: 'Grok (xAI)', i: 'cloud', url: 'https://api.x.ai/v1', oai: 1, key: 'https://console.x.ai', or: 'x-ai/', h: 'xAI Grok models with an xAI API key, pay as you go.'},
   gemini: {l: 'Gemini (Google)', i: 'cloud', url: 'https://generativelanguage.googleapis.com/v1beta/openai', oai: 1, key: 'https://aistudio.google.com/apikey', or: 'google/gemini', free: 1, tag: 'free tier', h: 'Google Gemini models with a Gemini API key; free tier available.'},
@@ -58,8 +58,8 @@ const mList = () => CMODELS?.length ? CMODELS.map(x => [x.value === 'default' ? 
   : Object.entries(MODELS).map(([k, l]) => [k, l, '', null]);
 const mName = k => mList().find(x => x[0] === (k || ''))?.[1] || MODELS[k] || k;
 // the model an account pins (local, OpenRouter…: model/effort picks don't apply there), short name; else null
-// local accounts: hours used instead of limit windows (Rust usage: day_h, week_h)
-const localUse = u => u.day_k != null ? `${u.day_k}k tokens in 24 h | ${u.week_k}k in 7 days` : u.day_h == null ? '' : `${u.day_h} h in 24 h | ${u.week_h} h in 7 days`;
+// OpenCode accounts: tokens used instead of limit windows (Rust usage: day_k, week_k)
+const localUse = u => u.day_k == null ? '' : `${u.day_k}k tokens in 24 h | ${u.week_k}k in 7 days`;
 const ownModel = p => S.accounts.find(a => a.id === p.account)?.model?.split('/').pop() || null;
 const effOf = k => ['', ...(mList().find(x => x[0] === (k || ''))?.[3] || Object.keys(EFFORTS).filter(Boolean))];
 // short forms for the status row; full names in the menus. PERMS order = level 1..4 (least → most freedom)

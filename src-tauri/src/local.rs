@@ -202,12 +202,7 @@ fn server_exe(d: &Path) -> Option<PathBuf> {
 static SERVER: Mutex<Option<(String, String, std::process::Child)>> = Mutex::new(None);
 
 /// Base URL of a running llama-server for `model`, starting it (and stopping another model's) when needed.
-/// Blocks until the model is loaded, up to 5 minutes.
-pub fn ensure(model: &str) -> R<String> {
-    ensure_in(&dir(&store::load()), model, &|_, _| {})
-}
-
-/// Like `ensure`, but tells the chat log how the load goes: `note(text, done)`, called again as the memory grows.
+/// Blocks until the model is loaded, up to 5 minutes; tells the chat log how the load goes.
 pub fn ensure_noting(app: &AppHandle, pid: &str, model: &str) -> R<String> {
     let note = |text: &str, done: bool| emit(app, "localLoad", json!({"pid": pid, "text": text, "done": done}));
     let r = ensure_in(&dir(&store::load()), model, &note);
@@ -319,7 +314,7 @@ pub(crate) fn test_model() -> (&'static str, &'static str) {
     MODELS.iter().find(|m| m.0 == want).or(MODELS.first()).map(|m| (m.0, m.2)).unwrap()
 }
 
-/// Real run: engine + model (see test_model) into $CLAURACLE_LOCAL_TEST (GBs), then one Claude Code turn on it.
+/// Real run: engine + model (see test_model) into $CLAURACLE_LOCAL_TEST (GBs), and the chat-template fix (a turn on it: opencode_local_live).
 #[test]
 #[ignore]
 fn local_live() {
@@ -336,46 +331,4 @@ fn local_live() {
         {"role": "user", "content": "Reply with exactly: FOLD OK"}, {"role": "system", "content": "Use capitals."}], "max_tokens": 400}).to_string())
         .map_err(|e| match e { ureq::Error::Status(c, r) => format!("{c}: {}", r.into_string().unwrap_or_default()), e => e.to_string() }).unwrap().into_string().unwrap();
     eprintln!("fold: {}", &r[..r.len().min(300)]);
-    let a = store::Account { provider: "local".into(), base_url: url, model: id.into(), ..Default::default() };
-    let mut c = store::command(&store::which("claude").unwrap());
-    for (k, _) in std::env::vars() { if k.starts_with("CLAUDE") || k.starts_with("ANTHROPIC") { c.env_remove(k); } }
-    let o = c.current_dir(&d).args(["-p", "Reply with exactly: LOCAL OK", "--output-format", "text", "--permission-mode", "acceptEdits"]).envs(store::endpoint_env(&a, "local".into()))
-        .env("CLAUDE_CODE_MAX_CONTEXT_TOKENS", ctx(&a.base_url).to_string()).output().unwrap(); // as store::account_env adds it
-    let (out, err) = (String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
-    eprintln!("claude said: {out}\n{err}");
-    assert!(out.to_uppercase().contains("LOCAL OK"));
-    assert!(!err.contains("assumes a context window"), "the real window reached Claude Code");
-    // the same server's OpenAI endpoint through the translator (oai.rs), with one tool call
-    std::fs::write(d.join("word.txt"), "PINEAPPLE").unwrap();
-    let a = store::Account { base_url: crate::oai::base(&format!("{}/v1", a.base_url)), ..a };
-    let mut c = store::command(&store::which("claude").unwrap());
-    for (k, _) in std::env::vars() { if k.starts_with("CLAUDE") || k.starts_with("ANTHROPIC") { c.env_remove(k); } }
-    let o = c.current_dir(&d).args(["-p", "Use the Read tool to read word.txt, then reply with only the word in it.", "--output-format", "text", "--allowedTools", "Read", "--permission-mode", "acceptEdits"])
-        .envs(store::endpoint_env(&a, "local".into())).output().unwrap();
-    let out = String::from_utf8_lossy(&o.stdout);
-    eprintln!("through oai: {out}\n{}", String::from_utf8_lossy(&o.stderr));
-    assert!(out.to_uppercase().contains("PINEAPPLE"));
 }
-
-/// Real run: a Claude Code session on the Claude login goes through route.rs, and its `helper` agent is sent to the
-/// local model (needs the model from local_live in $CLAURACLE_LOCAL_TEST).
-#[test]
-#[ignore]
-fn route_live() {
-    let d = PathBuf::from(std::env::var("CLAURACLE_LOCAL_TEST").expect("set CLAURACLE_LOCAL_TEST"));
-    let id = test_model().0;
-    let url = ensure_in(&d, id, &|_, _| {}).unwrap();
-    let a = store::Account { provider: "local".into(), base_url: url, model: id.into(), ..Default::default() };
-    let t = crate::route::Target::from_env(&store::endpoint_env(&a, "local".into()), a.model.clone());
-    let base = crate::route::base("live", crate::route::ANTHROPIC, [("clauracle-helper".to_string(), t)].into());
-    let agents = r#"{"helper":{"description":"Answers simple questions","prompt":"Answer briefly.","model":"clauracle-helper"}}"#;
-    let mut c = store::command(&store::which("claude").unwrap());
-    for (k, _) in std::env::vars() { if k.starts_with("CLAUDE") || k.starts_with("ANTHROPIC") { c.env_remove(k); } }
-    let o = c.current_dir(&d).env("ANTHROPIC_BASE_URL", base).args(["-p", "Use the Agent tool with subagent_type helper and the prompt: What is 2+2? Then reply with its answer.",
-        "--model", "haiku", "--agents", agents, "--output-format", "text", "--allowedTools", "Agent", "--permission-mode", "acceptEdits"]).output().unwrap();
-    eprintln!("claude said: {}
-{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
-    assert!(o.status.success(), "the session itself ran through the router");
-    assert!(crate::route::HITS.load(std::sync::atomic::Ordering::SeqCst) > 0, "the agent's calls went to the local model");
-}
-

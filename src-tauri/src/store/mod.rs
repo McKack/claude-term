@@ -232,7 +232,6 @@ pub struct Config {
     pub usage: HashMap<String, HashMap<String, Window>>,
     #[serde(default)]
     pub oc_use: HashMap<String, Vec<(f64, f64)>>, // OpenCode accounts: (time, tokens of one step), last 7 days
-    pub local_use: HashMap<String, Vec<(f64, f64)>>, // local accounts have no limits: (turn end, seconds busy), last 7 days
     pub active: Option<String>,
     pub default_account: String,
     pub catalog: Vec<Item>,
@@ -253,42 +252,12 @@ pub struct Config {
     pub agent_effort: HashMap<String, String>, // agent -> low|medium|high|xhigh|max for its Claude model; missing = its own
 }
 
-/// Model an agent pick runs on in a session of `account`: an alias as is; an account or relay only when it is on the
-/// session's own endpoint and names a model (the plugin copy just names it), else None (agent_far routes it, or the agent keeps its default).
-/// A pick with a model chosen inside its account (the picker's Cloud list): `acct:<id>#<model>` → (`acct:<id>`, model).
-pub fn pick_model(pick: &str) -> (&str, Option<&str>) { pick.split_once('#').map_or((pick, None), |(p, m)| (p, Some(m))) }
+/// Model an agent pick runs on: a tier alias (haiku, sonnet, opus) the plugin copy names; anything else keeps the agent's own.
+/// (Agents on another account's model are gone with #601: OpenCode accounts are their own sessions; see the delegate task #610.)
+pub fn agent_model(pick: &str) -> Option<String> { matches!(pick, "haiku" | "sonnet" | "opus").then(|| pick.to_string()) }
 
-pub fn agent_model(cfg: &Config, account: &str, pick: &str) -> Option<String> {
-    if matches!(pick, "haiku" | "sonnet" | "opus") { return Some(pick.into()); }
-    let (pick, chosen) = pick_model(pick);
-    let me = cfg.accounts.iter().find(|a| a.id == account);
-    let same = |a: &&Account| !a.model.is_empty() && me.is_some_and(|m| m.base_url == a.base_url && m.provider == a.provider && m.api == a.api);
-    let pool: Vec<&Account> = if let Some(id) = pick.strip_prefix("acct:") { cfg.accounts.iter().filter(|a| a.id == id).collect() }
-        else if let Some(r) = pick.strip_prefix("relay:") { cfg.accounts.iter().filter(|a| a.relay == r).collect() } else { vec![] };
-    pool.into_iter().find(|a| same(&a)).map(|a| chosen.map_or_else(|| a.model.clone(), String::from))
-}
-
-/// Account an agent pick runs on through route.rs: an account or relay agent_model can't use inside this session.
-pub fn agent_far(cfg: &Config, account: &str, pick: &str) -> Option<String> {
-    if agent_model(cfg, account, pick).is_some() { return None; }
-    let pick = pick_model(pick).0;
-    let id = if let Some(id) = pick.strip_prefix("acct:") { id.to_string() } else {
-        let r = pick.strip_prefix("relay:")?;
-        let m: Vec<&Account> = cfg.accounts.iter().filter(|a| a.relay == r).collect();
-        m.iter().find(|a| over_limit(cfg, &a.id).is_none()).or(m.first())?.id.clone()
-    };
-    // shortcut: the Claude Code login (Main) keeps its token inside the CLI, so it can't be a target; such a pick runs on the default
-    cfg.accounts.iter().find(|a| a.id == id && a.id != MAIN && a.id != account).map(|a| a.id.clone())
-}
-
-/// Model name a session uses for an agent route.rs sends to another account.
-pub fn routed(agent: &str) -> String { format!("clauracle-{}", agent.replace(|c: char| !c.is_ascii_alphanumeric(), "-")) }
-
-/// Model a session gives agent `n`: its pick when this endpoint runs it, else the routed name route.rs hands to another account.
-pub fn agent_pick(cfg: &Config, account: &str, n: &str) -> Option<String> {
-    let p = cfg.agent_models.get(n)?;
-    agent_model(cfg, account, p).or_else(|| agent_far(cfg, account, p).map(|_| routed(n)))
-}
+/// Model a session gives agent `n`.
+pub fn agent_pick(cfg: &Config, n: &str) -> Option<String> { agent_model(cfg.agent_models.get(n)?) }
 
 /// Definition of a Claude Code agent (`name` or `plugin:name`) from its file: the project's or user's agents folder, or an
 /// installed plugin. Built-ins have no file: None. Returned as a session agent entry (description, prompt, tools).
@@ -339,23 +308,10 @@ pub fn builtin_agent(n: &str) -> Option<serde_json::Value> {
     Some(d)
 }
 
-/// route.rs targets for this session's agents on other accounts. Blocking: a local model starts here.
-pub fn agent_routes(cfg: &Config, account: &str, dir: &Path) -> HashMap<String, crate::route::Target> {
-    cfg.agent_models.iter().filter_map(|(n, p)| {
-        // agents outside Clauracle's plugin have no tier here: Sonnet
-        let tier = std::fs::read_to_string(dir.join("agents").join(format!("{n}.md"))).ok()
-            .and_then(|t| t.lines().find_map(|l| l.strip_prefix("model:").map(|m| m.trim().to_string()))).unwrap_or_default();
-        let a = cfg.accounts.iter().find(|a| Some(&a.id) == agent_far(cfg, account, p).as_ref())?;
-        // ponytail: a Claude account without its own model gets the agent's tier as a fixed id; refresh with new Claude models
-        let model = if let Some(m) = pick_model(p).1.filter(|m| !matches!(*m, "haiku" | "sonnet" | "opus")) { m.to_string() } else if let Some(t) = pick_model(p).1 { format!("claude-{t}-5-5") } else if !a.model.is_empty() { a.model.clone() } else { format!("claude-{}-5-5", if tier.contains("haiku") { "haiku" } else if tier.contains("opus") { "opus" } else { "sonnet" }) };
-        Some((routed(n), crate::route::Target::from_env(&account_env(&a.id, a), model)))
-    }).collect()
-}
-
 /// Plugin dir for a session: the bundled one, or a copy in ~/.clauracle/plugin with each picked agent's `model:` line swapped.
 pub fn plugin_for(cfg: &Config, account: &str, dir: &Path) -> PathBuf {
     let names: std::collections::BTreeSet<&String> = cfg.agent_models.keys().chain(cfg.agent_effort.keys()).collect();
-    let picks: Vec<(String, Option<String>, Option<&String>)> = names.into_iter().map(|n| (n.clone(), agent_pick(cfg, account, n), cfg.agent_effort.get(n)))
+    let picks: Vec<(String, Option<String>, Option<&String>)> = names.into_iter().map(|n| (n.clone(), agent_pick(cfg, n), cfg.agent_effort.get(n)))
         .filter(|(_, m, e)| m.is_some() || e.is_some()).collect();
     if picks.is_empty() { return dir.to_path_buf(); }
     // one copy per account and pick set: projects with their own picks (#586) don't overwrite each other's
@@ -578,42 +534,21 @@ pub fn set_token(id: &str, token: &str) {
     }
 }
 
-pub fn account_env(id: &str, a: &Account) -> Vec<(String, String)> {
-    if id == MAIN {
-        return vec![];
-    }
-    if a.provider == "local" {
-        // built-in llama-server, started here if needed; unreachable URL on failure so the CLI errors instead of running as Main
-        let url = crate::local::ensure(&a.model).unwrap_or_else(|_| "http://127.0.0.1:1".into());
-        let mut v = endpoint_env(&Account { base_url: url.clone(), ..a.clone() }, "local".into());
-        // Claude Code assumes 1M tokens for a model it doesn't know: tell it the real window, so auto-compact and the handover fire
-        v.push(("CLAUDE_CODE_MAX_CONTEXT_TOKENS".into(), crate::local::ctx(&url).to_string()));
-        return v;
-    }
+pub fn account_env(id: &str, _a: &Account) -> Vec<(String, String)> {
+    if id == MAIN { return vec![]; }
     let Some(t) = keyring::Entry::new(KEYRING, id).ok().and_then(|e| e.get_password().ok()) else { return vec![] };
-    if a.api == "openai" {
-        return endpoint_env(&Account { base_url: crate::oai::base(&a.base_url), ..a.clone() }, t);
-    }
-    endpoint_env(a, t)
+    endpoint_env(t)
 }
 
-pub(crate) fn endpoint_env(a: &Account, t: String) -> Vec<(String, String)> {
-    if a.base_url.is_empty() {
-        // Console API keys go in ANTHROPIC_API_KEY (X-Api-Key); the OAuth variable only takes setup-tokens
-        return vec![(if api_key_ok(&t) { "ANTHROPIC_API_KEY" } else { "CLAUDE_CODE_OAUTH_TOKEN" }.into(), t)];
-    }
-    // gateways differ: x-api-key vs Bearer → send both; CLAUDE_CODE_OAUTH_TOKEN removed by caller ∵ it'd win.
-    // Providers whose docs ask for Bearer only (OpenRouter, Kimi, Z.ai…) want ANTHROPIC_API_KEY empty: a set one conflicts.
-    let key = if matches!(a.provider.as_str(), "" | "claude" | "deepseek") { t.clone() } else { String::new() };
-    let mut v = vec![("ANTHROPIC_BASE_URL".into(), a.base_url.clone()), ("ANTHROPIC_API_KEY".into(), key), ("ANTHROPIC_AUTH_TOKEN".into(), t)];
-    // another endpoint: no telemetry, error reports or update checks to Anthropic either
-    v.push(("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".into(), "1".into()));
-    if !a.model.is_empty() {
-        for k in ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"] {
-            v.push((k.into(), a.model.clone()));
-        }
-    }
-    v
+/// The Claude CLI runs Claude accounts only (#601): a subscription token or a Console API key. Every other provider is OpenCode's.
+pub(crate) fn endpoint_env(t: String) -> Vec<(String, String)> {
+    // Console API keys go in ANTHROPIC_API_KEY (X-Api-Key); the OAuth variable only takes setup-tokens
+    vec![(if api_key_ok(&t) { "ANTHROPIC_API_KEY" } else { "CLAUDE_CODE_OAUTH_TOKEN" }.into(), t)]
+}
+
+/// Account the Claude CLI runs: the Claude login (Main), a setup-token or an Anthropic Console key. Others go through OpenCode.
+pub fn is_claude(a: &Account) -> bool {
+    a.id == MAIN || (matches!(a.provider.as_str(), "" | "claude") && (a.base_url.is_empty() || a.base_url.contains("anthropic.com")))
 }
 
 /// Claude Code itself is signed in (subscription login or an API key in its environment).
@@ -689,14 +624,6 @@ pub fn record_usage(cfg: &mut Config, account: &str, raw: &serde_json::Value) {
     }
 }
 
-/// Time a local model spent on a turn, kept for a week.
-pub fn record_local(cfg: &mut Config, account: &str, secs: f64) {
-    let t = now();
-    let e = cfg.local_use.entry(account.into()).or_default();
-    e.retain(|(at, _)| t - at < 7.0 * 86400.0);
-    e.push((t, secs));
-}
-
 /// Tokens an OpenCode step used, kept for a week.
 pub fn record_tokens(cfg: &mut Config, account: &str, n: f64) {
     let t = now();
@@ -706,20 +633,15 @@ pub fn record_tokens(cfg: &mut Config, account: &str, n: f64) {
 }
 
 /// Live % per window ("five_hour", "seven_day"), windows that already reset count as 0.
-/// Local accounts get "day_h" / "week_h" instead: hours used in the last 24 hours / 7 days.
+/// Accounts the Claude CLI doesn't run (OpenCode) get "day_k" / "week_k" instead: thousand tokens in the last 24 hours / 7 days.
 pub fn usage(cfg: &Config, account: &str) -> HashMap<String, f64> {
     let t = now();
     let mut u: HashMap<String, f64> = cfg.usage.get(account).map(|w| w.iter().map(|(k, v)| {
         let live = v.resets_at.map_or(true, |r| r > t);
         (k.clone(), if live { (v.utilization * 100.0).round() } else { 0.0 })
     }).collect()).unwrap_or_default();
-    if cfg.local_use.contains_key(account) || cfg.accounts.iter().any(|a| a.id == account && a.provider == "local") {
-        let l = cfg.local_use.get(account).map(|v| v.as_slice()).unwrap_or(&[]); // never used yet: 0 h
-        let hours = |span: f64| (l.iter().filter(|(at, _)| t - at < span).map(|(_, s)| s).sum::<f64>() / 360.0).round() / 10.0;
-        u.insert("day_h".into(), hours(86400.0));
-        u.insert("week_h".into(), hours(7.0 * 86400.0));
-    }
-    if let Some(l) = cfg.oc_use.get(account) {
+    let oc = cfg.accounts.iter().any(|a| a.id == account && !is_claude(a));
+    if let (true, Some(l)) = (oc || cfg.oc_use.contains_key(account), Some(cfg.oc_use.get(account).map_or(&[][..], |v| v.as_slice()))) { // never used yet: 0k
         let k = |span: f64| (l.iter().filter(|(at, _)| t - at < span).map(|(_, n)| n).sum::<f64>() / 1000.0).round();
         u.insert("day_k".into(), k(86400.0));
         u.insert("week_k".into(), k(7.0 * 86400.0));
@@ -1075,17 +997,6 @@ mod tests {
     }
 
     #[test]
-    fn local_hours() {
-        let mut cfg = Config::default();
-        cfg.local_use.insert("L".into(), vec![(now() - 3.0 * 86400.0, 7200.0), (now() - 8.0 * 86400.0, 99999.0)]);
-        record_local(&mut cfg, "L", 1800.0);
-        let u = usage(&cfg, "L");
-        assert_eq!((u["day_h"], u["week_h"]), (0.5, 2.5));
-        assert_eq!(cfg.local_use["L"].len(), 2, "older than a week dropped");
-        assert!(usage(&cfg, "X").is_empty());
-    }
-
-    #[test]
     fn limits_and_relays() {
         let mut cfg = Config::default();
         for (id, relay) in [("A", "team"), ("B", "team"), ("C", "team"), ("D", "")] {
@@ -1112,26 +1023,14 @@ mod tests {
     }
 
     #[test]
-    fn agent_model_stays_on_the_session_endpoint() {
+    fn agent_pick_is_a_tier_alias() {
         let mut cfg = Config::default();
-        let or = |id: &str, model: &str, relay: &str| Account { id: id.into(), provider: "openrouter".into(), base_url: "https://openrouter.ai/api".into(), model: model.into(), relay: relay.into(), ..Default::default() };
-        cfg.accounts = vec![Account { id: "c".into(), ..Default::default() }, or("o1", "x/a", ""), or("o2", "", "r"), or("o3", "x/b", "r")];
-        assert_eq!(agent_model(&cfg, "c", "opus").as_deref(), Some("opus"));
-        assert_eq!(agent_model(&cfg, "c", "acct:o1"), None, "another provider: default");
-        assert_eq!(agent_model(&cfg, "o1", "acct:o1").as_deref(), Some("x/a"));
-        assert_eq!(agent_model(&cfg, "o1", "relay:r").as_deref(), Some("x/b"), "first relay account with a model");
-        assert_eq!(agent_model(&cfg, "o1", "acct:gone"), None);
-        assert_eq!(agent_far(&cfg, "c", "acct:o1").as_deref(), Some("o1"), "another provider: routed");
-        assert_eq!(agent_far(&cfg, "o1", "acct:o1"), None, "same endpoint: no route");
-        assert_eq!(agent_far(&cfg, "c", "opus"), None);
-        assert_eq!(agent_model(&cfg, "o1", "acct:o1#x/c").as_deref(), Some("x/c"), "model picked in the account");
-        assert_eq!(agent_far(&cfg, "c", "acct:o1#x/c").as_deref(), Some("o1"));
-        cfg.agent_models.insert("my:rev".into(), "acct:o1".into());
-        assert_eq!(agent_pick(&cfg, "c", "my:rev").as_deref(), Some("clauracle-my-rev"), "routed name is a plain model id");
-        assert_eq!(agent_pick(&cfg, "o1", "my:rev").as_deref(), Some("x/a"));
-        assert_eq!(agent_pick(&cfg, "c", "other"), None);
+        assert_eq!(agent_model("opus").as_deref(), Some("opus"));
+        assert_eq!(agent_model("acct:o1"), None, "other accounts' models are not agent picks any more (#601)");
+        cfg.agent_models.insert("a".into(), "haiku".into());
+        cfg.agent_models.insert("b".into(), "relay:r".into());
+        assert_eq!((agent_pick(&cfg, "a").as_deref(), agent_pick(&cfg, "b"), agent_pick(&cfg, "c")), (Some("haiku"), None, None));
     }
-
     #[test]
     fn plugin_copy_takes_effort() {
         let d = std::env::temp_dir().join(format!("clauracle-plug-{}", std::process::id()));
@@ -1305,15 +1204,13 @@ mod tests {
     #[test]
     fn endpoint_env_per_provider() {
         let get = |v: &[(String, String)], k: &str| v.iter().find(|x| x.0 == k).map(|x| x.1.clone());
-        let a = |p: &str, m: &str| super::Account { provider: p.into(), base_url: "https://x.test/anthropic".into(), model: m.into(), ..Default::default() };
-        let v = super::endpoint_env(&super::Account::default(), "tok".into());
+        let v = super::endpoint_env("tok".into());
         assert_eq!(get(&v, "CLAUDE_CODE_OAUTH_TOKEN").as_deref(), Some("tok"));
         let key = format!("sk-ant-api03-{}", "Ab_9-".repeat(18)); // Console key: X-Api-Key, never the OAuth variable
-        let v = super::endpoint_env(&super::Account::default(), key.clone());
+        let v = super::endpoint_env(key.clone());
         assert_eq!((get(&v, "ANTHROPIC_API_KEY"), get(&v, "CLAUDE_CODE_OAUTH_TOKEN")), (Some(key), None));
-        let v = super::endpoint_env(&a("claude", ""), "k".into()); // custom gateway: both headers, no model
-        assert_eq!((get(&v, "ANTHROPIC_API_KEY").as_deref(), get(&v, "ANTHROPIC_AUTH_TOKEN").as_deref(), get(&v, "ANTHROPIC_MODEL")), (Some("k"), Some("k"), None));
-        let v = super::endpoint_env(&a("openrouter", "m:free"), "k".into()); // Bearer only, model on every role
-        assert_eq!((get(&v, "ANTHROPIC_API_KEY").as_deref(), get(&v, "ANTHROPIC_DEFAULT_HAIKU_MODEL").as_deref(), get(&v, "CLAUDE_CODE_SUBAGENT_MODEL").as_deref()), (Some(""), Some("m:free"), Some("m:free")));
+        let a = |p: &str, u: &str| super::Account { provider: p.into(), base_url: u.into(), ..Default::default() };
+        assert!(super::is_claude(&a("claude", "")) && super::is_claude(&a("", "https://api.anthropic.com")));
+        assert!(!super::is_claude(&a("claude", "https://x.test/anthropic")) && !super::is_claude(&a("openrouter", "")) && !super::is_claude(&a("opencode", "")));
     }
 }

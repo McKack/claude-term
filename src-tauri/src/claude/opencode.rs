@@ -18,16 +18,43 @@ fn b64(s: &str) -> String {
     o
 }
 
-/// OpenCode config: `local` = llama-server URL becomes the custom provider `local` (OpenAI-compatible, model "local/<name>");
-/// `mcp` = Clauracle's tools (`mcpserve`), which OpenCode names `clauracle_<tool>`.
-pub fn config(local: &str, model: &str, mcp: &str) -> Value {
+/// OpenCode config: `entry` = (id, provider JSON) of a custom provider (an account that isn't Claude, or the local llama-server),
+/// `mcp` = Clauracle's tools (`mcpserve`), which OpenCode names `clauracle_<tool>`. Goes in OPENCODE_CONFIG_CONTENT (the key never hits a disk).
+pub fn config(entry: Option<(&str, Value)>, mcp: &str) -> Value {
     let mut c = json!({});
-    if !local.is_empty() {
-        let m = model.strip_prefix("local/").unwrap_or(model);
-        c["provider"] = json!({"local": {"npm": "@ai-sdk/openai-compatible", "name": "Local", "options": {"baseURL": format!("{local}/v1")}, "models": {m: {"name": m}}}});
-    }
+    if let Some((id, p)) = entry { c["provider"] = json!({id: p}); }
     if !mcp.is_empty() { c["mcp"] = json!({"clauracle": {"type": "remote", "url": mcp, "enabled": true}}); }
     c
+}
+
+/// The built-in llama-server as an OpenAI-compatible provider; `ctx` = the window it really has (OpenCode compacts by it).
+pub fn local_entry(url: &str, model: &str, ctx: u64) -> Value {
+    json!({"npm": "@ai-sdk/openai-compatible", "name": "Local", "options": {"baseURL": format!("{url}/v1")},
+        "models": {model: {"name": model, "limit": {"context": ctx, "output": 8192}}}})
+}
+
+/// Model an account without its own pick uses (the endpoint names Claude's roles itself there; OpenCode needs one id).
+fn default_model(provider: &str) -> &'static str {
+    match provider { "deepseek" => "deepseek-chat", "zai" => "glm-5.3", "kimi" => "kimi-k3", "minimax" => "MiniMax-M3.1-Flash", "qwen" => "qwen3.7-max", _ => "" }
+}
+
+/// A non-Claude account as an OpenCode custom provider (#601): Anthropic-format endpoints through @ai-sdk/anthropic, OpenAI-format
+/// ones (api "openai", OpenRouter) through @ai-sdk/openai-compatible. Returns (model id, provider JSON).
+pub fn account_entry(a: &crate::store::Account, key: &str) -> Result<(String, Value), String> {
+    let model = if a.model.is_empty() { default_model(&a.provider).to_string() } else { a.model.clone() };
+    if model.is_empty() { return Err(format!("Pick a model for {} (Accounts > Model).", a.nick)) }
+    let url = a.base_url.trim_end_matches('/');
+    let openai = a.api == "openai" || a.provider == "openrouter";
+    let key = if key.is_empty() { "none" } else { key };
+    let entry = if openai {
+        // OpenRouter's account URL is its Anthropic skin (.../api): the OpenAI one is .../api/v1
+        let base = if a.provider == "openrouter" { format!("{url}/v1") } else { url.to_string() };
+        json!({"npm": "@ai-sdk/openai-compatible", "name": a.nick, "options": {"baseURL": base, "apiKey": key}, "models": {&model: {"name": &model}}})
+    } else {
+        // gateways differ (x-api-key vs Bearer): send both; @ai-sdk/anthropic adds /messages to the base
+        json!({"npm": "@ai-sdk/anthropic", "name": a.nick, "options": {"baseURL": format!("{url}/v1"), "apiKey": key, "headers": {"authorization": format!("Bearer {key}")}}, "models": {&model: {"name": &model}}})
+    };
+    Ok((model, entry))
 }
 
 /// OpenCode's name for one of Clauracle's MCP tools → the CLI's (`clauracle_ready` → `mcp__clauracle__ready`), which turn.rs knows.
@@ -42,6 +69,7 @@ pub fn tool_name(n: &str) -> String {
 impl Server {
     /// Start `opencode serve` in `dir` (port 0 = a free one; it prints the URL and a password), create a session.
     /// `ask`: tool actions that must come back as permission requests (e.g. "*").
+    #[cfg(test)]
     pub fn start(dir: &str, ask: &[&str]) -> Result<Server, String> { Self::start_with(dir, ask, "", "", "", &Value::Null, "") }
     /// `model` = "provider/model" ("" = OpenCode's default free one); `key` (with `label`) is stored as that provider's credential.
     pub fn start_with(dir: &str, ask: &[&str], model: &str, key: &str, label: &str, cfg: &Value, resume: &str) -> Result<Server, String> {
@@ -243,17 +271,58 @@ return 1"}}}), "s", &mut n);
         assert_eq!(res["is_error"], false);
         assert!(again.is_ok());
     }
+    /// OpenCode reaches a custom account's endpoint the way `account_entry` says (path + auth), for both formats; a fake endpoint
+    /// records the first request. `cargo test account_wire_live -- --ignored --nocapture` (needs `opencode`).
+    #[test] #[ignore] fn account_wire_live() {
+        use std::io::{Read, Write};
+        for (provider, api, want_path) in [("deepseek", "", "/anthropic/v1/messages"), ("ollama", "openai", "/v1/chat/completions")] {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = l.local_addr().unwrap().port();
+            let (tx, rx) = std::sync::mpsc::channel::<String>();
+            std::thread::spawn(move || for c in l.incoming() {
+                let Ok(mut c) = c else { continue };
+                let mut buf = [0u8; 8192];
+                let n = c.read(&mut buf).unwrap_or(0);
+                let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
+                let body = "{\"error\":{\"message\":\"fake\"}}";
+                let _ = write!(c, "HTTP/1.1 401 Unauthorized\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+            });
+            let base = if api == "openai" { format!("http://127.0.0.1:{port}/v1") } else { format!("http://127.0.0.1:{port}/anthropic") };
+            let a = crate::store::Account { provider: provider.into(), base_url: base, api: api.into(), model: "m1".into(), nick: "T".into(), ..Default::default() };
+            let (m, e) = account_entry(&a, "sekrit").unwrap();
+            let dir = std::env::temp_dir().to_string_lossy().to_string();
+            let s = Server::start_with(&dir, &["*"], &format!("clauracle/{m}"), "", "", &config(Some(("clauracle", e)), ""), "").unwrap();
+            tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(s.send(json!("hi"))).unwrap();
+            let req = rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap_or_default();
+            s.stop();
+            println!("{provider}: {}", req.lines().take(12).collect::<Vec<_>>().join(" | "));
+            let low = req.to_lowercase();
+            assert!(req.starts_with(&format!("POST {want_path}")), "{provider} path: {req}");
+            assert!(low.contains("sekrit"), "{provider} sent the key");
+        }
+    }
     #[test] fn maps_usage() {
         let o = translate(&json!({"type": "session.usage.updated", "data": {"sessionID": "s", "cost": 0, "tokens": {"input": 10, "output": 5, "reasoning": 1, "cache": {"read": 99}}}}), "s", &mut Default::default());
         assert_eq!(o, vec![Out::Msg(json!({"type": "oc_usage", "tokens": 16.0, "cost": 0}))]);
     }
-    #[test] fn local_provider_config() {
-        let c = config("http://127.0.0.1:8080", "local/qwen", "http://127.0.0.1:9/mcp");
+    #[test] fn provider_config() {
+        let c = config(Some(("local", local_entry("http://127.0.0.1:8080", "qwen", 32768))), "http://127.0.0.1:9/mcp");
+        assert_eq!(c["provider"]["local"]["options"]["baseURL"], "http://127.0.0.1:8080/v1");
+        assert_eq!(c["provider"]["local"]["models"]["qwen"]["limit"]["context"], 32768);
         assert_eq!(c["mcp"]["clauracle"]["url"], "http://127.0.0.1:9/mcp");
         assert_eq!(tool_name("clauracle_ready"), "mcp__clauracle__ready");
         assert_eq!((tool_name("shell"), tool_name("edit")), ("Bash".to_string(), "Edit".to_string()));
-        assert_eq!(c["provider"]["local"]["options"]["baseURL"], "http://127.0.0.1:8080/v1");
-        assert!(c["provider"]["local"]["models"]["qwen"].is_object());
+    }
+    #[test] fn account_entries() {
+        let a = |p: &str, u: &str, api: &str, m: &str| crate::store::Account { provider: p.into(), base_url: u.into(), api: api.into(), model: m.into(), nick: "N".into(), ..Default::default() };
+        let (m, e) = account_entry(&a("deepseek", "https://api.deepseek.com/anthropic", "", ""), "k").unwrap();
+        assert_eq!((m.as_str(), e["npm"].as_str(), e["options"]["baseURL"].as_str()), ("deepseek-chat", Some("@ai-sdk/anthropic"), Some("https://api.deepseek.com/anthropic/v1")));
+        assert_eq!(e["options"]["headers"]["authorization"], "Bearer k");
+        let (_, e) = account_entry(&a("openrouter", "https://openrouter.ai/api", "", "x/y:free"), "k").unwrap();
+        assert_eq!((e["npm"].as_str(), e["options"]["baseURL"].as_str()), (Some("@ai-sdk/openai-compatible"), Some("https://openrouter.ai/api/v1")));
+        let (_, e) = account_entry(&a("ollama", "http://localhost:11434/v1", "openai", "llama3"), "").unwrap();
+        assert_eq!((e["options"]["baseURL"].as_str(), e["options"]["apiKey"].as_str()), (Some("http://localhost:11434/v1"), Some("none")));
+        assert!(account_entry(&a("openrouter", "https://openrouter.ai/api", "", ""), "k").is_err(), "no model, no default");
     }
     /// A picked model + key reach the server: `cargo test opencode_model_live -- --ignored`.
     #[test] #[ignore] fn opencode_model_live() {
@@ -271,7 +340,7 @@ return 1"}}}), "s", &mut n);
         let (id, _) = crate::local::test_model();
         let url = crate::local::ensure_in(&d, id, &|_, _| {}).unwrap();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let s = Server::start_with(&dir, &["*"], &format!("local/{id}"), "", "", &config(&url, &format!("local/{id}"), ""), "").unwrap();
+        let s = Server::start_with(&dir, &["*"], &format!("local/{id}"), "", "", &config(Some(("local", local_entry(&url, id, 32768))), ""), "").unwrap();
         let evs = s.events().unwrap();
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
             .block_on(s.send(json!("Reply with exactly: LOCAL OK"))).unwrap();

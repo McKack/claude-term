@@ -293,8 +293,8 @@ function ccAgents() {
         agModelBtn(g) + sw(g.some(x => !off.includes(x.name)), `agentsSet(${names}, this.checked)`)); }).join('')
       || empty('Listed once a project\'s session has started', `<button class="btn sm" onclick="closeDlg()">Back to the project</button>`));
 }
-/* built-in agent model: its default, another Claude tier, or an AI account / relay (Relays › and Accounts › submenus, search on top);
-   an account on another provider than the project's is reached through route.rs (store::agent_far) */
+/* built-in agent model: its default or another Claude tier (haiku, sonnet, opus) plus effort. Agents on another account's model are gone
+   with #601 (accounts other than Claude run through OpenCode); an old acct:/relay: pick is ignored and shown as the default (#610 = delegate tool). */
 const AGDEF = {apprentice: 'haiku', mentor: 'sonnet', master: 'opus', manager: 'haiku'}, TIER = {haiku: 'Haiku', sonnet: 'Sonnet', opus: 'Opus'};
 const agPlug = g => g.map(x => x.name.match(/^clauracle:(\w+)$/)?.[1]).find(n => AGDEF[n]);
 // an agent's own model when nothing is picked: Clauracle's tiers, a custom agent's tier, else whatever its definition says
@@ -308,27 +308,18 @@ function agSave(pid, n, model, effort) {
   const m = {...agM(pid)}, e = {...agE(pid)}; if (model) m[n] = model; else delete m[n];
   if (effort === '') delete e[n]; else if (effort != null) e[n] = effort;
   return call('update_project', {pid, changes: {agent_models: m, agent_effort: e}}).then(refresh).then(agRedraw); }
-function agPickCard(n, pid = '') { const v = agM(pid)[n] || '', [k, id] = v.split(/:(.*)/), [ai, m] = (id || '').split('#'), a = S.accounts.find(x => x.id === ai), r = k === 'relay' && S.accounts.filter(x => x.relay === id).length;
-  const [ic, top, name] = !v ? ['claude', 'Default', agDefL(n)] : TIER[v] ? ['claude', 'Claude', TIER[v]] : k === 'relay' ? ['sparkle', `${r} model${r === 1 ? '' : 's'}`, id]
-    : a ? [prov(a).i, m ? a.nick : prov(a).l, m ? TIER[m] || m.split('/').pop() : a.nick] : ['claude', 'Removed account', agDefL(n)];
-  const ef = agE(pid)[n];
+function agPickCard(n, pid = '') { const v = agM(pid)[n] || '', ef = agE(pid)[n];
+  const [ic, top, name] = TIER[v] ? ['claude', 'Claude', TIER[v]] : ['claude', 'Default', agDefL(n)];
   return acard(ic, esc(top), name + (ef ? ', ' + EFFORTS[ef] : ''),`onclick="agModelMenu(this, ${esc(JSON.stringify(n))}, false, '${pid}')"`).replace('class="idcard', 'class="idcard pick').replace(/<\/button>$/, icon('down') + '</button>'); }
 const agModelBtn = (g, pid) => agPickCard(agPlug(g) || g[0].name, pid);
 // the anchor's spot, kept: a re-render replaces the button, the menu reopens where it was
 const anchorOf = b => { const r = b.getBoundingClientRect(); return {getBoundingClientRect: () => r}; };
-/* like the composer's picker: Accounts › holds only accounts (the project's own first), Model and Effort sit at the bottom while the
-   pick runs on Claude. Picking an account that has them keeps the menu open with those two rows highlighted. Pick = acct[#tier] | tier. */
-function agModelMenu(b, n, hot, pid = '') { const v = agM(pid)[n] || '', ef = agE(pid)[n] || '', [base, t] = TIER[v] ? ['', v] : v.split('#');
-  const cl = x => !x || (a => a && !a.model && prov(a) === PROVS.claude)(S.accounts.find(y => 'acct:' + y.id === x)), tier = TIER[t] ? t : '';
+/* Model (the agent's default or a Claude tier) and Effort, one menu. Pick = tier. */
+function agModelMenu(b, n, hot, pid = '') { const v = agM(pid)[n] || '', ef = agE(pid)[n] || '', tier = TIER[v] ? v : '';
   const save = (model, effort) => agSave(pid, n, model, effort);
-  const tail = !cl(base) ? [] : ['-',
-    {icon: 'sparkle', label: 'Model', hint: TIER[tier] || agDefL(n), hot, items: [{label: agDefL(n) + ' (default)', check: !tier, run: () => save(base)},
-      ...Object.entries(TIER).filter(([k]) => k !== AGDEF[n]).map(([k, l]) => ({label: l, check: tier === k, run: () => save(base ? base + '#' + k : k)}))]},
-    ...(n === 'manager' ? [] : [{icon: 'brain', label: 'Effort', hint: EFFORTS[ef], hot, items: Object.entries(EFFORTS).map(([k, l]) => ({label: l, check: ef === k, run: () => save(v, k)}))}])];
-  aiMenu(b, base, (x, r) => { const m = TIER[r?.m] ? r.m : tier, at = anchorOf(b);
-    if (!cl(x)) return save(x, '');
-    save(x ? x + (m ? '#' + m : '') : m, r?.e).then(() => agModelMenu(at, n, true, pid)); },
-    {tiers: [{label: 'Project\'s account', v: '', icon: 'claude'}], mx: x => cl(x) ? {m: tier, e: ef} : undefined, tail}); }
+  menuAt(b, [{icon: 'sparkle', label: 'Model', hint: TIER[tier] || agDefL(n), items: [{label: agDefL(n) + ' (default)', check: !tier, run: () => save('')},
+      ...Object.entries(TIER).filter(([k]) => k !== AGDEF[n]).map(([k, l]) => ({label: l, check: tier === k, run: () => save(k)}))]},
+    ...(n === 'manager' ? [] : [{icon: 'brain', label: 'Effort', hint: EFFORTS[ef], items: Object.entries(EFFORTS).map(([k, l]) => ({label: l, check: ef === k, run: () => save(v, k)}))}])]); }
 /* One account/model picker: search, Recent (last 3 picks), then Accounts › (tiers on the session's own account first), Relays ›,
    Cloud › provider › its accounts + models scoring MINPICK or more, Local ›. Values: tier | acct:<id> | acct:<id>#<model> | relay:<name>.
    Anything in a relay carries the relay's name as a faded hint. o: tiers (top of Accounts), solo (relay members only under Relays), tail (items at the bottom). */

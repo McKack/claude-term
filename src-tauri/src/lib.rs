@@ -25,8 +25,6 @@ mod files;
 use files::*;
 mod local;
 use local::*;
-mod oai;
-mod route;
 
 type St<'a> = S<'a, Arc<State>>;
 // Sync commands run on the window's main thread: anything that spawns (git/gh/openssl), hits the network/keychain or

@@ -24,21 +24,30 @@ pub(crate) async fn run(app: AppHandle, st: Arc<State>, pid: String, live: Arc<L
 }
 
 /// OpenCode account: `opencode serve` instead of the CLI. Free model by default (no keys); asks come back through
-/// `control::permission` as the Bash/Edit-like tool names of the card. ponytail: no clauracle MCP, handover or images yet.
+/// `control::permission` as the Bash/Edit-like tool names of the card.
 async fn serve_opencode(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
     let p = st.project(pid).ok_or("project removed")?;
     let dir = p.path.clone();
     let acc = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).cloned().unwrap_or_default();
-    let key = store::get_token(&acc.id).filter(|t| t != "none").unwrap_or_default();
-    let (mut model, label) = (acc.model.clone(), format!("clauracle-{}", acc.id));
-    let mut local = String::new();
+    let mut key = store::get_token(&acc.id).filter(|t| t != "none").unwrap_or_default();
     let mcp = mcpserve::start(app, st, pid, live)?; // dropped (listener stopped) when this session ends
+    let label = format!("clauracle-{}", acc.id);
+    let mut model = acc.model.clone();
+    let mut entry = None;
     if acc.provider == "local" { // load the model first (can take a while), then OpenCode gets it as provider `local`
         let (m, app2, pid2) = (acc.model.clone(), app.clone(), pid.to_string());
-        local = tokio::task::spawn_blocking(move || crate::local::ensure_noting(&app2, &pid2, &m)).await.map_err(|e| e.to_string())??;
+        let (url, ctx) = tokio::task::spawn_blocking(move || crate::local::ensure_noting(&app2, &pid2, &m).map(|u| { let c = crate::local::ctx(&u); (u, c) }))
+            .await.map_err(|e| e.to_string())??;
+        entry = Some(("local", opencode::local_entry(&url, &acc.model, ctx)));
         model = format!("local/{}", acc.model);
+        key.clear();
+    } else if acc.provider != "opencode" { // any other provider: its endpoint and key as a custom provider (the key rides in the config)
+        let (m, e) = opencode::account_entry(&acc, &key)?;
+        entry = Some(("clauracle", e));
+        model = format!("clauracle/{m}");
+        key.clear();
     }
-    let cfg = opencode::config(&local, &model, &mcp.url);
+    let cfg = opencode::config(entry, &mcp.url);
     let resume = p.session.clone().filter(|s| s.starts_with("ses_")).unwrap_or_default(); // `fresh` clears it: only a reconnect resumes
     let srv = Arc::new(tokio::task::spawn_blocking(move || opencode::Server::start_with(&dir, &["*"], &model, &key, &label, &cfg, &resume)).await.map_err(|e| e.to_string())??);
     *live.oc.lock().unwrap() = Some(srv.clone());
@@ -131,10 +140,7 @@ pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
     let mcp = json!({"mcpServers": {"clauracle": {"type": "sdk", "name": "clauracle"}}});
     let mut a: Vec<String> = ["--output-format", "stream-json", "--verbose", "--input-format", "stream-json",
         "--include-partial-messages", "--permission-prompt-tool", "stdio"].iter().map(|s| s.to_string()).collect();
-    // auto mode's safety check runs on Anthropic's servers: on any other endpoint the CLI refuses every action, so edits
-    // go through and the rest asks in the app
-    let other = cfg.accounts.iter().any(|a| a.id == p.account && (!a.base_url.is_empty() || a.provider == "local"));
-    let mode = if p.mode == "auto" && other { "acceptEdits".into() } else { p.mode.clone() };
+    let mode = p.mode.clone();
     a.extend(["--append-system-prompt".into(), append, "--permission-mode".into(), mode,
               "--plugin-dir".into(), store::plugin_for(&cfg, &p.account, &st.plugin_dir).to_string_lossy().into(), "--mcp-config".into(), mcp.to_string()]);
     // per-project CLI settings: only picked connections/plugins load (store::cli_settings), no AI credit unless the
@@ -151,13 +157,10 @@ pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
     if std::fs::write(&f, set.to_string()).is_ok() {
         a.extend(["--settings".into(), f.to_string_lossy().into()]);
     }
-    // an account with its own model (OpenRouter, Kimi, local…) gets it through env; a Claude model id here would override it.
-    // Effort is skipped too: it reaches neither oai.rs (drops thinking) nor non-Claude model ids, and the page hides it there
-    let own = cfg.accounts.iter().find(|x| x.id == p.account).map_or(false, |x| !x.model.is_empty());
-    if !p.effort.is_empty() && !own {
+    if !p.effort.is_empty() {
         a.extend(["--effort".into(), p.effort.clone()]);
     }
-    if !p.model.is_empty() && !own {
+    if !p.model.is_empty() {
         a.extend(["--model".into(), p.model.clone()]);
     }
     if !deny.is_empty() {
@@ -172,22 +175,14 @@ pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
 pub(crate) async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
     let p = st.project(pid).ok_or("project removed")?;
     let acc = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).cloned().unwrap_or_default();
-    if acc.provider == "opencode" || (acc.provider == "local" && store::which("opencode").is_some()) { return serve_opencode(app, st, pid, live).await }
+    // #601: the Claude CLI runs Claude accounts only; every other provider (free model, own key, local model) is OpenCode's
+    if !store::is_claude(&acc) {
+        store::which("opencode").ok_or("OpenCode isn't installed (Settings > Install)")?;
+        return serve_opencode(app, st, pid, live).await;
+    }
     let claude = store::which("claude").ok_or("Claude Code isn't installed (Settings › Install)")?;
-    if acc.provider == "local" { // load the local model first (can take a while) so a failure shows its real reason
-        let (m, app2, pid2) = (acc.model.clone(), app.clone(), pid.to_string());
-        tokio::task::spawn_blocking(move || crate::local::ensure_noting(&app2, &pid2, &m)).await.map_err(|e| e.to_string())??;
-    }
-    let mut env: Vec<(String, String)> = [store::account_env(&p.account, &acc),store::gh_env(&p.gh), store::gcloud_env(&p.gaccount, &p.gcp),
+    let env: Vec<(String, String)> = [store::account_env(&p.account, &acc),store::gh_env(&p.gh), store::gcloud_env(&p.gaccount, &p.gcp),
         vec![("CLAUDE_CODE_ENTRYPOINT".into(), "sdk-clauracle".into())]].concat();
-    // agents picked on another account: the session goes through route.rs, which hands their calls to that account
-    let (cfg, account, dir) = (store::proj_cfg(&st.cfg.lock().unwrap(), &p), p.account.clone(), st.plugin_dir.clone());
-    let routes = tokio::task::spawn_blocking(move || store::agent_routes(&cfg, &account, &dir)).await.unwrap_or_default();
-    if !routes.is_empty() {
-        let up = env.iter().find(|e| e.0 == "ANTHROPIC_BASE_URL").map_or(crate::route::ANTHROPIC.to_string(), |e| e.1.clone());
-        env.retain(|e| e.0 != "ANTHROPIC_BASE_URL");
-        env.push(("ANTHROPIC_BASE_URL".into(), crate::route::base(&p.id, &up, routes)));
-    }
     let mut cmd = tokio::process::Command::from(store::command(&claude));
     // inherited creds (Clauracle started from a session of another account) would make Main run — and record
     // usage — as that account: each session gets only its own account's vars (Main: the ~/.claude login)
@@ -241,7 +236,7 @@ pub(crate) async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &st
     let mut agents: serde_json::Map<String, Value> = if !cfg.agents_on { Default::default() } else {
         cfg.agents.clone().unwrap_or_else(store::default_agents).iter().filter(|a| a.on && !a.name.trim().is_empty())
             .map(|a| (a.name.trim().to_string(), json!({"description": a.description, "prompt": a.prompt,
-                "model": store::agent_pick(&cfg, &p.account, a.name.trim()).unwrap_or_else(|| if a.model.is_empty() { "inherit".into() } else { a.model.clone() })})))
+                "model": store::agent_pick(&cfg, a.name.trim()).unwrap_or_else(|| if a.model.is_empty() { "inherit".into() } else { a.model.clone() })})))
             .collect() };
     for (n, e) in &cfg.agent_effort { if let Some(d) = agents.get_mut(n) { d["effort"] = json!(e); } }
     // any other agent of the CLI with a picked model: defined again for this session from its file, with that model
@@ -249,7 +244,7 @@ pub(crate) async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &st
     let more: std::collections::BTreeSet<&String> = cfg.agent_models.keys().chain(cfg.agent_effort.keys()).filter(|n| *n != "manager" && !agents.contains_key(*n) && !st.plugin_dir.join("agents").join(format!("{n}.md")).exists()).collect();
     for n in more {
         if let Some(mut d) = store::agent_def(std::path::Path::new(&p.path), n).or_else(|| store::builtin_agent(n)) {
-            if let Some(m) = store::agent_pick(&cfg, &p.account, n) { d["model"] = json!(m); }
+            if let Some(m) = store::agent_pick(&cfg, n) { d["model"] = json!(m); }
             if let Some(e) = cfg.agent_effort.get(n) { d["effort"] = json!(e); }
             agents.insert(n.clone(), d);
         }
@@ -382,14 +377,6 @@ pub(crate) fn show(app: &AppHandle, st: &State, pid: &str, acct: &str, m: &Value
         Some("result") => {
             if let Some(sid) = m["session_id"].as_str() {
                 st.with_project(pid, |p| p.session = Some(sid.into()));
-            }
-            if let Some(ms) = m["duration_ms"].as_f64() {
-                let mut cfg = st.cfg.lock().unwrap();
-                if cfg.accounts.iter().any(|a| a.id == acct && a.provider == "local") {
-                    store::record_local(&mut cfg, acct, ms / 1000.0);
-                    store::save(&cfg);
-                    emit(app, "usage", json!({"account": acct, "usage": store::usage(&cfg, acct)}));
-                }
             }
             // a /command the CLI ran itself and that printed nothing: say so, or the chat shows no reply at all
             if let Some(c) = m["local_command"].as_str().filter(|_| m["is_error"] != true && m["result"].as_str().unwrap_or("").is_empty()) {

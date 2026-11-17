@@ -1,13 +1,16 @@
 # Clauracle
 
-Tauri 2 desktop app that wraps the user's installed Claude Code CLI (stream-json protocol, spoken directly) and GitHub through `gh`.
+Tauri 2 desktop app that wraps two engines and GitHub through `gh`: the user's installed Claude Code CLI (stream-json, spoken directly) for Claude accounts only
+(subscription login, setup-token, Console key; `store::is_claude`), and `opencode serve` (HTTP + SSE) for every other provider: its free model, own keys, local models.
 It is a *wrapper*: commands, skills, MCP servers, hooks and settings all come from the real CLIs.
 Current state: `HANDOVER.md`. Open work: GitHub issues labelled `task`. Frozen, don't edit: `archive/tui/` (old TUI), `archive/python/` (pywebview prototype).
 
 ## Files
 - `src-tauri/src/lib.rs`: child-process tracking, window, app setup; Tauri commands (what the page calls) in one file per area beside it (`projects.rs`, `setup.rs`, `tasks.rs`, `build.rs`, `release.rs`, `license.rs`, `report.rs`, `files.rs`).
-- `src-tauri/src/claude/` (`mod.rs` types, `turn.rs`, `control.rs`, `steps.rs`, `plan.rs`): one session per project: spawns `claude --input-format stream-json …`, control protocol
-  (initialize with skills/agents, can_use_tool, in-process MCP `clauracle` with `ask`/`ready`), clear-continue, handover, build steps.
+- `src-tauri/src/claude/` (`mod.rs` types, `turn.rs`, `control.rs`, `steps.rs`, `plan.rs`, `backend.rs`, `opencode.rs`, `mcpserve.rs`): one session per project. `turn::connect_and_serve` picks the engine:
+  Claude account → `claude --input-format stream-json …` (control protocol: initialize with skills/agents, can_use_tool, in-process MCP `clauracle`); anything else → `serve_opencode`
+  (`opencode serve`, events translated to stream-json shapes, the account as a custom provider in `OPENCODE_CONFIG_CONTENT`, Clauracle's tools over local HTTP in `mcpserve.rs`,
+  rules in the first message, images as `files`, session resume). Both share clear-continue, handover, build steps (`after_turn`).
 - `src-tauri/src/store/` (`mod.rs` config, `mac`, `proc`, `cli`, `env`, `build`, `tasks`): `~/.clauracle/config.json`, accounts (tokens in the OS keychain), usage/limits/pools, gh helpers,
   catalog of MCP/skills, installers, .env parsing, browsers.
 - `ui/`: the UI, vanilla JS, no build step. `index.html` = markup, `app.css` = styles, `js/*.js` = classic scripts loaded

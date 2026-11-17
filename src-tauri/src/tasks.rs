@@ -110,7 +110,7 @@ pub(crate) async fn task_do(app: AppHandle, st: St<'_>, pid: String, action: Str
         let model = { // The Manager (Settings > Agents) picks the model; the old "Message check" choice still counts until it is set
             let cfg = store::proj_cfg(&st.cfg.lock().unwrap(), &p);
             match cfg.agent_models.get("manager") {
-                Some(pick) => store::agent_model(&cfg, &p.account, pick),
+                Some(pick) => store::agent_model(pick),
                 None => Some(cfg.triage_model.trim().to_string()).filter(|m| !m.is_empty()),
             }.unwrap_or_else(|| "haiku".into())
         };
