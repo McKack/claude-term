@@ -149,7 +149,8 @@ pub fn cont_text(p: &Project, agents: bool) -> Option<String> {
     let q = store::task_queue(&v, &p.gh, &p.order, p.work);
     // the first task's local ask file (exact words, image notes) is found by issue number; nothing about it is on GitHub
     let ask = q.first().and_then(|x| { let n = x["number"].as_u64()?; Some((n, store::ask_of(&p.path, n)?)) })
-        .map(|(n, f)| format!("\n\nThe user's exact words for #{n} are in the local file {f}: Read it first, it wins over the issue summary. \
+        .map(|(n, f)| format!("\n\nThe user's exact words for #{n} are in the local file {f}: Read it first, it wins over the issue summary; if the issue body still has Clauracle's placeholder line, replace it \
+            with a neutral description (no quotes of the user's words, no names or private details, keep the Screenshots lines). \
             An image's notes are in a .md of the same name beside it. Each @[name] in the text is a screenshot pasted at that spot \
             (its file is listed under Screenshots): open it and read the sentence around it as pointing at what it shows."))
         // split or merged asks carry an "Ask file:" line in the body/comments instead (#519: #472 had no pointer, a part got skipped)

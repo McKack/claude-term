@@ -45,15 +45,14 @@ Message:
 {ask}")
 }
 
-/// The filed issue: the model's title (or the message's first line), then the user's exact words in the block `scrub` removes on close.
+/// The filed issue: the model's short title only. The user's exact words and images stay in the local ask file until the
+/// session that works the task writes a neutral description into the issue. No title (model down) = a placeholder, never raw words.
 pub(crate) fn ask_issue(title: Option<&str>, raw: &str) -> String {
-    let t = title.map(str::trim).filter(|t| !t.is_empty()).map(String::from).unwrap_or_else(|| store::split_task(raw).0);
+    let t = title.map(str::trim).filter(|t| !t.is_empty()).unwrap_or("New task from Clauracle (title pending)");
+    let tags: String = store::hash_tags(raw).iter().map(|x| format!(" #{x}")).collect(); // written #Tags still become labels
     format!("{t}
 
-<details><summary>Original ask</summary>
-
-{}
-</details>", raw.trim())
+The user's words and images are in the local ask file (not on GitHub). The session that works on this replaces this line with a neutral description.{tags}")
 }
 /// Real Haiku on a question, a remark, a task and a screenshot task: class word + title come back as `triage` reads them.
 #[test]
@@ -73,14 +72,12 @@ fn manager_live() {
 }
 
 #[test]
-fn ask_issue_keeps_words() {
-    let b = ask_issue(Some("Fix the save button"), "the save button @[a1] does nothing #ui");
+fn ask_issue_keeps_words_local() {
+    let b = ask_issue(Some("Fix the save button"), "my secret words @[a1] about the save button #ui");
     assert!(b.starts_with("Fix the save button
 
-") && b.contains("the save button @[a1] does nothing #ui"));
-    assert_eq!(store::scrub_ask(&b).unwrap(), "Fix the save button");
-    assert!(ask_issue(None, "short ask
-more").starts_with("short ask
+") && !b.contains("secret") && b.ends_with(" #ui"));
+    assert!(ask_issue(None, "private first line").starts_with("New task from Clauracle (title pending)
 "));
 }
 
@@ -106,7 +103,7 @@ pub(crate) async fn task_do(app: AppHandle, st: St<'_>, pid: String, action: Str
         saved = shots.iter().map(|s| format!("@[{}] = {}", s.2, s.0)).collect();
         ask_path = store::ask_save(&p.path, &id, &arg, &shots);
     }
-    if action == "new" { // #597 the user's own words (and images below) are the issue; the model only titles it and sorts out non-tasks
+    if action == "new" { // #597 one model call: sort out non-tasks + a short title; the user's words stay in the local ask file
         let (st2, p2, raw) = (st.inner().clone(), p.clone(), arg.clone());
         let dir = store::home(); // = ~/.clauracle (joining again gives a missing dir, os error 267)
         let triaged = chat && imgs.is_empty() && may_triage(&arg); // a message with images, or a long one, is always a task
@@ -124,7 +121,7 @@ pub(crate) async fn task_do(app: AppHandle, st: St<'_>, pid: String, action: Str
             claude_pt(&st2, &p2, &["--model", &model], &dir, vec![], &manager_prompt(&raw, triaged), Some(std::time::Duration::from_secs(30)))
         }).await.map_err(|e| e.to_string())?;
         claude::emit(&app, "manager", json!({"pid": pid, "doing": null}));
-        // A failure or an unclear reply counts as a task with the message's own first line as title: an ask is never dropped.
+        // A failure or an unclear reply counts as a task (placeholder title): an ask is never dropped.
         let title = match r.as_ref().map(|s| triage(s.trim_matches('`').trim())) {
             Ok((c, _)) if c != "task" && triaged => {
                 if let Some(a) = &ask_path { store::ask_note(&p.path, a, &format!("Not filed: {c}")); }
@@ -132,7 +129,7 @@ pub(crate) async fn task_do(app: AppHandle, st: St<'_>, pid: String, action: Str
             }
             Ok((_, rest)) => rest.lines().next().map(|t| t.trim().trim_matches('"').chars().take(100).collect::<String>()),
             Err(e) => { err = format!("
-Title failed ({}): the message's first line is the title", e.lines().last().unwrap_or("no output")); None }
+Title failed ({}): placeholder title filed", e.lines().last().unwrap_or("no output")); None }
         };
         arg = ask_issue(title.as_deref(), &arg);
     } else { saved = store::att_save(&p.path, &imgs); }
