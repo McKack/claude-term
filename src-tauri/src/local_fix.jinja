@@ -1,0 +1,12 @@
+{#- clauracle fix 3: a system message after the first one is folded into the user turn before it (or becomes one) -#}
+{%- set fixm = namespace(l=[]) -%}
+{%- for m in messages -%}
+{%- set c = m.content if m.content is not string else [{'type': 'text', 'text': m.content}] -%}
+{%- if m.role == 'system' and not loop.first -%}
+{%- if fixm.l and fixm.l[-1].role == 'user' -%}
+{%- set p = fixm.l[-1].content if fixm.l[-1].content is not string else [{'type': 'text', 'text': fixm.l[-1].content}] -%}
+{%- set fixm.l = fixm.l[:-1] + [{'role': 'user', 'content': p + [{'type': 'text', 'text': '\n\n'}] + c}] -%}
+{%- else -%}{%- set fixm.l = fixm.l + [{'role': 'user', 'content': c}] -%}{%- endif -%}
+{%- else -%}{%- set fixm.l = fixm.l + [m] -%}{%- endif -%}
+{%- endfor -%}
+{%- set messages = fixm.l -%}

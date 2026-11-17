@@ -23,6 +23,10 @@ mod report;
 use report::*;
 mod files;
 use files::*;
+mod local;
+use local::*;
+mod oai;
+mod route;
 
 type St<'a> = S<'a, Arc<State>>;
 // Sync commands run on the window's main thread: anything that spawns (git/gh/openssl), hits the network/keychain or
@@ -34,6 +38,15 @@ type R<T> = Result<T, String>;
 /// escapes; spawn suspended if that ever shows up. Elsewhere a dead parent closes claude's stdin → it exits.
 #[cfg(windows)]
 pub fn adopt(child: &tokio::process::Child) {
+    if let Some(h) = child.raw_handle() {
+        adopt_raw(h as usize);
+    }
+}
+#[cfg(not(windows))]
+pub fn adopt(_: &tokio::process::Child) {}
+/// Same job for a std child (local model server): pass its raw process handle.
+#[cfg(windows)]
+pub fn adopt_raw(h: usize) {
     use windows_sys::Win32::System::JobObjects::*;
     static JOB: std::sync::LazyLock<usize> = std::sync::LazyLock::new(|| unsafe {
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
@@ -42,12 +55,8 @@ pub fn adopt(child: &tokio::process::Child) {
         SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info as *const _ as _, std::mem::size_of_val(&info) as u32);
         job as usize
     });
-    if let Some(h) = child.raw_handle() {
-        unsafe { AssignProcessToJobObject(*JOB as _, h as _) };
-    }
+    unsafe { AssignProcessToJobObject(*JOB as _, h as _) };
 }
-#[cfg(not(windows))]
-pub fn adopt(_: &tokio::process::Child) {}
 
 pub static CHILDREN: std::sync::LazyLock<Mutex<Vec<u32>>> = std::sync::LazyLock::new(Default::default);
 /// Left alive by a crashed earlier run (pid, image name): found at startup, ended only when the user says so.
@@ -275,7 +284,7 @@ fn kill_children() {
         for p in pids { if live.get(&p).is_some_and(|n| CHILDISH.contains(&n.as_str())) { kill_tree(p); } } }
     save_children(&[]);
 }
-const CHILDISH: [&str; 9] = ["claude", "node", "cmd", "sh", "bash", "zsh", "ssh", "wsl", "npm"];
+const CHILDISH: [&str; 10] = ["claude", "node", "cmd", "sh", "bash", "zsh", "ssh", "wsl", "npm", "llama-server"];
 
 pub(crate) fn kill_tree(pid: u32) {
     if cfg!(windows) {
@@ -294,6 +303,8 @@ pub fn run() {
         return swap_into(std::path::Path::new(args.get(2).map_or("", String::as_str)));
     }
     store::fix_path();
+    // --debug (or --debug=1): no startup orphan dialog, for scripted checks and screenshots
+    let debug = args.iter().any(|a| a == "--debug" || a == "--debug=1");
     // relaunched: old instance still exiting (≤3s hard exit) → wait ≤10s, else the guard below would hand off to it and quit
     if let Some(old) = args.iter().position(|a| a == "--after").and_then(|i| args.get(i + 1)?.parse::<u32>().ok()) {
         for _ in 0..50 {
@@ -323,13 +334,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
+        .setup(move |app| {
             let plugin_dir = app.path().resource_dir().map(|d| d.join("plugin")).ok().filter(|d| d.exists())
                 .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugin")); // dev runs
             app.manage(Arc::new(State { cfg: Mutex::new(store::load()), live: Default::default(),
                                         asks: Default::default(), plugin_dir }));
             let st = app.state::<Arc<State>>().inner().clone();
-            *ORPHANS.lock().unwrap() = find_orphans(); // before resume spawns (track overwrites the file)
+            if !debug { *ORPHANS.lock().unwrap() = find_orphans(); } // before resume spawns (track overwrites the file)
             if let Some(r) = st.cfg.lock().unwrap().win { restore_win(app, r); }
             #[cfg(windows)] if let Some(w) = app.get_webview("main") { ctxm::hook(&w, app.handle().clone()); }
             claude::resume_interrupted(app.handle(), &st);
@@ -372,10 +383,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![rel_fix, lic_credits, lic_write, ctx_pick, 
             fullscreen, state, ui_reply, open_project, add_project, remove_project, update_project, send, interrupt,
-            continue_now, set_lessons, set_you, report_save, report_get, log_save, report_pdf, save_as, qr, ext_update, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
-            update_account, set_default_account, claude_login, claude_add_token, claude_remove, set_notify,
-            test_notify, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_branches, clone_repo, run_step, build_guess, stop_run, stop_build, restart_into, send_mid,
-            env_list, env_set, env_ignore, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, write_bytes, lint, notes, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_accounts, gcloud_login, gcloud_do, team, task_do, git_do, release, stage, disk, disk_clean, janitor, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
+            continue_now, set_lessons, set_you, dev_save, dev_keys, dev_remove, dev_use, report_save, report_get, log_save, report_pdf, save_as, qr, ext_update, lan_ip, avatar, prepare_handover, answer_ask, answer_questions, settings, refresh_catalog, ext_find, ext_add, set_off,
+            update_account, order_accounts, set_default_account, claude_login, claude_add_token, claude_remove, local_models, ollama_models, ollama_pull, local_add, local_dir_set, set_notify,
+            test_notify, os_perms, install, fix_missing, deps, place_of, scan_folder, move_folder, gh_login, gh_logout, gh_info, actions_usage, gh_repos, gh_account, gh_branches, clone_repo, run_step, build_ai, stop_run, stop_build, restart_into, send_mid,
+            env_list, env_set, env_ignore, env_read, apple_csr, apple_cer_find, apple_p12, ships_mac, bundle_id, bundle_id_set, site_check, site_auto, site_key_install, version_set, release_check, plan_move, plan_wait, gh_secrets, gh_secrets_set,list_dir, file_heat, read_file, write_file, write_bytes, lint, notes, shell_open, shell_write, shell_resize, shell_kill, read_image, browsers, open_in_browser, web_view, homepage, reach, claude_settings, claude_settings_set, agents, set_agents, set_agent_model, who, save_draft, restart, quit, publish_repo, gcloud_info, gcloud_accounts, gcloud_login, gcloud_do, team, task_do, ask_edit, git_do, release, stage, disk, disk_clean, janitor, update_check, update_run, set_update_every, set_items, set_ci_builds, set_mac, mac_test, mac_setup, mac_key, mac_xcode, set_projects_dir, new_local, set_zoom, orphans])
         .build(tauri::generate_context!())
         .expect("failed to start Clauracle");
     app.run(|app, e| {

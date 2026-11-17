@@ -99,7 +99,14 @@ pub fn cli_settings(cfg: &Config, p: &Project) -> serde_json::Value {
         let on = is_on(cfg, p, &i.id) || cfg.catalog.iter().any(|s| s.id.starts_with(&skill_pre) && is_on(cfg, p, &s.id));
         if !on { plugins.insert(key.into(), false.into()); }
     }
-    serde_json::json!({"deniedMcpServers": denied, "enabledPlugins": plugins})
+    // the project's allow list reaches the CLI too: its auto-mode classifier blocks before Clauracle is ever asked.
+    // 24 h rules ("rule@unix secs") go in without the expiry; the reconnect after it lapses drops them
+    let now = super::now() as u64;
+    let allow: Vec<&str> = p.allow.iter().filter_map(|r| match r.rsplit_once('@') {
+        Some((r, t)) => t.parse::<u64>().ok().filter(|t| *t > now).map(|_| r),
+        None => Some(r.as_str()),
+    }).collect();
+    serde_json::json!({"deniedMcpServers": denied, "enabledPlugins": plugins, "permissions": {"allow": allow}})
 }
 
 pub fn restrictions(cfg: &Config, p: &Project) -> (Vec<String>, Option<Vec<String>>) {
@@ -169,6 +176,11 @@ pub fn read_setup_token(reader: &mut dyn std::io::Read, on_url: impl Fn(String))
 
 pub fn token_ok(t: &str) -> bool {
     Regex::new(r"^sk-ant-oat\d+-[\w-]{20,}$").unwrap().is_match(t.trim())
+}
+
+/// A Claude Console API key (sent as X-Api-Key, billed per token).
+pub fn api_key_ok(t: &str) -> bool {
+    Regex::new(r"^sk-ant-api\d+-[\w-]{20,}$").unwrap().is_match(t.trim())
 }
 
 // ---- nothing to install by hand: fetch the official Claude Code installer / the gh release ----

@@ -10,6 +10,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot, Notify};
+mod backend;
+pub(crate) use backend::Backend;
 mod turn;
 pub use turn::*;
 mod control;
@@ -25,7 +27,9 @@ const APPEND: &str = "You are running inside Clauracle, a desktop app around Cla
 across fresh sessions through a task list and HANDOVER.md. Its tools: mcp__clauracle__ready (the task is done and plan + \
 handover are written: Clauracle clears the context and continues) and mcp__clauracle__ask (questions for the user, queued; never \
 wait for them). Save tokens: hand searching, reading many files and running builds/tests to the helper agents \
-(Task tool) when they fit, and keep your own replies short.";
+(Task tool) when they fit, and keep your own replies short. Helpers come in three tiers: clauracle:apprentice (or Explore) \
+for cheap lookups, reads and running builds/tests; clauracle:mentor (or general-purpose) for focused implementation, tests \
+and reviews; clauracle:master (or Plan) only for hard design, stubborn bugs and security reviews.";
 
 const HANDOVER_RULES: &str = "
 # Handover (Clauracle)
@@ -76,6 +80,11 @@ const ISSUE_RULES: &str = "
   wrong, not a log of what was done; under ~40 lines a file, prune stale ones when you add one.
 - Finishing a task: verify it, `gh issue close N -c <one-line summary>`, update HANDOVER.md and CHANGES.md, commit if
   the project's rules allow, then call mcp__clauracle__ready as the LAST action of the turn.
+- Close an issue only when EVERY part of the ask is done: go through the ask file (if any) and the issue body part by
+  part first. A part left out or skipped goes on the issue as a comment (what is left, neutral wording) and the issue
+  stays open; what is done but not verified is said in the closing comment. Never only in HANDOVER.md (the user
+  doesn't read it). Merging an ask into another issue: comment
+  its neutral summary + its `Ask file:` line there first.
 - Do NOT call ready, stop and say why instead, when something failed you can't fix or no task is left.
 - Questions for the user go through mcp__clauracle__ask (numbered, options with your recommendation marked). They
   are queued and answered later: carry on with whatever doesn't depend on them.";
@@ -124,13 +133,8 @@ const CONTINUE_ISSUES: &str = "continue\n\nThis is a fresh session (Clauracle cl
 carry on with the next open task (GitHub issues labelled `clauracle`, first = next). Work on the FIRST one only; \
 the rest wait until it's closed:"; // #74: "first = next" alone → AI drifted to a later issue; UI highlights the first
 
-/// Agents on: later tasks that touch other files may run beside the first one, each claimed so no one else takes it.
-const PARALLEL: &str = "\n\nAgents are on, so the first task need not run alone: you may hand up to two later tasks from this \
-list to helper agents (Task tool) at the same time, only ones that clearly touch different files than the first task and each \
-other (check with `gh issue view N`; when unsure, leave it for a later session). Claim each one before its agent starts \
-(`gh issue edit N --add-assignee @me --add-label \"in progress\"`) and tell the agent the issue, its ask file if any, and the \
-only files it may change. When an agent is back, check its work like your own, then close the issue and add it to CHANGES.md; \
-if it is not done, comment its progress on the issue and remove the `in progress` label.";
+/// Auto-deploy on: later tasks that touch other files run beside the first one on the agent whose description fits, each claimed.
+const PARALLEL: &str = "\n\nAuto-deploy is on, so the first task need not run alone. Before you start it, go through the later tasks (`gh issue view N`) and hand up to two of them to helper agents (Task tool) at the same time: only tasks that clearly touch different files than the first task and each other and don't depend on them, each given to the agent whose description fits the work (a cheap one for lookups and small edits, a stronger one for hard design). No such task or no fitting agent: work alone. Claim each one before its agent starts (`gh issue edit N --add-assignee @me --add-label \"in progress\"`) and tell the agent the issue, its ask file if any, and the only files it may change. When an agent is back, check its work like your own, then close the issue and add it to CHANGES.md; if it is not done, comment its progress on the issue and remove the `in progress` label.";
 
 /// The "continue" message for a fresh session, or None when nothing is queued. Issue mode: one `gh issue list`
 /// (blocking, ~1s) → ordered "#N title" lines; gh failing → generic text (a network blip mustn't stop a run).
@@ -146,7 +150,11 @@ pub fn cont_text(p: &Project, agents: bool) -> Option<String> {
     // the first task's local ask file (exact words, image notes) is found by issue number; nothing about it is on GitHub
     let ask = q.first().and_then(|x| { let n = x["number"].as_u64()?; Some((n, store::ask_of(&p.path, n)?)) })
         .map(|(n, f)| format!("\n\nThe user's exact words for #{n} are in the local file {f}: Read it first, it wins over the issue summary. \
-            An image's notes are in a .md of the same name beside it.")).unwrap_or_default();
+            An image's notes are in a .md of the same name beside it. Each @[name] in the text is a screenshot pasted at that spot \
+            (its file is listed under Screenshots): open it and read the sentence around it as pointing at what it shows."))
+        // split or merged asks carry an "Ask file:" line in the body/comments instead (#519: #472 had no pointer, a part got skipped)
+        .unwrap_or_else(|| "\n\nIf the first task's body or comments name an `Ask file:` (.git/clauracle-att/ask-N.md), Read it first: \
+            it holds the user's exact words and wins over the summary.".into());
     let par = if agents && q.len() > 1 { PARALLEL } else { "" };
     (!q.is_empty()).then(|| format!("{CONTINUE_ISSUES}\n{}{ask}{par}",
         q.iter().map(|x| format!("- #{} {}", x["number"], x["title"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n")))

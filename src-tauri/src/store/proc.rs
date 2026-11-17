@@ -325,8 +325,9 @@ pub struct Who { pub owner: String, pub shared: bool, pub gh: String, pub accoun
 pub fn suggest(cfg: &Config, owner: &str, users: &[String], can_push: impl Fn(&str) -> bool) -> Who {
     let mine = users.iter().find(|u| u.eq_ignore_ascii_case(owner));
     let gh = mine.or_else(|| users.iter().find(|u| can_push(u))).cloned().unwrap_or_default();
-    let account = cfg.accounts.iter().find(|a| !gh.is_empty() && a.gh.eq_ignore_ascii_case(&gh))
-        .map_or(cfg.default_account.clone(), |a| a.id.clone());
+    // the AI account the latest project on this GitHub account picked
+    let account = cfg.projects.iter().rev().find(|p| !gh.is_empty() && p.gh.eq_ignore_ascii_case(&gh))
+        .map_or(cfg.default_account.clone(), |p| p.account.clone());
     Who { owner: owner.into(), shared: mine.is_none(), gh, account }
 }
 

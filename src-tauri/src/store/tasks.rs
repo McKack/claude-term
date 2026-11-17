@@ -45,7 +45,7 @@ pub(crate) fn trusted_works() {
 /// issue bodies → no user/folder names; the session's cwd = project root ∴ still readable.
 /// ponytail: kept forever (screenshots, small); prune when someone notices the folder.
 pub fn att_save(dir: &str, images: &[serde_json::Value]) -> Vec<String> {
-    att_save_opt(dir, images).into_iter().flatten().collect()
+    att_save_opt(dir, &new_id(), images).into_iter().flatten().collect()
 }
 
 /// Folder for ask files and screenshots, and the path shown for it.
@@ -57,7 +57,8 @@ pub(crate) fn att_dir(dir: &str) -> (PathBuf, &'static str) {
 }
 
 /// Like att_save, but one entry per input image (None = that image failed), so callers can pair them with notes.
-pub fn att_save_opt(dir: &str, images: &[serde_json::Value]) -> Vec<Option<String>> {
+/// `id` is shared with the ask file (`ask-<id>.md`) so a message and its images can be matched later.
+pub fn att_save_opt(dir: &str, id: &str, images: &[serde_json::Value]) -> Vec<Option<String>> {
     if images.is_empty() { return vec![]; }
     let (d, shown) = att_dir(dir);
     images.iter().enumerate().map(|(i, x)| {
@@ -65,23 +66,29 @@ pub fn att_save_opt(dir: &str, images: &[serde_json::Value]) -> Vec<Option<Strin
         // #239 attachment stem kept (sanitized) ∴ viewer/issue show the name the composer used; none → index
         let stem: String = x["name"].as_str().map(|n| n.rsplit_once('.').map_or(n, |s| s.0)).unwrap_or("").chars()
             .filter(|c| c.is_ascii_alphanumeric() || "-_".contains(*c)).take(60).collect();
-        let name = format!("{}{i}-{}.{ext}", new_id(), if /* {i}: same id + stem twice can't collide */ stem.is_empty() { i.to_string() } else { stem });
+        let name = format!("{id}{i}-{}.{ext}", if /* {i}: same id + stem twice can't collide */ stem.is_empty() { i.to_string() } else { stem });
         std::fs::write(d.join(&name), b64(x["data"].as_str()?)?).ok()?;
         Some(format!("{shown}/{name}"))
     }).collect()
 }
 
-/// The durable record of a chat ask: exact text, then the saved images with their notes (shots = path, notes).
+/// The composer's in-text name for an image: its file name without the extension, written "@[ref]" in the text.
+pub fn img_ref(x: &serde_json::Value) -> String {
+    let n = x["name"].as_str().unwrap_or("image");
+    n.rsplit_once('.').map_or(n, |s| s.0).to_string()
+}
+
+/// The durable record of a chat ask: exact text, then the saved images with their notes (shots = path, notes, ref).
 /// Written next to the screenshots; returns the shown path. Each image's notes also go in a same-name `.md` beside it.
 /// Nothing about these files goes on GitHub: the app finds them by name (ask_filed, ask_of).
-pub fn ask_save(dir: &str, raw: &str, shots: &[(String, String)]) -> Option<String> {
+pub fn ask_save(dir: &str, id: &str, raw: &str, shots: &[(String, String, String)]) -> Option<String> {
     let (d, shown) = att_dir(dir);
-    let name = format!("ask-{}.md", new_id());
+    let name = format!("ask-{id}.md");
     let mut t = raw.to_string();
     if !shots.is_empty() {
         t += "\n\n## Screenshots\n";
-        for (p, n) in shots {
-            t += &format!("- {p}\n");
+        for (p, n, r) in shots {
+            t += &format!("- @[{r}] = {p}\n");
             for l in n.lines().filter(|l| !l.trim().is_empty()) { t += &format!("  {l}\n"); }
             if !n.trim().is_empty() { let _ = std::fs::write(ask_file(dir, p).with_extension("md"), n); }
         }
@@ -126,15 +133,15 @@ pub(crate) fn ask_save_works() {
     let d = std::env::temp_dir().join(format!("clauracle-ask-test-{}", new_id()));
     std::fs::create_dir_all(d.join(".git")).unwrap();
     let ds = d.to_string_lossy().to_string();
-    let shots = vec![(".git/clauracle-att/a.png".to_string(), "first\nsecond".to_string()), (".git/clauracle-att/b.png".to_string(), String::new())];
-    let shown = ask_save(&ds, "Do  the\nthing", &shots).unwrap();
-    assert!(shown.starts_with(".git/clauracle-att/ask-"));
+    let shots = vec![(".git/clauracle-att/a.png".to_string(), "first\nsecond".to_string(), "a".to_string()), (".git/clauracle-att/b.png".to_string(), String::new(), "b".to_string())];
+    let shown = ask_save(&ds, "t1", "Do  the\nthing", &shots).unwrap();
+    assert_eq!(shown, ".git/clauracle-att/ask-t1.md");
     assert_eq!(std::fs::read_to_string(d.join(".git/clauracle-att/a.md")).unwrap(), "first\nsecond"); // notes beside the image
     assert!(!d.join(".git/clauracle-att/b.md").exists());
     assert_eq!(ask_of(&ds, 7), None);
     ask_filed(&ds, &shown, "http://x/7");
     let t = std::fs::read_to_string(d.join(ask_of(&ds, 7).unwrap())).unwrap();
-    assert_eq!(t, "Do  the\nthing\n\n## Screenshots\n- .git/clauracle-att/a.png\n  first\n  second\n- .git/clauracle-att/b.png\n\nFiled: http://x/7\n");
+    assert_eq!(t, "Do  the\nthing\n\n## Screenshots\n- @[a] = .git/clauracle-att/a.png\n  first\n  second\n- @[b] = .git/clauracle-att/b.png\n\nFiled: http://x/7\n");
     let _ = std::fs::remove_dir_all(&d);
 }
 

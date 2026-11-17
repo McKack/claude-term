@@ -14,9 +14,9 @@ pub(crate) fn state(st: St) -> Value {
         let busy: Vec<String> = st.live.lock().unwrap().iter().filter(|(_, l)| l.busy.load(SeqCst)).map(|(k, _)| k.clone()).collect();
         let paths: Vec<(String, String)> = cfg.projects.iter().map(|p| (p.id.clone(), p.path.clone())).collect();
         (json!({"projects": cfg.projects, "accounts": cfg.accounts, "usage": usage, "resets": resets, "active": cfg.active, "busy": busy,
-           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "ci_builds": cfg.ci_builds, "mac": cfg.mac, "web": !cfg.off.iter().any(|x| x == "web"), "lessons": cfg.lessons, "you": cfg.you, "notify": cfg.notify,
+           "default_account": cfg.default_account, "agents_on": cfg.agents_on, "agents_auto": cfg.agents_auto, "ci_builds": cfg.ci_builds, "mac": cfg.mac, "web": !cfg.off.iter().any(|x| x == "web"), "lessons": cfg.lessons, "devs": cfg.devs, "you": cfg.you, "notify": cfg.notify,
            "update_every": cfg.update_every.unwrap_or(24), "update_at": cfg.update_at,
-           "projects_dir": store::projects_root(&cfg).to_string_lossy()}), paths)
+           "projects_dir": store::projects_root(&cfg).to_string_lossy(), "local_dir": local::dir(&cfg), "agent_models": cfg.agent_models, "agent_effort": cfg.agent_effort}), paths)
     };
     let per = |f: &dyn Fn(&str) -> Value| paths.iter().map(|(id, p)| (id.clone(), f(p))).collect::<serde_json::Map<String, Value>>();
     // next steps from PLAN.md (ready bar, Tasks tab), every plan file with tasks (Plan tab ⓘ / merge), last few done (CHANGES.md),
@@ -111,7 +111,7 @@ pub(crate) fn remove_project(st: St, pid: String) {
 /// current reply, same session).
 #[tauri::command]
 pub(crate) fn update_project(app: AppHandle, st: St, pid: String, changes: Value) -> R<Value> {
-    let quiet = ["name", "context_limit", "build", "keep", "services", "allow", "stage", "rel_auto", "order", "work", "targets", "site", "wired", "license"]; // read live per call: no reconnect
+    let quiet = ["name", "context_limit", "build", "keep", "services", "stage", "rel_auto", "order", "work", "targets", "site", "wired", "license", "devs"]; // read live per call: no reconnect
     let p = st.with_project(&pid, |p| {
         let mut v = json!(p);
         for (k, val) in changes.as_object().cloned().unwrap_or_default() {
@@ -147,11 +147,37 @@ pub(crate) fn send(app: AppHandle, st: St, pid: String, text: String, images: Op
     if images.is_empty() {
         return live.inbox.push(Input::Msg(text));
     }
-    // each image is labelled with its name first ∴ a "[name]" reference in the text (#189) points at the right one
-    let mut blocks: Vec<Value> = images.iter().flat_map(|i| [json!({"type": "text", "text": format!("[{}]", i["name"].as_str().unwrap_or("image"))}),
-        json!({"type": "image", "source": {"type": "base64", "media_type": i["media_type"], "data": i["data"]}})]).collect();
-    blocks.push(json!({"type": "text", "text": if text.trim().is_empty() { "(see the image)".to_string() } else { text }}));
-    live.inbox.push(Input::Rich(json!(blocks)));
+    live.inbox.push(Input::Rich(json!(rich_blocks(&text, &images))));
+}
+
+/// Text and pasted images as content blocks, each image placed right after its "@[ref]" marker so the sentence
+/// around it keeps pointing at it. Images the text never mentions go first, each labelled with its marker.
+pub(crate) fn rich_blocks(text: &str, images: &[Value]) -> Vec<Value> {
+    let img = |i: &Value| json!({"type": "image", "source": {"type": "base64", "media_type": i["media_type"], "data": i["data"]}});
+    let txt = |t: &str| json!({"type": "text", "text": t});
+    // marker end in the text (term view writes "@[ ref]") → image index, in text order
+    let mut at: Vec<(usize, usize)> = images.iter().enumerate().filter_map(|(k, i)| {
+        let r = store::img_ref(i);
+        [format!("@[{r}]"), format!("@[ {r}]")].iter().find_map(|m| text.find(m.as_str()).map(|p| (p + m.len(), k)))
+    }).collect();
+    at.sort();
+    let mut out: Vec<Value> = images.iter().enumerate().filter(|(k, _)| !at.iter().any(|a| a.1 == *k))
+        .flat_map(|(_, i)| [txt(&format!("@[{}]", store::img_ref(i))), img(i)]).collect();
+    let mut from = 0;
+    // two images with one name share a marker: no empty text block between them (the API refuses those)
+    for (end, k) in at { if end > from { out.push(txt(&text[from..end])); } out.push(img(&images[k])); from = end; }
+    let rest = &text[from..];
+    if !rest.trim().is_empty() { out.push(txt(rest)); } else if text.trim().is_empty() { out.push(txt("(see the image)")); }
+    out
+}
+
+#[test]
+fn rich_blocks_keep_images_in_place() {
+    let im = |n: &str| json!({"name": n, "media_type": "image/png", "data": n});
+    let b = rich_blocks("Make @[a] blue, not @[ b] or x.", &[im("b.png"), im("c.png"), im("a.png")]);
+    let kinds: Vec<String> = b.iter().map(|x| x["text"].as_str().map_or_else(|| format!("img {}", x["source"]["data"].as_str().unwrap()), String::from)).collect();
+    assert_eq!(kinds, ["@[c]", "img c.png", "Make @[a]", "img a.png", " blue, not @[ b]", "img b.png", " or x."]);
+    assert_eq!(rich_blocks("", &[im("a.png")]).last().unwrap()["text"], "(see the image)");
 }
 
 #[tauri::command]
@@ -161,10 +187,23 @@ pub(crate) fn agents(st: St) -> Value {
 
 /// Takes effect when a session next connects (new session / continue / settings change).
 #[tauri::command]
-pub(crate) fn set_agents(st: St, agents: Vec<store::Agent>, on: Option<bool>) {
+pub(crate) fn set_agents(st: St, agents: Vec<store::Agent>, on: Option<bool>, auto: Option<bool>) {
     let mut cfg = st.cfg.lock().unwrap();
     cfg.agents = Some(agents);
     if let Some(on) = on { cfg.agents_on = on; }
+    if let Some(a) = auto { cfg.agents_auto = a; }
+    store::save(&cfg);
+    for l in st.live.lock().unwrap().values() {
+        l.inbox.front(vec![Input::Reconnect]);
+    }
+}
+
+/// Settings › Agents model pick for a built-in agent ("" = its default); sessions reconnect to load it.
+#[tauri::command]
+pub(crate) fn set_agent_model(st: St, name: String, model: String, effort: Option<String>) {
+    let mut cfg = st.cfg.lock().unwrap();
+    match effort.as_deref() { None => {}, Some("") => { cfg.agent_effort.remove(&name); }, Some(e) => { cfg.agent_effort.insert(name.clone(), e.into()); } }
+    if model.is_empty() { cfg.agent_models.remove(&name); } else { cfg.agent_models.insert(name, model); }
     store::save(&cfg);
     for l in st.live.lock().unwrap().values() {
         l.inbox.front(vec![Input::Reconnect]);
@@ -184,7 +223,7 @@ pub(crate) async fn send_mid(st: St<'_>, pid: String, text: String, work: Option
 pub(crate) async fn interrupt(st: St<'_>, pid: String) -> R<()> {
     let conn = st.live.lock().unwrap().get(&pid).and_then(|l| l.conn.lock().unwrap().clone());
     if let Some(c) = conn {
-        c.request(json!({"subtype": "interrupt"}), 10).await?;
+        claude::Backend::interrupt(&*c).await?;
     }
     Ok(())
 }
@@ -266,7 +305,7 @@ pub(crate) fn continue_now(app: AppHandle, st: St, pid: String, extra: Option<St
         return;
     }
     // #87: no open task + no user text → no fresh turn (was: old PLAN.md "continue" → AI found nothing, stopped)
-    let Some(msg) = claude::cont_text(&p, st.cfg.lock().unwrap().agents_on).or_else(|| (!p.answers.is_empty()).then(|| claude::CONTINUE_BARE.into())) else {
+    let Some(msg) = claude::cont_text(&p, st.cfg.lock().unwrap().agents_auto).or_else(|| (!p.answers.is_empty()).then(|| claude::CONTINUE_BARE.into())) else {
         claude::line(&app, &pid, "note", "No open tasks: nothing to continue. Send a new request to start again.");
         emit(&app, "status", json!({"pid": pid, "busy": false})); // #302 same
         return;

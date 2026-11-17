@@ -1,4 +1,4 @@
-//! Commands: run steps, build guess, .env editing.
+//! Commands: run steps, AI build detection, .env editing.
 use crate::*;
 
 #[tauri::command]
@@ -6,9 +6,38 @@ pub(crate) async fn run_step(app: AppHandle, st: St<'_>, pid: String, step: Stri
     Ok(claude::run_step(&app, &st, &pid, &step).await.0)
 }
 
+/// #586 build steps read by the AI from the project's own files (replaces the file-pattern guess in the setup wizard and
+/// the Build fold's Detect). Empty folder: nothing to read, empty steps without a model call. Blocking: claude -p, up to 2 min.
 #[tauri::command(async)]
-pub(crate) fn build_guess(st: St, pid: String) -> R<store::Build> {
-    Ok(store::guess_build(&st.project(&pid).ok_or("no such project")?.path))
+pub(crate) fn build_ai(st: St, pid: String) -> R<store::Build> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let dir = std::path::PathBuf::from(&p.path);
+    let files = std::fs::read_dir(&dir).map(|r| r.flatten().filter(|e| !e.file_name().to_string_lossy().starts_with('.')).count()).unwrap_or(0);
+    if files == 0 { return Ok(store::Build { after: p.build.after.clone(), ..Default::default() }); }
+    let out = report::claude_pt(&st, &p, &["--model", "sonnet", "--effort", "low", "--allowedTools", "Read,Glob,Grep"], &dir, vec![], BUILD_AI,
+        Some(std::time::Duration::from_secs(120)))?;
+    parse_build(&out).map(|b| store::Build { after: p.build.after.clone(), fix: p.build.fix, release: p.build.release, ..b }).ok_or_else(|| format!("no build steps in the reply: {}", out.trim().chars().take(200).collect::<String>()))
+}
+
+const BUILD_AI: &str = "Find how this project is built, run and deployed on this computer (OS shell commands run from the project root).     Look at its files (package.json scripts, Cargo.toml, tauri.conf.json, Makefile, pyproject.toml, *.csproj, project.godot, Dockerfile, README, CI workflows…).     build = full release build; run = start it locally for a quick look (dev server, app or game); deploy = publish it, only if the project defines how;     local = a faster debug build, only if clearly different from build. Use the project's own scripts where they exist.     Each value is only the command line, never an explanation or comment. Unknown → empty string. Reply with only one line of JSON: {\"build\":\"…\",\"run\":\"…\",\"deploy\":\"…\",\"local\":\"…\"}";
+
+fn parse_build(s: &str) -> Option<store::Build> {
+    let j: serde_json::Value = serde_json::from_str(s.get(s.find('{')?..=s.rfind('}')?)?).ok()?;
+    let g = |k: &str| j[k].as_str().unwrap_or("").trim().to_string();
+    Some(store::Build { build: g("build"), run: g("run"), deploy: g("deploy"), local: g("local"), ..Default::default() })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parse_build_reply() {
+        let b = super::parse_build("Here:
+```json
+{\"build\":\"npm run build\",\"run\":\"npm run dev\",\"deploy\":\"\",\"local\":null}
+```").unwrap();
+        assert_eq!((b.build.as_str(), b.run.as_str(), b.deploy.as_str(), b.local.as_str()), ("npm run build", "npm run dev", "", ""));
+        assert!(super::parse_build("no idea").is_none());
+    }
 }
 
 #[tauri::command(async)] // taskkill blocks

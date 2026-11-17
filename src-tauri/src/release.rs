@@ -311,7 +311,139 @@ pub(crate) fn site_auto(st: St, pid: String, host: String) -> R<String> {
             fill("PLAY_SERVICE_ACCOUNT_JSON", &key.to_string())?;
             Ok(email)
         }
+        // DirectAdmin over its API (Login Key, no SSH) + DNS on Cloudflare, the way arctim.no sites are set up
+        "dasub" => { // subdomain on the server (skipped when it exists) → SITE_PATH
+            let (d, zone) = da_site(&p, &get)?;
+            if d != zone {
+                let sub = &d[..d.len() - zone.len() - 1];
+                if !da_list(&da(&get, &format!("CMD_API_SUBDOMAINS?domain={zone}"), &[])?).iter().any(|s| s == sub) {
+                    da(&get, "CMD_API_SUBDOMAINS", &[("action", "create"), ("domain", &zone), ("subdomain", sub)])?;
+                }
+            } // ponytail: new DirectAdmin layout (own docroot); older subdomains living in <zone>/public_html/<sub> need SITE_PATH edited by hand
+            fill("SITE_PATH", &format!("/domains/{d}/public_html"))
+        }
+        "cfdns" => { // A record → the DirectAdmin server's IP, DNS only (Let's Encrypt on the server needs the real IP)
+            let (d, zone) = da_site(&p, &get)?;
+            let host = get("DA_URL")?.split("//").last().unwrap_or("").split([':', '/']).next().unwrap_or("").to_string();
+            let ip = std::net::ToSocketAddrs::to_socket_addrs(&(host.as_str(), 443)).map_err(|e| format!("can't resolve {host}: {e}"))?
+                .find(|a| a.is_ipv4()).ok_or(format!("{host} has no IPv4 address"))?.ip().to_string();
+            let tok = format!("Bearer {}", get("CLOUDFLARE_API_TOKEN")?);
+            let cf = |m: &str, path: &str, body: Option<Value>| -> R<Value> {
+                let rq = ureq::request(m, &format!("https://api.cloudflare.com/client/v4/{path}")).set("Authorization", &tok);
+                let rs = match body { Some(b) => rq.set("Content-Type", "application/json").send_string(&b.to_string()), None => rq.call() };
+                rs.map_err(err)?.into_string().map_err(|e| e.to_string()).and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()))
+            };
+            let z = cf("GET", &format!("zones?name={zone}"), None).map_err(|e| format!("Cloudflare: {e} (the token needs Zone › DNS › Edit and Zone › Zone › Read)"))?;
+            let zid = z["result"][0]["id"].as_str().ok_or(format!("{zone} isn't on this Cloudflare account (or the token can't see it)"))?.to_string();
+            let r = cf("GET", &format!("zones/{zid}/dns_records?name={d}"), None)?;
+            if let Some(x) = r["result"].as_array().and_then(|a| a.first()) {
+                if x["type"] == "A" && x["content"] == ip.as_str() { return Ok(format!("{d} → {ip} (already there)")); }
+                return Err(format!("{d} already has a {} record to {}: change or delete it in Cloudflare first", x["type"].as_str().unwrap_or("?"), x["content"].as_str().unwrap_or("?")));
+            }
+            cf("POST", &format!("zones/{zid}/dns_records"), Some(serde_json::json!({"type": "A", "name": d, "content": ip, "ttl": 1, "proxied": false, "comment": "Clauracle website"})))?;
+            Ok(format!("{d} → {ip}"))
+        }
+        "dassl" => { // Let's Encrypt for the whole domain, every name that resolves; only once the new name answers
+            let (d, zone) = da_site(&p, &get)?;
+            let a = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(10)).build();
+            if a.get(&format!("https://{d}/")).call().map(|_| true).unwrap_or_else(|e| matches!(e, ureq::Error::Status(..))) {
+                return Ok(format!("https://{d} (already has a valid certificate)"));
+            }
+            // DNS over HTTPS, never the server's resolver: a lookup there before the record exists blocks the name for ~30 min
+            let live = |n: &str| a.get(&format!("https://cloudflare-dns.com/dns-query?name={n}&type=A")).set("Accept", "application/dns-json").call().ok()
+                .and_then(|r| r.into_string().ok()).and_then(|t| serde_json::from_str::<Value>(&t).ok()).is_some_and(|v| v["Answer"].as_array().is_some_and(|x| !x.is_empty()));
+            if !live(&d) { return Err(format!("{d} doesn't answer in DNS yet: try again in a few minutes")); }
+            let subs = da_list(&da(&get, &format!("CMD_API_SUBDOMAINS?domain={zone}"), &[])?);
+            let mut names: Vec<String> = [zone.clone(), format!("www.{zone}")].into_iter().chain(subs.iter().map(|s| format!("{s}.{zone}"))).filter(|n| live(n)).collect();
+            if !names.contains(&d) { names.push(d.clone()); }
+            let sel: Vec<(String, String)> = names.iter().enumerate().map(|(i, n)| (format!("le_select{i}"), n.clone())).collect();
+            let mut form = vec![("domain", zone.as_str()), ("action", "save"), ("type", "create"), ("request", "letsencrypt"), ("name", zone.as_str()), ("keysize", "secp384r1"), ("encryption", "sha256")];
+            form.extend(sel.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+            da(&get, "CMD_API_SSL", &form)?;
+            Ok(format!("HTTPS for {} names", names.len()))
+        }
         _ => Err("nothing to automate for this host".into()),
+    }
+}
+
+/// The website address and the DirectAdmin domain it belongs to (the domain itself or a subdomain of it).
+fn da_site(p: &store::Project, get: &dyn Fn(&str) -> R<String>) -> R<(String, String)> {
+    let d = p.site["domain"].as_str().filter(|d| !d.is_empty()).ok_or("set the website address first")?.to_string();
+    let doms = da_list(&da(get, "CMD_API_SHOW_DOMAINS", &[])?);
+    let zone = doms.iter().filter(|z| d == **z || d.ends_with(&format!(".{z}"))).max_by_key(|z| z.len()).cloned()
+        .ok_or(format!("{d} isn't under any domain on this DirectAdmin account ({})", doms.join(", ")))?;
+    Ok((d, zone))
+}
+
+/// One DirectAdmin API call with the Login Key: GET without a form, POST with one. Error replies (error=1) → their text.
+fn da(get: &dyn Fn(&str) -> R<String>, cmd: &str, form: &[(&str, &str)]) -> R<String> {
+    let (url, user, key) = (get("DA_URL")?, get("DA_USER")?, get("DA_KEY")?);
+    let auth = format!("Basic {}", b64e(format!("{user}:{key}").as_bytes()));
+    let rq = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(90)).build()
+        .request(if form.is_empty() { "GET" } else { "POST" }, &format!("{}/{cmd}", url.trim_end_matches('/'))).set("Authorization", &auth);
+    let t = if form.is_empty() { rq.call() } else { rq.send_form(form) }
+        .map_err(|e| match e { ureq::Error::Status(401, _) => "DirectAdmin refused the login: check DA_USER and DA_KEY".into(), e => format!("DirectAdmin: {e}") })?
+        .into_string().map_err(|e| e.to_string())?;
+    if t.trim_start().starts_with('<') { return Err("DirectAdmin answered with a web page: check DA_URL (address with port, like https://host:2222)".into()); }
+    let kv: Vec<(String, String)> = t.split(['&', '\n']).filter_map(|x| x.split_once('=')).map(|(k, v)| (pct(k), pct(v))).collect();
+    if kv.iter().any(|(k, v)| k == "error" && v == "1") {
+        let f = |n: &str| kv.iter().find(|(k, _)| k == n).map(|(_, v)| v.trim().to_string()).unwrap_or_default();
+        return Err(format!("DirectAdmin: {} {}", f("text"), f("details")).trim().to_string());
+    }
+    Ok(t)
+}
+
+/// `list[]=a&list[]=b` (raw or %-encoded) → [a, b]
+fn da_list(t: &str) -> Vec<String> {
+    t.split(['&', '\n']).filter_map(|x| x.split_once('=')).filter(|(k, _)| pct(k) == "list[]").map(|(_, v)| pct(v)).filter(|v| !v.is_empty()).collect()
+}
+
+fn pct(s: &str) -> String {
+    let b = s.as_bytes(); let mut o = Vec::with_capacity(b.len()); let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'+' => o.push(b' '),
+            b'%' if i + 2 < b.len() && std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()).is_some() => {
+                o.push(u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap(), 16).unwrap()); i += 2; }
+            c => o.push(c),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&o).into_owned()
+}
+
+fn b64e(b: &[u8]) -> String {
+    const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    b.chunks(3).flat_map(|c| {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        (0..4).map(move |i| if i <= c.len() { A[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' })
+    }).collect()
+}
+
+#[cfg(test)]
+mod da_tests {
+    #[test]
+    fn da_helpers() {
+        assert_eq!(super::da_list("list[]=caldar&list[]=heiby"), ["caldar", "heiby"]);
+        assert_eq!(super::da_list("list%5B%5D=arctim.no\n"), ["arctim.no"]);
+        assert_eq!(super::pct("Cannot+create%3A+exists"), "Cannot create: exists");
+        assert_eq!(super::pct("100%"), "100%");
+        assert_eq!(super::b64e(b"user:key"), "dXNlcjprZXk=");
+        assert_eq!(super::b64e(b"ab"), "YWI=");
+        assert_eq!(super::b64e(b"abc"), "YWJj");
+    }
+
+    /// Read-only against a real server: CLAURACLE_DA_ENV=<file with DA_URL/DA_USER/DA_KEY> CLAURACLE_DA_SITE=<an address on it>
+    #[test]
+    #[ignore]
+    fn da_live() {
+        let kv = crate::store::env_parse(&std::fs::read_to_string(std::env::var("CLAURACLE_DA_ENV").unwrap()).unwrap());
+        let get = |k: &str| kv.iter().find(|(x, _)| x == k).map(|(_, v)| v.clone()).ok_or(format!("no {k}"));
+        let p = crate::store::Project { site: serde_json::json!({"domain": std::env::var("CLAURACLE_DA_SITE").unwrap()}), ..Default::default() };
+        let (d, zone) = super::da_site(&p, &get).unwrap();
+        let subs = super::da_list(&super::da(&get, &format!("CMD_API_SUBDOMAINS?domain={zone}"), &[]).unwrap());
+        println!("site {d} zone {zone} subdomains {subs:?}");
+        assert!(super::da(&get, "CMD_API_NOPE", &[]).is_err());
     }
 }
 
@@ -412,7 +544,9 @@ pub(crate) async fn release_check(st: St<'_>, pid: String) -> R<Value> {
         let ct = |a: &[&str]| git(a).stdout.trim().parse::<u64>().unwrap_or(0);
         let tag_t = if tag.ok { ct(&["log", "-1", "--format=%ct", tag.stdout.trim()]) } else { 0 };
         let code_t = store::code_time(&p.path);
-        let readme_old = tag_t > 0 && code_t > tag_t && ct(&["log", "-1", "--format=%ct", "--", "README*"]) < tag_t;
+        // an uncommitted edit counts as updated: the Fix writes README without committing it
+        let readme_old = tag_t > 0 && code_t > tag_t && ct(&["log", "-1", "--format=%ct", "--", "README*"]) < tag_t
+            && git(&["status", "--porcelain", "--", "README*"]).stdout.trim().is_empty();
         let deps = lic_deps(&root, &p.license); // #412
         let cmiss = credits_miss(&root, &deps);
         json!({"deps": deps, "credits_miss": cmiss, "readme": readme, "readme_old": readme_old, "credits": has(&["CREDITS"]), "ci_os": ci_os, "license": has(&["LICENSE", "LICENCE", "COPYING"]), "lic_id": lic_id, "lic_file": lic_file,"changelog": has(&["CHANGELOG", "HISTORY", "RELEASES"]),

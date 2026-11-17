@@ -23,7 +23,7 @@ pub(crate) async fn run(app: AppHandle, st: Arc<State>, pid: String, live: Arc<L
 }
 
 pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
-    let cfg = st.cfg.lock().unwrap();
+    let cfg = store::proj_cfg(&st.cfg.lock().unwrap(), p);
     let (deny, _) = store::restrictions(&cfg, p);
     let mut append = format!("{APPEND}\n{}", if issue_mode(p) { ISSUE_RULES } else { HANDOVER_RULES });
     append += match p.cont.as_str() { "auto" => AUTO_RULES, "auto_answer" => AUTO_ANSWER_RULES, _ => "" };
@@ -61,8 +61,12 @@ pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
     let mcp = json!({"mcpServers": {"clauracle": {"type": "sdk", "name": "clauracle"}}});
     let mut a: Vec<String> = ["--output-format", "stream-json", "--verbose", "--input-format", "stream-json",
         "--include-partial-messages", "--permission-prompt-tool", "stdio"].iter().map(|s| s.to_string()).collect();
-    a.extend(["--append-system-prompt".into(), append, "--permission-mode".into(), p.mode.clone(),
-              "--plugin-dir".into(), st.plugin_dir.to_string_lossy().into(), "--mcp-config".into(), mcp.to_string()]);
+    // auto mode's safety check runs on Anthropic's servers: on any other endpoint the CLI refuses every action, so edits
+    // go through and the rest asks in the app
+    let other = cfg.accounts.iter().any(|a| a.id == p.account && (!a.base_url.is_empty() || a.provider == "local"));
+    let mode = if p.mode == "auto" && other { "acceptEdits".into() } else { p.mode.clone() };
+    a.extend(["--append-system-prompt".into(), append, "--permission-mode".into(), mode,
+              "--plugin-dir".into(), store::plugin_for(&cfg, &p.account, &st.plugin_dir).to_string_lossy().into(), "--mcp-config".into(), mcp.to_string()]);
     // per-project CLI settings: only picked connections/plugins load (store::cli_settings), no AI credit unless the
     // project turns it on. A file, not inline JSON (cmd /c mangles quotes)
     // base = the AI account's own settings (Accounts › Advanced AI settings), project restrictions on top
@@ -77,10 +81,13 @@ pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
     if std::fs::write(&f, set.to_string()).is_ok() {
         a.extend(["--settings".into(), f.to_string_lossy().into()]);
     }
-    if !p.effort.is_empty() {
+    // an account with its own model (OpenRouter, Kimi, local…) gets it through env; a Claude model id here would override it.
+    // Effort is skipped too: it reaches neither oai.rs (drops thinking) nor non-Claude model ids, and the page hides it there
+    let own = cfg.accounts.iter().find(|x| x.id == p.account).map_or(false, |x| !x.model.is_empty());
+    if !p.effort.is_empty() && !own {
         a.extend(["--effort".into(), p.effort.clone()]);
     }
-    if !p.model.is_empty() {
+    if !p.model.is_empty() && !own {
         a.extend(["--model".into(), p.model.clone()]);
     }
     if !deny.is_empty() {
@@ -95,9 +102,21 @@ pub(crate) fn args(st: &State, p: &Project) -> Vec<String> {
 pub(crate) async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>) -> Result<(), String> {
     let p = st.project(pid).ok_or("project removed")?;
     let claude = store::which("claude").ok_or("Claude Code isn't installed (Settings › Install)")?;
-    let base = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).map(|a| a.base_url.clone()).unwrap_or_default();
-    let env: Vec<(String, String)> = [store::account_env(&p.account, &base),store::gh_env(&p.gh), store::gcloud_env(&p.gaccount, &p.gcp),
+    let acc = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).cloned().unwrap_or_default();
+    if acc.provider == "local" { // load the local model first (can take a while) so a failure shows its real reason
+        let (m, app2, pid2) = (acc.model.clone(), app.clone(), pid.to_string());
+        tokio::task::spawn_blocking(move || crate::local::ensure_noting(&app2, &pid2, &m)).await.map_err(|e| e.to_string())??;
+    }
+    let mut env: Vec<(String, String)> = [store::account_env(&p.account, &acc),store::gh_env(&p.gh), store::gcloud_env(&p.gaccount, &p.gcp),
         vec![("CLAUDE_CODE_ENTRYPOINT".into(), "sdk-clauracle".into())]].concat();
+    // agents picked on another account: the session goes through route.rs, which hands their calls to that account
+    let (cfg, account, dir) = (store::proj_cfg(&st.cfg.lock().unwrap(), &p), p.account.clone(), st.plugin_dir.clone());
+    let routes = tokio::task::spawn_blocking(move || store::agent_routes(&cfg, &account, &dir)).await.unwrap_or_default();
+    if !routes.is_empty() {
+        let up = env.iter().find(|e| e.0 == "ANTHROPIC_BASE_URL").map_or(crate::route::ANTHROPIC.to_string(), |e| e.1.clone());
+        env.retain(|e| e.0 != "ANTHROPIC_BASE_URL");
+        env.push(("ANTHROPIC_BASE_URL".into(), crate::route::base(&p.id, &up, routes)));
+    }
     let mut cmd = tokio::process::Command::from(store::command(&claude));
     // inherited creds (Clauracle started from a session of another account) would make Main run — and record
     // usage — as that account: each session gets only its own account's vars (Main: the ~/.claude login)
@@ -146,13 +165,25 @@ pub(crate) async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &st
     if let Some(s) = skills {
         init["skills"] = json!(s);
     }
-    // Settings › Agents: cheaper helpers Claude can hand work to
-    let agents = st.cfg.lock().unwrap().agents.clone().unwrap_or_else(store::default_agents);
-    let agents: serde_json::Map<String, Value> = agents.iter().filter(|a| a.on && !a.name.trim().is_empty())
-        .map(|a| (a.name.trim().to_string(), json!({"description": a.description, "prompt": a.prompt,
-                                                     "model": if a.model.is_empty() { "inherit" } else { a.model.as_str() }})))
-        .collect();
-    if !agents.is_empty() && st.cfg.lock().unwrap().agents_on {
+    // Settings › Agents: cheaper helpers Claude can hand work to; a model picked for one wins over its own
+    let cfg = store::proj_cfg(&st.cfg.lock().unwrap(), &p);
+    let mut agents: serde_json::Map<String, Value> = if !cfg.agents_on { Default::default() } else {
+        cfg.agents.clone().unwrap_or_else(store::default_agents).iter().filter(|a| a.on && !a.name.trim().is_empty())
+            .map(|a| (a.name.trim().to_string(), json!({"description": a.description, "prompt": a.prompt,
+                "model": store::agent_pick(&cfg, &p.account, a.name.trim()).unwrap_or_else(|| if a.model.is_empty() { "inherit".into() } else { a.model.clone() })})))
+            .collect() };
+    for (n, e) in &cfg.agent_effort { if let Some(d) = agents.get_mut(n) { d["effort"] = json!(e); } }
+    // any other agent of the CLI with a picked model: defined again for this session from its file, with that model
+    // (Clauracle's plugin agents get theirs through store::plugin_for; built-ins have no file: a stand-in from store::builtin_agent)
+    let more: std::collections::BTreeSet<&String> = cfg.agent_models.keys().chain(cfg.agent_effort.keys()).filter(|n| *n != "manager" && !agents.contains_key(*n) && !st.plugin_dir.join("agents").join(format!("{n}.md")).exists()).collect();
+    for n in more {
+        if let Some(mut d) = store::agent_def(std::path::Path::new(&p.path), n).or_else(|| store::builtin_agent(n)) {
+            if let Some(m) = store::agent_pick(&cfg, &p.account, n) { d["model"] = json!(m); }
+            if let Some(e) = cfg.agent_effort.get(n) { d["effort"] = json!(e); }
+            agents.insert(n.clone(), d);
+        }
+    }
+    if !agents.is_empty() {
         init["agents"] = Value::Object(agents);
     }
     let r = conn.request(init, 90).await?;
@@ -179,8 +210,7 @@ pub(crate) async fn connect_and_serve(app: &AppHandle, st: &Arc<State>, pid: &st
                 live.continuing.store(false, SeqCst);
                 st.with_project(pid, |p| p.working = true);
                 emit(app, "status", json!({"pid": pid, "busy": true, "handover": live.handing_over.load(SeqCst)}));
-                if let Err(e) = conn.write(&json!({"type": "user", "message": {"role": "user", "content": content.clone()},
-                                   "parent_tool_use_id": null, "session_id": "default"})).await {
+                if let Err(e) = conn.send(content.clone()).await {
                     // claude died under us: the message goes back first in line for the reconnected session (was lost)
                     live.inbox.front(vec![match content { Value::String(t) => Input::Msg(t), c => Input::Rich(c) }]);
                     return Err(e);
@@ -282,6 +312,14 @@ pub(crate) fn show(app: &AppHandle, st: &State, pid: &str, acct: &str, m: &Value
             if let Some(sid) = m["session_id"].as_str() {
                 st.with_project(pid, |p| p.session = Some(sid.into()));
             }
+            if let Some(ms) = m["duration_ms"].as_f64() {
+                let mut cfg = st.cfg.lock().unwrap();
+                if cfg.accounts.iter().any(|a| a.id == acct && a.provider == "local") {
+                    store::record_local(&mut cfg, acct, ms / 1000.0);
+                    store::save(&cfg);
+                    emit(app, "usage", json!({"account": acct, "usage": store::usage(&cfg, acct)}));
+                }
+            }
             // a /command the CLI ran itself and that printed nothing: say so, or the chat shows no reply at all
             if let Some(c) = m["local_command"].as_str().filter(|_| m["is_error"] != true && m["result"].as_str().unwrap_or("").is_empty()) {
                 emit(app, "line", json!({"pid": pid, "kind": "claude", "text": format!("`/{c}` done."), "cmd": true}));
@@ -358,7 +396,7 @@ pub(crate) async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live
     }
     if live.armed.swap(false, SeqCst) {
         let was_handover = live.handing_over.swap(false, SeqCst);
-        let mut p = p;
+        let p = p;
         let mut smart = false;
         let mut restart_self = false; // #170: Clauracle built itself after a task → swap into the new build
         let a = if p.build.after == "smart" { "smart_run" } else { p.build.after.as_str() }.to_string(); // #182 legacy smart = smart+run
@@ -367,15 +405,9 @@ pub(crate) async fn after_turn(app: &AppHandle, st: &Arc<State>, pid: &str, live
             let (dir, base) = (p.path.clone(), live.built.lock().unwrap().clone());
             let why = tauri::async_runtime::spawn_blocking(move || store::smart_why(&dir, &base)).await.unwrap_or_default();
             smart = !why.is_empty();
-            if smart && p.build.build.is_empty() && p.build.run.is_empty() {
-                let g = store::guess_build(&p.path); // unset steps → guessed once, saved so the Build tab shows them
-                st.with_project(pid, |q| { q.build.build = g.build.clone(); q.build.run = g.run.clone(); if q.build.deploy.is_empty() { q.build.deploy = g.deploy.clone(); } });
-                p = st.project(pid).unwrap_or(p);
-                emit(app, "project", json!(p));
-            }
             if smart && (p.build.build.is_empty() && p.build.run.is_empty()) {
                 smart = false;
-                line(app, pid, "note", "Smart build: no build/run step found; set one in the Build tab.");
+                line(app, pid, "note", "Smart build: no build/run step set yet; Detect with AI in project settings > Build.");
             } else if smart {
                 line(app, pid, "note", &format!("Smart build: {why}…"));
             }
@@ -464,7 +496,7 @@ pub(crate) fn auto_continue(app: &AppHandle, st: &Arc<State>, pid: &str, live: &
         emit(app, "questions", json!({"pid": pid, "questions": p.questions}));
         return; // ready stays: answer_questions → continue_now
     }
-    let msg = cont_text(&p, st.cfg.lock().unwrap().agents_on); // ponytail: blocking gh call on a runtime worker (~1s, once per session)
+    let msg = cont_text(&p, st.cfg.lock().unwrap().agents_auto); // ponytail: blocking gh call on a runtime worker (~1s, once per session)
     // gh failing (logged out, token revoked) → generic continue; twice in a row = endless empty sessions burning tokens → pause
     let blind = msg.as_deref().is_some_and(|m| m.starts_with(CONTINUE_ISSUES) && pin_of(m) == 0);
     if live.blind.swap(blind, SeqCst) && blind {
@@ -529,7 +561,8 @@ pub fn relay_switched(app: &AppHandle, st: &State, pid: &str, from: &str, to: &s
         (a.nick.clone(), b.nick.clone(), b.relay.clone())
     };
     let name = st.project(pid).map(|p| p.name).unwrap_or_default();
-    let msg = format!("{f} reached its {} limit: switched to {t} (relay {relay}).", label(window));
+    let msg = if window.is_empty() { format!("{t} has room again: switched back from {f} (relay {relay}).") }
+        else { format!("{f} reached its {} limit: switched to {t} (relay {relay}).", label(window)) };
     line(app, pid, "note", &msg);
     emit(app, "project", json!(st.project(pid)));
     emit(app, "switched", json!({"pid": pid, "text": format!("{name}: {msg}")}));

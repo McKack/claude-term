@@ -72,6 +72,7 @@ pub(crate) async fn ext_add(kind: String, a: String, b: String) -> R<()> {
 /// scope: "global", an account id (defaults for new projects) or "project:<id>".
 #[tauri::command]
 pub(crate) fn set_off(st: St, item: String, off: bool, scope: String) {
+    let quiet = item.starts_with("ghorg:"); // a repo-list preference: no session needs it
     let mut cfg = st.cfg.lock().unwrap();
     let list = if scope == "global" {
         Some(&mut cfg.off)
@@ -87,6 +88,7 @@ pub(crate) fn set_off(st: St, item: String, off: bool, scope: String) {
         }
     }
     store::save(&cfg);
+    if quiet { return; }
     let live = st.live.lock().unwrap();
     for (pid, l) in live.iter() {
         if scope == "global" || scope == format!("project:{pid}") {
@@ -118,7 +120,7 @@ pub(crate) fn update_account(st: St, id: String, changes: Value) {
     if let Some(a) = cfg.accounts.iter_mut().find(|a| a.id == id) {
         let mut v = json!(a);
         for (k, val) in changes.as_object().cloned().unwrap_or_default() {
-            if ["nick", "gh", "limits", "relay"].contains(&k.as_str()) {
+            if ["nick", "limits", "relay", "model"].contains(&k.as_str()) {
                 v[k] = val;
             }
         }
@@ -126,6 +128,19 @@ pub(crate) fn update_account(st: St, id: String, changes: Value) {
             *a = n;
         }
     }
+    store::save(&cfg);
+    // a new model only reaches running sessions through their env, so restart those on this account
+    if changes.get("model").is_some() {
+        let pids: Vec<String> = cfg.projects.iter().filter(|p| p.account == id).map(|p| p.id.clone()).collect();
+        for (pid, l) in st.live.lock().unwrap().iter() { if pids.contains(pid) { l.inbox.front(vec![claude::Input::Reconnect]); } }
+    }
+}
+
+/// Drag on the AI accounts page: the new order, which is also the priority inside each relay.
+#[tauri::command]
+pub(crate) fn order_accounts(st: St, ids: Vec<String>) {
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.accounts.sort_by_key(|a| ids.iter().position(|i| *i == a.id).unwrap_or(usize::MAX));
     store::save(&cfg);
 }
 
@@ -142,21 +157,25 @@ pub(crate) async fn claude_login(app: AppHandle, st: St<'_>, nick: String) -> R<
     let token = tauri::async_runtime::spawn_blocking(move || {
         store::setup_token(|url| emit(&a2, "login_url", json!({"url": url})))
     }).await.map_err(|e| e.to_string())??;
-    claude_add_token(st, nick, token, None)
+    claude_add_token(st, nick, token, None, None, None, None)
 }
 
 #[tauri::command(async)]
-pub(crate) fn claude_add_token(st: St, nick: String, token: String, base_url: Option<String>) -> R<Value> {
-    let base = base_url.unwrap_or_default();
+pub(crate) fn claude_add_token(st: St, nick: String, token: String, base_url: Option<String>, provider: Option<String>, model: Option<String>, api: Option<String>) -> R<Value> {
+    let (base, api, model) = (base_url.unwrap_or_default(), api.unwrap_or_default(), model.unwrap_or_default());
     if !base.is_empty() {
-        if !base.trim().starts_with("http") || token.trim().is_empty() {
+        // local servers (Ollama, LM Studio…) take any key
+        if !base.trim().starts_with("http") || token.trim().is_empty() && !base.contains("://localhost") && !base.contains("://127.0.0.1") {
             return Err("Needs an http(s) base URL and an API key.".into());
         }
-    } else if !store::token_ok(&token) {
-        return Err("That doesn't look like a token from `claude setup-token` (sk-ant-oat…).".into());
+        if api == "openai" && model.trim().is_empty() {
+            return Err("OpenAI-format endpoints need a model name.".into());
+        }
+    } else if !store::token_ok(&token) && !store::api_key_ok(&token) {
+        return Err("That doesn't look like a token from `claude setup-token` (sk-ant-oat…) or a Claude Console API key (sk-ant-api…).".into());
     }
     let mut cfg = st.cfg.lock().unwrap();
-    let a = store::add_account(&mut cfg, &nick, &token, &base);
+    let a = store::add_account(&mut cfg, &nick, if token.trim().is_empty() { "none" } else { &token }, &base, &provider.unwrap_or_default(), &model, &api);
     store::save(&cfg);
     Ok(json!(a))
 }
@@ -185,6 +204,9 @@ pub(crate) fn set_notify(st: St, notify: Value) {
 pub(crate) fn test_notify(app: AppHandle, st: St) {
     claude::notify(&app, &st, "Clauracle", "Notifications work.");
 }
+
+#[tauri::command(async)]
+pub(crate) fn os_perms() -> bool { store::perms_probe() }
 
 #[tauri::command(async)]
 pub(crate) fn deps() -> Value { store::deps() }
@@ -575,4 +597,53 @@ pub(crate) fn homepage(exe: String, profile: String) -> String {
         .and_then(|s| serde_json::from_str::<Value>(&s).ok())
         .and_then(|p| p["homepage"].as_str().or(p["session"]["startup_urls"][0].as_str()).map(String::from))
         .filter(|u| u.starts_with("http")).unwrap_or_default()
+}
+
+// ---- developer accounts: keys saved once, copied into each project that picks the account ----
+
+/// New (id "") or edited account. Empty values remove that key from the account.
+#[tauri::command]
+pub(crate) fn dev_save(st: St, id: String, kind: String, name: String, keys: Vec<(String, String)>) -> R<store::DevAcct> {
+    let mut cfg = st.cfg.lock().unwrap();
+    let id = if id.is_empty() {
+        (1..).map(|i| format!("{kind}-{i}")).find(|c| !cfg.devs.iter().any(|d| &d.id == c)).unwrap()
+    } else { id };
+    let path = store::dev_file(&id).ok_or("bad account id")?;
+    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    let kv: Vec<(&str, Option<&str>)> = keys.iter().map(|(k, v)| (k.as_str(), Some(v.trim()).filter(|v| !v.is_empty()))).collect();
+    store::env_put(&path, &kv)?;
+    let d = store::DevAcct { id: id.clone(), kind, name: name.trim().into() };
+    match cfg.devs.iter_mut().find(|x| x.id == id) { Some(x) => *x = d.clone(), None => cfg.devs.push(d.clone()) }
+    store::save(&cfg);
+    Ok(d)
+}
+
+#[tauri::command]
+pub(crate) fn dev_keys(id: String) -> Vec<(String, String)> {
+    store::dev_file(&id).and_then(|p| std::fs::read_to_string(p).ok()).map(|t| store::env_parse(&t)).unwrap_or_default()
+}
+
+/// KEY=value pairs of a file the user picked (Add account › From a file…); only the parsed pairs go back.
+#[tauri::command]
+pub(crate) fn env_read(path: String) -> R<Vec<(String, String)>> {
+    std::fs::read_to_string(&path).map(|t| store::env_parse(t.trim_start_matches('\u{feff}'))).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn dev_remove(st: St, id: String) {
+    let mut cfg = st.cfg.lock().unwrap();
+    cfg.devs.retain(|d| d.id != id);
+    for p in cfg.projects.iter_mut() { p.devs.retain(|d| d != &id); }
+    store::save(&cfg);
+    if let Some(p) = store::dev_file(&id) { let _ = std::fs::remove_file(p); }
+}
+
+/// Copy the account's keys into the project's .env (they win over what is there). Returns how many were written.
+#[tauri::command]
+pub(crate) fn dev_use(st: St, pid: String, id: String) -> R<usize> {
+    let p = st.project(&pid).ok_or("no such project")?;
+    let keys = dev_keys(id);
+    let kv: Vec<(&str, Option<&str>)> = keys.iter().filter(|(_, v)| !v.is_empty()).map(|(k, v)| (k.as_str(), Some(v.as_str()))).collect();
+    if !kv.is_empty() { store::env_put(&std::path::Path::new(&p.path).join(".env"), &kv)?; }
+    Ok(kv.len())
 }

@@ -86,11 +86,11 @@ pub(crate) fn claude_p(st: &State, p: &store::Project, args: &[&str], cwd: &std:
 pub(crate) fn claude_pt(st: &State, p: &store::Project, args: &[&str], cwd: &std::path::Path, env: Vec<(String, String)>, prompt: &str, limit: Option<std::time::Duration>) -> R<String> {
     use std::io::{Read, Write};
     let claude = store::which("claude").ok_or("Claude Code isn't installed")?;
-    let base = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).map(|a| a.base_url.clone()).unwrap_or_default();
+    let acc = st.cfg.lock().unwrap().accounts.iter().find(|a| a.id == p.account).cloned().unwrap_or_default();
     let mut c = store::command(&claude);
     for k in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"] { c.env_remove(k); }
     for (k, _) in std::env::vars() { if k.starts_with("CLAUDE") || k == "NO_COLOR" { c.env_remove(k); } } // inherited session vars (Clauracle started from a CLI)
-    c.arg("-p").args(args).args(["--output-format", "text"]).envs(store::account_env(&p.account, &base)).envs(env)
+    c.arg("-p").args(args).args(["--output-format", "text"]).envs(store::account_env(&p.account, &acc)).envs(env)
         .current_dir(cwd).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
     let mut ch = c.spawn().map_err(|e| e.to_string())?;
     track(ch.id());

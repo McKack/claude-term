@@ -268,6 +268,37 @@ pub fn own_exe(dir: &str) -> String {
     if age(&d) > age(&r) { d } else { r }.to_string_lossy().into()
 }
 
+/// The one refusal `ready` may give for the session's pinned issue `n` (state from `gh issue view`), or None to arm.
+/// Open → finish or comment the progress. Closed as completed → one check that no part of the ask was left out
+/// (#519: #472 was closed with a requested part skipped, noted only in the local HANDOVER.md the user never reads).
+pub(crate) fn ready_nag(n: u64, s: &Value, ask: Option<&str>) -> Option<String> {
+    let waits = s["labels"].as_array().into_iter().flatten().any(|l| l["name"] == store::WAIT_LABEL);
+    if s["state"] == "OPEN" && !waits {
+        return Some(format!("Not armed: issue #{n} (this session's task) is still open. Done → verify, \
+          `gh issue close {n} -c <summary>`, call ready again. Not done → comment the progress on #{n} and \
+          call ready again: the next session resumes it first (don't split it into new issues). Blocked on \
+          the user → add the `needs-user` label + a comment saying what they must do, then ready."));
+    }
+    if s["state"] == "CLOSED" && s["stateReason"] == "COMPLETED" {
+        let src = ask.map_or(String::new(), |f| format!("{f} (the user's exact words) and "));
+        return Some(format!("Not armed yet: check #{n} once more. Go through {src}the issue body and comments part by part: \
+          is every part done? A part left out or not done → `gh issue reopen {n}` + a comment naming exactly what is left \
+          (neutral wording), then call ready again; the next session resumes it. All done → call ready again."));
+    }
+    None
+}
+
+#[test]
+fn ready_nag_works() {
+    let s = |j: &str| serde_json::from_str::<Value>(j).unwrap();
+    assert!(ready_nag(5, &s(r#"{"state":"OPEN","labels":[]}"#), None).unwrap().contains("still open"));
+    assert_eq!(ready_nag(5, &s(r#"{"state":"OPEN","labels":[{"name":"needs-user"}]}"#), None), None);
+    let c = ready_nag(5, &s(r#"{"state":"CLOSED","stateReason":"COMPLETED","labels":[]}"#), Some(".git/clauracle-att/ask-5.md")).unwrap();
+    assert!(c.contains("gh issue reopen 5") && c.contains("ask-5.md"));
+    assert_eq!(ready_nag(5, &s(r#"{"state":"CLOSED","stateReason":"NOT_PLANNED","labels":[]}"#), None), None);
+    assert_eq!(ready_nag(5, &Value::Null, None), None); // gh failed → let ready through
+}
+
 pub(crate) fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>, m: &Value) -> Value {
     let id = m["id"].clone();
     let ok = |result: Value| json!({"jsonrpc": "2.0", "id": id, "result": result});
@@ -286,14 +317,9 @@ pub(crate) fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>,
                 // Continue re-picks it → #62/#75 loop. Handover pauses (context limit) pass; one refusal, then trust.
                 let n = p.work;
                 if n > 0 && !live.handing_over.load(SeqCst) && !live.nagged.swap(true, SeqCst) {
-                    let s = store::gh_json(&["issue", "view", &n.to_string(), "--json", "state,labels"], &p.gh, Some(&p.path));
-                    let waits = s["labels"].as_array().into_iter().flatten().any(|l| l["name"] == store::WAIT_LABEL);
-                    if s["state"] == "OPEN" && !waits { // ponytail: blocking gh (~1s) on the reader; gh failing → let ready through
-                        return text(&format!("Not armed: issue #{n} (this session's task) is still open. Done → verify, \
-                          `gh issue close {n} -c <summary>`, call ready again. Not done → comment the progress on #{n} and \
-                          call ready again: the next session resumes it first (don't split it into new issues). Blocked on \
-                          the user → add the `needs-user` label + a comment saying what they must do, then ready."));
-                    }
+                    // ponytail: blocking gh (~1s) on the reader; gh failing → let ready through
+                    let s = store::gh_json(&["issue", "view", &n.to_string(), "--json", "state,stateReason,labels"], &p.gh, Some(&p.path));
+                    if let Some(t) = ready_nag(n, &s, store::ask_of(&p.path, n).as_deref()) { return text(&t); }
                 }
                 live.armed.store(true, SeqCst);
                 // watchdog: work is done once ready is called; only the closing summary is left. A stalled API reply
@@ -303,7 +329,7 @@ pub(crate) fn mcp(app: &AppHandle, st: &Arc<State>, pid: &str, live: &Arc<Live>,
                     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                     let conn = l.conn.lock().unwrap().clone();
                     if let (true, true, Some(c)) = (l.armed.load(SeqCst), l.busy.load(SeqCst), conn) {
-                        let _ = c.request(json!({"subtype": "interrupt"}), 10).await;
+                        let _ = c.interrupt().await;
                     }
                 });
                 text("Armed. When this turn ends the context is cleared and a fresh session continues from the task list and HANDOVER.md. End the turn now.")
